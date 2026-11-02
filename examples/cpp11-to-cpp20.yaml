@@ -1,0 +1,84 @@
+# CodeCoreMorph migration manifest: C++11 -> C++20 (reference: docs/SPEC.md §8).
+# Validate with:  codecoremorph validate examples/cpp11-to-cpp20.yaml
+# Editor completion: codecoremorph schema > migration_config.schema.json
+version: "1.0"
+
+project:
+  name: LegacyEngineCore
+  root: "."                          # git repo root; other paths are relative to it
+  source_dirs: ["src", "include"]
+  test_dirs: ["tests"]
+  exclude: ["third_party/**", "**/generated/**"]
+  public_api: ["include/**"]         # declarations here are public API (FR-2.2, I-6)
+
+migration:
+  base: HEAD                         # commit to start from
+  source: {language: cpp, standard: cpp11, build_system: cmake}
+  target:
+    language: cpp
+    standard: cpp20
+    rules:                           # applied in this order, after the standard bump
+      - replace_typedefs_with_using
+      - convert_raw_pointers_to_smart_pointers
+      - use_concepts_for_templates
+  rules_paths: []                    # extra project-local rule directories
+
+build:                               # adapter-specific, all optional
+  cmake:
+    configure_args: ["-DBUILD_TESTING=ON"]
+    build_targets: []                # empty = all
+
+llm:
+  providers:
+    anthropic: {}                    # credentials from the Anthropic SDK's default chain
+    ollama: {base_url: "http://localhost:11434"}
+  roles:                             # unset roles fall back to `editor`
+    editor:      {provider: anthropic, model: claude-opus-5-5, effort: high}
+    test_writer: {provider: anthropic, model: claude-opus-5-5, effort: high}
+    # Replace the placeholder with a model tag you have pulled into Ollama.
+    summarizer:  {provider: ollama, model: "<local-model-tag>", num_ctx: 32768}
+  escalation:                        # optional
+    after_failed_attempts: 2
+    to: {provider: anthropic, model: claude-opus-5-5, effort: xhigh}
+  anthropic_refusal_fallback: true
+
+guardrails:
+  max_retry_budget: 3                # retries after the first attempt, per unit
+  max_edit_retries: 2                # extra tries when edits fail to apply
+  max_run_cost_usd: 50.0             # paid providers only; null = no cap
+  max_run_tokens: null
+  max_unit_minutes: 30
+  max_unit_diff_lines: 800
+  build_timeout_s: 900
+  test_timeout_s: 1800
+  require_passing_tests: true        # true: refuse to run if the project has no runnable tests
+  rollback_on_failure: true          # must be true in v1 (NFR-2.2); false is a validation error
+  new_warnings: warn                 # off | warn | fail
+  test_file_edits: review            # deny | review | allow
+
+sandbox:
+  mode: auto                         # auto | docker | native
+  image: null                        # override; must be pinned by digest
+  network: fetch_only                # off | fetch_only | on
+  cpus: 4
+  memory: "8g"
+  pids_limit: 4096                   # max processes in the container
+
+approvals:
+  plan: required                     # required | auto
+  unit: none                         # none | api_changes | test_changes | all
+
+parity:
+  baseline_runs: 2
+  characterization_tests:
+    enabled: true
+    scope: untested_only             # untested_only | all
+    dir: tests/codecoremorph_characterization
+    max_tests_per_unit: 10
+    keep: true
+
+reporting:
+  store_transcripts: true
+
+git:
+  author: null                       # "Name <email>" for unit commits; default: your git identity

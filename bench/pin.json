@@ -1,0 +1,16 @@
+{
+  "project": "leveldb",
+  "url": "https://github.com/google/leveldb.git",
+  "tag": "1.23",
+  "commit": "99b3c03b3284f5886f9ef9a4ef703d57373e61be",
+  "submodules": {
+    "third_party/googletest": "c27acebba3b3c7d94209e0467b0a801db4af73ed",
+    "third_party/benchmark": "bf585a2789e30585b4e3ce6baf11ef2750b54677"
+  },
+  "license": "BSD-3-Clause",
+  "configure_args": [
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+    "-DLEVELDB_BUILD_BENCHMARKS=OFF"
+  ],
+  "exclude": ["third_party/**"]
+}
