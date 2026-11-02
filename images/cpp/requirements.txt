@@ -1,0 +1,5 @@
+# The index helper's libclang binding inside the image. Same version and wheel hashes as
+# uv.lock (a unit test checks this). Installed with pip --require-hashes.
+libclang==18.1.1 \
+    --hash=sha256:c533091d8a3bbf7460a00cb6c1a71da93bffe148f172c7d03b1c31fbf8aa2a0b \
+    --hash=sha256:54dda940a4a0491a9d1532bf071ea3ef26e6dbaf03b5000ed94dd7174e8f9592
