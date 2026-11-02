@@ -162,6 +162,7 @@ class DockerExecutor:
             }
             for volume, mount in s.tool_cache_volumes.items():
                 volumes[volume] = {"bind": mount, "mode": "rw"}
+            self._hand_volumes_to_user(client)
             self._container = client.containers.run(
                 s.image,
                 _IDLE_COMMAND,
@@ -194,6 +195,30 @@ class DockerExecutor:
             ) from exc
         atexit.register(self.stop)
         log.info("sandbox container %s started", s.container_name)
+
+    def _hand_volumes_to_user(self, client: Any) -> None:
+        """Give the named volumes' roots to the sandbox user.
+
+        Docker creates a volume owned by root, and the sandbox container can't change that: it
+        runs as the user with every capability dropped. A one-shot container, root with only
+        CAP_CHOWN and no network, chowns the mount points (not their contents) and exits.
+        """
+        s = self.settings
+        mounts = {s.build_volume: BUILD_MOUNT, **s.tool_cache_volumes}
+        client.containers.run(
+            s.image,
+            [self._user, *mounts.values()],
+            entrypoint=["chown"],
+            name=f"{s.container_name}-init",
+            labels=s.labels,
+            user="0:0",
+            cap_drop=["ALL"],
+            cap_add=["CHOWN"],
+            security_opt=["no-new-privileges"],
+            network_mode="none",
+            volumes={volume: {"bind": mount, "mode": "rw"} for volume, mount in mounts.items()},
+            remove=True,
+        )
 
     def _load_toolchain_env(self) -> dict[str, str]:
         path = self.settings.toolchain_env

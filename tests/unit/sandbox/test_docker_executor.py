@@ -144,6 +144,7 @@ class FakeClient:
         self._volumes: list[FakeResource] = []
         self.closed = False
         self.env_file: bytes | None = None
+        self.one_shots: list[dict[str, Any]] = []
         client = self
 
         class Images:
@@ -157,7 +158,10 @@ class FakeClient:
                 return object()
 
         class Containers(_Collection):
-            def run(self, image: str, command: list[str], **kwargs: Any) -> FakeContainer:
+            def run(self, image: str, command: list[str], **kwargs: Any) -> Any:
+                if kwargs.get("remove") and not kwargs.get("detach"):
+                    client.one_shots.append({"image": image, "command": command, **kwargs})
+                    return b""  # a finished one-shot container returns its output
                 container = FakeContainer(
                     kwargs["name"],
                     kwargs["labels"],
@@ -235,6 +239,25 @@ def test_container_is_hardened_and_mounted(tmp_path: Path) -> None:
     }
     assert kwargs["network"] == f"codecoremorph-{RUN}"
     assert client.network.events == ["disconnect"]  # fetch_only starts offline
+    executor.stop()
+
+
+def test_named_volumes_are_handed_to_the_user_before_the_container_starts(tmp_path: Path) -> None:
+    """A new volume belongs to root; the sandbox user (no capabilities) couldn't write it."""
+    executor, client = make(tmp_path, tool_cache_volumes={"codecoremorph-ccache": "/ccache"})
+    executor.start()
+    [init] = client.one_shots
+    assert init["entrypoint"] == ["chown"]
+    assert init["command"] == ["1000:1000", "/build", "/ccache"]
+    assert init["user"] == "0:0"
+    assert init["cap_drop"] == ["ALL"]
+    assert init["cap_add"] == ["CHOWN"]
+    assert init["network_mode"] == "none"
+    assert init["labels"] == {RUN_LABEL: RUN, MANAGED_LABEL: "true"}
+    assert init["volumes"] == {
+        f"codecoremorph-build-{RUN}": {"bind": "/build", "mode": "rw"},
+        "codecoremorph-ccache": {"bind": "/ccache", "mode": "rw"},
+    }
     executor.stop()
 
 
