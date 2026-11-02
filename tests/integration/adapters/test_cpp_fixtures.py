@@ -241,7 +241,12 @@ def test_cpp98_build_uses_the_cpp98_googletest(make_context: MakeContext) -> Non
     ctx = make_context("cpp98-legacy", "cpp98")
     adapter = CppAdapter()
     assert adapter.configure(ctx).success
-    cache = (ctx.build_dir / "CMakeCache.txt").read_text(encoding="utf-8")
+    # In Docker the build directory is a volume, so read the cache inside the sandbox.
+    cache = ctx.executor.run(
+        ["cmake", "-E", "cat", ctx.sandbox(ctx.build_dir / "CMakeCache.txt")],
+        cwd=ctx.sandbox(ctx.worktree),
+        timeout_s=60,
+    ).stdout
     gtest_dir = next(line for line in cache.splitlines() if line.startswith("GTest_DIR"))
     assert "1.8.1" in gtest_dir
     commands = (ctx.cache_dir / "compile_commands.json").read_text(encoding="utf-8")

@@ -60,10 +60,11 @@ def test_build_volume_persists_between_commands(executor: DockerExecutor) -> Non
 def test_timeout_kills_every_process(executor: DockerExecutor) -> None:
     result = executor.run(["sh", "-c", "sleep 300 & sleep 300"], cwd="/workspace", timeout_s=2)
     assert result.timed_out
+    # "[s]leep" matches the sleeps but neither the grep nor this shell's own command line.
     after = executor.run(
-        ["sh", "-c", "ps | grep -c 'sleep 300' || true"], cwd="/workspace", timeout_s=30
+        ["sh", "-c", "ps | grep -c '[s]leep 300' || true"], cwd="/workspace", timeout_s=30
     )
-    assert after.stdout.strip() in ("0", "1")  # only the grep itself may match
+    assert after.stdout.strip() == "0"
 
 
 def test_network_toggles(executor: DockerExecutor) -> None:
