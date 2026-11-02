@@ -284,6 +284,51 @@ class IndexStore:
         )
         return [str(row[0]) for row in rows]
 
+    # ------------------------------------------------------------------ graph queries
+
+    def reference_edges(self) -> list[tuple[str, str]]:
+        """``(from_file, to_file)`` for every file that references a symbol defined in another
+        file. Only definitions count: forward declarations would tie unrelated headers together.
+        """
+        rows = self._conn.execute(
+            "SELECT DISTINCT r.from_file, s.file FROM refs r "
+            "JOIN symbols s ON s.id = r.to_symbol AND s.is_definition = 1 "
+            "WHERE s.file != r.from_file ORDER BY r.from_file, s.file"
+        )
+        return [(str(a), str(b)) for a, b in rows]
+
+    def files_declaring(self, symbol_ids: Iterable[str]) -> list[str]:
+        """Files holding a declaration or definition of any of ``symbol_ids``."""
+        return self._distinct_by_symbol("SELECT DISTINCT file FROM symbols WHERE id IN", symbol_ids)
+
+    def files_referencing(self, symbol_ids: Iterable[str]) -> list[str]:
+        """Files that reference any of ``symbol_ids`` (the fan-in, FR-5.3)."""
+        return self._distinct_by_symbol(
+            "SELECT DISTINCT from_file FROM refs WHERE to_symbol IN", symbol_ids
+        )
+
+    def _distinct_by_symbol(self, sql: str, symbol_ids: Iterable[str]) -> list[str]:
+        ids = sorted(set(symbol_ids))
+        found: set[str] = set()
+        # SQLite caps bound parameters per statement, so query in chunks.
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            rows = self._conn.execute(f"{sql} ({_placeholders(chunk)})", chunk)
+            found.update(str(row[0]) for row in rows)
+        return sorted(found)
+
+    def boundary_files(self) -> dict[str, set[Boundary]]:
+        """Files declaring symbols on a language or ABI boundary (not public API, which is a
+        property of the file)."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT file, boundary FROM symbols WHERE boundary NOT IN (?, ?)",
+            (Boundary.NONE.value, Boundary.PUBLIC_API.value),
+        )
+        found: dict[str, set[Boundary]] = {}
+        for file, boundary in rows:
+            found.setdefault(str(file), set()).add(Boundary(str(boundary)))
+        return found
+
 
 class _Transaction:
     def __init__(self, conn: sqlite3.Connection):
