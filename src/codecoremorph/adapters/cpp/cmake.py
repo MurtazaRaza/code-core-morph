@@ -1,0 +1,166 @@
+"""CMake: command lines and the build-file edit of the standard bump (SPEC §11.1)."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from codecoremorph.core.errors import ConfigError
+
+STANDARD_ALIASES = {"0x": "11", "1y": "14", "1z": "17", "2a": "20", "2b": "23", "2c": "26"}
+
+# The standards CodeCoreMorph builds and migrates, oldest first (D-38). C++26 waits for an LLVM
+# with full support; the indexer's libclang is pinned to 18 (D-33).
+SUPPORTED_STANDARDS = ("cpp98", "cpp03", "cpp11", "cpp14", "cpp17", "cpp20", "cpp23")
+PRE_CXX11 = ("98", "03")
+
+
+def cxx_standard_number(standard: str) -> str:
+    """``cpp20`` → ``20``. Raises :class:`ConfigError` for anything else."""
+    match = re.fullmatch(r"(?:cpp|c\+\+|cxx)?(\d{2})", standard.strip().lower())
+    if match is None or f"cpp{match.group(1)}" not in SUPPORTED_STANDARDS:
+        raise ConfigError(
+            f"{standard!r} is not a C++ standard CodeCoreMorph supports",
+            hint=f"Use one of {', '.join(SUPPORTED_STANDARDS)}.",
+        )
+    return match.group(1)
+
+
+def cmake_standard(number: str) -> str:
+    """CMake's ``CMAKE_CXX_STANDARD`` value: CMake has no 03; 98 covers C++03 too."""
+    return "98" if number == "03" else number
+
+
+def std_flag(number: str, *, gnu: bool) -> str:
+    """The clang ``-std=`` flag for a standard number."""
+    return f"-std={'gnu' if gnu else 'c'}++{number}"
+
+
+def _rank(number: str) -> int:
+    value = int(number)
+    return value + 100 if value < 50 else value  # 98 and 03 sort before 11
+
+
+def configure_command(
+    source_dir: str,
+    build_dir: str,
+    *,
+    standard: str | None,
+    extra_args: list[str],
+    build_type: str = "Debug",
+    initial_cache: str | None = None,
+) -> list[str]:
+    argv = ["cmake"]
+    if initial_cache is not None:
+        argv += ["-C", initial_cache]
+    argv += [
+        "-S",
+        source_dir,
+        "-B",
+        build_dir,
+        "-G",
+        "Ninja",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        f"-DCMAKE_BUILD_TYPE={build_type}",
+    ]
+    if standard is not None:
+        # Only effective when the project doesn't set CMAKE_CXX_STANDARD itself; the standard
+        # bump rule edits the build files for that case.
+        argv += [
+            f"-DCMAKE_CXX_STANDARD={cmake_standard(standard)}",
+            "-DCMAKE_CXX_STANDARD_REQUIRED=ON",
+        ]
+    return argv + list(extra_args)
+
+
+# C++98/03 builds need the GoogleTest release that still supports them; install-toolchain
+# builds it and names its prefix in CODECOREMORPH_CXX98_PREFIX_PATH (D-38). The variable is
+# read inside the sandbox, where the toolchain environment applies.
+CXX98_INITIAL_CACHE = """\
+# Written by CodeCoreMorph for a C++98/03 build: find the GoogleTest release that supports it.
+if(DEFINED ENV{CODECOREMORPH_CXX98_PREFIX_PATH})
+  file(TO_CMAKE_PATH "$ENV{CODECOREMORPH_CXX98_PREFIX_PATH}" _codecoremorph_prefix)
+  set(CMAKE_PREFIX_PATH "${_codecoremorph_prefix}" CACHE PATH "C++98/03 packages")
+endif()
+"""
+
+
+def build_command(build_dir: str, targets: list[str]) -> list[str]:
+    argv = ["cmake", "--build", build_dir]
+    for target in targets:
+        argv += ["--target", target]
+    # Keep going after the first failure, so one build reports every error.
+    return [*argv, "--", "-k", "0"]
+
+
+def is_cmake_file(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return name == "CMakeLists.txt" or name.endswith(".cmake")
+
+
+@dataclass(frozen=True)
+class StandardEdit:
+    text: str
+    replacements: int
+
+
+_SET_STANDARD = re.compile(r"(set\s*\(\s*CMAKE_CXX_STANDARD\s+\"?)(\d+)(\"?\s*\))", re.IGNORECASE)
+_PROPERTY = re.compile(r"(\bCXX_STANDARD\s+\"?)(\d+)\b")
+_FEATURE = re.compile(r"\bcxx_std_(\d+)\b")
+_FLAG = re.compile(r"([-/]std[:=](?:c|gnu)\+\+)(0x|1[14yz7]|11|2[03ab]|2c|98|03)\b")
+_PROJECT = re.compile(r"^[ \t]*project[ \t]*\(.*?\)", re.IGNORECASE | re.MULTILINE | re.DOTALL)
+
+
+def bump_cmake_standard(text: str, target: str, *, top_level: bool) -> StandardEdit:
+    """Raise every C++ standard setting in a CMake file to ``target`` (``"20"``).
+
+    Settings already at or above the target are left alone. In the top-level file of a
+    project that sets no standard at all, ``set(CMAKE_CXX_STANDARD ...)`` is added after
+    ``project()``.
+    """
+    count = 0
+    target_rank = _rank(target)
+
+    def bump(old: str) -> bool:
+        normalized = STANDARD_ALIASES.get(old, old)
+        return _rank(normalized) < target_rank
+
+    def replace_number(match: re.Match[str]) -> str:
+        nonlocal count
+        if not bump(match.group(2)):
+            return match.group(0)
+        count += 1
+        return f"{match.group(1)}{target}{match.group(3) if match.lastindex == 3 else ''}"
+
+    def replace_feature(match: re.Match[str]) -> str:
+        nonlocal count
+        if not bump(match.group(1)):
+            return match.group(0)
+        count += 1
+        return f"cxx_std_{target}"
+
+    def replace_flag(match: re.Match[str]) -> str:
+        nonlocal count
+        if not bump(match.group(2)):
+            return match.group(0)
+        count += 1
+        return f"{match.group(1)}{target}"
+
+    sets_standard = bool(
+        _SET_STANDARD.search(text) or _PROPERTY.search(text) or _FEATURE.search(text)
+    )
+    new = _SET_STANDARD.sub(replace_number, text)
+    new = _PROPERTY.sub(replace_number, new)
+    new = _FEATURE.sub(replace_feature, new)
+    new = _FLAG.sub(replace_flag, new)
+    if top_level and not sets_standard:
+        project = _PROJECT.search(new)
+        if project is not None:
+            newline = "\r\n" if "\r\n" in new else "\n"
+            insert = (
+                f"{newline}{newline}set(CMAKE_CXX_STANDARD {target}){newline}"
+                f"set(CMAKE_CXX_STANDARD_REQUIRED ON)"
+            )
+            new = new[: project.end()] + insert + new[project.end() :]
+            count += 1
+    return StandardEdit(new, count)

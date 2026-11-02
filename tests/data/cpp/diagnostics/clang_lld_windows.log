@@ -1,0 +1,28 @@
+[1/4] Building CXX object CMakeFiles/linkfail.dir/src/link.cpp.obj
+[2/4] Linking CXX executable linkfail.exe
+FAILED: [code=1] linkfail.exe 
+C:\WINDOWS\system32\cmd.exe /C "cd . && E:\codecoremorph-home\toolchains\llvm-mingw\20240619\llvm-mingw-20240619-ucrt-x86_64\bin\clang++.exe   CMakeFiles/linkfail.dir/src/link.cpp.obj -o linkfail.exe -Wl,--out-implib,liblinkfail.dll.a -Wl,--major-image-version,0,--minor-image-version,0  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 && cd ."
+ld.lld: error: undefined symbol: helper(int)
+>>> referenced by CMakeFiles/linkfail.dir/src/link.cpp.obj:(main)
+clang-18: error: linker command failed with exit code 1 (use -v to see invocation)
+[3/4] Building CXX object CMakeFiles/broken.dir/src/main.cpp.obj
+FAILED: [code=1] CMakeFiles/broken.dir/src/main.cpp.obj 
+E:\codecoremorph-home\toolchains\llvm-mingw\20240619\llvm-mingw-20240619-ucrt-x86_64\bin\clang++.exe   -Wall -MD -MT CMakeFiles/broken.dir/src/main.cpp.obj -MF CMakeFiles\broken.dir\src\main.cpp.obj.d -o CMakeFiles/broken.dir/src/main.cpp.obj -c E:/codecoremorph-home/probe/golden/src/main.cpp
+In file included from E:/codecoremorph-home/probe/golden/src/main.cpp:1:
+E:/codecoremorph-home/probe/golden/src/inc/shapes.h:6:30: error: use of undeclared identifier 'undeclared_value'
+    6 | inline int broken() { return undeclared_value; }
+      |                              ^
+E:/codecoremorph-home/probe/golden/src/main.cpp:7:11: error: variable type 'Shape' is an abstract class
+    7 |     Shape s;
+      |           ^
+E:/codecoremorph-home/probe/golden/src/inc/shapes.h:3:20: note: unimplemented pure virtual method 'area' in 'Shape'
+    3 |     virtual double area() const = 0;
+      |                    ^
+E:/codecoremorph-home/probe/golden/src/main.cpp:9:26: error: call to implicitly-deleted copy constructor of 'std::unique_ptr<int>'
+    9 |     std::unique_ptr<int> q = p;
+      |                          ^   ~
+E:/codecoremorph-home/toolchains/llvm-mingw/20240619/llvm-mingw-20240619-ucrt-x86_64/include/c++/v1/__memory/unique_ptr.h:190:55: note: copy constructor is implicitly deleted because 'unique_ptr<int>' has a user-declared move constructor
+  190 |   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX23 unique_ptr(unique_ptr&& __u) _NOEXCEPT
+      |                                                       ^
+3 errors generated.
+ninja: build stopped: cannot make progress due to previous errors.

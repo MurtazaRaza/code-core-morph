@@ -1,0 +1,31 @@
+"""The slice of a manifest an adapter receives (:class:`LanguageConfig`)."""
+
+from __future__ import annotations
+
+from codecoremorph.config.models import BuildToolOptions, MigrationConfig
+from codecoremorph.core.models import LanguageConfig
+
+DEFAULT_BUILD_SYSTEMS = {"cpp": "cmake"}
+
+
+def language_config(config: MigrationConfig, *, standard: str | None = None) -> LanguageConfig:
+    """``standard`` overrides the standard to build with (default: the source standard)."""
+    source = config.migration.source
+    target = config.migration.target
+    build_system = source.build_system or DEFAULT_BUILD_SYSTEMS.get(source.language)
+    options = config.build.get(build_system or "", BuildToolOptions())
+    project = config.project
+    return LanguageConfig(
+        language=source.language,
+        standard=standard or source.standard,
+        target_standard=target.standard,
+        build_system=build_system,
+        configure_args=list(options.configure_args),
+        build_targets=list(options.build_targets),
+        source_dirs=list(project.source_dirs),
+        test_dirs=list(project.test_dirs),
+        exclude=list(project.exclude),
+        public_api=list(project.public_api),
+        build_timeout_s=config.guardrails.build_timeout_s,
+        test_timeout_s=config.guardrails.test_timeout_s,
+    )
