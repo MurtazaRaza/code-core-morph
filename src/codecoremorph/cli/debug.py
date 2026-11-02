@@ -18,8 +18,9 @@ from codecoremorph.cli.output import handle_errors, status_label, stderr, stdout
 from codecoremorph.config import DEFAULT_CONFIG_NAME
 from codecoremorph.config.models import SandboxMode
 from codecoremorph.core.errors import ExitCode
-from codecoremorph.core.models import BuildResult, Diagnostic, Severity
+from codecoremorph.core.models import BuildResult, Diagnostic, Role, Severity
 from codecoremorph.orchestrator.session import RunSession, open_session
+from codecoremorph.orchestrator.unit import SingleUnitResult
 
 log = logging.getLogger(__name__)
 
@@ -239,3 +240,156 @@ def debug_codemod(
         )
         for skipped in result.skipped:
             stdout().print(Text(f"skipped {skipped.file} ({skipped.check}): {skipped.reason}"))
+
+
+@debug_app.command("unit")
+@handle_errors
+def debug_unit(
+    rule: Annotated[
+        list[str], typer.Option("--rule", "-r", help="Rule of the unit (repeat for several).")
+    ],
+    files: Annotated[
+        list[str] | None,
+        typer.Argument(
+            help="The unit's files, worktree-relative (default for project rules: the build "
+            "files).",
+            show_default=False,
+        ),
+    ] = None,
+    config: Annotated[Path, typer.Option("--config", "-c", help="Migration manifest.")] = Path(
+        DEFAULT_CONFIG_NAME
+    ),
+    base: BaseOpt = None,
+    keep: Annotated[
+        bool,
+        typer.Option(
+            "--keep",
+            help="Commit a successful unit to its run branch and keep the branch and build.",
+        ),
+    ] = False,
+    sandbox: SandboxOpt = None,
+    record: Annotated[
+        Path | None,
+        typer.Option("--record", help="Record every model call to this cassette file."),
+    ] = None,
+    replay: Annotated[
+        Path | None,
+        typer.Option("--replay", help="Replay model calls from this cassette; no live calls."),
+    ] = None,
+    as_json: JsonOpt = False,
+) -> None:
+    """Migrate one work unit end to end: codemods, agent, build, tests, feedback, retries.
+
+    The unit's changes are shown as a diff; transcripts, diffs and logs of every attempt are
+    kept under .codecoremorph/runs/<run-id>/attempts/.
+    """
+    from codecoremorph.core.errors import UsageError
+    from codecoremorph.llm.base import ProviderRegistry
+    from codecoremorph.llm.ledger import UsageLedger
+    from codecoremorph.llm.replay import cassette_providers
+    from codecoremorph.llm.service import LLMService
+    from codecoremorph.orchestrator.unit import run_single_unit
+
+    if record is not None and replay is not None:
+        raise UsageError("use --record or --replay, not both")
+    with open_session(
+        config,
+        base=base,
+        mode=sandbox,
+        log_subdir="logs",
+        keep_build=keep,
+        delete_branch=not keep,
+        on_warning=_warn,
+    ) as s:
+        guardrails = s.config.guardrails
+        ledger = UsageLedger(
+            max_cost_usd=guardrails.max_run_cost_usd, max_tokens=guardrails.max_run_tokens
+        )
+        registry = ProviderRegistry.discover()
+        providers = None
+        cassette = record or replay
+        if cassette is not None:
+            llm_config = s.config.llm
+            names = sorted({c.provider for c in [llm_config.for_role(r) for r in Role]})
+            providers = cassette_providers(
+                names,
+                cassette,
+                record=record is not None,
+                create=lambda name: registry.create(name, llm_config),
+            )
+        service = LLMService(s.config.llm, ledger=ledger, registry=registry, providers=providers)
+        stderr().print(
+            Text(f"run {s.run_id}: worktree {s.workspace.worktree.path} ({s.executor.kind} mode)")
+        )
+        try:
+            result = run_single_unit(
+                s,
+                rule_ids=list(rule),
+                files=list(files or []),
+                llm=service,
+                on_step=lambda message: stderr().print(Text(f"... {message}", style="dim")),
+            )
+        finally:
+            service.close()
+        outcome = result.outcome
+        if keep and outcome.succeeded and outcome.changed_files:
+            s.workspace.worktree.commit(
+                f"codecoremorph(debug unit): {', '.join(rule)}\n\n{outcome.summary or ''}",
+                author=s.config.git.author,
+            )
+        totals = ledger.total
+        if as_json:
+            payload = {
+                "run_id": s.run_id,
+                "unit": result.unit.model_dump(mode="json"),
+                "succeeded": outcome.succeeded,
+                "agent_skipped": outcome.agent_skipped,
+                "reason": outcome.reason,
+                "summary": outcome.summary,
+                "review_notes": outcome.review_notes,
+                "warnings": outcome.warnings,
+                "changed_files": outcome.changed_files,
+                "attempts": [a.model_dump(mode="json") for a in outcome.attempts],
+                "usage": totals.usage.model_dump(),
+                "cost_usd": totals.cost_usd,
+                "diff": outcome.diff,
+            }
+            typer.echo(json.dumps(payload, indent=2))
+        else:
+            _print_unit(result, totals.usage.total, totals.cost_usd, s.artifacts.root)
+        if not outcome.succeeded:
+            raise typer.Exit(int(ExitCode.COMPLETED_WITH_FAILURES))
+
+
+def _print_unit(result: SingleUnitResult, tokens: int, cost: float, run_dir: Path) -> None:
+    console = stdout()
+    outcome = result.outcome
+    console.print(Text(outcome.diff or "(no changes)"))
+    table = Table(box=None, pad_edge=False)
+    for column in ("attempt", "role", "model", "outcome", "files"):
+        table.add_column(column)
+    for attempt in outcome.attempts:
+        table.add_row(
+            str(attempt.number),
+            attempt.role.value,
+            attempt.model or "-",
+            (attempt.outcome.value if attempt.outcome else "-"),
+            Text(", ".join(attempt.changed_files) or "-"),
+        )
+    if outcome.attempts:
+        console.print(table)
+    if outcome.agent_skipped:
+        console.print(Text("codemods alone completed the unit; the agent was skipped"))
+    for note in outcome.review_notes:
+        console.print(Text(f"review: {note}", style="cyan"))
+    for warning in outcome.warnings:
+        console.print(Text(f"warning: {warning}", style="yellow"))
+    status = "ok" if outcome.succeeded else "fail"
+    summary = outcome.summary if outcome.succeeded else outcome.reason
+    console.print(
+        Text.assemble(
+            status_label(status),
+            f" {result.unit.id}: {summary or ('done' if outcome.succeeded else 'failed')}",
+        )
+    )
+    console.print(Text(f"{tokens:,} tokens, ${cost:.2f}; attempts: {run_dir / 'attempts'}"))

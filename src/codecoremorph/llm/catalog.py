@@ -67,3 +67,46 @@ def model_info(role: RoleModelConfig, llm: LlmConfig) -> ModelInfo:
         prices=None if local else prices,
         local=local,
     )
+
+
+def prices_for(provider: str, model: str, llm: LlmConfig) -> ModelPrice | None:
+    """Prices for ``model``: the manifest's override, else package data. None when unknown or
+    the provider is local."""
+    if provider in LOCAL_PROVIDERS:
+        return None
+    configured = llm.providers.get(provider)
+    if configured is not None and model in configured.prices:
+        return configured.prices[model]
+    entry = _catalog().get(provider, {}).get(model)
+    return None if entry is None else ModelPrice.model_validate(entry["prices"])
+
+
+def cost_usd(
+    prices: ModelPrice | None,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> float | None:
+    """The cost of one call, or None without prices. Cache reads and writes fall back to the
+    input price when the table has no separate rate."""
+    if prices is None:
+        return None
+    read = prices.cache_read_usd_per_mtok
+    write = prices.cache_write_usd_per_mtok
+    total = (
+        input_tokens * prices.input_usd_per_mtok
+        + output_tokens * prices.output_usd_per_mtok
+        + cache_read_tokens * (prices.input_usd_per_mtok if read is None else read)
+        + cache_write_tokens * (prices.input_usd_per_mtok if write is None else write)
+    )
+    return round(total / 1_000_000, 6)
+
+
+def package_capabilities(provider: str, model: str) -> tuple[int, int] | None:
+    """``(context window, max output tokens)`` from package data, or None."""
+    entry = _catalog().get(provider, {}).get(model)
+    if entry is None:
+        return None
+    return int(entry["context_window"]), int(entry["max_output_tokens"])

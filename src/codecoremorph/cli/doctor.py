@@ -19,6 +19,9 @@ from codecoremorph.core.errors import (
     HostEnvironmentError,
 )
 from codecoremorph.core.paths import HOME_ENV_VAR, codecoremorph_home
+from codecoremorph.llm.base import ProviderRegistry, close_provider
+from codecoremorph.llm.catalog import LOCAL_PROVIDERS
+from codecoremorph.llm.routing import Router
 from codecoremorph.sandbox.docker.probe import DockerProbe, probe_docker
 from codecoremorph.vcs import MIN_GIT_VERSION, git_version
 
@@ -135,6 +138,71 @@ def check_config(path: Path) -> CheckResult:
     return CheckResult(name="config", status=status, detail=f"{path} is valid")
 
 
+def pull_command(tags: list[str], platform: str = sys.platform) -> str:
+    script = r"scripts\pull-models.bat" if platform == "win32" else "./scripts/pull-models.sh"
+    return " ".join([script, *tags])
+
+
+def check_providers(path: Path, registry: ProviderRegistry | None = None) -> list[CheckResult]:
+    """Each configured model: do credentials resolve, is the server up, is the model pulled?
+    (FR-1.5; one cheap discovery call per model, no tokens.)
+
+    A manifest without an ``llm`` section configures no providers: a host agent such as
+    Claude Code makes the edits (D-41), so there is nothing to check.
+    """
+    try:
+        config = load_config(path).config
+    except CodeCoreMorphError:
+        return []  # check_config reports it
+    if "llm" not in config.model_fields_set:
+        return [
+            CheckResult(
+                name="models",
+                status="info",
+                detail="the manifest configures no model providers",
+                hint="None are needed when Claude Code drives CodeCoreMorph through its skill; "
+                "add an llm section for unattended runs.",
+            )
+        ]
+    llm = config.llm
+    registry = registry or ProviderRegistry.discover()
+    router = Router(llm)
+    results: list[CheckResult] = []
+    missing_tags: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for config in router.all_configs():
+        key = (config.provider, config.model)
+        if key in seen:
+            continue
+        seen.add(key)
+        name = f"model {config.provider}/{config.model}"
+        try:
+            provider = registry.create(config.provider, llm)
+            try:
+                health = provider.health_check(config.model)
+            finally:
+                close_provider(provider)
+        except CodeCoreMorphError as exc:
+            results.append(CheckResult(name=name, status="fail", detail=exc.message, hint=exc.hint))
+            continue
+        hint = None
+        if not health.ok and config.provider in LOCAL_PROVIDERS and "pull" in health.detail:
+            missing_tags.append(config.model)
+            hint = f"Run: {pull_command([config.model])}"
+        status: Status = "ok" if health.ok else "fail"
+        results.append(CheckResult(name=name, status=status, detail=health.detail, hint=hint))
+    if len(missing_tags) > 1:
+        results.append(
+            CheckResult(
+                name="models",
+                status="info",
+                detail=f"{len(missing_tags)} local models aren't pulled",
+                hint=f"Run: {pull_command(missing_tags)}",
+            )
+        )
+    return results
+
+
 @handle_errors
 def doctor_command(
     config: Annotated[
@@ -142,7 +210,8 @@ def doctor_command(
         typer.Argument(help="Also validate this manifest.", show_default=False),
     ] = None,
 ) -> None:
-    """Check the environment: Python, git, Docker and (optionally) a manifest."""
+    """Check the environment: Python, git, Docker and (optionally) a manifest and the models
+    its roles use: credentials, Ollama reachability and pulled models."""
     probe = probe_docker()
     results = [check_python(), check_git(), check_docker(probe)]
     mounts = check_bind_mounts(probe)
@@ -151,6 +220,7 @@ def doctor_command(
     results.append(check_home())
     if config is not None:
         results.append(check_config(config))
+        results += check_providers(config)
 
     table = Table(box=None, show_header=False, pad_edge=False)
     table.add_column("status")

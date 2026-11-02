@@ -20,8 +20,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "anthropic>=2.3",   # Claude provider; only inside codecoremorph.llm (SPEC §7.7)
     "docker>=7.1",      # Docker SDK: doctor checks now, DockerExecutor in Phase 1
     "libclang==18.1.1", # C++ indexer; the same major version as the pinned LLVM (D-33)
+    "ollama>=0.6.3",    # local models; only inside codecoremorph.llm
     "pydantic>=2.11",   # every boundary model
     "pyyaml>=6.0.2",    # manifest loading with source positions
     "rich>=14.0",       # CLI presentation and console logging
@@ -37,6 +39,10 @@ cpp = "codecoremorph.adapters.cpp:CppAdapter"
 
 [project.entry-points."codecoremorph.rules"]
 cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
+
+[project.entry-points."codecoremorph.providers"]
+anthropic = "codecoremorph.llm.anthropic:AnthropicProvider"
+ollama = "codecoremorph.llm.ollama:OllamaProvider"
 
 [dependency-groups]
 dev = [
@@ -69,6 +75,8 @@ packages = ["src/codecoremorph"]
 "scripts/install-toolchain.bat" = "codecoremorph/_scripts/install-toolchain.bat"
 "scripts/pull-images.sh" = "codecoremorph/_scripts/pull-images.sh"
 "scripts/pull-images.bat" = "codecoremorph/_scripts/pull-images.bat"
+"scripts/pull-models.sh" = "codecoremorph/_scripts/pull-models.sh"
+"scripts/pull-models.bat" = "codecoremorph/_scripts/pull-models.bat"
 "scripts/lib" = "codecoremorph/_scripts/lib"
 "scripts/deps/manifest.txt" = "codecoremorph/_scripts/deps/manifest.txt"
 "scripts/deps/manifest.py" = "codecoremorph/_scripts/deps/manifest.py"

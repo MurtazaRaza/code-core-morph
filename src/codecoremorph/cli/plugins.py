@@ -16,6 +16,7 @@ from codecoremorph.rules.registry import RuleRegistry
 
 adapters_app = typer.Typer(help="Language adapters.", no_args_is_help=True)
 rules_app = typer.Typer(help="Migration rules.", no_args_is_help=True)
+providers_app = typer.Typer(help="LLM providers.", no_args_is_help=True)
 
 
 def _problems(problems: list[str]) -> None:
@@ -97,4 +98,50 @@ def rules_list(
                 f"  {rule.language}, {rule.kind.value}, {' + '.join(parts)} (pack {loaded.pack})",
             )
         )
+    _problems(registry.problems)
+
+
+@providers_app.command("list")
+@handle_errors
+def providers_list(
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", "-c", help="Also show which model serves each role."),
+    ] = None,
+) -> None:
+    """List the installed LLM providers, and the model of each role in a manifest."""
+    from codecoremorph.core.models import Role
+    from codecoremorph.llm.base import ProviderRegistry
+    from codecoremorph.llm.routing import Router
+
+    registry = ProviderRegistry.discover()
+    table = Table(box=None, pad_edge=False)
+    for column in ("provider", "runs", "api", "from"):
+        table.add_column(column, no_wrap=True)
+    for name, info in sorted(registry.providers.items()):
+        local = "locally" if info.plugin.local else "as a service"
+        table.add_row(name, local, info.plugin.api_version, info.distribution or "-")
+    console = stdout()
+    console.print(table)
+    if config is not None:
+        llm = load_config(config).config.llm
+        router = Router(llm)
+        roles = Table(box=None, pad_edge=False)
+        for column in ("role", "model", "options"):
+            roles.add_column(column)
+        for role in Role:
+            route = router.route(role)
+            options = ", ".join(f"{k}={v}" for k, v in sorted(route.options.items())) or "-"
+            roles.add_row(role.value, route.name, Text(options))
+        if llm.escalation is not None:
+            to = router.route(Role.FIXER, failed_attempts=llm.escalation.after_failed_attempts)
+            options = ", ".join(f"{k}={v}" for k, v in sorted(to.options.items())) or "-"
+            roles.add_row(
+                f"fixer after {llm.escalation.after_failed_attempts} failures",
+                to.name,
+                Text(options),
+            )
+        console.print(roles)
+        local_only = "yes" if router.local_only() else "no"
+        console.print(Text(f"local only (no code leaves this machine): {local_only}"))
     _problems(registry.problems)
