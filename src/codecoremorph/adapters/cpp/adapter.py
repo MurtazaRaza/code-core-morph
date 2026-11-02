@@ -27,7 +27,12 @@ from codecoremorph.adapters.cpp.cmake import (
     std_flag,
 )
 from codecoremorph.adapters.cpp.diagnostics import parse_cmake_output, parse_compiler_output
-from codecoremorph.adapters.cpp.fixes import apply_fixes, fixed_sites, parse_fixes
+from codecoremorph.adapters.cpp.fixes import (
+    apply_fixes,
+    fixed_sites,
+    parse_fixes,
+    requested_check,
+)
 from codecoremorph.adapters.cpp.helpers.cpp_index_helper import split_windows
 from codecoremorph.adapters.cpp.indexing import COMPILE_COMMANDS, HEADER_EXTENSIONS, run_index
 from codecoremorph.adapters.cpp.paths import PathMapper
@@ -186,14 +191,20 @@ class CppAdapter(LanguageAdapter):
             script = ctx.cache_dir / "cxx98-initial-cache.cmake"
             script.write_text(CXX98_INITIAL_CACHE, encoding="utf-8")
             initial_cache = ctx.sandbox(script)
+        marker = ctx.cache_dir / "configured-standard"
+        previous = marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
         argv = configure_command(
             ctx.sandbox(ctx.worktree),
             ctx.sandbox(ctx.build_dir),
             standard=standard,
             extra_args=build_options,
             initial_cache=initial_cache,
+            fresh=previous is not None and previous != standard,
         )
         result, output = self._run(ctx, argv, "configure.log", timeout_s=ctx.lang.build_timeout_s)
+        if result.ok:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(standard, encoding="utf-8")
         diagnostics = parse_cmake_output(output, mapper, ctx.sandbox(ctx.worktree))
         diagnostics += parse_compiler_output(output, mapper)
         success = result.ok
@@ -399,7 +410,13 @@ class CppAdapter(LanguageAdapter):
             for d in reported
             if d.severity is Severity.ERROR and (d.code in (None, "clang-diagnostic-error"))
         ]
-        fixes = parse_fixes(fixes_path.read_text(encoding="utf-8")) if fixes_path.is_file() else []
+        exported = (
+            parse_fixes(fixes_path.read_text(encoding="utf-8")) if fixes_path.is_file() else []
+        )
+        # Only the requested checks' fixes. clang-tidy also exports the compiler's own fix-its
+        # (clang-diagnostic-*, e.g. "did you mean '__unary_function'?"), which would rewrite
+        # code to whatever a typo correction guesses.
+        fixes = [f for f in exported if requested_check(f.check, spec.checks)]
 
         def key_of(path: str) -> str | None:
             rel = mapper.relative(path)

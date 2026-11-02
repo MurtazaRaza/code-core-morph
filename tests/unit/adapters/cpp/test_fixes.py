@@ -8,6 +8,7 @@ from codecoremorph.adapters.cpp.fixes import (
     apply_fixes,
     fixed_sites,
     parse_fixes,
+    requested_check,
 )
 
 EXPORT = """---
@@ -110,3 +111,19 @@ def test_fixed_sites_use_original_offsets() -> None:
     fixes = [_fix("a.h", 8, 5, "THREE", check="k"), Fix("k", "m", "a.h", 4, ())]
     sites = fixed_sites(fixes, key_of=lambda p: p, read=files.__getitem__)
     assert sites == {("a.h", 3, "k")}
+
+
+def test_only_requested_checks_count() -> None:
+    """Regression: clang-tidy exports the compiler's typo-correction fix-its too
+    (clang-diagnostic-error: "did you mean '__unary_function'?"); applying them rewrote
+    std::unary_function to a libc++ internal name."""
+    checks = [
+        "modernize-replace-auto-ptr",
+        "modernize-use-*",
+        "-modernize-use-trailing-return-type",
+    ]
+    assert requested_check("modernize-replace-auto-ptr", checks)
+    assert requested_check("modernize-use-noexcept", checks)
+    assert not requested_check("modernize-use-trailing-return-type", checks)
+    assert not requested_check("clang-diagnostic-error", checks)
+    assert not requested_check("modernize-loop-convert", checks)

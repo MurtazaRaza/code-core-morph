@@ -10,6 +10,7 @@ file gets CRLF line breaks.
 
 from __future__ import annotations
 
+import fnmatch
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -168,3 +169,14 @@ def fixed_sites(
             contents[key] = read(key)
         sites.add((key, contents[key].count(b"\n", 0, fix.offset) + 1, fix.check))
     return sites
+
+
+def requested_check(check: str, checks: Iterable[str]) -> bool:
+    """Whether ``check`` is one of ``checks`` (clang-tidy globs such as ``modernize-*``;
+    ``-name`` entries exclude)."""
+    selected = False
+    for pattern in checks:
+        negative = pattern.startswith("-")
+        if fnmatch.fnmatchcase(check, pattern.removeprefix("-")):
+            selected = not negative
+    return selected

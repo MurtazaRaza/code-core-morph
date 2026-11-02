@@ -143,3 +143,21 @@ def test_clang_tidy_pass_without_a_standard_runs_as_built(tmp_path: Path) -> Non
     )
     [tidy] = _recorder(ctx).tidy_commands()
     assert not any(a.startswith("--extra-arg=") for a in tidy)
+
+
+def test_a_standard_change_reconfigures_from_a_fresh_cache(tmp_path: Path) -> None:
+    """After the bump, packages found for the old standard (GoogleTest 1.8.1 for C++98) must
+    not stay in the CMake cache."""
+    adapter = CppAdapter()
+    ctx = _context(tmp_path, "cpp98", "cpp20")
+    adapter.configure(ctx)
+    adapter.configure(ctx)  # same standard: the cache stays
+    raised = AdapterContext(
+        **{**ctx.__dict__, "lang": ctx.lang.model_copy(update={"standard": "cpp20"})}
+    )
+    adapter.configure(raised)
+    first, again, bumped = [c for c in _recorder(ctx).commands if "-S" in c]
+    assert "--fresh" not in first
+    assert "--fresh" not in again
+    assert bumped[:2] == ["cmake", "--fresh"]
+    assert "-DCMAKE_CXX_STANDARD=20" in bumped

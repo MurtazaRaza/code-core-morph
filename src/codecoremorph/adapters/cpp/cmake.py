@@ -49,8 +49,13 @@ def configure_command(
     extra_args: list[str],
     build_type: str = "Debug",
     initial_cache: str | None = None,
+    fresh: bool = False,
 ) -> list[str]:
     argv = ["cmake"]
+    if fresh:
+        # Drop the old cache: packages found for another standard (GoogleTest 1.8.1 for
+        # C++98/03) must not survive a standard change.
+        argv.append("--fresh")
     if initial_cache is not None:
         argv += ["-C", initial_cache]
     argv += [
