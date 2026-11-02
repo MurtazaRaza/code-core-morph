@@ -1,0 +1,18 @@
+id: replace_typedefs_with_using
+language: cpp
+kind: api_preserving
+description: Replace typedef declarations with alias declarations (using X = Y).
+applies_to: {min_target_standard: cpp11}
+detector:
+  type: pattern
+  patterns: ['\btypedef\b']
+codemods:
+  - tool: clang-tidy
+    checks: [modernize-use-using]
+llm:
+  guidance: guidance/replace_typedefs_with_using.md
+  examples: examples/replace_typedefs_with_using
+postconditions:
+  - {type: detector_empty, severity: error}   # no typedef left in the unit's files
+skip:
+  - c_compatible                              # headers shared with C keep their typedefs

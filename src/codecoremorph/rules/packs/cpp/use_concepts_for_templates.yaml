@@ -1,0 +1,20 @@
+id: use_concepts_for_templates
+language: cpp
+kind: api_preserving
+description: >-
+  Replace SFINAE (std::enable_if and friends) with requires-clauses, and name constraints
+  that repeat as concepts.
+applies_to: {min_target_standard: cpp20}
+detector:
+  type: pattern
+  patterns: ['\benable_if(_t)?\b']
+codemods:
+  - tool: clang-tidy
+    checks: [modernize-use-constraints]
+llm:
+  guidance: guidance/use_concepts_for_templates.md
+  examples: examples/use_concepts_for_templates
+postconditions:
+  - {type: detector_empty, severity: warning}   # std::enable_if left in the unit's files
+skip:
+  - c_compatible

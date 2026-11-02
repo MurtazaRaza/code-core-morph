@@ -1,0 +1,49 @@
+id: bump_standard
+language: cpp
+kind: project
+description: >-
+  Raise the C++ standard in the project's build files to the migration's target standard,
+  then fix the code that no longer compiles or behaves the same under it: C++11's new keywords,
+  narrowing and literal rules, features removed in C++17, C++20 and C++23, and changed
+  comparison, aggregate and implicit-move rules.
+# Runs first, automatically, whenever the target standard is newer than the source (D-38).
+applies_to: {standard_bump: true, min_target_standard: cpp11}
+detector:
+  type: pattern
+  # A pattern counts only when the target standard removes what it matches.
+  patterns:
+    - {pattern: '\bauto_ptr\b', min_target_standard: cpp17}
+    - {pattern: '\brandom_shuffle\b', min_target_standard: cpp17}
+    - {pattern: '\b(bind1st|bind2nd|ptr_fun|mem_fun|mem_fun_ref)\b', min_target_standard: cpp17}
+    - {pattern: '\b(unary|binary)_function\b', min_target_standard: cpp17}
+    - {pattern: '\)\s*(const\s*)?throw\s*\(\s*[A-Za-z_]', min_target_standard: cpp17}  # throw(X)
+    - {pattern: '\bregister\s+(?=[A-Za-z_])', min_target_standard: cpp17}
+    - {pattern: '\?\?[=/''()!<>-]', min_target_standard: cpp17}                       # trigraphs
+    - {pattern: '\bios_base\s*::\s*(io_state|open_mode|seek_dir|streamoff|streampos)\b', min_target_standard: cpp17}
+    - {pattern: '\bthrow\s*\(\s*\)', min_target_standard: cpp20}                      # throw()
+    - {pattern: '\buncaught_exception\s*\(', min_target_standard: cpp20}
+    - {pattern: '\b(result_of(_t)?|is_literal_type(_v)?|raw_storage_iterator|get_temporary_buffer|return_temporary_buffer)\b', min_target_standard: cpp20}
+    - {pattern: '\bnot[12]\s*\(', min_target_standard: cpp20}
+    - {pattern: '\b(declare_reachable|undeclare_reachable|declare_no_pointers|undeclare_no_pointers|get_pointer_safety)\b', min_target_standard: cpp23}
+codemods:
+  # Replace removed features while they still exist beside their replacements: auto_ptr and
+  # random_shuffle under C++11 (C++98/03 sources parse as C++11 here), uncaught_exception under
+  # C++17. Then raise the standard in the build files.
+  - tool: clang-tidy
+    standard: cpp11
+    checks:
+      - modernize-replace-auto-ptr
+      - modernize-replace-random-shuffle
+      - modernize-use-noexcept
+  - tool: clang-tidy
+    standard: cpp17
+    checks:
+      - modernize-use-uncaught-exceptions
+      - modernize-deprecated-ios-base-aliases
+  - tool: cmake-standard                    # rewrites CMAKE_CXX_STANDARD, cxx_std_NN and -std=
+llm:
+  guidance: guidance/bump_standard.md
+  examples: examples/bump_standard
+postconditions:
+  - {type: builds_cleanly, severity: error}
+  - {type: detector_empty, severity: error}

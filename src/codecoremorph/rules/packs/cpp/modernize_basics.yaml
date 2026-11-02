@@ -1,0 +1,31 @@
+id: modernize_basics
+language: cpp
+kind: api_preserving
+description: >-
+  Mechanical modernizations clang-tidy fixes on its own: nullptr, override, = default,
+  = delete, range-based for loops, C++ headers instead of C headers, and no (void) parameter
+  lists; with a C++14 or newer target also _t/_v type traits, with C++17 nested namespace
+  definitions and static_assert without a message, and with C++20 starts_with/ends_with.
+applies_to: {min_target_standard: cpp11}
+codemods:
+  - tool: clang-tidy
+    checks:
+      - modernize-use-nullptr
+      - modernize-use-override
+      - modernize-use-equals-default
+      - modernize-use-equals-delete
+      - modernize-loop-convert
+      - modernize-deprecated-headers
+      - modernize-redundant-void-arg
+      # clang-tidy runs these only when the build's standard has the replacement.
+      - modernize-type-traits                # C++14 / C++17
+      - modernize-concat-nested-namespaces   # C++17
+      - modernize-unary-static-assert        # C++17
+      - modernize-use-starts-ends-with       # C++20
+llm:
+  guidance: guidance/modernize_basics.md
+  examples: examples/modernize_basics
+postconditions:
+  - {type: codemod_clean, severity: error}   # clang-tidy reports no remaining sites
+skip:
+  - c_compatible

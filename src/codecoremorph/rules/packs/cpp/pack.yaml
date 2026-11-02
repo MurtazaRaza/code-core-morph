@@ -1,0 +1,7 @@
+# The built-in C++ rule pack (SPEC §11.1).
+name: cpp
+language: cpp
+version: "1"
+description: C++ standard upgrades from C++98/03 up to C++23, and modernization.
+min_tool_versions:
+  clang-tidy: "18"   # modernize-use-constraints arrived in clang-tidy 18

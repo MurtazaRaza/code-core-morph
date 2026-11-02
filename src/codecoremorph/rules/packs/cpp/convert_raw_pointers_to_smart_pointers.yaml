@@ -1,0 +1,23 @@
+id: convert_raw_pointers_to_smart_pointers
+language: cpp
+kind: api_changing
+description: >-
+  Replace owning raw pointers (members, locals and return values that are deleted manually)
+  with std::unique_ptr or std::shared_ptr, remove the manual delete, and update every call
+  site. Non-owning pointers stay raw.
+applies_to: {min_target_standard: cpp14}
+detector:
+  type: pattern
+  patterns:
+    - '\bnew\s+[A-Za-z_:]'
+    - '\bdelete\s*(\[\s*\]\s*)?[A-Za-z_(*]'   # delete expressions, not "= delete"
+codemods:
+  - tool: clang-tidy
+    checks: [modernize-make-unique, modernize-make-shared]
+llm:
+  guidance: guidance/convert_raw_pointers_to_smart_pointers.md
+  examples: examples/convert_raw_pointers_to_smart_pointers
+postconditions:
+  - {type: detector_empty, severity: warning}   # manual new/delete left behind
+skip:
+  - c_compatible
