@@ -8,7 +8,8 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 0, foundations). Nothing here migrates code yet.
+> **Status:** early development (Phase 3 of the plan). CodeCoreMorph can build, test, index and
+> plan a C++ migration (`codecoremorph plan`), but doesn't change code yet.
 
 ## Developer setup
 
@@ -28,6 +29,17 @@ uv run codecoremorph --version
 uv run codecoremorph validate examples/cpp11-to-cpp20.yaml
 uv run pytest
 ```
+
+To plan a migration of your own CMake project, install the C++ toolchain (or build the Docker
+image with `scripts/build-image cpp`), write a manifest like the example, and run:
+
+```sh
+uv run codecoremorph toolchain install cpp      # native toolchain, no admin rights
+uv run codecoremorph plan path/to/migration_config.yaml
+```
+
+The plan builds and tests your project's base commit in a separate worktree, indexes it, and
+lists the ordered work units with their estimated cost. Your working tree is never touched.
 
 ## Documentation
 

@@ -108,6 +108,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | D-36 | Toolchain image and script details (§7.8, §7.15). The manifest's `#!platforms group|tool p1,p2` lines let a tool cover only some platforms; macOS on Intel has no native C++ toolchain (LLVM publishes none) and uses Docker. Install markers record which archive members were extracted. Install scripts write `activate-<lang>` for their own shell (the `.sh` also writes the `.bat` on Windows). The C++ image is Ubuntu 22.04, because LLVM 18's Linux build needs libtinfo5; its libclang wheel is pinned by hash to `uv.lock`. `image.lock` holds `image=` and `digest=` lines; until CI publishes images (D-28), runs use a local build from `scripts/build-image`, referenced by its image ID. The Docker executor applies the image's `toolchains/<lang>.env`, as the native executor applies the host's. | Proposed |
 | D-37 | The benchmark project is leveldb 1.23 (`99b3c03b3284f5886f9ef9a4ef703d57373e61be`, BSD-3-Clause, about 28k lines, GoogleTest, raw-pointer heavy), resolving open question 3. yaml-cpp's tests need C++14 and its core already uses smart pointers; tinyxml2 is about 5k lines without GoogleTest. | Proposed |
 | D-38 | C++ migrations cover the popular standards, not only C++11 → C++20 (user request). Sources: C++98/03, 11, 14, 17, 20; targets: any newer standard up to C++23. C++26 waits for an LLVM with full support (the indexer's libclang is pinned to 18, D-33). Adapters list their standards oldest first (`AdapterCapabilities.standards`) and the core compares standards only through that list. Rules, detector patterns and codemod passes carry standard conditions; the rule with `applies_to.standard_bump` runs first, automatically, when the target is newer. `validate` checks standards and rules against the installed plugins. C++98/03 builds use GoogleTest 1.8.1, the last release that supports them. New fixtures `cpp98-legacy` and `cpp17-legacy`. | Proposed |
+| D-39 | Phase 3 planner details (§7.5.1). The file graph is includes plus header/source pair edges plus references to definitions, and a reference edge is dropped when its target already depends on its source through includes and pairs (a header using a type it only forward-declares would otherwise fuse unrelated files into one cycle). A small built-in graph module (iterative Tarjan, Kahn with a path tie-break) replaces networkx. The baseline runs before indexing, because configuring produces the compile commands the indexer needs and a project that doesn't build should stop early; tests failing in every run are excluded from parity like flaky ones, and a failed baseline exits with code 3. Units are capped at 20 files and a context of half the editor model's window; small `api_preserving` clusters merge up to 40k tokens; `project` rules plan their build-file unit plus the files with sites as predicted fallout; an `api_changing` unit adds every file declaring, defining or referencing the innermost symbol around each site. Rules apply only to files of their own language. `plan.json` holds no timestamps, run IDs, absolute paths or measured durations, so it is byte-for-byte deterministic; the time estimate is printed beside it. Model context windows and prices come from package data (`llm/models.json`) until Phase 4 discovery. Run worktrees get the base commit's submodules, cloned with `--shared` from the user's own submodule checkouts (no network). | Proposed |
 
 ---
 
@@ -204,7 +205,7 @@ tests/                     unit/, integration/, e2e/, cassettes/
 ### 4.4 Run lifecycle (summary)
 
 ```
-validate config → prepare workspace → provision toolchain → index → baseline
+validate config → prepare workspace → provision toolchain → baseline → index
   → [characterization tests] → plan → (plan gate)
   → for each unit: snapshot → codemods → agent edits → build → tests → invariants
                    → (unit gate) → commit │ rollback
@@ -531,7 +532,7 @@ The index is stored in SQLite (`index.sqlite` in the run cache), so it isn't hel
 | `FileDependency` | from_file, to_file, kind (include, import, module) |
 | `IndexMeta` | adapter, adapter version, tool versions, stats, timings |
 
-**Graphs.** The file graph is built from `FileDependency` plus cross-file `Reference`s, then condensed by SCC into a DAG of file clusters. The symbol graph answers fan-in queries and boundary checks. networkx is enough at this scale; replace it only if NFR-1.1 requires.
+**Graphs.** The file graph is built from `FileDependency`, header/source pairs and cross-file `Reference`s to definitions, then condensed by SCC into a DAG of file clusters (D-39). A reference edge counts only when its target doesn't already depend on its source through includes and pairs. The symbol graph answers fan-in queries and boundary checks. A small built-in module (iterative Tarjan, Kahn's algorithm) does the graph work; on leveldb it takes 0.06 s.
 
 ### 7.3 Rules
 
@@ -561,7 +562,8 @@ skip:
 - `kind: api_changing` tells the planner to expand units by fan-in (FR-5.3). It also enables the `api_changes` unit gate.
 - `kind: project` covers build-configuration changes, such as the standard bump. Such units may edit build files.
 - A rule with only `llm` (natural-language only) applies to every in-scope file (FR-9.3).
-- Optional Python hooks (`hooks: module:function`) can add custom detectors or post-conditions.
+- Optional Python hooks (`hooks: module:function`) can add custom detectors or post-conditions. A detector hook is called as `function(worktree: Path, files: list[str])` and returns `RuleSite`s. Hooks import only installed modules: the project being migrated is never on `sys.path`.
+- A rule applies only to files of its own language (a C++ rule never touches `.c` sources). Without a detector it applies to every in-scope file of that language.
 
 **Standards (D-38).** Standards compare in the language adapter's order (`AdapterCapabilities.standards`):
 - `applies_to: {min_target_standard, max_source_standard}` gates a whole rule. `applies_to: {standard_bump: true}` marks the standard-bump rule: the planner runs it first, automatically, whenever the target standard is newer than the source, so manifests don't list it.
@@ -601,9 +603,9 @@ The LLM submits a single `submit_edits` call:
 |---|---|---|
 | `load_config` | Validate the manifest, resolve plugins | `prepare_workspace` / fail |
 | `prepare_workspace` | Take the lock, create the branch and worktree, write `.git/info/exclude` | `provision` |
-| `provision` | Choose the executor, pull and verify the image or detect native tools, start the container | `index` |
-| `index` | `adapter.index` → symbol index → graphs | `baseline` |
-| `baseline` | Configure, build, run tests × N, record the baseline and flaky tests | `characterize` or `plan`; fail if the baseline build fails |
+| `provision` | Choose the executor, pull and verify the image or detect native tools, start the container | `baseline` |
+| `baseline` | Configure, build, run tests × N, record the baseline and flaky tests (D-39: configuring produces the compile commands indexing needs) | `index`; fail if the baseline doesn't build or has no passing tests |
+| `index` | `adapter.index` → symbol index → graphs | `characterize` or `plan` |
 | `characterize` | *(optional)* Generate, validate and commit characterization tests (§7.11) | `plan` |
 | `plan` | Planner (§7.5.1) | `plan_gate` |
 | `plan_gate` | Interrupt for approval if `approvals.plan: required` | `next_unit` / `report` (rejected) |
@@ -647,17 +649,19 @@ attempt_failed: build feedback → [retries left?] ─yes→ agent_edit (fixer r
 
 #### 7.5.1 Planner algorithm
 
-1. Build the file graph and condense SCCs → DAG of clusters (D-14).
-2. Pair headers with their sources (same stem, same component) inside clusters.
-3. Run the rule detectors to get per-file site counts. Files with no sites for a rule produce no unit for that rule.
-4. Form units for each rule, in manifest order:
-   - `project` rules (the standard bump) → one build-config unit, followed by fallout-fix units grouped by the files that fail to compile.
-   - `api_preserving` → cluster-sized units, merged up to the size limit.
-   - `api_changing` → the cluster plus the fan-in closure of the symbols it changes. Over the limit → `too_large`.
+1. Pair headers with their sources: a source pairs with a same-stem header it includes or that sits in its directory. Pairs get edges both ways, so each pair lands in one cluster.
+2. Build the file graph (§7.2) and condense SCCs → DAG of clusters (D-14, D-39).
+3. Run the rule detectors to get per-file site counts. Files with no sites for a rule produce no unit for that rule. Files excluded by the rule's `skip` list go into one `skipped` unit per condition, so the plan shows them.
+4. Form units for each rule: the standard bump first (when the target is newer), then the manifest's rules in order:
+   - `project` rules (the standard bump) → one build-config unit, followed by fallout-fix units. The plan predicts the fallout from the detector's sites (features the target removes); at run time, files that fail to compile under the target join it.
+   - `api_preserving` → cluster-sized units, merged with the next clusters up to 40k tokens of context.
+   - `api_changing` → the cluster's files with sites, plus every file declaring, defining or referencing the innermost symbol around each site (namespaces never count). Sites an earlier unit already includes get no unit of their own. Fan-in into files the rule can't edit adds the `boundary` flag. Over the limit → `too_large`.
 5. Order units leaves-first within each rule (topological order of the DAG). Break ties by path, which keeps planning deterministic.
-6. Size check: estimated tokens of the unit's context (character-based estimate with a safety margin) must stay ≤ `context_window × 0.5` of the editor model. Oversized clusters are split by file if the rule kind allows; otherwise they're flagged.
-7. Estimate cost: estimated tokens × expected attempts × the price table.
+6. Size check: a unit has at most 20 files, and the estimated tokens of its context (characters / 3, plus 25%, plus 3k tokens of prompt) must stay ≤ `context_window × 0.5` of the editor model. Oversized `api_preserving` and fallout clusters are split by header/source pair, then by file; anything else, or a single file over the limit, is `too_large`.
+7. Estimate cost: estimated tokens × expected attempts × the price table. An attempt is about four calls in one conversation (the first writes the prompt cache, later ones read it). The agent is expected to run for 100% of units of an LLM-only rule, 60% when the rule also has codemods, 20% without LLM guidance, with 1.5 attempts when it runs. These constants are provisional (NFR-7.2).
 8. Add flags: `boundary`, `public_api`, `c_compatible` (skipped), `touches_tests`, `too_large`.
+
+`plan.json` is deterministic for identical inputs (FR-5.6): it holds no timestamps, run IDs, absolute paths or measured durations. The time estimate (baseline build and test time per attempt, plus 120 s of model time per agent attempt) depends on measured durations, so `codecoremorph plan` prints it beside the plan. Context windows and prices come from package data (`llm/models.json`) and the manifest (`num_ctx`, `llm.providers.<p>.prices`) until Phase 4 adds live discovery; an unknown window counts as 32,768 tokens, with a warning.
 
 ### 7.6 Agent loop and context
 
@@ -792,6 +796,7 @@ A program that isn't found returns exit code 127 in both modes. Commands never r
 | Branch | `codecoremorph/<run-id>`, created from the base commit |
 | Git access | The git CLI through `subprocess`, on the host. No git library. |
 | Rollback | `git reset --hard <snapshot>` and `git clean -fd`, in the worktree only (never `-x`) |
+| Submodules | The base commit's submodules are cloned into the worktree with `--shared` from the user's own submodule checkouts, offline. A submodule the user hasn't checked out is reported and left empty (D-39). |
 | Author | The user's configured git identity by default; `git.author` overrides it |
 
 **Commit message format:**
@@ -839,7 +844,7 @@ Every attempt is checked before commit (FR-4.4).
 ### 7.12 Persistence
 
 - **`.codecoremorph/codecoremorph.db`** (SQLite, WAL mode): tables `runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`. Diagnostics and test results are JSON columns. Schema migrations are versioned.
-- **`.codecoremorph/runs/<id>/`:** `plan.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
+- **`.codecoremorph/runs/<id>/`:** `plan.json`, `baseline.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
 - **Writers:** the engine is the only writer of run data. The dashboard and CLI write only `approvals` rows and abort requests. An abort request is an `approvals` row with gate `run` and decision `abort` (D-27).
 - **Retention:** `codecoremorph clean --older-than <days>`.
 
@@ -870,7 +875,7 @@ Every attempt is checked before commit (FR-4.4).
 | `codecoremorph rules list`, `codecoremorph adapters list`, `codecoremorph providers list` | Plugin discovery | 2, 4 |
 | `codecoremorph toolchain install <lang>`, `codecoremorph toolchain list`, `codecoremorph toolchain path` | Run the bundled dependency scripts; show installed toolchains (§7.15) | 2 |
 | `codecoremorph debug unit --rule R FILE…` | Run one unit in isolation | 4 |
-| `codecoremorph plan [CONFIG]` | Provision → index → baseline → plan; no code changes | 3 |
+| `codecoremorph plan [CONFIG] [--base REF] [--sandbox MODE] [--json]` | Provision → baseline → index → plan; no code changes. Writes `plan.json` and `baseline.json` | 3 |
 | `codecoremorph run [CONFIG] [--base REF] [--yes]` | Full run | 5 |
 | `codecoremorph status [RUN] [--json]` | Progress and state | 5 |
 | `codecoremorph approve RUN [--unit ID]`, `codecoremorph reject RUN [--unit ID] [--reason …]` | Answer gates | 5 |
@@ -888,7 +893,7 @@ Every attempt is checked before commit (FR-4.4).
 | 0 | Success |
 | 1 | Completed with failed or skipped units |
 | 2 | Config or usage error |
-| 3 | Environment error |
+| 3 | Environment error, or a baseline that doesn't build or has no passing tests |
 | 4 | Budget exhausted |
 | 5 | Aborted |
 | 6 | Rejected at a gate |
@@ -1252,7 +1257,8 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 - Criteria: C++11, CMake, GoogleTest, 10–50k LOC, permissive license, raw-pointer-heavy code.
 - Candidates evaluated: leveldb, yaml-cpp, tinyxml2.
 - Selected: leveldb 1.23, pinned to an exact commit in `bench/pin.json` (D-37). `bench/fetch.py` clones it; `bench/measure.py` measures NFR-1.1 and records the result in `bench/results/`.
-- First result (2026-11-02, Docker on Windows 11, 20 CPUs): 28.7k lines, 70 translation units, indexed in 11.8 s cold and 3.2 s warm, a linear 41 s per 100k lines against NFR-1.1's 60 s. Graph building joins the measurement in Phase 3.
+- Indexing plus graph generation (2026-11-02, Docker on Windows 11, 20 CPUs): 28.7k lines, 70 translation units, indexed in 10.9 s cold and 3.1 s warm, graph built in 0.06 s (122 files, 80 clusters, the largest 6 files): a linear 38 s per 100k lines against NFR-1.1's 60 s.
+- Plan (Phase 3, `bench/plan.py`, Docker): C++11 → C++20 with the example manifest's rules in 3.5 min, mostly building and testing the baseline twice (256 tests pass, 2 fail in every run). 27 units to run and 2 skipped, none too large, an estimated $13 with `claude-opus-5-5`. leveldb's vendored 2020 GoogleTest builds with `-Werror`, so `bench/pin.json` keeps clang 18's newer `-Wdeprecated-copy` and `-Wunused-but-set-variable` as warnings.
 
 ---
 

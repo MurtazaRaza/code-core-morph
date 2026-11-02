@@ -207,27 +207,30 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 **Prerequisites:** Phase 2.
 
 ### Tasks
-- [ ] File graph and symbol graph from the index; SCC condensation into a DAG of clusters (FR-2.1, D-14)
-- [ ] Boundary and public-API classification; fan-in queries (FR-2.2)
-- [ ] Baseline step: configure, build, test × `baseline_runs`; flaky-test detection; stop if the baseline build fails; store the baseline (FR-7.1)
-- [ ] Header/source pairing; rule detectors → per-file site counts, with detector patterns filtered by the migration's standards (`rules.applicability`, D-38)
-- [ ] Run the rule with `applies_to.standard_bump` first, automatically, when the target standard is newer; skip rules that don't apply; `plan` and `run` repeat `validate`'s standard and rule checks
-- [ ] Unit formation per SPEC §7.5.1: project units (standard bump plus grouped fallout), api_preserving cluster units, api_changing fan-in units, `too_large` flag (FR-5.1–5.3)
-- [ ] Ordering: standard bump first, then rules in manifest order, leaves-first, path tie-break (FR-5.2, FR-5.6)
-- [ ] Token estimator (character-based, with a margin); size check against the editor model's context from config or package data, since live capability discovery arrives in Phase 4 (FR-5.4)
-- [ ] Cost and time estimate from the price table (FR-5.5)
-- [ ] Plan model, `plan.json`, Rich table rendering, `--json` output
-- [ ] `codecoremorph plan`: validate → prepare workspace → provision → index → baseline → plan; no edits (FR-5.7)
+- [x] File graph and symbol graph from the index; SCC condensation into a DAG of clusters (FR-2.1, D-14); reference edges never override includes and pairs (D-39)
+- [x] Boundary and public-API classification; fan-in queries (FR-2.2)
+- [x] Baseline step: configure, build, test × `baseline_runs`; flaky-test detection; stop if the baseline build fails; store the baseline (FR-7.1)
+- [x] Header/source pairing; rule detectors → per-file site counts, with detector patterns filtered by the migration's standards (`rules.applicability`, D-38)
+- [x] Run the rule with `applies_to.standard_bump` first, automatically, when the target standard is newer; skip rules that don't apply; `plan` and `run` repeat `validate`'s standard and rule checks (`orchestrator.session`)
+- [x] Unit formation per SPEC §7.5.1: project units (standard bump plus predicted fallout), api_preserving cluster units, api_changing fan-in units, `too_large` flag (FR-5.1–5.3)
+- [x] Ordering: standard bump first, then rules in manifest order, leaves-first, path tie-break (FR-5.2, FR-5.6)
+- [x] Token estimator (character-based, with a margin); size check against the editor model's context from config or package data (`llm/models.json`), since live capability discovery arrives in Phase 4 (FR-5.4)
+- [x] Cost and time estimate from the price table (FR-5.5)
+- [x] Plan model, `plan.json`, Rich rendering, `--json` output
+- [x] `codecoremorph plan`: validate → prepare workspace → provision → baseline → index → plan; no edits (FR-5.7; the baseline runs first, D-39)
+- [x] Run worktrees get the base commit's submodules from the user's own checkouts, offline (needed for the benchmark, which vendors GoogleTest; D-39)
+- [x] `bench/measure.py` times graph building too (NFR-1.1); `bench/plan.py` plans the benchmark and records the result
 
 ### Tests
-- Graph: cycles condensed correctly, topological order stable, fan-in closure correct (synthetic graphs)
-- Planner determinism: same input gives the same `plan.json`, byte for byte
+- Graph: cycles condensed correctly, topological order stable (Hypothesis), fan-in correct (synthetic index)
+- Planner determinism: same input gives the same `plan.json`, byte for byte (unit test with the index rows reordered; integration test across two runs)
 - Unit sizing and `too_large` handling; `c_compatible` files skipped for C++-only rules
-- Baseline flaky detection, using a fixture test that reads a random seed from an environment variable
+- Baseline flaky detection: unit tests with scripted results, and an integration test whose CTest test fails on every second run (a counter file in the build tree), since the sandboxes pass only allowlisted environment variables
+- `codecoremorph plan` on all eight fixtures, natively and in Docker; a failing baseline build exits with code 3 and names the failing file
 
 ### Exit criteria
-- `codecoremorph plan` works on every fixture and the benchmark; the plan is deterministic; estimates and flags are shown
-- A failing baseline build stops with an actionable message
+- [x] `codecoremorph plan` works on every fixture and the benchmark; the plan is deterministic; estimates and flags are shown (leveldb: `bench/results/20261102-leveldb-plan-windows-docker.json`)
+- [x] A failing baseline build stops with an actionable message
 
 ---
 
