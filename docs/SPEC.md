@@ -1,6 +1,6 @@
-# PAME: Product and Technical Specification
+# CodeCoreMorph: Product and Technical Specification
 
-**Polyglot Autonomous Migration Engine**
+Called "PAME" (Polyglot Autonomous Migration Engine) in the original PRD.
 
 | | |
 |---|---|
@@ -20,9 +20,9 @@
 
 Large modernizations (language-standard upgrades, idiom changes, cross-language ports) are mostly mechanical. Still, each site depends on context, which defeats regex-style codemods, and the change sets are too large and risky for unsupervised LLM rewriting. Text-only LLM tools produce code that doesn't compile, silently changes behavior, or touches far more than asked.
 
-### 1.2 What PAME is
+### 1.2 What CodeCoreMorph is
 
-PAME is an open-source tool that runs locally. Given a git repository and a migration manifest (`migration_config.yaml`), it:
+CodeCoreMorph is an open-source tool that runs locally. Given a git repository and a migration manifest (`migration_config.yaml`), it:
 
 1. indexes the codebase with real language tooling and builds a dependency graph;
 2. plans the migration as an ordered list of small **work units**;
@@ -72,9 +72,9 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 |---|---|---|
 | D-01 | Rust is a later-phase target (Phase 12). Interfaces must not preclude it. | User |
 | D-02 | Pluggable LLM provider layer. Anthropic (Claude) and Ollama (local) are implemented first. | User |
-| D-03 | Hybrid editing: deterministic codemods run first, then the LLM makes structured search/replace edits. PAME generates the unified diff. This reinterprets PRD FR-3.2. | User |
+| D-03 | Hybrid editing: deterministic codemods run first, then the LLM makes structured search/replace edits. CodeCoreMorph generates the unified diff. This reinterprets PRD FR-3.2. | User |
 | D-04 | Interfaces are a CLI and a local web dashboard. IDE extension and CI/PR bot are out of scope for now. | User |
-| D-05 | Orchestration uses LangGraph. LLM calls go through PAME's own provider layer, not LangChain model wrappers. | User |
+| D-05 | Orchestration uses LangGraph. LLM calls go through CodeCoreMorph's own provider layer, not LangChain model wrappers. | User |
 | D-06 | Approval gates are configurable. The default is plan approval only. | User |
 | D-07 | Toolchains run in Docker first, with a native fallback, behind one `Executor` interface. Docker moves earlier than PRD Phase 2. | User |
 | D-08 | Parity means baseline test parity plus LLM-generated characterization tests. No golden-I/O harness for now. | User |
@@ -89,8 +89,11 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | D-17 | Python ≥ 3.12. The engine core is synchronous; indexing uses process pools for parallelism. | Proposed |
 | D-18 | Default Claude model for every role is `claude-opus-5-5`, overridable per role. | Proposed |
 | D-19 | Build and test commands are graph steps, not agent tools. The agent reads and proposes; the graph verifies. | Proposed |
-| D-20 | Project license is Apache-2.0, pending confirmation (§16). | Proposed |
+| D-20 | Project license is Apache-2.0. | User |
 | D-21 | Language version upgrades come first (C++ MVP, then Java, then C#). Cross-language migrations (Java → C#, C++ → Rust) follow. | User |
+| D-22 | Dependencies are downloaded by plain scripts: `.bat` for Windows and POSIX `.sh` for Linux and macOS, driven by one pinned manifest. No installer framework (§7.15). | User |
+| D-23 | Docker toolchain images are built with the same install script and manifest as native installs, so both modes use identical tool versions. Every file CodeCoreMorph manages lives under `CODECOREMORPH_HOME`. | Proposed |
+| D-24 | The project is named **CodeCoreMorph** (package, CLI, entry points, branch prefix and state directory use `codecoremorph`). The PRD called it PAME. | User |
 
 ---
 
@@ -100,7 +103,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 |---|---|
 | **Run** | One execution of a manifest against a repository. ID format: `YYYYMMDD-HHMMSS-xxxx`. |
 | **Base commit** | The commit a run starts from (default `HEAD`). |
-| **Migration branch** | `pame/<run-id>`. It receives one commit per successful unit. |
+| **Migration branch** | `codecoremorph/<run-id>`. It receives one commit per successful unit. |
 | **Run worktree** | A git worktree for the migration branch, located outside the user's working tree. |
 | **Language adapter** | A plugin that wraps one language's tooling: index, build, test, codemods. |
 | **Executor** | Runs commands in the sandbox (Docker) or on the host (native). |
@@ -113,7 +116,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | **Retry budget** | The number of retries allowed after a unit's first attempt. |
 | **Baseline** | Build and test results on the base commit. |
 | **Parity** | Every test that passed in the baseline still passes, and the test count hasn't dropped. |
-| **Characterization test** | A test PAME generates before migrating, to pin down the current behavior of untested code. |
+| **Characterization test** | A test CodeCoreMorph generates before migrating, to pin down the current behavior of untested code. |
 | **Boundary symbol** | A symbol on a language or ABI boundary (`extern "C"`, JNI, P/Invoke) or in the declared public API. |
 | **Gate** | A point where the run waits for human approval. |
 | **Invariant** | A safety check every attempt must pass before it's committed (§7.10). |
@@ -125,7 +128,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 ### 4.1 Components
 
 ```
-Interfaces   pame CLI                         Dashboard (FastAPI + React SPA, localhost only)
+Interfaces   codecoremorph CLI                         Dashboard (FastAPI + React SPA, localhost only)
                 │ starts / controls runs           │ reads run state · writes approvals and aborts
                 ▼                                  ▼
 Run engine   Orchestrator: LangGraph state machine, checkpoints, approval gates
@@ -145,10 +148,10 @@ Execution    Sandbox: one Docker container per run     Anthropic API (Claude)
 
 ### 4.2 Process model
 
-- `pame run` starts a run engine in the foreground. A lock file allows one active run per repository.
-- `pame dashboard` starts a separate local web server. It reads run state from the store and writes approval and abort requests into it; the engine polls for those requests. Each process works without the other.
+- `codecoremorph run` starts a run engine in the foreground. A lock file allows one active run per repository.
+- `codecoremorph dashboard` starts a separate local web server. It reads run state from the store and writes approval and abort requests into it; the engine polls for those requests. Each process works without the other.
 - Toolchain commands (configure, build, test, index, codemods) run in **one long-lived container per run** in Docker mode, or as host processes in native mode.
-- Git operations are PAME's own trusted operations. They run on the host against the run worktree.
+- Git operations are CodeCoreMorph's own trusted operations. They run on the host against the run worktree.
 - LLM calls go from the engine only to the configured provider endpoints.
 
 ### 4.3 Repository layout (target)
@@ -157,7 +160,7 @@ Execution    Sandbox: one Docker container per run     Anthropic API (Claude)
 CLAUDE.md                  agent working notes
 HighLevelRequirements.md   original PRD (reference)
 docs/                      SPEC.md, IMPLEMENTATION_PLAN.md, user docs (later)
-src/pame/
+src/codecoremorph/
   cli/                     Typer commands, Rich presentation
   config/                  manifest schema (pydantic), loader, JSON Schema export
   core/                    domain models, errors, ids, events
@@ -178,6 +181,7 @@ src/pame/
   dashboard/               FastAPI app; static/ holds the built SPA
 dashboard-ui/              React + TypeScript + Vite source
 images/                    Dockerfiles + image.lock per language toolchain
+scripts/                   .bat/.sh dependency scripts, lib/ helpers, deps/manifest.txt (§7.15)
 fixtures/                  small, intentionally legacy sample projects (test inputs)
 bench/                     benchmark project pin, scripts, recorded results
 tests/                     unit/, integration/, e2e/, cassettes/
@@ -197,7 +201,7 @@ The full state machine is in §7.5.
 
 ### 4.5 Core invariant: the migration branch is always green
 
-Every commit on `pame/<run-id>` builds and passes every baseline-passing test, including accepted characterization tests. A failed unit is rolled back, which leaves the branch at its last green commit. Later units can still proceed, because the code left behind is unchanged and consistent. The only exception is the skeleton-first phase of cross-language migrations (§11.4).
+Every commit on `codecoremorph/<run-id>` builds and passes every baseline-passing test, including accepted characterization tests. A failed unit is rolled back, which leaves the branch at its last green commit. Later units can still proceed, because the code left behind is unchanged and consistent. The only exception is the skeleton-first phase of cross-language migrations (§11.4).
 
 ---
 
@@ -210,10 +214,16 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | FR-1.1 | *(PRD)* Parse `migration_config.yaml` (§8): source and target language, standard, build system, rules, guardrails. Validate against a versioned schema and report **all** errors, with their locations. | M | 0 |
 | FR-1.2 | *(PRD, revised)* Resolve the adapters and rule packs a migration needs, and the sandbox image they require. Pull the image and verify it against a pinned digest before use. | M | 2 |
 | FR-1.3 | *(PRD, revised)* In native mode, detect the required tools and versions on the host and fail with a message listing exactly what's missing. In `auto` mode, use Docker when it's available, otherwise native mode with a warning. | M | 1–2 |
-| FR-1.4 | `pame init` generates a starter config by detecting the language, build system and current standard. | S | 8 |
-| FR-1.5 | `pame doctor` checks git, Docker, native toolchains, provider credentials and reachability, and whether configured Ollama models are present. | M | 0+ |
+| FR-1.4 | `codecoremorph init` generates a starter config by detecting the language, build system and current standard. | S | 8 |
+| FR-1.5 | `codecoremorph doctor` checks git, Docker, native toolchains, provider credentials and reachability, and whether configured Ollama models are present. | M | 0+ |
 | FR-1.6 | Secrets never appear in the manifest. API credentials come from the environment or the provider SDK's credential chain. | M | 0 |
-| FR-1.7 | `pame schema` exports the manifest's JSON Schema for editor completion. | C | 0 |
+| FR-1.7 | `codecoremorph schema` exports the manifest's JSON Schema for editor completion. | C | 0 |
+| FR-1.8 | Dependencies are downloaded by plain scripts. Each exists in two versions with the same name, flags and behavior: `.bat` for Windows `cmd.exe`, and POSIX `.sh` for Linux, macOS and Git Bash (§7.15). | M | 0, 2 |
+| FR-1.9 | Every download is pinned by version and SHA-256 in one manifest (`scripts/deps/manifest.txt`) and checked before extraction. A mismatch aborts the install. | M | 0 |
+| FR-1.10 | Scripts never need admin or root rights, never change system settings or the system PATH, and install only under `CODECOREMORPH_HOME`. Missing system prerequisites are detected and reported with exact install steps. | M | 0 |
+| FR-1.11 | `install-toolchain <lang>` installs a language's native toolchain. The Docker images are built with the same script and manifest, so both modes use identical tool versions. | M | 2 |
+| FR-1.12 | `--offline DIR` installs from pre-downloaded archives, for machines without internet access. | S | 8 |
+| FR-1.13 | The scripts ship inside the CodeCoreMorph package, and `codecoremorph toolchain install <lang>` runs the right one, so users who installed from PyPI get them too. | S | 2, 8 |
 
 ### FR-2 Indexing, symbol mapping and dependency graph
 
@@ -230,7 +240,7 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
 | FR-3.1 | *(PRD)* A LangGraph state machine sequences the run. Inside each attempt's edit step, the agent runs a ReAct loop with read-only tools and finishes by submitting edits. | M | 4–5 |
-| FR-3.2 | *(PRD, revised per D-03)* The LLM emits structured search/replace edits (§7.4), not diffs. Every attempt produces a git-compatible unified diff, generated by PAME, which is stored and shown before commit. | M | 1, 4 |
+| FR-3.2 | *(PRD, revised per D-03)* The LLM emits structured search/replace edits (§7.4), not diffs. Every attempt produces a git-compatible unified diff, generated by CodeCoreMorph, which is stored and shown before commit. | M | 1, 4 |
 | FR-3.3 | *(PRD)* Multi-file edits within a unit apply atomically: either all of them apply or none do. | M | 1 |
 | FR-3.4 | Deterministic codemods for the unit's rules run before the agent. If codemods alone leave the unit green, with no remaining rule sites, the agent step is skipped. | M | 2, 4 |
 | FR-3.5 | The agent can only read files in the run worktree and propose edits. It has no shell, network, build or test tools (D-19). | M | 4 |
@@ -258,7 +268,7 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | FR-5.4 | Every unit's context must fit the editor model's context window with headroom. Files are never silently truncated. | M | 3 |
 | FR-5.5 | The plan shows unit count, rule sites per rule, estimated tokens and cost (paid providers), and flags: boundary, public API, C-compatible, test files. | M | 3 |
 | FR-5.6 | The plan is deterministic for identical inputs. | M | 3 |
-| FR-5.7 | `pame plan` runs everything through planning without changing code. | M | 3 |
+| FR-5.7 | `codecoremorph plan` runs everything through planning without changing code. | M | 3 |
 | FR-5.8 | Users can exclude units or files at the plan gate. | S | 5, 7 |
 
 ### FR-6 Workspace safety and rollback
@@ -266,10 +276,10 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
 | FR-6.1 | Require a git repository. Start from the base commit. Uncommitted changes are never read or modified; warn that they aren't included. | M | 1 |
-| FR-6.2 | Create branch `pame/<run-id>` and its worktree outside the user's working tree (§7.9). | M | 1 |
+| FR-6.2 | Create branch `codecoremorph/<run-id>` and its worktree outside the user's working tree (§7.9). | M | 1 |
 | FR-6.3 | Snapshot (record the HEAD SHA) before each attempt. Rollback means a hard reset plus `git clean -fd` of the run worktree back to the snapshot. | M | 1 |
-| FR-6.4 | Commit each successful unit with a structured message and `PAME-*` trailers (§7.9). | M | 1 |
-| FR-6.5 | Never push, merge, rebase or delete user branches. `pame clean` removes only PAME-created worktrees and containers, plus `pame/*` branches with `--branches` after confirmation. | M | 1, 5 |
+| FR-6.4 | Commit each successful unit with a structured message and `CodeCoreMorph-*` trailers (§7.9). | M | 1 |
+| FR-6.5 | Never push, merge, rebase or delete user branches. `codecoremorph clean` removes only CodeCoreMorph-created worktrees and containers, plus `codecoremorph/*` branches with `--branches` after confirmation. | M | 1, 5 |
 | FR-6.6 | One active run per repository, enforced by a lock. | M | 1 |
 | FR-6.7 | Build output lives outside the worktree, so rollback keeps build caches and `git status` stays clean. | S | 1 |
 
@@ -302,14 +312,14 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | FR-9.1 | Rules are declarative YAML with optional Python hooks (§7.3). | M | 2 |
 | FR-9.2 | Built-in C++ rule pack v1 (§11.1). | M | 2 |
 | FR-9.3 | Project-local rules via `migration.rules_paths`. Natural-language-only rules (LLM part only) are allowed; the planner warns about their cost, since they apply to every in-scope file. | S | 2 |
-| FR-9.4 | `pame rules list` shows available rules and where they come from. | S | 2 |
+| FR-9.4 | `codecoremorph rules list` shows available rules and where they come from. | S | 2 |
 
 ### FR-10 Approvals and human review
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-10.1 | Gates: `approvals.plan: required | auto` (default `required`) and `approvals.unit: none | api_changes | test_changes | all` (default `none`). | M | 5 |
-| FR-10.2 | Approve or reject from the CLI (interactive prompt, or `pame approve` / `pame reject`) and from the dashboard. | M | 5, 7 |
+| FR-10.1 | Gates: `approvals.plan: required \| auto` (default `required`) and `approvals.unit: none \| api_changes \| test_changes \| all` (default `none`). | M | 5 |
+| FR-10.2 | Approve or reject from the CLI (interactive prompt, or `codecoremorph approve` / `codecoremorph reject`) and from the dashboard. | M | 5, 7 |
 | FR-10.3 | A run waiting at a gate is checkpointed, and can be stopped and resumed. | M | 5 |
 | FR-10.4 | Items needing review (test-file edits, public-API changes, failed or skipped units, agent review notes) go in the report even when no gate applies. | M | 5 |
 
@@ -320,7 +330,7 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | FR-11.1 | Provide the command set in §7.14. | M | 0–7 |
 | FR-11.2 | Use the documented exit codes. `--json` output on `status`, `plan` and `report` for scripting. | M | 5 |
 | FR-11.3 | Live progress display (current unit, attempt, step, budget used). | S | 5 |
-| FR-11.4 | Non-interactive mode: `--yes` auto-approves the plan gate, and there are no prompts when stdin isn't a TTY. A required gate then waits for `pame approve` or the dashboard. | M | 5 |
+| FR-11.4 | Non-interactive mode: `--yes` auto-approves the plan gate, and there are no prompts when stdin isn't a TTY. A required gate then waits for `codecoremorph approve` or the dashboard. | M | 5 |
 
 ### FR-12 Dashboard
 
@@ -338,7 +348,7 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-13.1 | Write a report at the end of a run, and on abort or budget exhaustion. It covers: summary, per-unit status, rules applied and sites converted, attempts, parity table, tokens, cost and time per role, review items, and the environment (PAME version, image digests, tool versions, model IDs, prompt template versions, config hash). | M | 5 |
+| FR-13.1 | Write a report at the end of a run, and on abort or budget exhaustion. It covers: summary, per-unit status, rules applied and sites converted, attempts, parity table, tokens, cost and time per role, review items, and the environment (CodeCoreMorph version, image digests, tool versions, model IDs, prompt template versions, config hash). | M | 5 |
 | FR-13.2 | Report formats: Markdown and JSON, plus the dashboard view. | M | 5 |
 | FR-13.3 | A structured event log of every state transition, which the dashboard reads. | M | 5 |
 
@@ -348,14 +358,14 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 |---|---|---|---|
 | FR-14.1 | Budgets: retries per unit, max tokens and max cost (USD, paid providers) per run, timeouts per build and test command, and a wall-clock limit per unit. | M | 4–5 |
 | FR-14.2 | When a budget runs out, finish the current step safely, roll back the incomplete unit, write the report, and stop with status `budget_exhausted`. | M | 5 |
-| FR-14.3 | `pame resume <run-id>` resets the worktree to the last committed unit and continues from the checkpoint. | M | 5 |
-| FR-14.4 | `pame abort` or Ctrl-C stops the run gracefully. A second Ctrl-C forces the stop but still leaves the branch consistent. | M | 5 |
+| FR-14.3 | `codecoremorph resume <run-id>` resets the worktree to the last committed unit and continues from the checkpoint. | M | 5 |
+| FR-14.4 | `codecoremorph abort` or Ctrl-C stops the run gracefully. A second Ctrl-C forces the stop but still leaves the branch consistent. | M | 5 |
 
 ### FR-15 Extensibility
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-15.1 | Adapters, rule packs and providers are discovered through Python entry points (`pame.adapters`, `pame.rules`, `pame.providers`). Built-in ones use the same mechanism. | M | 2, 4 |
+| FR-15.1 | Adapters, rule packs and providers are discovered through Python entry points (`codecoremorph.adapters`, `codecoremorph.rules`, `codecoremorph.providers`). Built-in ones use the same mechanism. | M | 2, 4 |
 | FR-15.2 | Adding a language requires no change to the orchestrator graph (NFR-3.1). | M | 2+ |
 | FR-15.3 | Plugin APIs are versioned. Each plugin declares the API version it implements. | S | 8 |
 
@@ -372,11 +382,11 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | NFR-1.4 | Engine overhead per attempt, excluding build, test and LLM time, is under 5 s. |
 | NFR-1.5 | The dashboard reflects engine events within 2 s. |
 | **NFR-2 Safety and reliability** | |
-| NFR-2.1 | *(PRD, clarified)* The user's working tree, index and branches are never modified. All writes go to the run worktree on `pame/<run-id>`. The only exceptions are adding `.pame/` to `.git/info/exclude` and writing `.pame/` itself. A test asserts that the working tree is byte-identical after a run. |
+| NFR-2.1 | *(PRD, clarified)* The user's working tree, index and branches are never modified. All writes go to the run worktree on `codecoremorph/<run-id>`. The only exceptions are adding `.codecoremorph/` to `.git/info/exclude` and writing `.codecoremorph/` itself. A test asserts that the working tree is byte-identical after a run. |
 | NFR-2.2 | *(PRD)* Zero data loss: every failed attempt reverts to its pre-attempt commit. |
 | NFR-2.3 | The migration branch is always green (§4.5). |
 | NFR-2.4 | Crash consistency: killing the engine at any point leaves a resumable run, with the branch at its last green commit. |
-| NFR-2.5 | PAME never runs destructive git operations outside the run worktree, and never force-pushes or deletes anything it didn't create. |
+| NFR-2.5 | CodeCoreMorph never runs destructive git operations outside the run worktree, and never force-pushes or deletes anything it didn't create. |
 | **NFR-3 Extensibility** | |
 | NFR-3.1 | *(PRD)* Adding a language means writing an adapter package that implements `LanguageAdapter`. The orchestrator graph stays unchanged. |
 | NFR-3.2 | A new rule can be added with YAML and Markdown only, no Python required. |
@@ -384,13 +394,14 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | **NFR-4 Portability** | |
 | NFR-4.1 | The host can be Windows 10/11, macOS 13+ or Linux (x86-64, arm64). CI covers Linux and Windows. |
 | NFR-4.2 | Python ≥ 3.12, git ≥ 2.30, Docker Engine or Docker Desktop with Linux containers. |
-| NFR-4.3 | Installing with `uv tool install pame` or `pipx install pame` needs no Node.js and no local image build. |
+| NFR-4.3 | Installing with `uv tool install codecoremorph` or `pipx install codecoremorph` needs no Node.js and no local image build. |
+| NFR-4.4 | Setting up CodeCoreMorph and its toolchains never needs admin or root rights. The only exception is system prerequisites, which the user installs (§7.15). |
 | **NFR-5 Privacy** | |
 | NFR-5.1 | No telemetry and no phone-home. Network traffic goes only to configured providers, image registries and dependency fetches. |
 | NFR-5.2 | Local-only mode (FR-8.5). |
 | NFR-5.3 | Secrets are never written to logs, transcripts, reports or containers. A redaction filter covers known credential patterns. |
 | **NFR-6 Auditability and reproducibility** | |
-| NFR-6.1 | Each run records its config hash, PAME version, prompt template versions, model IDs, image digests and tool versions. |
+| NFR-6.1 | Each run records its config hash, CodeCoreMorph version, prompt template versions, model IDs, image digests and tool versions. |
 | NFR-6.2 | Transcripts, diffs, build logs and test logs are stored per attempt. |
 | NFR-6.3 | Indexing, graph building and planning are deterministic. LLM steps are reproducible through recorded transcripts and replay, not through sampling settings. |
 | **NFR-7 Cost control** | |
@@ -398,7 +409,7 @@ Every commit on `pame/<run-id>` builds and passes every baseline-passing test, i
 | NFR-7.2 | Plan cost estimates land within ±50% of actual cost on the benchmark (provisional; re-set after M1). |
 | **NFR-8 Usability** | |
 | NFR-8.1 | Every user-facing error says what happened, why, and what to do next. |
-| NFR-8.2 | A standard CMake + GoogleTest project needs only `pame init` and `pame run`. |
+| NFR-8.2 | A standard CMake + GoogleTest project needs only `codecoremorph init` and `codecoremorph run`. |
 | **NFR-9 Maintainability** | |
 | NFR-9.1 | Full type hints. Pyright strict on `core`, `patching`, `vcs`, `invariants`, `planner`, `orchestrator`. Ruff for lint and format. |
 | NFR-9.2 | Line coverage ≥ 85% on `patching`, `vcs`, `invariants`, `planner` and `parity`; ≥ 70% overall. |
@@ -634,7 +645,7 @@ attempt_failed: build feedback → [retries left?] ─yes→ agent_edit (fixer r
 - **First user message:** unit description and rules; the full contents of the unit's files after codemods; signatures of directly referenced out-of-unit symbols; codemod summary; remaining detector sites.
 - **Tools (read-only):** `read_file(path, start?, end?)`, `list_dir`, `search_code(regex, glob?)`, `find_symbol(name)`, `get_references(symbol_id)`, `get_signature(symbol_id)`. **Terminal tool:** `submit_edits` (§7.4).
 - **Limits:** max tool calls per attempt (default 30) and max tokens per attempt.
-- **Retries** append feedback as a new user message in the same conversation (append-only, §7.7). PAME starts a fresh conversation, seeded with a summary of earlier attempts, only when the window would overflow or the model changes (escalation).
+- **Retries** append feedback as a new user message in the same conversation (append-only, §7.7). CodeCoreMorph starts a fresh conversation, seeded with a summary of earlier attempts, only when the window would overflow or the model changes (escalation).
 - **CompilerFeedback** (FR-4.2) works like this:
   - Deduplicate on (file, line, code).
   - Put errors before warnings, and the first error in each file before the rest, since later errors are usually cascades.
@@ -661,13 +672,13 @@ class LLMProvider(Protocol):
 - **Ledger:** every call records usage and cost against role, unit and run (FR-8.3). The ledger enforces hard caps (NFR-7.1).
 
 **Anthropic provider (Claude).** The API changes often, so load the `claude-api` skill or the current SDK docs before implementing or changing this provider.
-- Use the official `anthropic` Python SDK. Credentials come from the SDK's default chain (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or an `ant auth login` profile). PAME adds no key handling of its own.
+- Use the official `anthropic` Python SDK. Credentials come from the SDK's default chain (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or an `ant auth login` profile). CodeCoreMorph adds no key handling of its own.
 - The default model for every role is `claude-opus-5-5` (D-18). Package data holds its capabilities and prices (`$4` / `$20` per MTok input/output, `$0.20` cache reads, as of 2026-10). Capabilities are refreshed from the Models API (`max_input_tokens`, `max_tokens`), and prices can be overridden in config.
-- **Thinking.** Adaptive thinking is always on for Opus 5.5. Depth is set with `output_config.effort` per role, default `high`. PAME sets it explicitly, because the API default for this model is `medium`.
+- **Thinking.** Adaptive thinking is always on for Opus 5.5. Depth is set with `output_config.effort` per role, default `high`. CodeCoreMorph sets it explicitly, because the API default for this model is `medium`.
 - **No sampling parameters.** `temperature`, `top_p` and `top_k` are rejected by the current API. Reproducibility comes from recorded transcripts (NFR-6.3).
 - **Tools.**
   - `tool_choice: auto` only, since forced tool choice is rejected by current models. Every tool sets `strict: true`.
-  - The prompt tells the model to finish with `submit_edits`. If a turn ends without it, PAME sends one reminder, then the attempt fails with `no_submission`.
+  - The prompt tells the model to finish with `submit_edits`. If a turn ends without it, CodeCoreMorph sends one reminder, then the attempt fails with `no_submission`.
 - **Streaming.**
   - Agent calls stream, with `eager_input_streaming: true` on tools.
   - Every tool input is validated against its schema before execution, because a streamed input can be truncated.
@@ -678,18 +689,18 @@ class LLMProvider(Protocol):
   - No timestamps or run IDs in system prompts.
   - Put cache breakpoints after the system prompt and after the unit context.
   - Record `cache_read_input_tokens`; a debug warning fires if it stays at zero across repeated calls.
-- **Append-only conversations.** Assistant content, including thinking blocks, goes back to the API unchanged. PAME never edits earlier turns. A model switch starts a new conversation.
+- **Append-only conversations.** Assistant content, including thinking blocks, goes back to the API unchanged. CodeCoreMorph never edits earlier turns. A model switch starts a new conversation.
 - **Token counts.** Use the token-counting endpoint where exact counts matter (pre-flight checks near the context limit). The planner uses its own estimate.
 - **Retries.** The SDK retries 429 and 5xx up to the configured `max_retries`; anything still failing maps to the error taxonomy.
 
 **Ollama provider (local models).**
 - Uses the official `ollama` Python client against `base_url` (default `http://localhost:11434`).
 - **Always sets `num_ctx` explicitly**, from the role config or the model's maximum. Ollama's default context is small and silently truncates prompts. A pre-flight check warns when the estimated prompt exceeds `num_ctx`.
-- Uses native tool calling when the model reports tool support. Otherwise it falls back to a text protocol: the model emits a fenced JSON tool call, which PAME parses and validates against the same schemas.
+- Uses native tool calling when the model reports tool support. Otherwise it falls back to a text protocol: the model emits a fenced JSON tool call, which CodeCoreMorph parses and validates against the same schemas.
 - Uses JSON-schema structured output through Ollama's `format` option where the model supports it.
 - Reads capabilities (context length, tool support) from Ollama's model-info endpoint; config can override them.
 - Cost is 0. Token counts come from the response counters.
-- `pame doctor` checks that the server is reachable and each configured model is pulled.
+- `codecoremorph doctor` checks that the server is reachable and each configured model is pulled.
 
 **Routing and escalation (FR-3.7).** Roles map to `{provider, model, options}` (§8). Roles left unset fall back to `editor`. Optional escalation switches the `fixer` to another model after N failed attempts on a unit.
 
@@ -716,7 +727,7 @@ class ExecResult(BaseModel):
 ```
 
 **Docker executor (default):**
-- **Container:** one per run, from the adapter's pinned image (`<registry>/pame-<lang>@sha256:…`), labeled `pame.run=<id>`.
+- **Container:** one per run, from the adapter's pinned image (`<registry>/codecoremorph-<lang>@sha256:…`), labeled `codecoremorph.run=<id>`.
 - **Mounts:**
   - worktree → `/workspace` (rw)
   - build dir → `/build` (named volume)
@@ -726,7 +737,7 @@ class ExecResult(BaseModel):
   - `off`: no network at all.
   - `fetch_only` (default): network only during the adapter's dependency-fetch step (e.g. Maven resolve); off for build and test of migrated code.
   - `on`: network always available.
-- **Cleanup:** the container is removed at run end. `pame clean` removes leftovers by label.
+- **Cleanup:** the container is removed at run end. `codecoremorph clean` removes leftovers by label.
 - **Windows and macOS:** Docker Desktop with Linux containers. Bind-mount performance is a known risk (§15).
 
 **Native executor (fallback):**
@@ -734,10 +745,11 @@ class ExecResult(BaseModel):
 - **Timeouts and output:** timeouts kill the whole process tree (Windows and POSIX), with the same output caps as Docker.
 - **Warning:** a prominent message at start that isolation is reduced and that LLM-written code will run on the host.
 - **Tool checks:** each adapter's `ToolchainSpec` lists the tools and version ranges to check (FR-1.3).
+- **Installed toolchains:** tools installed by `install-toolchain` are picked up from `<CODECOREMORPH_HOME>/toolchains/<lang>.env` (§7.15).
 - **Only option for some projects:** native mode is the only way to run MSVC/Win32-dependent C++. The diagnostic parser supports MSVC output on a best-effort basis.
 
 **Provisioning (FR-1.2):**
-- Toolchain images are built from `images/<lang>/Dockerfile` in this repo and published by CI.
+- Toolchain images are built from `images/<lang>/Dockerfile` in this repo and published by CI. Each Dockerfile installs system packages with the distro package manager, then runs `scripts/install-toolchain.sh <lang>` against the pinned manifest (§7.15, D-23).
 - Their digests are recorded in `images/<lang>/image.lock`, which ships in the package.
 - `sandbox.image` overrides the image; the override must be pinned by digest.
 
@@ -745,10 +757,10 @@ class ExecResult(BaseModel):
 
 | Item | Location / rule |
 |---|---|
-| State dir | `<repo>/.pame/`. Added to `.git/info/exclude` (never to `.gitignore`). Holds `pame.db`, `runs/<id>/`, `lock`. Configurable to an external path. |
-| Worktree | `<user cache>/pame/worktrees/<run-id>/` (outside the repo, so the project's own build globs never see it) |
-| Build dir | `<user cache>/pame/build/<run-id>/` natively; a named volume in Docker |
-| Branch | `pame/<run-id>`, created from the base commit |
+| State dir | `<repo>/.codecoremorph/`. Added to `.git/info/exclude` (never to `.gitignore`). Holds `codecoremorph.db`, `runs/<id>/`, `lock`. Configurable to an external path. |
+| Worktree | `<CODECOREMORPH_HOME>/worktrees/<run-id>/` (outside the repo, so the project's own build globs never see it; `CODECOREMORPH_HOME` is defined in §7.15) |
+| Build dir | `<CODECOREMORPH_HOME>/build/<run-id>/` natively; a named volume in Docker |
+| Branch | `codecoremorph/<run-id>`, created from the base commit |
 | Git access | The git CLI through `subprocess`, on the host. No git library. |
 | Rollback | `git reset --hard <snapshot>` and `git clean -fd`, in the worktree only (never `-x`) |
 | Author | The user's configured git identity by default; `git.author` overrides it |
@@ -756,15 +768,15 @@ class ExecResult(BaseModel):
 **Commit message format:**
 
 ```
-pame(replace_typedefs_with_using): src/geometry/vector.{h,cpp}
+codecoremorph(replace_typedefs_with_using): src/geometry/vector.{h,cpp}
 
 Replaced 12 typedef declarations with alias declarations.
 
-PAME-Run: 20261102-141500-a3f9
-PAME-Unit: U-0042
-PAME-Rules: replace_typedefs_with_using
-PAME-Attempts: 2
-PAME-Models: anthropic/claude-opus-5-5
+CodeCoreMorph-Run: 20261102-141500-a3f9
+CodeCoreMorph-Unit: U-0042
+CodeCoreMorph-Rules: replace_typedefs_with_using
+CodeCoreMorph-Attempts: 2
+CodeCoreMorph-Models: anthropic/claude-opus-5-5
 ```
 
 ### 7.10 Safety invariants
@@ -782,29 +794,29 @@ Every attempt is checked before commit (FR-4.4).
 | I-7 | No new suppressions | No added `NOLINT`, `#pragma warning(disable…)`, `-Wno-*`, `@SuppressWarnings` unless the rule allows them | Feedback |
 | I-8 | Diff size | Changed lines ≤ `max_unit_diff_lines` | Fail the attempt |
 | I-9 | Rule post-conditions | Per rule (§7.3) | `error` → feedback; `warning` → flag |
-| I-10 | Warnings | Warnings in unit files ≤ count before the unit (`guardrails.new_warnings: off | warn | fail`) | Flag or feedback |
-| I-11 | Git safety | Only the run worktree and `pame/<run-id>` are touched; the user's working tree hash is unchanged | Abort the run (this indicates a bug) |
+| I-10 | Warnings | Warnings in unit files ≤ count before the unit (`guardrails.new_warnings: off \| warn \| fail`) | Flag or feedback |
+| I-11 | Git safety | Only the run worktree and `codecoremorph/<run-id>` are touched; the user's working tree hash is unchanged | Abort the run (this indicates a bug) |
 
 ### 7.11 Characterization tests (FR-7.2 to FR-7.6)
 
 1. **Selection.** A unit's symbols are *untested* if no test file references them directly or within one call level (from the symbol graph). Coverage tools (gcov or llvm-cov) are a later improvement. `scope: all` ignores the heuristic.
-2. **Generation.** The `test_writer` role receives the symbols' declarations, their implementations and usage examples. It writes tests in the source framework (GoogleTest for C++) under `parity.characterization_tests.dir` (default `tests/pame_characterization/`). Tests go through public interfaces only. Each unit gets at most `max_tests_per_unit`.
+2. **Generation.** The `test_writer` role receives the symbols' declarations, their implementations and usage examples. It writes tests in the source framework (GoogleTest for C++) under `parity.characterization_tests.dir` (default `tests/codecoremorph_characterization/`). Tests go through public interfaces only. Each unit gets at most `max_tests_per_unit`.
 3. **Build integration.** `adapter.register_test_files` (for CMake: a generated `CMakeLists.txt` included from the test tree).
 4. **Acceptance.** The test must compile and pass 3 times in a row on the base code, and pass the determinism lint. Rejected tests get one regeneration attempt, then are dropped and reported.
-5. **Commit.** One commit, `pame(characterize): …`, before any migration unit. The baseline is then extended with the accepted test IDs.
+5. **Commit.** One commit, `codecoremorph(characterize): …`, before any migration unit. The baseline is then extended with the accepted test IDs.
 6. **Protection.** I-3 and I-4 apply. Changing a characterization test's assertions always needs approval.
 7. **Sanity check (Phase 6 exit).** A mutation check injects a deliberate behavior change into a fixture, and the generated tests must catch it.
 
 ### 7.12 Persistence
 
-- **`.pame/pame.db`** (SQLite, WAL mode): tables `runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`. Diagnostics and test results are JSON columns. Schema migrations are versioned.
-- **`.pame/runs/<id>/`:** `plan.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
+- **`.codecoremorph/codecoremorph.db`** (SQLite, WAL mode): tables `runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`. Diagnostics and test results are JSON columns. Schema migrations are versioned.
+- **`.codecoremorph/runs/<id>/`:** `plan.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
 - **Writers:** the engine is the only writer of run data. The dashboard and CLI write only `approvals` rows and abort requests.
-- **Retention:** `pame clean --older-than <days>`.
+- **Retention:** `codecoremorph clean --older-than <days>`.
 
 ### 7.13 Dashboard
 
-- **Backend:** FastAPI, served by `pame dashboard` at `http://127.0.0.1:<port>/?token=…`. It opens the browser and serves the built SPA from `src/pame/dashboard/static/`.
+- **Backend:** FastAPI, served by `codecoremorph dashboard` at `http://127.0.0.1:<port>/?token=…`. It opens the browser and serves the built SPA from `src/codecoremorph/dashboard/static/`.
 - **API (JSON):**
   - `GET /api/runs`, `GET /api/runs/{id}`
   - `GET /api/runs/{id}/plan`, `POST /api/runs/{id}/plan/decision` (approve, reject, exclusions)
@@ -822,22 +834,23 @@ Every attempt is checked before commit (FR-4.4).
 
 | Command | Purpose | Phase |
 |---|---|---|
-| `pame validate [CONFIG]` | Validate a manifest | 0 |
-| `pame schema` | Print the manifest JSON Schema | 0 |
-| `pame doctor [CONFIG]` | Environment and provider checks | 0+ |
-| `pame debug index|build|test|codemod …` | Developer tools for adapters | 2 |
-| `pame rules list`, `pame adapters list`, `pame providers list` | Plugin discovery | 2, 4 |
-| `pame debug unit --rule R FILE…` | Run one unit in isolation | 4 |
-| `pame plan [CONFIG]` | Provision → index → baseline → plan; no code changes | 3 |
-| `pame run [CONFIG] [--base REF] [--yes]` | Full run | 5 |
-| `pame status [RUN] [--json]` | Progress and state | 5 |
-| `pame approve RUN [--unit ID]`, `pame reject RUN [--unit ID] [--reason …]` | Answer gates | 5 |
-| `pame resume RUN` | Continue after a stop or crash | 5 |
-| `pame abort RUN` | Graceful stop | 5 |
-| `pame report RUN [--format md|json]` | Print or export the report | 5 |
-| `pame clean [RUN|--all] [--branches] [--older-than D]` | Remove PAME-created worktrees, containers and (optionally) branches | 5 |
-| `pame dashboard [--port P]` | Start the web UI | 7 |
-| `pame init` | Generate a starter manifest | 8 |
+| `codecoremorph validate [CONFIG]` | Validate a manifest | 0 |
+| `codecoremorph schema` | Print the manifest JSON Schema | 0 |
+| `codecoremorph doctor [CONFIG]` | Environment and provider checks | 0+ |
+| `codecoremorph debug index\|build\|test\|codemod …` | Developer tools for adapters | 2 |
+| `codecoremorph rules list`, `codecoremorph adapters list`, `codecoremorph providers list` | Plugin discovery | 2, 4 |
+| `codecoremorph toolchain install <lang>`, `codecoremorph toolchain list`, `codecoremorph toolchain path` | Run the bundled dependency scripts; show installed toolchains (§7.15) | 2 |
+| `codecoremorph debug unit --rule R FILE…` | Run one unit in isolation | 4 |
+| `codecoremorph plan [CONFIG]` | Provision → index → baseline → plan; no code changes | 3 |
+| `codecoremorph run [CONFIG] [--base REF] [--yes]` | Full run | 5 |
+| `codecoremorph status [RUN] [--json]` | Progress and state | 5 |
+| `codecoremorph approve RUN [--unit ID]`, `codecoremorph reject RUN [--unit ID] [--reason …]` | Answer gates | 5 |
+| `codecoremorph resume RUN` | Continue after a stop or crash | 5 |
+| `codecoremorph abort RUN` | Graceful stop | 5 |
+| `codecoremorph report RUN [--format md\|json]` | Print or export the report | 5 |
+| `codecoremorph clean [RUN\|--all] [--branches] [--older-than D]` | Remove CodeCoreMorph-created worktrees, containers and (optionally) branches | 5 |
+| `codecoremorph dashboard [--port P]` | Start the web UI | 7 |
+| `codecoremorph init` | Generate a starter manifest | 8 |
 
 **Exit codes:**
 
@@ -851,6 +864,105 @@ Every attempt is checked before commit (FR-4.4).
 | 5 | Aborted |
 | 6 | Rejected at a gate |
 | 10 | Internal error |
+
+### 7.15 Dependency acquisition (D-22)
+
+Everything CodeCoreMorph downloads comes through a small set of plain scripts. Each script exists twice, with the same name, flags, output and exit codes:
+
+- **`.bat`** for Windows `cmd.exe`. It uses only tools built into Windows 10 (1803+) and 11: `curl.exe`, `tar.exe`, and `certutil` for SHA-256. No PowerShell.
+- **`.sh`** for Linux, macOS and Git Bash. It's POSIX `sh` (no bash-only syntax), using `curl` (or `wget`), `tar`, and `sha256sum` (or `shasum -a 256`).
+
+**What gets downloaded, and by what:**
+
+| Layer | Contents | Acquired by | When |
+|---|---|---|---|
+| CodeCoreMorph's Python dependencies | langgraph, anthropic, ollama, pydantic, the `libclang` wheel, … | uv, locked in `uv.lock` | `uv sync` (contributors) or `uv tool install codecoremorph` (users) |
+| Developer tools | uv, Python 3.12 (via `uv python install`), pre-commit hooks; Node LTS for the dashboard from Phase 7 | `bootstrap-dev` | Once per contributor machine |
+| Toolchain images (Docker mode) | `codecoremorph-<lang>` images pinned by digest | CodeCoreMorph's `provision` step; optional pre-pull with `pull-images` | First run |
+| Native toolchains | Compilers, build tools, test frameworks and indexer helpers for one language | `install-toolchain <lang>` | Before the first native-mode run |
+| Local models | Ollama model tags | `pull-models <tag>…` | Before local-model runs |
+| The target project's own dependencies | Maven artifacts, NuGet packages, CMake FetchContent, crates | The adapter's dependency-fetch step inside the sandbox (`sandbox.network: fetch_only`) | During a run |
+| System prerequisites | git, Docker, Xcode Command Line Tools, C/C++ library headers, Visual Studio Build Tools | **The user.** Scripts detect them and print exact install steps | Before setup |
+
+**Scripts:**
+
+| Script | Purpose | Phase |
+|---|---|---|
+| `scripts/bootstrap-dev.{bat,sh}` | Contributor setup. Uses uv from PATH if it's recent enough, otherwise downloads the pinned uv. Then installs Python with uv, runs `uv sync`, installs pre-commit hooks, and checks git and Docker. From Phase 7 it also installs a pinned portable Node. | 0 |
+| `scripts/install-toolchain.{bat,sh} <lang>` | Installs the pinned native toolchain for `cpp`, `java`, `csharp`, `rust` or `all` | 2 (cpp), 9, 10, 12 |
+| `scripts/pull-images.{bat,sh} [lang…]` | Pre-pulls pinned images listed in `images/<lang>/image.lock`. Optional, since CodeCoreMorph pulls on demand. | 2 |
+| `scripts/pull-models.{bat,sh} <tag>…` | Checks that Ollama is installed and running, then runs `ollama pull` for each tag. `codecoremorph doctor` prints this command with the configured tags. | 4 |
+| `scripts/lib/common.{bat,sh}` | Shared helpers: platform detection, manifest parsing, download with retries, SHA-256 check, extraction, logging | 0 |
+
+**Common flags:** `--prefix DIR` (default `CODECOREMORPH_HOME`), `--force` (reinstall), `--dry-run` (print what would be downloaded), `--offline DIR` (install from pre-downloaded archives, no network), `--help`.
+
+**Exit codes:**
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Download or checksum failure |
+| 2 | Usage error |
+| 3 | Missing system prerequisite (the message says how to install it) |
+
+**Rules every script follows:**
+
+1. **Pinned.** Every download is listed in the manifest with a version and SHA-256. Nothing else is downloaded, apart from downloads that a pinned tool fetches and verifies itself (`uv python install`, rustup, `ollama pull`).
+2. **Verified.** The SHA-256 is checked before extraction. On a mismatch, the script deletes the file and stops.
+3. **No admin rights.** No `sudo`, no UAC prompt, no registry or system PATH changes. Nothing is written outside `CODECOREMORPH_HOME`, except the repo's `.venv` created by `bootstrap-dev`.
+4. **Never pipes a download into a shell.** Installers such as `rustup-init` are downloaded as pinned files, verified, then run.
+5. **Idempotent and interruption-safe.**
+   - An installed tool has a `.installed` marker holding its SHA-256. Re-running skips it unless `--force` is given.
+   - Archives are extracted into a temporary directory, then moved into place. An interrupted install never leaves a half-installed tool.
+6. **HTTPS only.** Each download is retried up to 3 times.
+
+**Manifest (`scripts/deps/manifest.txt`).** One line per tool and platform. Fields are pipe-separated with no spaces, so both `for /f` in `.bat` and `IFS='|' read` in `.sh` can parse it:
+
+```
+# group|tool|version|platform|url|sha256|archive|bin_dir
+dev|uv|<ver>|windows-x64|https://github.com/astral-sh/uv/releases/download/<ver>/uv-x86_64-pc-windows-msvc.zip|<sha256>|zip|.
+cpp|cmake|<ver>|linux-x64|https://github.com/Kitware/CMake/releases/download/v<ver>/cmake-<ver>-linux-x86_64.tar.gz|<sha256>|tar.gz|cmake-<ver>-linux-x86_64/bin
+cpp|ninja|<ver>|macos-arm64|https://github.com/ninja-build/ninja/releases/download/v<ver>/ninja-mac.zip|<sha256>|zip|.
+```
+
+The rows above show the format only. Real versions and hashes are pinned in Phases 0 and 2.
+
+- **Platforms:** `windows-x64`, `linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, or `any` (jars, source archives).
+- **Windows archives:** Windows rows use `.zip` or `.tar.gz`, because the built-in `tar.exe` isn't guaranteed to read `.tar.xz`.
+- **Version bumps:** maintainers run `scripts/deps/refresh-hashes.py`, which downloads each URL and rewrites its hash.
+- **CI check:** CI fails if a row is malformed or a tool is missing a supported platform.
+
+**Install layout.** `CODECOREMORPH_HOME` defaults to:
+- Windows: `%LOCALAPPDATA%\codecoremorph`
+- macOS: `$HOME/Library/Caches/codecoremorph`
+- Linux: `${XDG_CACHE_HOME:-$HOME/.cache}/codecoremorph`
+
+The `CODECOREMORPH_HOME` environment variable overrides the default. The Python side (`codecoremorph.core.paths`) resolves it the same way.
+
+```
+<CODECOREMORPH_HOME>/
+  downloads/<sha256>.<ext>              verified archives (reused; also a source for --offline)
+  tools/<tool>/<version>/               developer tools (uv, node)
+  toolchains/<tool>/<version>/          native toolchain tools, each with a .installed marker
+  toolchains/<lang>.env                 KEY=VALUE lines: PATH_PREPEND, CC, CXX, JAVA_HOME, DOTNET_ROOT, CARGO_HOME, RUSTUP_HOME, …
+  toolchains/activate-<lang>.{bat,sh}   optional: puts a toolchain on PATH in your own shell
+  worktrees/<run-id>/  build/<run-id>/  run workspaces (§7.9)
+```
+
+- The native executor reads `toolchains/<lang>.env` and applies it to the scrubbed environment of every command. Nothing is added to the user's own shell.
+- `codecoremorph doctor` compares installed versions with the manifest, and prints the script to run for anything missing.
+- **Same versions in both modes:** each toolchain Dockerfile installs system packages with the distro package manager, then runs `scripts/install-toolchain.sh <lang> --prefix /opt/codecoremorph` from the same manifest (D-23).
+
+**Native toolchain contents:**
+
+| Language | Downloaded (pinned) | System prerequisites (detected, never installed) |
+|---|---|---|
+| cpp | LLVM release (clang, clang-tidy, clang-format, libclang), CMake, Ninja, and GoogleTest source built locally with the downloaded toolchain. On Windows, a self-contained clang toolchain that doesn't need Visual Studio (candidate: llvm-mingw, §16). | Linux: C/C++ standard library headers (`build-essential` or the distro equivalent). macOS: Xcode Command Line Tools. Windows, MSVC-based projects only: Visual Studio Build Tools (detected with `vswhere`). |
+| java | Temurin JDKs for the source and target versions, Maven, CodeCoreMorph's Spoon indexer jar (release asset) | None |
+| csharp | .NET SDK archive, CodeCoreMorph's Roslyn indexer (release asset) | Linux: ICU libraries |
+| rust | `rustup-init` (pinned), a pinned Rust toolchain installed by rustup under `CODECOREMORPH_HOME`, cargo-nextest, cbindgen | Same as cpp (mixed builds) |
+
+The libclang Python binding is a Python dependency (the `libclang` wheel, installed by uv). It's pinned to the same major version as the downloaded LLVM.
 
 ---
 
@@ -927,7 +1039,7 @@ parity:
   characterization_tests:
     enabled: true
     scope: untested_only             # untested_only | all
-    dir: tests/pame_characterization
+    dir: tests/codecoremorph_characterization
     max_tests_per_unit: 10
     keep: true
 
@@ -945,7 +1057,7 @@ reporting:
 
 ## 9. Data contracts summary
 
-These pydantic models are defined in `src/pame/core/` and are the stable contracts between components. They serialize to JSON for the store, the dashboard API and reports.
+These pydantic models are defined in `src/codecoremorph/core/` and are the stable contracts between components. They serialize to JSON for the store, the dashboard API and reports.
 
 | Model | Used by |
 |---|---|
@@ -976,7 +1088,7 @@ These pydantic models are defined in `src/pame/core/` and are the stable contrac
 | Secret leakage | Keys only from env or SDK credential chains; never passed to containers; redaction filter on logs and transcripts |
 | Source code sent to third parties | Explicit per-role provider config; the report lists the providers that received code; local-only mode |
 | Dashboard exposure (CSRF, DNS rebinding, other local users) | Binds to 127.0.0.1; random per-launch token; Host-header allowlist; no CORS; `--host` binding to other interfaces needs an explicit flag and shows a warning |
-| Supply chain | Images pinned by digest; locked Python dependencies (`uv.lock`); optional image signing (Phase 8) |
+| Supply chain | Images pinned by digest; every script download pinned by SHA-256 and checked before use (§7.15); locked Python dependencies (`uv.lock`); optional image signing (Phase 8) |
 
 ---
 
@@ -1068,16 +1180,17 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 
 ---
 
-## 12. Testing and validation strategy (PAME itself)
+## 12. Testing and validation strategy (CodeCoreMorph itself)
 
 | Layer | What | Where it runs |
 |---|---|---|
 | Unit | Pure Python: config, PatchEngine (property-based tests with Hypothesis), planner, invariants, feedback formatting, providers against replay data | Every CI run, Linux and Windows |
 | Integration | Adapter against fixtures in Docker (`docker` marker) and native mode (`toolchain` marker); git operations on temporary repos | CI Linux (Docker); Windows native where toolchains exist |
-| End to end | Full `pame run` on fixtures with the replay provider | CI Linux |
+| End to end | Full `codecoremorph run` on fixtures with the replay provider | CI Linux |
 | Safety | Working-tree byte-identity, crash and resume, path traversal, prompt-injection fixture, budget exhaustion | CI |
 | Live evals | Fixture eval set against Claude and an Ollama model: success rate, attempts, cost per unit | Manual or nightly, opt-in (`live_llm` marker) |
 | Benchmark | Pinned OSS C++11 project: index time (NFR-1.1), memory (NFR-1.2), migration success and cost | Manual or nightly; results in `bench/results/` |
+| Scripts | shellcheck (POSIX mode) on every `.sh`; manifest format check; `bootstrap-dev` and `install-toolchain` on clean Windows, Linux and macOS runners; checksum-mismatch, re-run and `--dry-run` behavior | CI when scripts or the manifest change, plus nightly |
 
 **Fixture projects** (`fixtures/cpp/`): small CMake + GoogleTest projects in C++11, **intentionally legacy**:
 - `ownership`: raw `new`/`delete`, owning pointers
@@ -1112,7 +1225,7 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 ## 14. Assumptions
 
 - Target projects build from a clean checkout with documented commands, and have a test suite, or characterization tests are enabled.
-- Users review the migration branch before merging. PAME is a force multiplier, not a replacement for code review.
+- Users review the migration branch before merging. CodeCoreMorph is a force multiplier, not a replacement for code review.
 - Docker is available for the default mode. Users without it accept the native-mode warning.
 
 ## 15. Risks
@@ -1130,14 +1243,16 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 
 ## 16. Open questions
 
-1. **License:** Apache-2.0 (proposed, D-20) or MIT?
-2. **Name:** check that the `pame` package and CLI names are free on PyPI and GitHub. The repo folder is `smart-refactor-and-converter`.
+1. ~~**License**~~: resolved, Apache-2.0 (D-20).
+2. ~~**Name**~~: resolved, CodeCoreMorph (D-24). As of 2026-11-02, `codecoremorph` was free on PyPI, npm and GitHub. Register the PyPI name early.
 3. **Benchmark project:** which one (Phase 2)?
 4. **Ollama model:** which one to recommend by default (decide from the Phase 4 evals)?
 5. **Parallel units:** process independent DAG branches in parallel worktrees? This is post-v0.1.
 6. **Starting runs from the dashboard:** should FR-12.6 be in v0.1?
 7. **Commit identity:** default to the user's identity, or a bot identity with the user as committer?
 8. **Container registry:** where to publish images (GHCR assumed).
+9. **Windows native C++ toolchain:** a self-contained clang toolchain that needs no Visual Studio (e.g. llvm-mingw), or require Visual Studio Build Tools? Decide in Phase 2.
+10. **uv in `bootstrap-dev`:** download a pinned uv when it's missing (proposed), or ask contributors to install uv themselves?
 
 ## 17. PRD traceability
 
