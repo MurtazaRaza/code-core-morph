@@ -186,6 +186,20 @@ class Repository:
         self.git.run("worktree", "add", "--quiet", "-b", branch, str(path), base_sha)
         return Worktree(path, branch)
 
+    def submodules_at(self, commit: str) -> list[tuple[str, str]]:
+        """``(path, commit)`` of every submodule (gitlink) in ``commit``'s tree."""
+        return _gitlinks(self.git, commit)
+
+    def populate_submodules(self, worktree: Worktree, commit: str) -> list[str]:
+        """Check out ``commit``'s submodules in a run worktree, cloned from the user's own
+        submodule checkouts: no network access, and nothing in the user's repository changes
+        (``git worktree add`` leaves submodules empty).
+
+        Returns the submodule paths that couldn't be populated because the repository doesn't
+        have them checked out at a version containing the pinned commit.
+        """
+        return _populate(self.root, worktree.path, commit, prefix="")
+
     def remove_worktree(self, path: Path) -> None:
         """Remove a run worktree this repository registered. Never touches other worktrees."""
         entry = next((w for w in self.worktrees() if same_path(w.path, path)), None)
@@ -209,3 +223,37 @@ class Repository:
             raise SafetyViolationError(f"refusing to delete non-CodeCoreMorph branch {branch!r}")
         if self.branch_exists(branch):
             self.git.run("branch", "--delete", "--force", "--", branch)
+
+
+def _gitlinks(git: Git, commit: str) -> list[tuple[str, str]]:
+    out = git.run("ls-tree", "-r", "-z", "--full-tree", commit).stdout.decode("utf-8", "replace")
+    links: list[tuple[str, str]] = []
+    for entry in out.split("\0"):
+        meta, _, path = entry.partition("\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[0] == "160000":
+            links.append((path, parts[2]))
+    return links
+
+
+def _populate(source_root: Path, target_root: Path, commit: str, *, prefix: str) -> list[str]:
+    missing: list[str] = []
+    for path, sha in _gitlinks(Git(source_root), commit):
+        name = prefix + path
+        source = source_root / path
+        target = target_root / path
+        if not (source / ".git").exists():
+            missing.append(name)
+            continue
+        has_commit = Git(source).run("cat-file", "-e", f"{sha}^{{commit}}", check=False)
+        if has_commit.returncode != 0:
+            missing.append(name)
+            continue
+        if target.exists() and any(target.iterdir()):
+            continue  # already populated
+        target.mkdir(parents=True, exist_ok=True)
+        # --shared borrows the user's objects (read-only) instead of copying them.
+        Git(target).run("clone", "--quiet", "--no-checkout", "--shared", str(source), ".")
+        Git(target).run("checkout", "--quiet", "--detach", sha)
+        missing += _populate(source, target, sha, prefix=f"{name}/")
+    return missing

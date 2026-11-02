@@ -148,3 +148,34 @@ def test_user_hooks_never_run(repo: Path, tmp_path: Path) -> None:
     (worktree.path / "new.txt").write_bytes(b"x")
     worktree.commit("a commit")
     assert not marker.exists()
+
+
+def test_worktrees_get_submodules_from_the_users_checkout(repo: Path, tmp_path: Path, git) -> None:
+    lib = tmp_path / "lib"
+    git(tmp_path, "init", "--quiet", str(lib))
+    (lib / "lib.h").write_text("int lib();\n", encoding="utf-8")
+    git(lib, "add", "--all")
+    git(lib, "commit", "--quiet", "-m", "lib")
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", str(lib),
+        "vendor/lib")  # fmt: skip
+    # a submodule the user never checked out: a gitlink with no directory behind it
+    ghost = git(lib, "rev-parse", "HEAD").strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"160000,{ghost},vendor/ghost")
+    git(repo, "commit", "--quiet", "-m", "vendor lib")
+    before = git(repo, "status", "--porcelain")
+    config = (repo / ".git" / "config").read_bytes()
+
+    repository = Repository(repo)
+    base = repository.resolve_commit("HEAD")
+    assert repository.submodules_at(base) == [("vendor/ghost", ghost), ("vendor/lib", ghost)]
+    worktree = repository.add_worktree(tmp_path / "wt", BRANCH, base)
+    assert repository.populate_submodules(worktree, base) == ["vendor/ghost"]
+    assert (worktree.path / "vendor" / "lib" / "lib.h").read_text() == "int lib();\n"
+    assert git(worktree.path, "status", "--porcelain") == ""  # the submodule is at its commit
+    assert repository.populate_submodules(worktree, base) == ["vendor/ghost"]  # idempotent
+
+    # the user's repository is unchanged, and the worktree still goes away
+    assert git(repo, "status", "--porcelain") == before
+    assert (repo / ".git" / "config").read_bytes() == config
+    repository.remove_worktree(worktree.path)
+    assert not worktree.path.exists()

@@ -82,6 +82,14 @@ class RunWorkspace:
             worktree = repository.add_worktree(
                 home.worktree(run_id), run_branch(run_id), base_commit
             )
+            missing = repository.populate_submodules(worktree, base_commit)
+            if missing:
+                log.warning(
+                    "the run worktree lacks submodules that %s doesn't have checked out: %s; "
+                    "run `git submodule update --init --recursive` there first",
+                    repository.root,
+                    ", ".join(missing),
+                )
             build_dir = home.build_dir(run_id)
             cache_dir = home.run_cache(run_id)
             for directory in (build_dir, cache_dir):
