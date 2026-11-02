@@ -1,0 +1,1240 @@
+{
+  "date": "2026-11-02T18:18:38+00:00",
+  "agent": "claude-code",
+  "model": "claude-code/default",
+  "options": {
+    "effort": null,
+    "num_ctx": null
+  },
+  "sandbox": "native",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20
+  },
+  "cases": 15,
+  "passed": 14,
+  "success_rate": 0.933,
+  "cost_usd": 0.0,
+  "seconds": 1053.2,
+  "results": [
+    {
+      "id": "typedefs-codemods-only",
+      "rules": [
+        "replace_typedefs_with_using"
+      ],
+      "files": [
+        "include/geo/types.h",
+        "include/geo/vector.h",
+        "src/vector.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 5,
+        "duration_ms": 34613,
+        "total_cost_usd_equivalent": 0.0847729,
+        "usage": {
+          "input_tokens": 10,
+          "cache_creation_input_tokens": 15922,
+          "cache_read_input_tokens": 151077,
+          "output_tokens": 581,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 15922,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 329,
+              "cache_read_input_tokens": 42572,
+              "cache_creation_input_tokens": 564,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 564
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on the codemods alone, so I wrote no edits.\n\n- **Rule:** `replace_typedefs_with_using`\n- **Files:** `include/geo/types.h`, `include/geo/vector.h`, `src/vector.cpp`. All three changed.\n- **Attempts:** none were needed, because the codemods completed the unit.\n- **Branch and commit:** `codecoremorph/20261102-180119-c435`, commit `653b3eabc3c8`.\n- **Review notes:** none.\n- **Checks:** the baseline built and its tests ran before the unit started. I didn't see the post-change build and test output.\n- **Sandbox:** the run was in native mode, so builds and tests ran directly on this machine. Docker is available, but the manifest's sandbox mode picked native.\n\nTo review, run `git diff a0c61783869f codecoremorph/20261102-180119-c435`. I haven't merged anything. Your own branch is unchanged, so merging is up to you."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": true,
+      "attempts": 0,
+      "attempt_outcomes": [],
+      "reason": null,
+      "summary": "Deterministic tools completed the unit.",
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [
+        "include/geo/types.h",
+        "include/geo/vector.h",
+        "src/vector.cpp"
+      ],
+      "diff": "diff --git a/include/geo/types.h b/include/geo/types.h\nindex 87e5b2a..38ed63d 100644\n--- a/include/geo/types.h\n+++ b/include/geo/types.h\n@@ -10,18 +10,18 @@\n \n namespace geo {\n \n-typedef double Scalar;\n-typedef unsigned int Id;\n-typedef std::size_t Index;\n+using Scalar = double;\n+using Id = unsigned int;\n+using Index = std::size_t;\n \n-typedef std::vector<Scalar> ScalarList;\n-typedef std::map<std::string, Id> NameIndex;\n+using ScalarList = std::vector<Scalar>;\n+using NameIndex = std::map<std::string, Id>;\n \n // Comparison callback used by the sorting helpers.\n-typedef bool (*ScalarLess)(Scalar, Scalar);\n+using ScalarLess = bool (*)(Scalar, Scalar);\n \n // A function type (not a pointer): used to declare visitors.\n-typedef void ScalarVisitor(Scalar value, void* context);\n+using ScalarVisitor = void (Scalar, void *);\n \n inline bool ascending(Scalar a, Scalar b) { return a < b; }\n inline bool descending(Scalar a, Scalar b) { return a > b; }\ndiff --git a/include/geo/vector.h b/include/geo/vector.h\nindex 43113c4..91e0c63 100644\n--- a/include/geo/vector.h\n+++ b/include/geo/vector.h\n@@ -9,9 +9,9 @@ namespace geo {\n \n class Vector2 {\n public:\n-    typedef Scalar value_type;\n-    typedef value_type* iterator;\n-    typedef const value_type* const_iterator;\n+    using value_type = Scalar;\n+    using iterator = value_type *;\n+    using const_iterator = const value_type *;\n \n     Vector2();\n     Vector2(Scalar x, Scalar y);\n@@ -37,9 +37,9 @@ private:\n     value_type v_[2];\n };\n \n-typedef Vector2 Point;\n-typedef std::vector<Point> PointList;\n-typedef PointList::const_iterator PointIterator;\n+using Point = Vector2;\n+using PointList = std::vector<Point>;\n+using PointIterator = PointList::const_iterator;\n \n Scalar distance(const Point& a, const Point& b);\n Point centroid(const PointList& points);\ndiff --git a/src/vector.cpp b/src/vector.cpp\nindex 155f636..c4d5de9 100644\n--- a/src/vector.cpp\n+++ b/src/vector.cpp\n@@ -5,7 +5,7 @@\n namespace geo {\n \n namespace {\n-typedef Scalar (*UnaryOp)(Scalar);\n+using UnaryOp = Scalar (*)(Scalar);\n \n Scalar square(Scalar v) { return v * v; }\n \n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 37.0
+    },
+    {
+      "id": "c-compat-typedefs-cpp-headers",
+      "rules": [
+        "replace_typedefs_with_using"
+      ],
+      "files": [
+        "include/ccore/buffer.hpp",
+        "include/ccore/table.hpp",
+        "src/buffer_wrapper.cpp",
+        "src/table.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 6,
+        "duration_ms": 22916,
+        "total_cost_usd_equivalent": 0.0954474,
+        "usage": {
+          "input_tokens": 12,
+          "cache_creation_input_tokens": 16855,
+          "cache_read_input_tokens": 194441,
+          "output_tokens": 841,
+          "output_tokens_details": {
+            "thinking_tokens": 31
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 16855,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 448,
+              "cache_read_input_tokens": 43223,
+              "cache_creation_input_tokens": 846,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 846
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on the first attempt, and the codemods did all the work, so I wrote no edits.\n\n- **Rule:** `replace_typedefs_with_using`\n- **Files given:** `include/ccore/buffer.hpp`, `include/ccore/table.hpp`, `src/buffer_wrapper.cpp`, `src/table.cpp`\n- **Run:** 20261102-180150-06aa, unit U-0001\n- **Branch and commit:** `codecoremorph/20261102-180150-06aa`, commit `b6e66fcac288`\n- **Changed files:** `include/ccore/buffer.hpp` (2 lines), `include/ccore/table.hpp` (1 line), `src/buffer_wrapper.cpp` (1 line). `src/table.cpp` needed no change.\n- **Review notes:** none, and no rule sites were left over.\n- **Verification:** the baseline built and passed its tests, and the unit passed CodeCoreMorph's build, test and rule checks.\n- **Sandbox:** the run used native mode, not Docker. The manifest picked that mode, and the builds and tests ran directly on this machine.\n\nTo review it, run `git diff 3720d89f515b codecoremorph/20261102-180150-06aa`. I haven't merged anything, and your `master` branch and working tree are unchanged."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": true,
+      "attempts": 0,
+      "attempt_outcomes": [],
+      "reason": null,
+      "summary": "Deterministic tools completed the unit.",
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [
+        "include/ccore/buffer.hpp",
+        "include/ccore/table.hpp",
+        "src/buffer_wrapper.cpp"
+      ],
+      "diff": "diff --git a/include/ccore/buffer.hpp b/include/ccore/buffer.hpp\nindex 726fdd5..c208501 100644\n--- a/include/ccore/buffer.hpp\n+++ b/include/ccore/buffer.hpp\n@@ -12,8 +12,8 @@\n \n namespace ccore {\n \n-typedef ccore_hash_t Hash;\n-typedef std::vector<std::string> Strings;\n+using Hash = ccore_hash_t;\n+using Strings = std::vector<std::string>;\n \n class Buffer {\n public:\ndiff --git a/include/ccore/table.hpp b/include/ccore/table.hpp\nindex 0bff8bd..3657c68 100644\n--- a/include/ccore/table.hpp\n+++ b/include/ccore/table.hpp\n@@ -11,7 +11,7 @@ namespace ccore {\n // A string interning table: the C set for membership, a C++ map for ids.\n class InternTable {\n public:\n-    typedef std::map<std::string, int> Ids;\n+    using Ids = std::map<std::string, int>;\n \n     explicit InternTable(size_t capacity);\n     ~InternTable();\ndiff --git a/src/buffer_wrapper.cpp b/src/buffer_wrapper.cpp\nindex 3289fcb..4a2cf48 100644\n--- a/src/buffer_wrapper.cpp\n+++ b/src/buffer_wrapper.cpp\n@@ -6,7 +6,7 @@\n namespace ccore {\n \n namespace {\n-typedef std::vector<std::string>* Collector;\n+using Collector = std::vector<std::string> *;\n \n void collect(const char* text, void* context) {\n     static_cast<Collector>(context)->push_back(text);\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 25.5
+    },
+    {
+      "id": "ownership-cache",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/cache.h",
+        "src/cache.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 11,
+        "duration_ms": 71979,
+        "total_cost_usd_equivalent": 0.19693129999999998,
+        "usage": {
+          "input_tokens": 18,
+          "cache_creation_input_tokens": 26191,
+          "cache_read_input_tokens": 344452,
+          "output_tokens": 5754,
+          "output_tokens_details": {
+            "thinking_tokens": 1391
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 26191,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 687,
+              "cache_read_input_tokens": 51878,
+              "cache_creation_input_tokens": 1527,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 1527
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on attempt 2 of 4. It is one commit, `03cb1d9a526d`, on branch `codecoremorph/20261102-180220-a988`, and your own branch is untouched.\n\n- **Rule:** `convert_raw_pointers_to_smart_pointers`\n- **Files changed:** `include/inventory/cache.h` and `src/cache.cpp`. The build and tests passed.\n- **What changed:**\n  - `head_` and each `Node::next` are now `std::unique_ptr<Node>`, so the list owns its nodes.\n  - `unlink()` now returns ownership of the detached node, and `pushFront()` takes it.\n  - The manual `delete`s in `put()` are gone.\n- **Attempt 1:** It failed to build for two reasons. `head_(NULL)` was ambiguous for `unique_ptr`, and `std::make_unique` doesn't exist because the project still builds as C++11 (`CMakeLists.txt` sets the standard to 11). The standard bump is a separate unit, and `CMakeLists.txt` is outside this one.\n- **Attempt 2:** I initialised `head_()` by default and used `std::unique_ptr<Node>(new Node())`.\n- **Warning:** The tool still reports one remaining site, the `new Node`. It is only a warning. Once the standard is bumped, that line can become `std::make_unique<Node>()`.\n\n**Review notes**\n- **Pointers kept raw (non-owning):** `Node::prev`, `tail_`, the pointers stored in the `index_` map, and the `double* price` out-parameter of `get()`.\n- **Destructor:** I kept it so it frees the chain in a loop. A defaulted destructor would destroy the chain recursively and could overflow the stack on a very large cache.\n- **Copying:** The private, undefined copy constructor and assignment operator stay as they were, so the class is still non-copyable.\n\nTo review it, run `git diff fac58c33549c codecoremorph/20261102-180220-a988`. I haven't merged anything."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "build_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Fix C++11 compatibility of the smart pointer conversion: default-initialise head_ and construct the node with unique_ptr(new Node()), since make_unique needs C++14 and the project still builds as C++11.",
+      "review_notes": [
+        "Kept raw (non-owning): Node::prev (back-pointer), tail_ (observer of last node), index_ map values (observers of nodes owned by the list), and the double* price out-parameter of get().",
+        "std::make_unique is not used because the project still builds at C++11 (CMakeLists.txt, outside this unit); once the standard is bumped it can become std::make_unique<Node>().",
+        "The destructor is kept only to free the chain iteratively; a defaulted one would destroy the unique_ptr chain recursively and could overflow the stack for very large capacities.",
+        "Copy constructor/assignment stay declared private and undefined, so the class is still non-copyable."
+      ],
+      "warnings": [
+        "convert_raw_pointers_to_smart_pointers: 1 site(s) left (a warning)"
+      ],
+      "changed_files": [
+        "include/inventory/cache.h",
+        "src/cache.cpp"
+      ],
+      "diff": "diff --git a/include/inventory/cache.h b/include/inventory/cache.h\nindex 71bdf86..9b0cc1b 100644\n--- a/include/inventory/cache.h\n+++ b/include/inventory/cache.h\n@@ -2,6 +2,7 @@\n #define INVENTORY_CACHE_H\n \n #include <map>\n+#include <memory>\n #include <string>\n \n namespace inventory {\n@@ -21,20 +22,20 @@ private:\n     struct Node {\n         std::string key;\n         double price;\n-        Node* prev;\n-        Node* next;\n+        Node* prev;                 // non-owning back-pointer\n+        std::unique_ptr<Node> next; // owns the following node\n     };\n \n     PriceCache(const PriceCache&);\n     PriceCache& operator=(const PriceCache&);\n \n-    void unlink(Node* node);\n-    void pushFront(Node* node);\n+    std::unique_ptr<Node> unlink(Node* node);\n+    void pushFront(std::unique_ptr<Node> node);\n \n     int capacity_;\n     int size_;\n-    Node* head_;  // most recent\n-    Node* tail_;  // least recent\n+    std::unique_ptr<Node> head_;  // most recent; owns the whole list\n+    Node* tail_;                  // least recent (non-owning)\n     std::map<std::string, Node*> index_;\n };\n \ndiff --git a/src/cache.cpp b/src/cache.cpp\nindex b276bb3..911a67c 100644\n--- a/src/cache.cpp\n+++ b/src/cache.cpp\n@@ -1,68 +1,73 @@\n #include \"inventory/cache.h\"\n \n+#include <utility>\n+\n namespace inventory {\n \n PriceCache::PriceCache(int capacity)\n-    : capacity_(capacity > 0 ? capacity : 1), size_(0), head_(NULL), tail_(NULL) {}\n+    : capacity_(capacity > 0 ? capacity : 1), size_(0), head_(), tail_(NULL) {}\n \n PriceCache::~PriceCache() {\n-    Node* node = head_;\n+    // Release the chain iteratively so a long list cannot overflow the stack.\n+    std::unique_ptr<Node> node = std::move(head_);\n     while (node != NULL) {\n-        Node* next = node->next;\n-        delete node;\n-        node = next;\n+        std::unique_ptr<Node> next = std::move(node->next);\n+        node = std::move(next);\n     }\n }\n \n-void PriceCache::unlink(Node* node) {\n-    if (node->prev != NULL) {\n-        node->prev->next = node->next;\n+std::unique_ptr<PriceCache::Node> PriceCache::unlink(Node* node) {\n+    Node* prev = node->prev;\n+    Node* next = node->next.get();\n+    std::unique_ptr<Node> owned;\n+    if (prev != NULL) {\n+        owned = std::move(prev->next);\n+        prev->next = std::move(node->next);\n     } else {\n-        head_ = node->next;\n+        owned = std::move(head_);\n+        head_ = std::move(node->next);\n     }\n-    if (node->next != NULL) {\n-        node->next->prev = node->prev;\n+    if (next != NULL) {\n+        next->prev = prev;\n     } else {\n-        tail_ = node->prev;\n+        tail_ = prev;\n     }\n     node->prev = NULL;\n-    node->next = NULL;\n+    return owned;\n }\n \n-void PriceCache::pushFront(Node* node) {\n+void PriceCache::pushFront(std::unique_ptr<Node> node) {\n     node->prev = NULL;\n-    node->next = head_;\n-    if (head_ != NULL) {\n-        head_->prev = node;\n+    node->next = std::move(head_);\n+    if (node->next != NULL) {\n+        node->next->prev = node.get();\n     }\n-    head_ = node;\n     if (tail_ == NULL) {\n-        tail_ = node;\n+        tail_ = node.get();\n     }\n+    head_ = std::move(node);\n }\n \n void PriceCache::put(const std::string& key, double price) {\n     std::map<std::string, Node*>::iterator it = index_.find(key);\n     if (it != index_.end()) {\n         it->second->price = price;\n-        unlink(it->second);\n-        pushFront(it->second);\n+        pushFront(unlink(it->second));\n         return;\n     }\n     if (size_ == capacity_) {\n-        Node* victim = tail_;\n-        unlink(victim);\n+        std::unique_ptr<Node> victim = unlink(tail_);\n         index_.erase(victim->key);\n-        delete victim;\n+        victim.reset();\n         --size_;\n     }\n-    Node* node = new Node;\n+    std::unique_ptr<Node> node(new Node());\n     node->key = key;\n     node->price = price;\n     node->prev = NULL;\n-    node->next = NULL;\n-    pushFront(node);\n-    index_[key] = node;\n+    Node* raw = node.get();\n+    pushFront(std::move(node));\n+    index_[key] = raw;\n     ++size_;\n }\n \n@@ -71,8 +76,7 @@ bool PriceCache::get(const std::string& key, double* price) {\n     if (it == index_.end()) {\n         return false;\n     }\n-    unlink(it->second);\n-    pushFront(it->second);\n+    pushFront(unlink(it->second));\n     if (price != NULL) {\n         *price = it->second->price;\n     }\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 74.4
+    },
+    {
+      "id": "ownership-item",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/item.h",
+        "src/item.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 8,
+        "duration_ms": 47602,
+        "total_cost_usd_equivalent": 0.1365788,
+        "usage": {
+          "input_tokens": 16,
+          "cache_creation_input_tokens": 22429,
+          "cache_read_input_tokens": 290154,
+          "output_tokens": 1767,
+          "output_tokens_details": {
+            "thinking_tokens": 314
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 22429,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 720,
+              "cache_read_input_tokens": 48620,
+              "cache_creation_input_tokens": 1023,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 1023
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "I aborted unit U-0001 (run `20261102-180338-50fb`) without making any edits. The migration can't be done correctly with only `include/inventory/item.h` and `src/item.cpp`. The run branch and worktree were removed, so nothing was committed and your working tree is untouched.\n\n**Why it was aborted:** the rule left two sites, `Item::clone()` and `Perishable::clone()`, which return a raw `Item*` that the caller must delete. Changing both to return `std::unique_ptr<Item>` breaks callers outside the unit's files:\n- `src/warehouse.cpp` lines 11 and 22 push `clone()` results into `std::vector<Item*>`. That vector is also deleted by hand in the destructor and in `add`.\n- `tests/item_test.cpp` lines 28\u201334 do `Item* copy = original->clone(); \u2026 delete copy;`.\n\nCodeCoreMorph rejects edits outside the unit's files, and I'm not allowed to change tests. A raw-pointer shim inside the unit would only move the problem and keep the ownership bug.\n\n**What it needs:** the ownership change reaches the `Warehouse` class (`add`, `release`, `items_`), `factory.h`/`factory.cpp`, `order.cpp`, and the tests, so a fuller unit is needed. A reasonable one would be:\n- **Rule:** `convert_raw_pointers_to_smart_pointers`.\n- **Files:** `include/inventory/item.h`, `src/item.cpp`, `include/inventory/warehouse.h`, `src/warehouse.cpp`, and probably `include/inventory/factory.h`, `src/factory.cpp` and `src/order.cpp`.\n- **Tests:** `tests/item_test.cpp`, `tests/factory_test.cpp` and `tests/warehouse_test.cpp` call these APIs with raw pointers and `delete`. Either you update them or the project gives me explicit permission to.\n\nSay if you want me to run it with that wider file list.\n\nThe manifest uses `sandbox.mode: native`, so the baseline build and tests ran directly on this machine. They passed at the base commit."
+      },
+      "passed": false,
+      "units_started": 1,
+      "status": "aborted",
+      "agent_skipped": false,
+      "attempts": 0,
+      "attempt_outcomes": [],
+      "reason": "Converting Item::clone() to return std::unique_ptr<Item> requires updating callers outside the unit's files: src/warehouse.cpp (lines 11, 22 push clone() results into std::vector<Item*>) and tests/item_test.cpp (Item* copy = original->clone(); delete copy). Those edits are outside the unit and test changes are not allowed. The unit needs to include src/warehouse.cpp, include/inventory/warehouse.h (and the tests updated by the owner) to be done correctly.",
+      "summary": null,
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [],
+      "diff": "",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 49.9
+    },
+    {
+      "id": "ownership-factory",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/factory.h",
+        "src/factory.cpp",
+        "tests/factory_test.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 12,
+        "duration_ms": 73796,
+        "total_cost_usd_equivalent": 0.2282591,
+        "usage": {
+          "input_tokens": 20,
+          "cache_creation_input_tokens": 30674,
+          "cache_read_input_tokens": 405388,
+          "output_tokens": 6467,
+          "output_tokens_details": {
+            "thinking_tokens": 708
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 30674,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 714,
+              "cache_read_input_tokens": 55877,
+              "cache_creation_input_tokens": 2011,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2011
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on the second attempt. The first attempt failed to build because `std::make_unique` isn't available at C++11.\n\n- **Rule:** `convert_raw_pointers_to_smart_pointers`\n- **Files:** `include/inventory/factory.h`, `src/factory.cpp`, `tests/factory_test.cpp`\n- **Branch and commit:** `codecoremorph/20261102-180427-8974`, commit `b78bee76e0a6`\n- **Review:** `git diff a7a6db85b160 codecoremorph/20261102-180427-8974`. I didn't merge anything, and your working tree and `master` are unchanged.\n\n**What changed**\n- `createItem` now returns `std::unique_ptr<Item>`, and a malformed spec gives a null pointer.\n- `createItems` returns `std::vector<std::unique_ptr<Item>>`.\n- `makeReport` returns `std::unique_ptr<Report>`. It takes the item vector by const reference.\n- `destroyItems` is kept as a public function, but it now just clears the vector.\n- The tests lost their manual `delete` calls. They compare against `nullptr` instead of `NULL`, and `report.reset()` replaces `delete report`. No assertions were changed.\n\n**Things to check**\n- **Public API:** the signatures in `factory.h` changed. I found no callers outside the unit.\n- **No `make_unique`:** the project still builds as C++11, because the standard bump is a separate unit. I used `std::unique_ptr<T>(new T(...))` instead. You can switch to `make_unique` after the bump.\n- **Three sites left:** CodeCoreMorph still reports 3 rule sites remaining, as a warning rather than a failure. I assume these are the `new` expressions inside the `unique_ptr` constructors; I didn't confirm that.\n- **`Item::clone()`:** it still returns a raw owning pointer. It lives in `item.h`, which is outside this unit, so I left it alone.\n- **Native sandbox:** the manifest sets the sandbox to native, so builds and tests ran directly on this machine rather than in Docker."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "build_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Convert owning raw pointers in the item factory to std::unique_ptr: createItem returns unique_ptr<Item>, createItems returns vector<unique_ptr<Item>>, makeReport returns unique_ptr<Report>; destroyItems now just clears the vector. Tests updated to match, with no manual deletes.",
+      "review_notes": [
+        "Public API change in include/inventory/factory.h: createItem, createItems, destroyItems and makeReport signatures changed; no callers outside the unit were found.",
+        "The project still builds as C++11 (the standard bump is a separate unit), so std::make_unique is unavailable; unique_ptr<T>(new T(...)) is used instead. It can be switched to make_unique after the bump.",
+        "makeReport's items parameter is a const vector<unique_ptr<Item>>& since it only observes the items; the Item pointers stay owned by the vector.",
+        "destroyItems is kept (now just clear()) so the public function and its test remain.",
+        "Item::clone() returns a raw owning Item* but is in item.h, outside this unit, so it was left unchanged.",
+        "Tests use nullptr instead of NULL for comparisons with unique_ptr; 'report.reset()' replaces 'delete report'. Assertions are otherwise unchanged."
+      ],
+      "warnings": [
+        "convert_raw_pointers_to_smart_pointers: 3 site(s) left (a warning)"
+      ],
+      "changed_files": [
+        "include/inventory/factory.h",
+        "src/factory.cpp",
+        "tests/factory_test.cpp"
+      ],
+      "diff": "diff --git a/include/inventory/factory.h b/include/inventory/factory.h\nindex 89d34ca..b6bc8d1 100644\n--- a/include/inventory/factory.h\n+++ b/include/inventory/factory.h\n@@ -1,6 +1,7 @@\n #ifndef INVENTORY_FACTORY_H\n #define INVENTORY_FACTORY_H\n \n+#include <memory>\n #include <string>\n #include <vector>\n \n@@ -9,22 +10,23 @@\n namespace inventory {\n \n // Creates an item from a \"kind:name:price:quantity[:days]\" spec.\n-// Returns NULL for a malformed spec. The caller owns the result.\n-Item* createItem(const std::string& spec);\n+// Returns a null pointer for a malformed spec. The caller owns the result.\n+std::unique_ptr<Item> createItem(const std::string& spec);\n \n // Creates every item in specs; malformed ones are skipped. The caller owns the items.\n-std::vector<Item*> createItems(const std::vector<std::string>& specs);\n+std::vector<std::unique_ptr<Item>> createItems(const std::vector<std::string>& specs);\n \n // Deletes every item and clears the vector.\n-void destroyItems(std::vector<Item*>& items);\n+void destroyItems(std::vector<std::unique_ptr<Item>>& items);\n \n-// A text report built on the heap; the caller deletes it.\n+// A text report built on the heap; the caller owns it.\n struct Report {\n     std::string title;\n     std::vector<std::string> lines;\n };\n \n-Report* makeReport(const std::string& title, const std::vector<Item*>& items);\n+std::unique_ptr<Report> makeReport(const std::string& title,\n+                                   const std::vector<std::unique_ptr<Item>>& items);\n \n }  // namespace inventory\n \ndiff --git a/src/factory.cpp b/src/factory.cpp\nindex 24c23ff..275848e 100644\n--- a/src/factory.cpp\n+++ b/src/factory.cpp\n@@ -2,6 +2,7 @@\n \n #include <cstdlib>\n #include <sstream>\n+#include <utility>\n \n namespace inventory {\n \n@@ -37,46 +38,45 @@ bool toNumber(const std::string& text, double* out) {\n \n }  // namespace\n \n-Item* createItem(const std::string& spec) {\n+std::unique_ptr<Item> createItem(const std::string& spec) {\n     std::vector<std::string> parts = split(spec, ':');\n     if (parts.size() < 4) {\n-        return NULL;\n+        return nullptr;\n     }\n     double price = 0.0;\n     double quantity = 0.0;\n     if (parts[1].empty() || !toNumber(parts[2], &price) || !toNumber(parts[3], &quantity)) {\n-        return NULL;\n+        return nullptr;\n     }\n     if (parts[0] == \"item\" && parts.size() == 4) {\n-        return new Item(parts[1], price, static_cast<int>(quantity));\n+        return std::unique_ptr<Item>(new Item(parts[1], price, static_cast<int>(quantity)));\n     }\n     double days = 0.0;\n     if (parts[0] == \"perishable\" && parts.size() == 5 && toNumber(parts[4], &days)) {\n-        return new Perishable(parts[1], price, static_cast<int>(quantity), static_cast<int>(days));\n+        return std::unique_ptr<Item>(new Perishable(parts[1], price, static_cast<int>(quantity),\n+                                                    static_cast<int>(days)));\n     }\n-    return NULL;\n+    return nullptr;\n }\n \n-std::vector<Item*> createItems(const std::vector<std::string>& specs) {\n-    std::vector<Item*> items;\n+std::vector<std::unique_ptr<Item>> createItems(const std::vector<std::string>& specs) {\n+    std::vector<std::unique_ptr<Item>> items;\n     for (size_t i = 0; i < specs.size(); ++i) {\n-        Item* item = createItem(specs[i]);\n-        if (item != NULL) {\n-            items.push_back(item);\n+        std::unique_ptr<Item> item = createItem(specs[i]);\n+        if (item != nullptr) {\n+            items.push_back(std::move(item));\n         }\n     }\n     return items;\n }\n \n-void destroyItems(std::vector<Item*>& items) {\n-    for (size_t i = 0; i < items.size(); ++i) {\n-        delete items[i];\n-    }\n+void destroyItems(std::vector<std::unique_ptr<Item>>& items) {\n     items.clear();\n }\n \n-Report* makeReport(const std::string& title, const std::vector<Item*>& items) {\n-    Report* report = new Report;\n+std::unique_ptr<Report> makeReport(const std::string& title,\n+                                   const std::vector<std::unique_ptr<Item>>& items) {\n+    std::unique_ptr<Report> report(new Report);\n     report->title = title;\n     double total = 0.0;\n     for (size_t i = 0; i < items.size(); ++i) {\ndiff --git a/tests/factory_test.cpp b/tests/factory_test.cpp\nindex 00bb255..68f99ed 100644\n--- a/tests/factory_test.cpp\n+++ b/tests/factory_test.cpp\n@@ -8,24 +8,22 @@ using inventory::Item;\n using inventory::Report;\n \n TEST(FactoryTest, CreatesItems) {\n-    Item* item = inventory::createItem(\"item:nut:0.5:10\");\n-    ASSERT_TRUE(item != NULL);\n+    std::unique_ptr<Item> item = inventory::createItem(\"item:nut:0.5:10\");\n+    ASSERT_TRUE(item != nullptr);\n     EXPECT_EQ(\"nut\", item->name());\n     EXPECT_DOUBLE_EQ(5.0, item->value());\n-    delete item;\n \n-    Item* milk = inventory::createItem(\"perishable:milk:1:4:2\");\n-    ASSERT_TRUE(milk != NULL);\n+    std::unique_ptr<Item> milk = inventory::createItem(\"perishable:milk:1:4:2\");\n+    ASSERT_TRUE(milk != nullptr);\n     EXPECT_DOUBLE_EQ(2.0, milk->value());\n-    delete milk;\n }\n \n TEST(FactoryTest, RejectsMalformedSpecs) {\n-    EXPECT_TRUE(inventory::createItem(\"\") == NULL);\n-    EXPECT_TRUE(inventory::createItem(\"item:nut:abc:1\") == NULL);\n-    EXPECT_TRUE(inventory::createItem(\"item::1:1\") == NULL);\n-    EXPECT_TRUE(inventory::createItem(\"gadget:x:1:1\") == NULL);\n-    EXPECT_TRUE(inventory::createItem(\"perishable:milk:1:4\") == NULL);\n+    EXPECT_TRUE(inventory::createItem(\"\") == nullptr);\n+    EXPECT_TRUE(inventory::createItem(\"item:nut:abc:1\") == nullptr);\n+    EXPECT_TRUE(inventory::createItem(\"item::1:1\") == nullptr);\n+    EXPECT_TRUE(inventory::createItem(\"gadget:x:1:1\") == nullptr);\n+    EXPECT_TRUE(inventory::createItem(\"perishable:milk:1:4\") == nullptr);\n }\n \n TEST(FactoryTest, BatchCreateAndDestroy) {\n@@ -34,7 +32,7 @@ TEST(FactoryTest, BatchCreateAndDestroy) {\n     specs.push_back(\"item:a:1:1\");\n     specs.push_back(\"broken\");\n     specs.push_back(\"item:b:2:2\");\n-    std::vector<Item*> items = inventory::createItems(specs);\n+    std::vector<std::unique_ptr<Item>> items = inventory::createItems(specs);\n     EXPECT_EQ(2u, items.size());\n     EXPECT_EQ(before + 2, Item::liveCount());\n     inventory::destroyItems(items);\n@@ -46,13 +44,13 @@ TEST(FactoryTest, Reports) {\n     std::vector<std::string> specs;\n     specs.push_back(\"item:a:1:1\");\n     specs.push_back(\"item:b:2:2\");\n-    std::vector<Item*> items = inventory::createItems(specs);\n-    Report* report = inventory::makeReport(\"stock\", items);\n+    std::vector<std::unique_ptr<Item>> items = inventory::createItems(specs);\n+    std::unique_ptr<Report> report = inventory::makeReport(\"stock\", items);\n     ASSERT_EQ(3u, report->lines.size());\n     EXPECT_EQ(\"stock\", report->title);\n     EXPECT_EQ(\"a x1 @ 1\", report->lines[0]);\n     EXPECT_EQ(\"total: 5\", report->lines[2]);\n-    delete report;\n+    report.reset();\n     inventory::destroyItems(items);\n }\n \n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 76.6
+    },
+    {
+      "id": "ownership-order",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/order.h",
+        "src/order.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 11,
+        "duration_ms": 54077,
+        "total_cost_usd_equivalent": 0.19747779999999998,
+        "usage": {
+          "input_tokens": 22,
+          "cache_creation_input_tokens": 25845,
+          "cache_read_input_tokens": 446084,
+          "output_tokens": 4930,
+          "output_tokens_details": {
+            "thinking_tokens": 527
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 25845,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 585,
+              "cache_read_input_tokens": 52518,
+              "cache_creation_input_tokens": 541,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 541
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on attempt 2 of 4. The change is commit `08bec569ff77` on branch `codecoremorph/20261102-180537-01a0`, and the project builds and its tests pass. Your own branch is unchanged. Builds ran natively, as the manifest says, not in Docker.\n\n- **Rule and files:** `convert_raw_pointers_to_smart_pointers` on `include/inventory/order.h` and `src/order.cpp`.\n- **What changed:**\n  - `Order::lines_` is now a `std::unique_ptr<OrderLine[]>`.\n  - Both `delete[]` calls and the destructor are gone.\n  - The deep-copying copy constructor and `operator=` are kept so `Order` stays copyable.\n  - `grow()` and `operator=` now swap in a new `unique_ptr` with `std::move`.\n  - `<memory>` and `<utility>` are included.\n- **Attempt 1 failed:** I used `std::make_unique`, which is C++14. The project still builds at C++11 because the standard bump hasn't been applied.\n- **Attempt 2:** I used `std::unique_ptr<OrderLine[]>(new OrderLine[n])` instead. CodeCoreMorph still reports 4 sites left (the `new` expressions) as a warning, but the unit passed.\n- **Kept raw (non-owning):** `customer_` (`const Customer*`) and the `Item*` that `Warehouse::find` returns.\n\nAfter `bump_standard` is applied, those four `new` forms can become `std::make_unique<OrderLine[]>(n)`.\n\nTo review: `git diff 83c1e9ede9a8 codecoremorph/20261102-180537-01a0`. I haven't merged anything."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "build_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Own Order's line array with std::unique_ptr<OrderLine[]>; remove manual delete[] and the destructor; keep deep-copying copy ctor/assignment so Order stays copyable. Uses unique_ptr(new T[n]) because the project still builds at C++11 (make_unique is C++14).",
+      "review_notes": [
+        "customer_ stays a raw const Customer* (non-owning, not deleted).",
+        "Warehouse::find results (Item*) stay raw: non-owning observers.",
+        "Copy constructor and assignment retained to preserve deep-copy behavior; destructor removed (implicit now).",
+        "std::make_unique<T[]> is unavailable at C++11; once bump_standard is applied, the unique_ptr(new T[n]) forms can become std::make_unique<OrderLine[]>(n)."
+      ],
+      "warnings": [
+        "convert_raw_pointers_to_smart_pointers: 4 site(s) left (a warning)"
+      ],
+      "changed_files": [
+        "include/inventory/order.h",
+        "src/order.cpp"
+      ],
+      "diff": "diff --git a/include/inventory/order.h b/include/inventory/order.h\nindex f15fc7f..195a6be 100644\n--- a/include/inventory/order.h\n+++ b/include/inventory/order.h\n@@ -1,6 +1,7 @@\n #ifndef INVENTORY_ORDER_H\n #define INVENTORY_ORDER_H\n \n+#include <memory>\n #include <string>\n \n namespace inventory {\n@@ -18,14 +19,13 @@ struct OrderLine {\n     double unitPrice;\n };\n \n-// An order with a growable array of lines (managed by hand) and a non-owning\n+// An order with a growable array of lines (owned by a unique_ptr) and a non-owning\n // pointer to its customer.\n class Order {\n public:\n     explicit Order(const Customer* customer);\n     Order(const Order& other);\n     Order& operator=(const Order& other);\n-    ~Order();\n \n     void addLine(const std::string& item, int quantity, double unitPrice);\n     int lineCount() const { return count_; }\n@@ -40,7 +40,7 @@ private:\n     void grow();\n \n     const Customer* customer_;  // not owned\n-    OrderLine* lines_;\n+    std::unique_ptr<OrderLine[]> lines_;\n     int count_;\n     int capacity_;\n };\ndiff --git a/src/order.cpp b/src/order.cpp\nindex bdd6d0f..009b572 100644\n--- a/src/order.cpp\n+++ b/src/order.cpp\n@@ -2,6 +2,9 @@\n \n #include \"inventory/warehouse.h\"\n \n+#include <memory>\n+#include <utility>\n+\n namespace inventory {\n \n Order::Order(const Customer* customer)\n@@ -21,28 +24,24 @@ Order& Order::operator=(const Order& other) {\n     if (this == &other) {\n         return *this;\n     }\n-    OrderLine* fresh = new OrderLine[other.capacity_];\n+    std::unique_ptr<OrderLine[]> fresh(new OrderLine[other.capacity_]);\n     for (int i = 0; i < other.count_; ++i) {\n         fresh[i] = other.lines_[i];\n     }\n-    delete[] lines_;\n-    lines_ = fresh;\n+    lines_ = std::move(fresh);\n     customer_ = other.customer_;\n     count_ = other.count_;\n     capacity_ = other.capacity_;\n     return *this;\n }\n \n-Order::~Order() { delete[] lines_; }\n-\n void Order::grow() {\n     int capacity = capacity_ * 2;\n-    OrderLine* bigger = new OrderLine[capacity];\n+    std::unique_ptr<OrderLine[]> bigger(new OrderLine[capacity]);\n     for (int i = 0; i < count_; ++i) {\n         bigger[i] = lines_[i];\n     }\n-    delete[] lines_;\n-    lines_ = bigger;\n+    lines_ = std::move(bigger);\n     capacity_ = capacity;\n }\n \n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 56.5
+    },
+    {
+      "id": "ownership-warehouse",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/warehouse.h",
+        "src/warehouse.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 10,
+        "duration_ms": 51166,
+        "total_cost_usd_equivalent": 0.17771759999999998,
+        "usage": {
+          "input_tokens": 18,
+          "cache_creation_input_tokens": 26492,
+          "cache_read_input_tokens": 345371,
+          "output_tokens": 3703,
+          "output_tokens_details": {
+            "thinking_tokens": 467
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 26492,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 600,
+              "cache_read_input_tokens": 53107,
+              "cache_creation_input_tokens": 599,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 599
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The unit succeeded on the first attempt. The project built and its tests passed.\n\n- **Rule:** `convert_raw_pointers_to_smart_pointers`\n- **Files:** `include/inventory/warehouse.h`, `src/warehouse.cpp`\n- **Branch and commit:** `codecoremorph/20261102-180635-3217`, commit `9a19d841ccfd`\n- **Build mode:** native, not Docker.\n\n**What changed**\n- `Warehouse` now stores its items as `std::vector<std::unique_ptr<Item>>`.\n- The three manual `delete`s are gone, along with the destructor and `clear()`.\n- The deep-copying copy constructor and copy assignment stay, with `clone()` results wrapped in `unique_ptr` straight away.\n- `add()` wraps its incoming pointer in a `unique_ptr` at once, so a merged duplicate is freed automatically.\n- `release()` uses `unique_ptr::release()`.\n\n**For review**\n- **Raw signatures kept:** `add(Item*)` and `release()` still use raw pointers. Their callers are in `tests/warehouse_test.cpp` and `tests/order_test.cpp`, outside this unit, and I couldn't change them without editing tests. Changing these two signatures to `unique_ptr<Item>` is a follow-up that needs those callers updated.\n- **`Item::clone()`:** it still returns a raw `Item*` (`item.h` is outside the unit), so I wrapped each result immediately.\n- **Raw by design:** `find()` stays raw because it only observes. `release()` returns a raw pointer because ownership passes to the caller.\n\nTo review: `git diff a32cd2f7bd2c codecoremorph/20261102-180635-3217`. I haven't merged anything."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Store Warehouse items as std::vector<std::unique_ptr<Item>>; remove manual deletes, the destructor and clear(). Public API (add(Item*), release()) unchanged.",
+      "review_notes": [
+        "add(Item*) still takes a raw pointer and release() still returns a raw Item*: their callers (tests/warehouse_test.cpp, tests/order_test.cpp) are outside this unit, so the signatures were kept to avoid breaking them. Follow-up: change to unique_ptr<Item> and update callers.",
+        "Item::clone() returns a raw Item* (item.h, outside the unit); results are wrapped in unique_ptr immediately.",
+        "Kept raw: find() return value (non-owning observer), the Item* parameter of add() (wrapped into unique_ptr at once), the Item* returned by release() (ownership handed to the caller).",
+        "Copy constructor and copy assignment kept with deep copy (clone) since Warehouse is copied in tests; the destructor is now implicitly generated."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "include/inventory/warehouse.h",
+        "src/warehouse.cpp"
+      ],
+      "diff": "diff --git a/include/inventory/warehouse.h b/include/inventory/warehouse.h\nindex 0ce462f..21342e1 100644\n--- a/include/inventory/warehouse.h\n+++ b/include/inventory/warehouse.h\n@@ -1,6 +1,7 @@\n #ifndef INVENTORY_WAREHOUSE_H\n #define INVENTORY_WAREHOUSE_H\n \n+#include <memory>\n #include <string>\n #include <vector>\n \n@@ -14,7 +15,6 @@ public:\n     explicit Warehouse(const std::string& name);\n     Warehouse(const Warehouse& other);\n     Warehouse& operator=(const Warehouse& other);\n-    ~Warehouse();\n \n     const std::string& name() const { return name_; }\n \n@@ -28,10 +28,8 @@ public:\n     std::vector<std::string> lowStock(int threshold) const;\n \n private:\n-    void clear();\n-\n     std::string name_;\n-    std::vector<Item*> items_;\n+    std::vector<std::unique_ptr<Item> > items_;\n };\n \n }  // namespace inventory\ndiff --git a/src/warehouse.cpp b/src/warehouse.cpp\nindex c7e90cd..08129c1 100644\n--- a/src/warehouse.cpp\n+++ b/src/warehouse.cpp\n@@ -1,6 +1,7 @@\n #include \"inventory/warehouse.h\"\n \n #include <cstddef>\n+#include <utility>\n \n namespace inventory {\n \n@@ -8,7 +9,7 @@ Warehouse::Warehouse(const std::string& name) : name_(name) {}\n \n Warehouse::Warehouse(const Warehouse& other) : name_(other.name_) {\n     for (size_t i = 0; i < other.items_.size(); ++i) {\n-        items_.push_back(other.items_[i]->clone());\n+        items_.push_back(std::unique_ptr<Item>(other.items_[i]->clone()));\n     }\n }\n \n@@ -16,40 +17,30 @@ Warehouse& Warehouse::operator=(const Warehouse& other) {\n     if (this == &other) {\n         return *this;\n     }\n-    clear();\n+    items_.clear();\n     name_ = other.name_;\n     for (size_t i = 0; i < other.items_.size(); ++i) {\n-        items_.push_back(other.items_[i]->clone());\n+        items_.push_back(std::unique_ptr<Item>(other.items_[i]->clone()));\n     }\n     return *this;\n }\n \n-Warehouse::~Warehouse() { clear(); }\n-\n-void Warehouse::clear() {\n-    for (size_t i = 0; i < items_.size(); ++i) {\n-        delete items_[i];\n-    }\n-    items_.clear();\n-}\n-\n void Warehouse::add(Item* item) {\n     if (item == NULL) {\n         return;\n     }\n-    Item* existing = find(item->name());\n+    std::unique_ptr<Item> owned(item);\n+    Item* existing = find(owned->name());\n     if (existing != NULL) {\n-        existing->setQuantity(existing->quantity() + item->quantity());\n-        delete item;\n+        existing->setQuantity(existing->quantity() + owned->quantity());\n         return;\n     }\n-    items_.push_back(item);\n+    items_.push_back(std::move(owned));\n }\n \n bool Warehouse::remove(const std::string& name) {\n-    for (std::vector<Item*>::iterator it = items_.begin(); it != items_.end(); ++it) {\n+    for (std::vector<std::unique_ptr<Item> >::iterator it = items_.begin(); it != items_.end(); ++it) {\n         if ((*it)->name() == name) {\n-            delete *it;\n             items_.erase(it);\n             return true;\n         }\n@@ -60,16 +51,16 @@ bool Warehouse::remove(const std::string& name) {\n Item* Warehouse::find(const std::string& name) const {\n     for (size_t i = 0; i < items_.size(); ++i) {\n         if (items_[i]->name() == name) {\n-            return items_[i];\n+            return items_[i].get();\n         }\n     }\n     return NULL;\n }\n \n Item* Warehouse::release(const std::string& name) {\n-    for (std::vector<Item*>::iterator it = items_.begin(); it != items_.end(); ++it) {\n+    for (std::vector<std::unique_ptr<Item> >::iterator it = items_.begin(); it != items_.end(); ++it) {\n         if ((*it)->name() == name) {\n-            Item* item = *it;\n+            Item* item = it->release();\n             items_.erase(it);\n             return item;\n         }\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 53.9
+    },
+    {
+      "id": "multi-module-pipeline",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/mm/core/pipeline.h",
+        "src/core/pipeline.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 9,
+        "duration_ms": 44791,
+        "total_cost_usd_equivalent": 0.16297500000000004,
+        "usage": {
+          "input_tokens": 16,
+          "cache_creation_input_tokens": 24739,
+          "cache_read_input_tokens": 291192,
+          "output_tokens": 3472,
+          "output_tokens_details": {
+            "thinking_tokens": 859
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 24739,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 671,
+              "cache_read_input_tokens": 49116,
+              "cache_creation_input_tokens": 2837,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2837
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "Unit U-0001 succeeded on the first attempt, but only part of the conversion is done. The build and tests pass, and the rule check still warns about 4 remaining sites.\n\n- **Rule:** `convert_raw_pointers_to_smart_pointers`\n- **Files:** `include/mm/core/pipeline.h`, `src/core/pipeline.cpp`\n- **Branch and commit:** `codecoremorph/20261102-180728-2393`, commit `5caf594958cf`\n- **Review:** `git diff fd7affb0979a codecoremorph/20261102-180728-2393`. I did not merge anything.\n\n**What changed**\n- `Pipeline` now stores its stages in `std::vector<std::unique_ptr<Stage>>`.\n- The manual destructor and its `delete` loop are gone.\n- `parsePipeline` builds the pipeline in a `std::unique_ptr` and calls `release()` on success. The manual `delete pipeline` calls on the error paths are gone.\n- `Pipeline` is still non-copyable.\n\n**What I left raw, and why**\n- `Pipeline::add(Stage*)` still takes ownership through a raw pointer, and `parsePipeline` still returns a raw `Pipeline*` for the caller to delete. `app/main.cpp` and `tests/pipeline_test.cpp` call both, and they are outside this unit. I couldn't edit them, and I didn't want to weaken the tests.\n- The 4 remaining sites the rule check still reports are the `new` expressions in `parsePipeline`. Each is passed straight to `add(Stage*)`, so they stay raw until that signature changes.\n\n**Next step:** a follow-up unit that includes `app/main.cpp` and `tests/pipeline_test.cpp` could switch `add` and `parsePipeline` to `unique_ptr`. It should start from this branch with `--base codecoremorph/20261102-180728-2393`.\n\nThe build and tests ran in native mode on this machine rather than in Docker."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Hold Pipeline stages in std::vector<std::unique_ptr<Stage>>, drop the manual destructor and deletes, and use a unique_ptr for the Pipeline built in parsePipeline (released to the caller).",
+      "review_notes": [
+        "Public API unchanged: Pipeline::add(Stage*) still takes ownership via a raw pointer and parsePipeline still returns a raw Pipeline* the caller deletes, because app/main.cpp and tests/pipeline_test.cpp (outside this unit) depend on them. Converting those to unique_ptr needs a follow-up unit including those files.",
+        "Pipeline stays non-copyable (private copy ctor/assignment kept)."
+      ],
+      "warnings": [
+        "convert_raw_pointers_to_smart_pointers: 4 site(s) left (a warning)"
+      ],
+      "changed_files": [
+        "include/mm/core/pipeline.h",
+        "src/core/pipeline.cpp"
+      ],
+      "diff": "diff --git a/include/mm/core/pipeline.h b/include/mm/core/pipeline.h\nindex 6a8d54d..42cea83 100644\n--- a/include/mm/core/pipeline.h\n+++ b/include/mm/core/pipeline.h\n@@ -1,6 +1,7 @@\n #ifndef MM_CORE_PIPELINE_H\n #define MM_CORE_PIPELINE_H\n \n+#include <memory>\n #include <string>\n #include <vector>\n \n@@ -44,7 +45,6 @@ private:\n class Pipeline {\n public:\n     Pipeline() {}\n-    ~Pipeline();\n \n     Pipeline& add(Stage* stage);\n     std::string run(const std::string& text) const;\n@@ -55,7 +55,7 @@ private:\n     Pipeline(const Pipeline&);\n     Pipeline& operator=(const Pipeline&);\n \n-    std::vector<Stage*> stages_;\n+    std::vector<std::unique_ptr<Stage> > stages_;\n };\n \n // Builds a pipeline from \"lower,trim,replace:a:b\"; NULL if a stage is unknown.\ndiff --git a/src/core/pipeline.cpp b/src/core/pipeline.cpp\nindex fc5da44..0735261 100644\n--- a/src/core/pipeline.cpp\n+++ b/src/core/pipeline.cpp\n@@ -11,22 +11,16 @@ std::string ReplaceStage::apply(const std::string& text) const {\n     return util::replaceAll(text, from_, to_);\n }\n \n-Pipeline::~Pipeline() {\n-    for (std::vector<Stage*>::size_type i = 0; i < stages_.size(); ++i) {\n-        delete stages_[i];\n-    }\n-}\n-\n Pipeline& Pipeline::add(Stage* stage) {\n     if (stage != NULL) {\n-        stages_.push_back(stage);\n+        stages_.push_back(std::unique_ptr<Stage>(stage));\n     }\n     return *this;\n }\n \n std::string Pipeline::run(const std::string& text) const {\n     std::string out = text;\n-    for (std::vector<Stage*>::const_iterator it = stages_.begin(); it != stages_.end(); ++it) {\n+    for (std::vector<std::unique_ptr<Stage> >::const_iterator it = stages_.begin(); it != stages_.end(); ++it) {\n         out = (*it)->apply(out);\n     }\n     return out;\n@@ -34,14 +28,14 @@ std::string Pipeline::run(const std::string& text) const {\n \n util::StringList Pipeline::stageNames() const {\n     util::StringList names;\n-    for (std::vector<Stage*>::size_type i = 0; i < stages_.size(); ++i) {\n+    for (std::vector<std::unique_ptr<Stage> >::size_type i = 0; i < stages_.size(); ++i) {\n         names.push_back(stages_[i]->name());\n     }\n     return names;\n }\n \n Pipeline* parsePipeline(const std::string& spec) {\n-    Pipeline* pipeline = new Pipeline;\n+    std::unique_ptr<Pipeline> pipeline(new Pipeline);\n     util::StringList parts = util::split(spec, ',');\n     for (util::StringList::const_iterator it = parts.begin(); it != parts.end(); ++it) {\n         std::string part = util::trim(*it);\n@@ -52,16 +46,14 @@ Pipeline* parsePipeline(const std::string& spec) {\n         } else if (util::startsWith(part, \"replace:\")) {\n             util::StringList args = util::split(part, ':');\n             if (args.size() != 3) {\n-                delete pipeline;\n                 return NULL;\n             }\n             pipeline->add(new ReplaceStage(args[1], args[2]));\n         } else {\n-            delete pipeline;\n             return NULL;\n         }\n     }\n-    return pipeline;\n+    return pipeline.release();\n }\n \n }  // namespace core\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 47.2
+    },
+    {
+      "id": "removed-features-functional-cpp17",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt",
+        "include/toolkit/functional.h",
+        "src/functional.cpp"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 12,
+        "duration_ms": 90444,
+        "total_cost_usd_equivalent": 0.21009409999999998,
+        "usage": {
+          "input_tokens": 20,
+          "cache_creation_input_tokens": 31092,
+          "cache_read_input_tokens": 412114,
+          "output_tokens": 4417,
+          "output_tokens_details": {
+            "thinking_tokens": 423
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 31092,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 753,
+              "cache_read_input_tokens": 56952,
+              "cache_creation_input_tokens": 1354,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 1354
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "Unit U-0001 (`bump_standard`, cpp11 \u2192 cpp17) **succeeded** on attempt 2 of 4. The build passes and all tests pass. The commit is `a5f3bc244610` on branch `codecoremorph/20261102-180821-244a`, and your own branch is untouched. It changes 10 files.\n\n**What changed**\n- **Codemods (40 replacements):** these set the standard to 17 in `CMakeLists.txt` and also touched `logger.h`, `parser.h`, `logger.cpp`, `parser.cpp`, `shuffle.cpp`, `transaction.cpp` and `logger_test.cpp`.\n- **`include/toolkit/functional.h`:** I removed the `std::unary_function` and `std::binary_function` bases from `IsEven` and `InRange`.\n- **`src/functional.cpp`:** I replaced `bind1st`, `bind2nd`, `not1`, `ptr_fun` and `mem_fun_ref` with lambdas and `std::mem_fn`.\n- **`src/shuffle.cpp`:**\n  - Removed the `register` keyword.\n  - The codemod had replaced `random_shuffle` with `std::shuffle` seeded from `std::random_device`. That made `shuffled()` non-deterministic and failed `ShuffleTest.IsDeterministicPerSeed` on attempt 1. It is now seeded with `std::mt19937(seed)`.\n\n**For review**\n- `src/shuffle.cpp` is outside the four files you listed. I edited it because the standard-bump rule allows fixing failing files.\n- The shuffle order differs from the old `Lcg`-based order, which comes with moving from `random_shuffle` to `shuffle`. No test checks a specific order.\n- `Lcg` is no longer used by `shuffled()`. I left it in place because it is public API.\n- `IsEven` and `InRange` no longer define `argument_type` or `result_type`. Nothing in the code used them.\n\nI did not change or weaken any tests. The run used native sandbox mode, so builds and tests ran on this machine.\n\nTo review it, run `git diff 042e8e4b8a0a codecoremorph/20261102-180821-244a`. Merging is left to you."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "tests_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Seed the std::shuffle engine from the caller's seed so shuffled() stays deterministic per seed.",
+      "review_notes": [
+        "The deterministic codemod replaced random_shuffle with std::shuffle seeded by std::random_device, which broke seed determinism; now seeded with std::mt19937(seed). The resulting order differs from the old Lcg-based order (inherent to random_shuffle -> shuffle); no test checks a specific order.",
+        "src/shuffle.cpp is outside the listed files; edited as a failing file under bump_standard (also the earlier 'register' removal).",
+        "Lcg is now unused by shuffled() but left in place as public API.",
+        "IsEven and InRange no longer define argument_type/result_type; nothing used them."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/toolkit/functional.h",
+        "include/toolkit/logger.h",
+        "include/toolkit/parser.h",
+        "src/functional.cpp",
+        "src/logger.cpp",
+        "src/parser.cpp",
+        "src/shuffle.cpp",
+        "src/transaction.cpp",
+        "tests/logger_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 54a44ef..87a8070 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,7 +1,7 @@\n cmake_minimum_required(VERSION 3.21)\n project(LegacyToolkit CXX)\n \n-set(CMAKE_CXX_STANDARD 11)\n+set(CMAKE_CXX_STANDARD 17)\n set(CMAKE_CXX_STANDARD_REQUIRED ON)\n set(CMAKE_CXX_EXTENSIONS OFF)\n \ndiff --git a/include/toolkit/functional.h b/include/toolkit/functional.h\nindex 78b1029..c59491f 100644\n--- a/include/toolkit/functional.h\n+++ b/include/toolkit/functional.h\n@@ -7,12 +7,12 @@\n \n namespace toolkit {\n \n-// Function objects in the C++98 style: derived from unary_function and binary_function.\n-struct IsEven : public std::unary_function<int, bool> {\n+// Function objects in the C++98 style, without the removed unary_function and binary_function bases.\n+struct IsEven {\n     bool operator()(int value) const { return value % 2 == 0; }\n };\n \n-struct InRange : public std::binary_function<int, int, bool> {\n+struct InRange {\n     bool operator()(int value, int limit) const { return value >= 0 && value < limit; }\n };\n \ndiff --git a/include/toolkit/logger.h b/include/toolkit/logger.h\nindex 5cb41e4..2206017 100644\n--- a/include/toolkit/logger.h\n+++ b/include/toolkit/logger.h\n@@ -9,7 +9,7 @@ namespace toolkit {\n \n class Sink {\n public:\n-    virtual ~Sink() throw() {}\n+    virtual ~Sink() noexcept {}\n     virtual void write(const std::string& line) = 0;\n };\n \n@@ -22,24 +22,24 @@ public:\n // Owns its sink through std::auto_ptr: copying a Logger transfers the sink.\n class Logger {\n public:\n-    explicit Logger(std::auto_ptr<Sink> sink);\n+    explicit Logger(std::unique_ptr<Sink> sink);\n \n     void info(const std::string& message);\n     void error(const std::string& message);\n-    int count() const throw() { return count_; }\n-    bool hasSink() const throw() { return sink_.get() != 0; }\n+    int count() const noexcept { return count_; }\n+    bool hasSink() const noexcept { return sink_.get() != 0; }\n \n     // Hands the sink back to the caller; the logger stops writing.\n-    std::auto_ptr<Sink> detach();\n+    std::unique_ptr<Sink> detach();\n \n private:\n     void emit(const char* level, const std::string& message);\n \n-    std::auto_ptr<Sink> sink_;\n+    std::unique_ptr<Sink> sink_;\n     int count_;\n };\n \n-std::auto_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut);\n+std::unique_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut);\n \n }  // namespace toolkit\n \ndiff --git a/include/toolkit/parser.h b/include/toolkit/parser.h\nindex 2b4bf27..c29a3da 100644\n--- a/include/toolkit/parser.h\n+++ b/include/toolkit/parser.h\n@@ -11,7 +11,7 @@ class ParseError : public std::runtime_error {\n public:\n     ParseError(const std::string& message, int line)\n         : std::runtime_error(message), line_(line) {}\n-    int line() const throw() { return line_; }\n+    int line() const noexcept { return line_; }\n \n private:\n     int line_;\n@@ -22,11 +22,11 @@ class ConfigParser {\n public:\n     ConfigParser() {}\n \n-    void parse(const std::string& text) throw(ParseError);\n-    bool has(const std::string& key) const throw();\n-    std::string get(const std::string& key) const throw(std::out_of_range);\n-    int getInt(const std::string& key) const throw(std::out_of_range, std::invalid_argument);\n-    int size() const throw() { return static_cast<int>(values_.size()); }\n+    void parse(const std::string& text) noexcept(false);\n+    bool has(const std::string& key) const noexcept;\n+    std::string get(const std::string& key) const noexcept(false);\n+    int getInt(const std::string& key) const noexcept(false);\n+    int size() const noexcept { return static_cast<int>(values_.size()); }\n \n private:\n     std::map<std::string, std::string> values_;\ndiff --git a/src/functional.cpp b/src/functional.cpp\nindex 78dad77..4b090fe 100644\n--- a/src/functional.cpp\n+++ b/src/functional.cpp\n@@ -16,37 +16,37 @@ bool isVowel(char c) {\n std::vector<int> scaled(const std::vector<int>& values, int factor) {\n     std::vector<int> out;\n     std::transform(values.begin(), values.end(), std::back_inserter(out),\n-                   std::bind2nd(std::multiplies<int>(), factor));\n+                   [factor](int value) { return value * factor; });\n     return out;\n }\n \n std::vector<int> offset(const std::vector<int>& values, int amount) {\n     std::vector<int> out;\n     std::transform(values.begin(), values.end(), std::back_inserter(out),\n-                   std::bind1st(std::plus<int>(), amount));\n+                   [amount](int value) { return amount + value; });\n     return out;\n }\n \n int countOdd(const std::vector<int>& values) {\n-    return static_cast<int>(std::count_if(values.begin(), values.end(), std::not1(IsEven())));\n+    return static_cast<int>(std::count_if(values.begin(), values.end(), [](int value) { return !IsEven()(value); }));\n }\n \n int countBelow(const std::vector<int>& values, int limit) {\n     return static_cast<int>(\n-        std::count_if(values.begin(), values.end(), std::bind2nd(InRange(), limit)));\n+        std::count_if(values.begin(), values.end(), [limit](int value) { return InRange()(value, limit); }));\n }\n \n std::string vowels(const std::string& text) {\n     std::string out;\n     std::remove_copy_if(text.begin(), text.end(), std::back_inserter(out),\n-                        std::not1(std::ptr_fun(isVowel)));\n+                        [](char c) { return !isVowel(c); });\n     return out;\n }\n \n std::vector<std::string> names(const std::vector<Entry>& entries) {\n     std::vector<std::string> out;\n     std::transform(entries.begin(), entries.end(), std::back_inserter(out),\n-                   std::mem_fun_ref(&Entry::name));\n+                   std::mem_fn(&Entry::name));\n     return out;\n }\n \ndiff --git a/src/logger.cpp b/src/logger.cpp\nindex a1bf7cb..0b2d429 100644\n--- a/src/logger.cpp\n+++ b/src/logger.cpp\n@@ -1,8 +1,10 @@\n+#include <utility>\n+\n #include \"toolkit/logger.h\"\n \n namespace toolkit {\n \n-Logger::Logger(std::auto_ptr<Sink> sink) : sink_(sink), count_(0) {}\n+Logger::Logger(std::unique_ptr<Sink> sink) : sink_(std::move(sink)), count_(0) {}\n \n void Logger::emit(const char* level, const std::string& message) {\n     ++count_;\n@@ -15,14 +17,14 @@ void Logger::info(const std::string& message) { emit(\"info\", message); }\n \n void Logger::error(const std::string& message) { emit(\"error\", message); }\n \n-std::auto_ptr<Sink> Logger::detach() { return sink_; }\n+std::unique_ptr<Sink> Logger::detach() { return std::move(sink_); }\n \n-std::auto_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut) {\n+std::unique_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut) {\n     MemorySink* sink = new MemorySink;\n     if (sinkOut != 0) {\n         *sinkOut = sink;\n     }\n-    std::auto_ptr<Logger> logger(new Logger(std::auto_ptr<Sink>(sink)));\n+    std::unique_ptr<Logger> logger(new Logger(std::unique_ptr<Sink>(sink)));\n     return logger;\n }\n \ndiff --git a/src/parser.cpp b/src/parser.cpp\nindex 4c16fe4..a90d9aa 100644\n--- a/src/parser.cpp\n+++ b/src/parser.cpp\n@@ -17,7 +17,7 @@ std::string trim(const std::string& text) {\n \n }  // namespace\n \n-void ConfigParser::parse(const std::string& text) throw(ParseError) {\n+void ConfigParser::parse(const std::string& text) noexcept(false) {\n     int lineNumber = 0;\n     std::string::size_type start = 0;\n     while (start <= text.size()) {\n@@ -43,11 +43,11 @@ void ConfigParser::parse(const std::string& text) throw(ParseError) {\n     }\n }\n \n-bool ConfigParser::has(const std::string& key) const throw() {\n+bool ConfigParser::has(const std::string& key) const noexcept {\n     return values_.find(key) != values_.end();\n }\n \n-std::string ConfigParser::get(const std::string& key) const throw(std::out_of_range) {\n+std::string ConfigParser::get(const std::string& key) const noexcept(false) {\n     std::map<std::string, std::string>::const_iterator it = values_.find(key);\n     if (it == values_.end()) {\n         throw std::out_of_range(\"no key \" + key);\n@@ -56,7 +56,7 @@ std::string ConfigParser::get(const std::string& key) const throw(std::out_of_ra\n }\n \n int ConfigParser::getInt(const std::string& key) const\n-    throw(std::out_of_range, std::invalid_argument) {\n+    noexcept(false) {\n     std::string text = get(key);\n     char* end = 0;\n     long value = std::strtol(text.c_str(), &end, 10);\ndiff --git a/src/shuffle.cpp b/src/shuffle.cpp\nindex 1e7d9ed..05c4c3a 100644\n--- a/src/shuffle.cpp\n+++ b/src/shuffle.cpp\n@@ -1,6 +1,7 @@\n #include \"toolkit/shuffle.h\"\n \n #include <algorithm>\n+#include <random>\n \n namespace toolkit {\n \n@@ -11,8 +12,8 @@ std::ptrdiff_t Lcg::operator()(std::ptrdiff_t n) {\n \n std::vector<int> shuffled(const std::vector<int>& values, unsigned long seed) {\n     std::vector<int> out(values);\n-    Lcg rng(seed);\n-    std::random_shuffle(out.begin(), out.end(), rng);\n+    std::mt19937 rng(static_cast<std::mt19937::result_type>(seed));\n+    std::shuffle(out.begin(), out.end(), rng);\n     return out;\n }\n \n@@ -30,8 +31,8 @@ std::vector<int> deal(int cards, int hands, unsigned long seed) {\n }\n \n long fastSum(const int* values, int count) {\n-    register long total = 0;\n-    for (register int i = 0; i < count; ++i) {\n+    long total = 0;\n+    for (int i = 0; i < count; ++i) {\n         total += values[i];\n     }\n     return total;\ndiff --git a/src/transaction.cpp b/src/transaction.cpp\nindex 4fcdd3d..6fc0f59 100644\n--- a/src/transaction.cpp\n+++ b/src/transaction.cpp\n@@ -9,7 +9,7 @@ Transaction::Transaction(Journal& journal)\n \n Transaction::~Transaction() {\n     // Roll back when the scope is left by an exception, or without a commit.\n-    if (std::uncaught_exception() || !committed_) {\n+    if (std::uncaught_exceptions() || !committed_) {\n         journal_.entries.resize(mark_);\n     }\n }\ndiff --git a/tests/logger_test.cpp b/tests/logger_test.cpp\nindex ba43682..ae92e3b 100644\n--- a/tests/logger_test.cpp\n+++ b/tests/logger_test.cpp\n@@ -1,5 +1,7 @@\n #include <gtest/gtest.h>\n \n+#include <utility>\n+\n #include \"toolkit/logger.h\"\n \n namespace {\n@@ -10,7 +12,7 @@ using toolkit::Sink;\n \n TEST(LoggerTest, WritesToItsSink) {\n     MemorySink* sink = 0;\n-    std::auto_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n+    std::unique_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n     logger->info(\"started\");\n     logger->error(\"failed\");\n     ASSERT_EQ(2u, sink->lines.size());\n@@ -21,8 +23,8 @@ TEST(LoggerTest, WritesToItsSink) {\n \n TEST(LoggerTest, DetachHandsTheSinkBack) {\n     MemorySink* sink = 0;\n-    std::auto_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n-    std::auto_ptr<Sink> detached = logger->detach();\n+    std::unique_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n+    std::unique_ptr<Sink> detached = logger->detach();\n     EXPECT_FALSE(logger->hasSink());\n     logger->info(\"dropped\");\n     EXPECT_EQ(1, logger->count());\n@@ -31,8 +33,8 @@ TEST(LoggerTest, DetachHandsTheSinkBack) {\n }\n \n TEST(LoggerTest, AutoPtrCopiesTransferOwnership) {\n-    std::auto_ptr<Logger> first = toolkit::makeMemoryLogger(0);\n-    std::auto_ptr<Logger> second = first;\n+    std::unique_ptr<Logger> first = toolkit::makeMemoryLogger(0);\n+    std::unique_ptr<Logger> second = std::move(first);\n     EXPECT_TRUE(first.get() == 0);\n     EXPECT_TRUE(second.get() != 0);\n }\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 93.2
+    },
+    {
+      "id": "removed-features-everything-cpp20",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 20,
+        "duration_ms": 94286,
+        "total_cost_usd_equivalent": 0.2573836,
+        "usage": {
+          "input_tokens": 28,
+          "cache_creation_input_tokens": 35205,
+          "cache_read_input_tokens": 647815,
+          "output_tokens": 5158,
+          "output_tokens_details": {
+            "thinking_tokens": 620
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 35205,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 773,
+              "cache_read_input_tokens": 61918,
+              "cache_creation_input_tokens": 501,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 501
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "Unit U-0001 (`bump_standard` on `CMakeLists.txt` and `tests/CMakeLists.txt`) succeeded on the second attempt. The first attempt built but failed two tests.\n\n- **Branch and commit:** `codecoremorph/20261102-180950-ed17`, commit `527b21fc4d98`, 13 files changed.\n- **Review it with:** `git diff bfa8e8f34aac codecoremorph/20261102-180950-ed17`. I did not merge anything.\n- **Sandbox:** the build and tests ran in native mode, directly on this machine.\n\n**What changed**\n- **Codemods:** raised the standard to 20 in `CMakeLists.txt` and made 40 replacements across the code.\n- **`include/toolkit/misc.h`, `src/misc.cpp`:** renamed `concept` to `isConcept` and `requires` to `requiresLevel`, since both are C++20 keywords. I updated `tests/misc_test.cpp` to the new names.\n- **`Range`:** removed `Range() = default;` so it is an aggregate again.\n- **`Version`:** made `operator==` const and removed `operator!=`.\n- **`Counter::addAll`:** the lambda now captures `[=, this]`.\n- **`greeting()`:** the `u8` prefix is gone from the literal.\n- **`functional.h`, `functional.cpp`:** removed the `unary_function` and `binary_function` bases. Replaced `bind1st`, `bind2nd`, `ptr_fun` and `mem_fun_ref` with lambdas or `std::mem_fn`, and `not1` with `std::not_fn` or a lambda.\n- **`fastSum`:** removed `register`.\n- **`shuffled()`:** the codemod's `std::shuffle` was seeded from `std::random_device` and ignored the seed. I seeded it with the caller's seed, which fixed `ShuffleTest.IsDeterministicPerSeed`.\n\n**Review notes**\n- Two public functions were renamed, so any callers outside this project would need updating.\n- The shuffle order now differs from the old `random_shuffle` order. The tests only check that the result is a permutation and is the same for the same seed.\n- `Lcg` is no longer used by `shuffled()`. I kept it as public API."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "tests_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Seed the std::shuffle engine with the caller's seed so shuffled() stays deterministic per seed.",
+      "review_notes": [
+        "The deterministic codemod replaced random_shuffle with std::shuffle on an engine seeded from std::random_device, which ignored the seed; it is now seeded with the seed argument. The resulting order differs from the old Lcg-based random_shuffle order (expected per the rule); tests only check permutation and per-seed determinism.",
+        "Lcg is no longer used by shuffled() but is kept as public API."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/toolkit/functional.h",
+        "include/toolkit/logger.h",
+        "include/toolkit/misc.h",
+        "include/toolkit/parser.h",
+        "src/functional.cpp",
+        "src/logger.cpp",
+        "src/misc.cpp",
+        "src/parser.cpp",
+        "src/shuffle.cpp",
+        "src/transaction.cpp",
+        "tests/logger_test.cpp",
+        "tests/misc_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 54a44ef..cfc2163 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,7 +1,7 @@\n cmake_minimum_required(VERSION 3.21)\n project(LegacyToolkit CXX)\n \n-set(CMAKE_CXX_STANDARD 11)\n+set(CMAKE_CXX_STANDARD 20)\n set(CMAKE_CXX_STANDARD_REQUIRED ON)\n set(CMAKE_CXX_EXTENSIONS OFF)\n \ndiff --git a/include/toolkit/functional.h b/include/toolkit/functional.h\nindex 78b1029..85421ef 100644\n--- a/include/toolkit/functional.h\n+++ b/include/toolkit/functional.h\n@@ -8,11 +8,11 @@\n namespace toolkit {\n \n // Function objects in the C++98 style: derived from unary_function and binary_function.\n-struct IsEven : public std::unary_function<int, bool> {\n+struct IsEven {\n     bool operator()(int value) const { return value % 2 == 0; }\n };\n \n-struct InRange : public std::binary_function<int, int, bool> {\n+struct InRange {\n     bool operator()(int value, int limit) const { return value >= 0 && value < limit; }\n };\n \ndiff --git a/include/toolkit/logger.h b/include/toolkit/logger.h\nindex 5cb41e4..2206017 100644\n--- a/include/toolkit/logger.h\n+++ b/include/toolkit/logger.h\n@@ -9,7 +9,7 @@ namespace toolkit {\n \n class Sink {\n public:\n-    virtual ~Sink() throw() {}\n+    virtual ~Sink() noexcept {}\n     virtual void write(const std::string& line) = 0;\n };\n \n@@ -22,24 +22,24 @@ public:\n // Owns its sink through std::auto_ptr: copying a Logger transfers the sink.\n class Logger {\n public:\n-    explicit Logger(std::auto_ptr<Sink> sink);\n+    explicit Logger(std::unique_ptr<Sink> sink);\n \n     void info(const std::string& message);\n     void error(const std::string& message);\n-    int count() const throw() { return count_; }\n-    bool hasSink() const throw() { return sink_.get() != 0; }\n+    int count() const noexcept { return count_; }\n+    bool hasSink() const noexcept { return sink_.get() != 0; }\n \n     // Hands the sink back to the caller; the logger stops writing.\n-    std::auto_ptr<Sink> detach();\n+    std::unique_ptr<Sink> detach();\n \n private:\n     void emit(const char* level, const std::string& message);\n \n-    std::auto_ptr<Sink> sink_;\n+    std::unique_ptr<Sink> sink_;\n     int count_;\n };\n \n-std::auto_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut);\n+std::unique_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut);\n \n }  // namespace toolkit\n \ndiff --git a/include/toolkit/misc.h b/include/toolkit/misc.h\nindex baea777..6780567 100644\n--- a/include/toolkit/misc.h\n+++ b/include/toolkit/misc.h\n@@ -6,16 +6,15 @@\n \n namespace toolkit {\n \n-// \"concept\" and \"requires\" became keywords in C++20.\n-bool concept(const std::string& word);\n-int requires(int level);\n+// \"concept\" and \"requires\" became keywords in C++20, so the functions are renamed.\n+bool isConcept(const std::string& word);\n+int requiresLevel(int level);\n \n // A u8 literal is const char* before C++20 and const char8_t* after.\n const char* greeting();\n \n // An aggregate with a defaulted constructor: aggregate initialization works until C++20.\n struct Range {\n-    Range() = default;\n     int low;\n     int high;\n };\n@@ -27,8 +26,7 @@ int span(const Range& range);\n struct Version {\n     int major;\n     int minor;\n-    bool operator==(const Version& other) { return major == other.major && minor == other.minor; }\n-    bool operator!=(const Version& other) { return !(*this == other); }\n+    bool operator==(const Version& other) const { return major == other.major && minor == other.minor; }\n };\n \n // A counter whose callbacks capture this implicitly through [=].\ndiff --git a/include/toolkit/parser.h b/include/toolkit/parser.h\nindex 2b4bf27..c29a3da 100644\n--- a/include/toolkit/parser.h\n+++ b/include/toolkit/parser.h\n@@ -11,7 +11,7 @@ class ParseError : public std::runtime_error {\n public:\n     ParseError(const std::string& message, int line)\n         : std::runtime_error(message), line_(line) {}\n-    int line() const throw() { return line_; }\n+    int line() const noexcept { return line_; }\n \n private:\n     int line_;\n@@ -22,11 +22,11 @@ class ConfigParser {\n public:\n     ConfigParser() {}\n \n-    void parse(const std::string& text) throw(ParseError);\n-    bool has(const std::string& key) const throw();\n-    std::string get(const std::string& key) const throw(std::out_of_range);\n-    int getInt(const std::string& key) const throw(std::out_of_range, std::invalid_argument);\n-    int size() const throw() { return static_cast<int>(values_.size()); }\n+    void parse(const std::string& text) noexcept(false);\n+    bool has(const std::string& key) const noexcept;\n+    std::string get(const std::string& key) const noexcept(false);\n+    int getInt(const std::string& key) const noexcept(false);\n+    int size() const noexcept { return static_cast<int>(values_.size()); }\n \n private:\n     std::map<std::string, std::string> values_;\ndiff --git a/src/functional.cpp b/src/functional.cpp\nindex 78dad77..384325b 100644\n--- a/src/functional.cpp\n+++ b/src/functional.cpp\n@@ -16,37 +16,37 @@ bool isVowel(char c) {\n std::vector<int> scaled(const std::vector<int>& values, int factor) {\n     std::vector<int> out;\n     std::transform(values.begin(), values.end(), std::back_inserter(out),\n-                   std::bind2nd(std::multiplies<int>(), factor));\n+                   [factor](int value) { return value * factor; });\n     return out;\n }\n \n std::vector<int> offset(const std::vector<int>& values, int amount) {\n     std::vector<int> out;\n     std::transform(values.begin(), values.end(), std::back_inserter(out),\n-                   std::bind1st(std::plus<int>(), amount));\n+                   [amount](int value) { return amount + value; });\n     return out;\n }\n \n int countOdd(const std::vector<int>& values) {\n-    return static_cast<int>(std::count_if(values.begin(), values.end(), std::not1(IsEven())));\n+    return static_cast<int>(std::count_if(values.begin(), values.end(), std::not_fn(IsEven())));\n }\n \n int countBelow(const std::vector<int>& values, int limit) {\n     return static_cast<int>(\n-        std::count_if(values.begin(), values.end(), std::bind2nd(InRange(), limit)));\n+        std::count_if(values.begin(), values.end(), [limit](int value) { return InRange()(value, limit); }));\n }\n \n std::string vowels(const std::string& text) {\n     std::string out;\n     std::remove_copy_if(text.begin(), text.end(), std::back_inserter(out),\n-                        std::not1(std::ptr_fun(isVowel)));\n+                        [](char c) { return !isVowel(c); });\n     return out;\n }\n \n std::vector<std::string> names(const std::vector<Entry>& entries) {\n     std::vector<std::string> out;\n     std::transform(entries.begin(), entries.end(), std::back_inserter(out),\n-                   std::mem_fun_ref(&Entry::name));\n+                   std::mem_fn(&Entry::name));\n     return out;\n }\n \ndiff --git a/src/logger.cpp b/src/logger.cpp\nindex a1bf7cb..0b2d429 100644\n--- a/src/logger.cpp\n+++ b/src/logger.cpp\n@@ -1,8 +1,10 @@\n+#include <utility>\n+\n #include \"toolkit/logger.h\"\n \n namespace toolkit {\n \n-Logger::Logger(std::auto_ptr<Sink> sink) : sink_(sink), count_(0) {}\n+Logger::Logger(std::unique_ptr<Sink> sink) : sink_(std::move(sink)), count_(0) {}\n \n void Logger::emit(const char* level, const std::string& message) {\n     ++count_;\n@@ -15,14 +17,14 @@ void Logger::info(const std::string& message) { emit(\"info\", message); }\n \n void Logger::error(const std::string& message) { emit(\"error\", message); }\n \n-std::auto_ptr<Sink> Logger::detach() { return sink_; }\n+std::unique_ptr<Sink> Logger::detach() { return std::move(sink_); }\n \n-std::auto_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut) {\n+std::unique_ptr<Logger> makeMemoryLogger(MemorySink** sinkOut) {\n     MemorySink* sink = new MemorySink;\n     if (sinkOut != 0) {\n         *sinkOut = sink;\n     }\n-    std::auto_ptr<Logger> logger(new Logger(std::auto_ptr<Sink>(sink)));\n+    std::unique_ptr<Logger> logger(new Logger(std::unique_ptr<Sink>(sink)));\n     return logger;\n }\n \ndiff --git a/src/misc.cpp b/src/misc.cpp\nindex 0be4c49..1bdc8d4 100644\n--- a/src/misc.cpp\n+++ b/src/misc.cpp\n@@ -4,18 +4,18 @@\n \n namespace toolkit {\n \n-bool concept(const std::string& word) {\n+bool isConcept(const std::string& word) {\n     // A \"concept\" here is any capitalized word.\n     return !word.empty() && word[0] >= 'A' && word[0] <= 'Z';\n }\n \n-int requires(int level) {\n-    int requires = level * 2;\n-    return requires + 1;\n+int requiresLevel(int level) {\n+    int doubled = level * 2;\n+    return doubled + 1;\n }\n \n const char* greeting() {\n-    const char* text = u8\"hello, world\";\n+    const char* text = \"hello, world\";\n     return text;\n }\n \n@@ -27,7 +27,7 @@ Range widen(Range range, int by) {\n int span(const Range& range) { return range.high - range.low; }\n \n void Counter::addAll(const std::vector<int>& values) {\n-    std::for_each(values.begin(), values.end(), [=](int value) { total_ += value; });\n+    std::for_each(values.begin(), values.end(), [=, this](int value) { total_ += value; });\n }\n \n }  // namespace toolkit\ndiff --git a/src/parser.cpp b/src/parser.cpp\nindex 4c16fe4..a90d9aa 100644\n--- a/src/parser.cpp\n+++ b/src/parser.cpp\n@@ -17,7 +17,7 @@ std::string trim(const std::string& text) {\n \n }  // namespace\n \n-void ConfigParser::parse(const std::string& text) throw(ParseError) {\n+void ConfigParser::parse(const std::string& text) noexcept(false) {\n     int lineNumber = 0;\n     std::string::size_type start = 0;\n     while (start <= text.size()) {\n@@ -43,11 +43,11 @@ void ConfigParser::parse(const std::string& text) throw(ParseError) {\n     }\n }\n \n-bool ConfigParser::has(const std::string& key) const throw() {\n+bool ConfigParser::has(const std::string& key) const noexcept {\n     return values_.find(key) != values_.end();\n }\n \n-std::string ConfigParser::get(const std::string& key) const throw(std::out_of_range) {\n+std::string ConfigParser::get(const std::string& key) const noexcept(false) {\n     std::map<std::string, std::string>::const_iterator it = values_.find(key);\n     if (it == values_.end()) {\n         throw std::out_of_range(\"no key \" + key);\n@@ -56,7 +56,7 @@ std::string ConfigParser::get(const std::string& key) const throw(std::out_of_ra\n }\n \n int ConfigParser::getInt(const std::string& key) const\n-    throw(std::out_of_range, std::invalid_argument) {\n+    noexcept(false) {\n     std::string text = get(key);\n     char* end = 0;\n     long value = std::strtol(text.c_str(), &end, 10);\ndiff --git a/src/shuffle.cpp b/src/shuffle.cpp\nindex 1e7d9ed..025cf7a 100644\n--- a/src/shuffle.cpp\n+++ b/src/shuffle.cpp\n@@ -1,6 +1,7 @@\n #include \"toolkit/shuffle.h\"\n \n #include <algorithm>\n+#include <random>\n \n namespace toolkit {\n \n@@ -11,8 +12,7 @@ std::ptrdiff_t Lcg::operator()(std::ptrdiff_t n) {\n \n std::vector<int> shuffled(const std::vector<int>& values, unsigned long seed) {\n     std::vector<int> out(values);\n-    Lcg rng(seed);\n-    std::random_shuffle(out.begin(), out.end(), rng);\n+    std::shuffle(out.begin(), out.end(), std::mt19937(static_cast<std::mt19937::result_type>(seed)));\n     return out;\n }\n \n@@ -30,8 +30,8 @@ std::vector<int> deal(int cards, int hands, unsigned long seed) {\n }\n \n long fastSum(const int* values, int count) {\n-    register long total = 0;\n-    for (register int i = 0; i < count; ++i) {\n+    long total = 0;\n+    for (int i = 0; i < count; ++i) {\n         total += values[i];\n     }\n     return total;\ndiff --git a/src/transaction.cpp b/src/transaction.cpp\nindex 4fcdd3d..6fc0f59 100644\n--- a/src/transaction.cpp\n+++ b/src/transaction.cpp\n@@ -9,7 +9,7 @@ Transaction::Transaction(Journal& journal)\n \n Transaction::~Transaction() {\n     // Roll back when the scope is left by an exception, or without a commit.\n-    if (std::uncaught_exception() || !committed_) {\n+    if (std::uncaught_exceptions() || !committed_) {\n         journal_.entries.resize(mark_);\n     }\n }\ndiff --git a/tests/logger_test.cpp b/tests/logger_test.cpp\nindex ba43682..ae92e3b 100644\n--- a/tests/logger_test.cpp\n+++ b/tests/logger_test.cpp\n@@ -1,5 +1,7 @@\n #include <gtest/gtest.h>\n \n+#include <utility>\n+\n #include \"toolkit/logger.h\"\n \n namespace {\n@@ -10,7 +12,7 @@ using toolkit::Sink;\n \n TEST(LoggerTest, WritesToItsSink) {\n     MemorySink* sink = 0;\n-    std::auto_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n+    std::unique_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n     logger->info(\"started\");\n     logger->error(\"failed\");\n     ASSERT_EQ(2u, sink->lines.size());\n@@ -21,8 +23,8 @@ TEST(LoggerTest, WritesToItsSink) {\n \n TEST(LoggerTest, DetachHandsTheSinkBack) {\n     MemorySink* sink = 0;\n-    std::auto_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n-    std::auto_ptr<Sink> detached = logger->detach();\n+    std::unique_ptr<Logger> logger = toolkit::makeMemoryLogger(&sink);\n+    std::unique_ptr<Sink> detached = logger->detach();\n     EXPECT_FALSE(logger->hasSink());\n     logger->info(\"dropped\");\n     EXPECT_EQ(1, logger->count());\n@@ -31,8 +33,8 @@ TEST(LoggerTest, DetachHandsTheSinkBack) {\n }\n \n TEST(LoggerTest, AutoPtrCopiesTransferOwnership) {\n-    std::auto_ptr<Logger> first = toolkit::makeMemoryLogger(0);\n-    std::auto_ptr<Logger> second = first;\n+    std::unique_ptr<Logger> first = toolkit::makeMemoryLogger(0);\n+    std::unique_ptr<Logger> second = std::move(first);\n     EXPECT_TRUE(first.get() == 0);\n     EXPECT_TRUE(second.get() != 0);\n }\ndiff --git a/tests/misc_test.cpp b/tests/misc_test.cpp\nindex fc94f27..ea567ca 100644\n--- a/tests/misc_test.cpp\n+++ b/tests/misc_test.cpp\n@@ -7,10 +7,10 @@\n namespace {\n \n TEST(MiscTest, KeywordNamedFunctions) {\n-    EXPECT_TRUE(toolkit::concept(\"Graph\"));\n-    EXPECT_FALSE(toolkit::concept(\"graph\"));\n-    EXPECT_FALSE(toolkit::concept(\"\"));\n-    EXPECT_EQ(7, toolkit::requires(3));\n+    EXPECT_TRUE(toolkit::isConcept(\"Graph\"));\n+    EXPECT_FALSE(toolkit::isConcept(\"graph\"));\n+    EXPECT_FALSE(toolkit::isConcept(\"\"));\n+    EXPECT_EQ(7, toolkit::requiresLevel(3));\n }\n \n TEST(MiscTest, Utf8Greeting) { EXPECT_EQ(0, std::strcmp(\"hello, world\", toolkit::greeting())); }\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 96.8
+    },
+    {
+      "id": "cpp98-legacy-to-cpp11",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 15,
+        "duration_ms": 86566,
+        "total_cost_usd_equivalent": 0.2183029,
+        "usage": {
+          "input_tokens": 26,
+          "cache_creation_input_tokens": 30063,
+          "cache_read_input_tokens": 569228,
+          "output_tokens": 4093,
+          "output_tokens_details": {
+            "thinking_tokens": 235
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 30063,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 754,
+              "cache_read_input_tokens": 56346,
+              "cache_creation_input_tokens": 931,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 931
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The `bump_standard` unit succeeded on attempt 2 of 4. The build passes and all tests pass again.\n\n- **Rule and files:** `bump_standard` on `CMakeLists.txt` and `tests/CMakeLists.txt`.\n- **Branch and commit:** `codecoremorph/20261102-181126-9c6e`, commit `66ece827ddd8`, changing 12 files.\n- **Sandbox:** the manifest ran builds and tests in native mode, directly on this machine, not in Docker.\n- **Codemods:** they set the standard to 11 and made 9 replacements in `inventory.h`, `inventory.cpp` and `inventory_test.cpp`.\n\n**My edits for attempt 1:**\n- **`src/money.cpp`:** `scale` now uses `static_cast<long>(m.cents * factor)`, which truncates the same way the old implicit conversion did.\n- **`include/ledger/text.h` and `src/text.cpp`:** I renamed the `char16_t` typedef to `char16`. The type is still `unsigned short`.\n- **`src/format.cpp`:** I added a space in `\"%\" PRId64` and `\"%s-%08\" PRId64`.\n- **`src/parse.cpp`:** `read_field` and `parse_amount` now use `static_cast<bool>` on the stream.\n- **`include/ledger/compat.h`:** I deleted the home-made `nullptr` class.\n\nAttempt 1 built, but 36 tests failed. `StrictTransactionWithoutCommitThrowsFromItsDestructor` threw from an implicitly `noexcept` destructor, which terminated the test program.\n\n**My edit for attempt 2:** I marked `Transaction::~Transaction()` as `noexcept(false)` in `transaction.h` and `transaction.cpp`. `RollbackError` is thrown as before.\n\n**Review notes:**\n- **Destructor:** please check the `noexcept(false)` change, since callers and tests depend on the exception.\n- **Rename and cast:** the `char16` rename and the `money.cpp` cast change no behavior.\n\nTo review, run `git diff 18476ac2f2b2 codecoremorph/20261102-181126-9c6e`. I haven't merged anything."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "tests_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Mark Transaction destructor noexcept(false) so RollbackError still propagates under C++11.",
+      "review_notes": [
+        "Transaction::~Transaction is noexcept(false) because tests and callers rely on its RollbackError; the thrown type is unchanged."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/ledger/compat.h",
+        "include/ledger/inventory.h",
+        "include/ledger/text.h",
+        "include/ledger/transaction.h",
+        "src/format.cpp",
+        "src/inventory.cpp",
+        "src/money.cpp",
+        "src/parse.cpp",
+        "src/text.cpp",
+        "src/transaction.cpp",
+        "tests/inventory_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex b1d83c3..6735af9 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,6 +1,9 @@\n cmake_minimum_required(VERSION 3.21)\n project(Ledger CXX)\n \n+set(CMAKE_CXX_STANDARD 11)\n+set(CMAKE_CXX_STANDARD_REQUIRED ON)\n+\n # Written for C++98 compilers. Like most build files of its time, it never names a standard.\n \n add_library(ledger\ndiff --git a/include/ledger/compat.h b/include/ledger/compat.h\nindex c6f07d6..9bc6f06 100644\n--- a/include/ledger/compat.h\n+++ b/include/ledger/compat.h\n@@ -3,30 +3,6 @@\n \n // Portability helpers for compilers without the newer language features.\n \n-// A null pointer constant that converts to any pointer type but never to an integer, so\n-// overloads taking int and T* resolve the way callers expect. Some standard libraries already\n-// provide one as a macro.\n-#ifndef nullptr\n-const class nullptr_t_\n-{\n-public:\n-    template <class T>\n-    operator T*() const\n-    {\n-        return 0;\n-    }\n-\n-    template <class C, class T>\n-    operator T C::*() const\n-    {\n-        return 0;\n-    }\n-\n-private:\n-    void operator&() const;\n-} nullptr = {};\n-#endif\n-\n // Compile-time check: the array size is negative, and compilation fails, when cond is false.\n #define LEDGER_STATIC_ASSERT(cond, name) typedef char ledger_static_assert_##name[(cond) ? 1 : -1]\n \ndiff --git a/include/ledger/inventory.h b/include/ledger/inventory.h\nindex 1cacd3e..8b5b3c0 100644\n--- a/include/ledger/inventory.h\n+++ b/include/ledger/inventory.h\n@@ -22,8 +22,8 @@ public:\n \n     void add(const std::string& sku, int count);\n     // Throws std::out_of_range when there is less stock than count.\n-    void remove(const std::string& sku, int count) throw(std::out_of_range);\n-    int count(const std::string& sku) const throw();\n+    void remove(const std::string& sku, int count) noexcept(false);\n+    int count(const std::string& sku) const noexcept;\n     // Null when the SKU has never been stocked.\n     const int* find(const std::string& sku) const;\n     size_t size() const;\n@@ -34,7 +34,7 @@ public:\n     std::vector<std::string> below(int threshold) const;\n     int total() const;\n \n-    std::auto_ptr<Inventory> clone() const;\n+    std::unique_ptr<Inventory> clone() const;\n \n protected:\n     virtual void on_change(const std::string& sku, int old_count, int new_count);\ndiff --git a/include/ledger/text.h b/include/ledger/text.h\nindex a8053cc..8c4d63b 100644\n--- a/include/ledger/text.h\n+++ b/include/ledger/text.h\n@@ -7,8 +7,8 @@\n namespace ledger {\n \n // A UTF-16 code unit, for the export format of the old reporting system.\n-typedef unsigned short char16_t;\n-typedef std::vector<char16_t> Utf16;\n+typedef unsigned short char16;\n+typedef std::vector<char16> Utf16;\n \n // Invalid UTF-8 bytes become U+FFFD.\n Utf16 utf8_to_utf16(const std::string& utf8);\ndiff --git a/include/ledger/transaction.h b/include/ledger/transaction.h\nindex 908b7fc..41a2f87 100644\n--- a/include/ledger/transaction.h\n+++ b/include/ledger/transaction.h\n@@ -23,7 +23,7 @@ class Transaction\n {\n public:\n     Transaction(Inventory& inventory, bool strict);\n-    ~Transaction();\n+    ~Transaction() noexcept(false);\n \n     void add(const std::string& sku, int count);\n     void remove(const std::string& sku, int count);\ndiff --git a/src/format.cpp b/src/format.cpp\nindex ff3522c..cf460b8 100644\n--- a/src/format.cpp\n+++ b/src/format.cpp\n@@ -13,14 +13,14 @@ namespace ledger {\n std::string format_count(int64_t n)\n {\n     char buffer[32];\n-    sprintf(buffer, \"%\"PRId64, n);\n+    sprintf(buffer, \"%\" PRId64, n);\n     return buffer;\n }\n \n std::string format_id(const char* prefix, int64_t id)\n {\n     char buffer[64];\n-    sprintf(buffer, \"%s-%08\"PRId64, prefix, id);\n+    sprintf(buffer, \"%s-%08\" PRId64, prefix, id);\n     return buffer;\n }\n \ndiff --git a/src/inventory.cpp b/src/inventory.cpp\nindex 346398c..af35cc1 100644\n--- a/src/inventory.cpp\n+++ b/src/inventory.cpp\n@@ -29,7 +29,7 @@ void Inventory::add(const std::string& sku, int count)\n     on_change(sku, old_count, old_count + count);\n }\n \n-void Inventory::remove(const std::string& sku, int count) throw(std::out_of_range)\n+void Inventory::remove(const std::string& sku, int count) noexcept(false)\n {\n     StockMap::iterator it = stock_.find(sku);\n     if (it == stock_.end() || it->second < count)\n@@ -39,7 +39,7 @@ void Inventory::remove(const std::string& sku, int count) throw(std::out_of_rang\n     on_change(sku, old_count, it->second);\n }\n \n-int Inventory::count(const std::string& sku) const throw()\n+int Inventory::count(const std::string& sku) const noexcept\n {\n     StockMap::const_iterator it = stock_.find(sku);\n     return it == stock_.end() ? 0 : it->second;\n@@ -93,9 +93,9 @@ int Inventory::total() const\n     return sum;\n }\n \n-std::auto_ptr<Inventory> Inventory::clone() const\n+std::unique_ptr<Inventory> Inventory::clone() const\n {\n-    std::auto_ptr<Inventory> copy(new Inventory);\n+    std::unique_ptr<Inventory> copy(new Inventory);\n     copy->stock_ = stock_;\n     return copy;\n }\ndiff --git a/src/money.cpp b/src/money.cpp\nindex 53d3489..22a2a47 100644\n--- a/src/money.cpp\n+++ b/src/money.cpp\n@@ -37,7 +37,7 @@ Money subtract(Money a, Money b)\n \n Money scale(Money m, double factor)\n {\n-    Money result = { m.cents * factor };\n+    Money result = { static_cast<long>(m.cents * factor) };\n     return result;\n }\n \ndiff --git a/src/parse.cpp b/src/parse.cpp\nindex 44934ac..7f871d0 100644\n--- a/src/parse.cpp\n+++ b/src/parse.cpp\n@@ -8,14 +8,14 @@ namespace ledger {\n \n bool read_field(std::istream& in, std::string& field)\n {\n-    return std::getline(in, field, ',');\n+    return static_cast<bool>(std::getline(in, field, ','));\n }\n \n bool parse_amount(const std::string& text, Money& out)\n {\n     std::istringstream in(text);\n     double units = 0;\n-    bool ok = in >> units;\n+    bool ok = static_cast<bool>(in >> units);\n     if (!ok)\n         return false;\n     char rest;\ndiff --git a/src/text.cpp b/src/text.cpp\nindex e053f7f..f6d03d6 100644\n--- a/src/text.cpp\n+++ b/src/text.cpp\n@@ -9,12 +9,12 @@ const unsigned long kReplacement = 0xFFFD;\n void append_utf16(Utf16& out, unsigned long code_point)\n {\n     if (code_point < 0x10000) {\n-        out.push_back(static_cast<char16_t>(code_point));\n+        out.push_back(static_cast<char16>(code_point));\n         return;\n     }\n     code_point -= 0x10000;\n-    out.push_back(static_cast<char16_t>(0xD800 + (code_point >> 10)));\n-    out.push_back(static_cast<char16_t>(0xDC00 + (code_point & 0x3FF)));\n+    out.push_back(static_cast<char16>(0xD800 + (code_point >> 10)));\n+    out.push_back(static_cast<char16>(0xDC00 + (code_point & 0x3FF)));\n }\n \n void append_utf8(std::string& out, unsigned long code_point)\ndiff --git a/src/transaction.cpp b/src/transaction.cpp\nindex c9dd20b..9f65946 100644\n--- a/src/transaction.cpp\n+++ b/src/transaction.cpp\n@@ -9,7 +9,7 @@ Transaction::Transaction(Inventory& inventory, bool strict)\n {\n }\n \n-Transaction::~Transaction()\n+Transaction::~Transaction() noexcept(false)\n {\n     if (strict_ && !committed_ && !changes_.empty() && !std::uncaught_exception())\n         throw RollbackError(\"transaction destroyed without commit()\");\ndiff --git a/tests/inventory_test.cpp b/tests/inventory_test.cpp\nindex 8f719ff..f0dc4ce 100644\n--- a/tests/inventory_test.cpp\n+++ b/tests/inventory_test.cpp\n@@ -67,7 +67,7 @@ TEST(InventoryTest, TotalAndClone)\n     inventory.add(\"bolt\", 10);\n     inventory.add(\"nut\", 2);\n     EXPECT_EQ(12, inventory.total());\n-    std::auto_ptr<Inventory> copy = inventory.clone();\n+    std::unique_ptr<Inventory> copy = inventory.clone();\n     inventory.add(\"bolt\", 1);\n     EXPECT_EQ(10, copy->count(\"bolt\"));\n     EXPECT_EQ(12, copy->total());\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 89.2
+    },
+    {
+      "id": "cpp98-legacy-to-cpp20",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 17,
+        "duration_ms": 95576,
+        "total_cost_usd_equivalent": 0.26333840000000003,
+        "usage": {
+          "input_tokens": 28,
+          "cache_creation_input_tokens": 34344,
+          "cache_read_input_tokens": 638703,
+          "output_tokens": 6189,
+          "output_tokens_details": {
+            "thinking_tokens": 504
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 34344,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 846,
+              "cache_read_input_tokens": 60593,
+              "cache_creation_input_tokens": 965,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 965
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The `bump_standard` unit succeeded on attempt 2 of 4. It is one commit, `341f90d2f382`, on branch `codecoremorph/20261102-181256-213c`, and it changes 12 files. Your working branch is unchanged, and I haven't merged anything.\n\nBuilds and tests ran natively on this machine, not in Docker, because the manifest is set to native mode.\n\n**What changed**\n- **Build files:** `CMakeLists.txt` now sets C++20. A codemod made that change, along with 9 other replacements in `include/ledger/inventory.h`, `src/inventory.cpp`, `src/transaction.cpp` and `tests/inventory_test.cpp`.\n- **Narrowing:** `src/money.cpp` now casts the `scale` result with `static_cast<long>`.\n- **`char16_t`:** `include/ledger/text.h` and `src/text.cpp` rename the home-made `ledger::char16_t` typedef to `utf16_unit`. It is still `unsigned short`.\n- **`register`/`auto`:** `src/text.cpp` drops the `register` and storage-class `auto` keywords.\n- **Literals:** `src/format.cpp` now has a space between string literals and `PRId64`, and the `ptr_fun` call became a lambda.\n- **Stream conversions:** `src/parse.cpp` now uses explicit `static_cast<bool>` on stream results.\n- **`bind2nd`:** `src/inventory.cpp` replaces it with a lambda.\n- **`nullptr`:** I deleted the home-made `nullptr` class from `include/ledger/compat.h`, since the keyword replaces it.\n- **Destructor:** `Transaction::~Transaction` is now `noexcept(false)`, in `include/ledger/transaction.h` and `src/transaction.cpp`.\n\n**Attempt 1 failed:** The build passed, but 36 tests failed because `Transaction`'s destructor deliberately throws `RollbackError`. C++11 destructors are `noexcept` by default, so the program terminated. Attempt 2 fixed that, and the thrown exception is unchanged.\n\n**For review**\n- The `char16_t` rename is only safe if nothing outside the unit uses `ledger::char16_t`. A grep found no other uses.\n- The `noexcept(false)` change is deliberate, because a test relies on the exception.\n\nTo review it, run `git diff a46a3a2d5833 codecoremorph/20261102-181256-213c`. Merging is up to you."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 2,
+      "attempt_outcomes": [
+        "tests_failed",
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Mark Transaction's destructor noexcept(false) so RollbackError still propagates under C++11+ rules.",
+      "review_notes": [
+        "Destructors are implicitly noexcept since C++11; Transaction::~Transaction deliberately throws RollbackError (a test relies on it), so it is noexcept(false). The thrown exception is unchanged."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/ledger/compat.h",
+        "include/ledger/inventory.h",
+        "include/ledger/text.h",
+        "include/ledger/transaction.h",
+        "src/format.cpp",
+        "src/inventory.cpp",
+        "src/money.cpp",
+        "src/parse.cpp",
+        "src/text.cpp",
+        "src/transaction.cpp",
+        "tests/inventory_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex b1d83c3..dc6220f 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,6 +1,9 @@\n cmake_minimum_required(VERSION 3.21)\n project(Ledger CXX)\n \n+set(CMAKE_CXX_STANDARD 20)\n+set(CMAKE_CXX_STANDARD_REQUIRED ON)\n+\n # Written for C++98 compilers. Like most build files of its time, it never names a standard.\n \n add_library(ledger\ndiff --git a/include/ledger/compat.h b/include/ledger/compat.h\nindex c6f07d6..9bc6f06 100644\n--- a/include/ledger/compat.h\n+++ b/include/ledger/compat.h\n@@ -3,30 +3,6 @@\n \n // Portability helpers for compilers without the newer language features.\n \n-// A null pointer constant that converts to any pointer type but never to an integer, so\n-// overloads taking int and T* resolve the way callers expect. Some standard libraries already\n-// provide one as a macro.\n-#ifndef nullptr\n-const class nullptr_t_\n-{\n-public:\n-    template <class T>\n-    operator T*() const\n-    {\n-        return 0;\n-    }\n-\n-    template <class C, class T>\n-    operator T C::*() const\n-    {\n-        return 0;\n-    }\n-\n-private:\n-    void operator&() const;\n-} nullptr = {};\n-#endif\n-\n // Compile-time check: the array size is negative, and compilation fails, when cond is false.\n #define LEDGER_STATIC_ASSERT(cond, name) typedef char ledger_static_assert_##name[(cond) ? 1 : -1]\n \ndiff --git a/include/ledger/inventory.h b/include/ledger/inventory.h\nindex 1cacd3e..8b5b3c0 100644\n--- a/include/ledger/inventory.h\n+++ b/include/ledger/inventory.h\n@@ -22,8 +22,8 @@ public:\n \n     void add(const std::string& sku, int count);\n     // Throws std::out_of_range when there is less stock than count.\n-    void remove(const std::string& sku, int count) throw(std::out_of_range);\n-    int count(const std::string& sku) const throw();\n+    void remove(const std::string& sku, int count) noexcept(false);\n+    int count(const std::string& sku) const noexcept;\n     // Null when the SKU has never been stocked.\n     const int* find(const std::string& sku) const;\n     size_t size() const;\n@@ -34,7 +34,7 @@ public:\n     std::vector<std::string> below(int threshold) const;\n     int total() const;\n \n-    std::auto_ptr<Inventory> clone() const;\n+    std::unique_ptr<Inventory> clone() const;\n \n protected:\n     virtual void on_change(const std::string& sku, int old_count, int new_count);\ndiff --git a/include/ledger/text.h b/include/ledger/text.h\nindex a8053cc..eb1f6d8 100644\n--- a/include/ledger/text.h\n+++ b/include/ledger/text.h\n@@ -7,8 +7,8 @@\n namespace ledger {\n \n // A UTF-16 code unit, for the export format of the old reporting system.\n-typedef unsigned short char16_t;\n-typedef std::vector<char16_t> Utf16;\n+typedef unsigned short utf16_unit;\n+typedef std::vector<utf16_unit> Utf16;\n \n // Invalid UTF-8 bytes become U+FFFD.\n Utf16 utf8_to_utf16(const std::string& utf8);\ndiff --git a/include/ledger/transaction.h b/include/ledger/transaction.h\nindex 908b7fc..41a2f87 100644\n--- a/include/ledger/transaction.h\n+++ b/include/ledger/transaction.h\n@@ -23,7 +23,7 @@ class Transaction\n {\n public:\n     Transaction(Inventory& inventory, bool strict);\n-    ~Transaction();\n+    ~Transaction() noexcept(false);\n \n     void add(const std::string& sku, int count);\n     void remove(const std::string& sku, int count);\ndiff --git a/src/format.cpp b/src/format.cpp\nindex ff3522c..05975cf 100644\n--- a/src/format.cpp\n+++ b/src/format.cpp\n@@ -13,21 +13,21 @@ namespace ledger {\n std::string format_count(int64_t n)\n {\n     char buffer[32];\n-    sprintf(buffer, \"%\"PRId64, n);\n+    sprintf(buffer, \"%\" PRId64, n);\n     return buffer;\n }\n \n std::string format_id(const char* prefix, int64_t id)\n {\n     char buffer[64];\n-    sprintf(buffer, \"%s-%08\"PRId64, prefix, id);\n+    sprintf(buffer, \"%s-%08\" PRId64, prefix, id);\n     return buffer;\n }\n \n std::string upper(const std::string& text)\n {\n     std::string result(text);\n-    std::transform(result.begin(), result.end(), result.begin(), std::ptr_fun<int, int>(toupper));\n+    std::transform(result.begin(), result.end(), result.begin(), [](int c) { return toupper(c); });\n     return result;\n }\n \ndiff --git a/src/inventory.cpp b/src/inventory.cpp\nindex 346398c..cb263f8 100644\n--- a/src/inventory.cpp\n+++ b/src/inventory.cpp\n@@ -29,7 +29,7 @@ void Inventory::add(const std::string& sku, int count)\n     on_change(sku, old_count, old_count + count);\n }\n \n-void Inventory::remove(const std::string& sku, int count) throw(std::out_of_range)\n+void Inventory::remove(const std::string& sku, int count) noexcept(false)\n {\n     StockMap::iterator it = stock_.find(sku);\n     if (it == stock_.end() || it->second < count)\n@@ -39,7 +39,7 @@ void Inventory::remove(const std::string& sku, int count) throw(std::out_of_rang\n     on_change(sku, old_count, it->second);\n }\n \n-int Inventory::count(const std::string& sku) const throw()\n+int Inventory::count(const std::string& sku) const noexcept\n {\n     StockMap::const_iterator it = stock_.find(sku);\n     return it == stock_.end() ? 0 : it->second;\n@@ -77,7 +77,7 @@ std::vector<std::string> Inventory::below(int threshold) const\n     }\n     std::vector<std::string> result;\n     std::vector<int>::iterator found = counts.begin();\n-    while ((found = std::find_if(found, counts.end(), std::bind2nd(std::less<int>(), threshold)))\n+    while ((found = std::find_if(found, counts.end(), [threshold](int count) { return count < threshold; }))\n            != counts.end()) {\n         result.push_back(skus[found - counts.begin()]);\n         ++found;\n@@ -93,9 +93,9 @@ int Inventory::total() const\n     return sum;\n }\n \n-std::auto_ptr<Inventory> Inventory::clone() const\n+std::unique_ptr<Inventory> Inventory::clone() const\n {\n-    std::auto_ptr<Inventory> copy(new Inventory);\n+    std::unique_ptr<Inventory> copy(new Inventory);\n     copy->stock_ = stock_;\n     return copy;\n }\ndiff --git a/src/money.cpp b/src/money.cpp\nindex 53d3489..22a2a47 100644\n--- a/src/money.cpp\n+++ b/src/money.cpp\n@@ -37,7 +37,7 @@ Money subtract(Money a, Money b)\n \n Money scale(Money m, double factor)\n {\n-    Money result = { m.cents * factor };\n+    Money result = { static_cast<long>(m.cents * factor) };\n     return result;\n }\n \ndiff --git a/src/parse.cpp b/src/parse.cpp\nindex 44934ac..7f871d0 100644\n--- a/src/parse.cpp\n+++ b/src/parse.cpp\n@@ -8,14 +8,14 @@ namespace ledger {\n \n bool read_field(std::istream& in, std::string& field)\n {\n-    return std::getline(in, field, ',');\n+    return static_cast<bool>(std::getline(in, field, ','));\n }\n \n bool parse_amount(const std::string& text, Money& out)\n {\n     std::istringstream in(text);\n     double units = 0;\n-    bool ok = in >> units;\n+    bool ok = static_cast<bool>(in >> units);\n     if (!ok)\n         return false;\n     char rest;\ndiff --git a/src/text.cpp b/src/text.cpp\nindex e053f7f..6b9301e 100644\n--- a/src/text.cpp\n+++ b/src/text.cpp\n@@ -9,12 +9,12 @@ const unsigned long kReplacement = 0xFFFD;\n void append_utf16(Utf16& out, unsigned long code_point)\n {\n     if (code_point < 0x10000) {\n-        out.push_back(static_cast<char16_t>(code_point));\n+        out.push_back(static_cast<utf16_unit>(code_point));\n         return;\n     }\n     code_point -= 0x10000;\n-    out.push_back(static_cast<char16_t>(0xD800 + (code_point >> 10)));\n-    out.push_back(static_cast<char16_t>(0xDC00 + (code_point & 0x3FF)));\n+    out.push_back(static_cast<utf16_unit>(0xD800 + (code_point >> 10)));\n+    out.push_back(static_cast<utf16_unit>(0xDC00 + (code_point & 0x3FF)));\n }\n \n void append_utf8(std::string& out, unsigned long code_point)\n@@ -55,7 +55,7 @@ int sequence_length(unsigned char lead)\n Utf16 utf8_to_utf16(const std::string& utf8)\n {\n     Utf16 out;\n-    register size_t i = 0;\n+    size_t i = 0;\n     while (i < utf8.size()) {\n         unsigned char lead = static_cast<unsigned char>(utf8[i]);\n         int length = sequence_length(lead);\n@@ -88,7 +88,7 @@ Utf16 utf8_to_utf16(const std::string& utf8)\n std::string utf16_to_utf8(const Utf16& utf16)\n {\n     std::string out;\n-    auto int written = 0;\n+    int written = 0;\n     for (size_t i = 0; i < utf16.size(); ++i) {\n         unsigned long unit = utf16[i];\n         if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < utf16.size()) {\ndiff --git a/src/transaction.cpp b/src/transaction.cpp\nindex c9dd20b..e519320 100644\n--- a/src/transaction.cpp\n+++ b/src/transaction.cpp\n@@ -9,9 +9,9 @@ Transaction::Transaction(Inventory& inventory, bool strict)\n {\n }\n \n-Transaction::~Transaction()\n+Transaction::~Transaction() noexcept(false)\n {\n-    if (strict_ && !committed_ && !changes_.empty() && !std::uncaught_exception())\n+    if (strict_ && !committed_ && !changes_.empty() && !std::uncaught_exceptions())\n         throw RollbackError(\"transaction destroyed without commit()\");\n }\n \ndiff --git a/tests/inventory_test.cpp b/tests/inventory_test.cpp\nindex 8f719ff..f0dc4ce 100644\n--- a/tests/inventory_test.cpp\n+++ b/tests/inventory_test.cpp\n@@ -67,7 +67,7 @@ TEST(InventoryTest, TotalAndClone)\n     inventory.add(\"bolt\", 10);\n     inventory.add(\"nut\", 2);\n     EXPECT_EQ(12, inventory.total());\n-    std::auto_ptr<Inventory> copy = inventory.clone();\n+    std::unique_ptr<Inventory> copy = inventory.clone();\n     inventory.add(\"bolt\", 1);\n     EXPECT_EQ(10, copy->count(\"bolt\"));\n     EXPECT_EQ(12, copy->total());\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 98.7
+    },
+    {
+      "id": "cpp17-legacy-to-cpp20",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 10,
+        "duration_ms": 68658,
+        "total_cost_usd_equivalent": 0.1988664,
+        "usage": {
+          "input_tokens": 18,
+          "cache_creation_input_tokens": 31347,
+          "cache_read_input_tokens": 358263,
+          "output_tokens": 3747,
+          "output_tokens_details": {
+            "thinking_tokens": 373
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 31347,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 657,
+              "cache_read_input_tokens": 55844,
+              "cache_creation_input_tokens": 2717,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2717
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The `bump_standard` unit succeeded on the first attempt, so I used 1 of the 4 attempts. It is one commit, `3b615cacedec`, on branch `codecoremorph/20261102-181437-4ddf`, and it changes 9 files. The project builds and its tests pass under C++20.\n\nThe manifest has `sandbox.mode: native`, so the builds and tests ran directly on this machine, not in Docker.\n\n**What changed**\n- **Build files (codemod):** `CMakeLists.txt` now sets `CMAKE_CXX_STANDARD 20` and `cxx_std_20`. The codemod also made one replacement in `src/resolve.cpp`. `tests/CMakeLists.txt` needed no change.\n- **`requires` keyword:** `requires` is a keyword in C++20, so I renamed `Manifest::requires` to `requirements` in `manifest.h`, `manifest.cpp`, `render.cpp`, `resolve.cpp` and the tests. The manifest text key `requires:` is unchanged.\n- **`render.h`:** `std::result_of_t` became `std::invoke_result_t`.\n- **`render.cpp`:** the `u8` literals are `char8_t` in C++20, so they are cast to `const char*`. The lambda capture `[=]` became `[=, this]`.\n- **`ParseOptions`:** I removed its defaulted constructor so it is an aggregate again. That makes `ParseOptions{true, 8}` compile, and `ParseOptions{}` keeps the same defaults.\n\n**For your review**\n- Renaming `Manifest::requires` changes the public API, because `include/**` is declared public. Any outside code using `manifest.requires` will need the new name.\n- The test edits only rename that member. No assertion was changed, disabled or removed.\n\nTo review it, run `git diff 8a5e84b25e8d codecoremorph/20261102-181437-4ddf`. I have not merged or pushed anything."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Fix code for C++20: rename Manifest::requires (now a keyword) to requirements, replace std::result_of_t with std::invoke_result_t, cast u8 literals to const char*, capture this explicitly in [=, this], and make ParseOptions an aggregate again by removing its defaulted constructor.",
+      "review_notes": [
+        "Public API change: pkgmeta::Manifest::requires renamed to requirements (keyword in C++20); callers in src and tests updated. The manifest text key 'requires' is unchanged.",
+        "ParseOptions no longer declares a default constructor so ParseOptions{true, 8} works as an aggregate; ParseOptions{} still value-initialises with the same defaults.",
+        "Tests were only renamed for the member, no assertions changed."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/pkgmeta/manifest.h",
+        "include/pkgmeta/render.h",
+        "src/manifest.cpp",
+        "src/render.cpp",
+        "src/resolve.cpp",
+        "tests/manifest_test.cpp",
+        "tests/render_test.cpp",
+        "tests/resolve_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex a6a34d2..e502dc2 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,7 +1,7 @@\n cmake_minimum_required(VERSION 3.21)\n project(PkgMeta CXX)\n \n-set(CMAKE_CXX_STANDARD 17)\n+set(CMAKE_CXX_STANDARD 20)\n set(CMAKE_CXX_STANDARD_REQUIRED ON)\n set(CMAKE_CXX_EXTENSIONS OFF)\n \n@@ -12,7 +12,7 @@ add_library(pkgmeta\n     src/resolve.cpp\n )\n target_include_directories(pkgmeta PUBLIC include)\n-target_compile_features(pkgmeta PUBLIC cxx_std_17)\n+target_compile_features(pkgmeta PUBLIC cxx_std_20)\n \n enable_testing()\n add_subdirectory(tests)\ndiff --git a/include/pkgmeta/manifest.h b/include/pkgmeta/manifest.h\nindex 145d893..dfc2233 100644\n--- a/include/pkgmeta/manifest.h\n+++ b/include/pkgmeta/manifest.h\n@@ -17,13 +17,12 @@ struct Dependency {\n struct Manifest {\n     std::string name;\n     semver::Version version;\n-    std::vector<Dependency> requires;\n+    std::vector<Dependency> requirements;\n     std::vector<std::string> provides;\n };\n \n // Parser options. An aggregate: callers write ParseOptions{true, 4}.\n struct ParseOptions {\n-    ParseOptions() = default;\n     bool strict = false;    // unknown keys are errors instead of being ignored\n     int max_requires = 64;  // more dependencies than this is an error\n };\ndiff --git a/include/pkgmeta/render.h b/include/pkgmeta/render.h\nindex 4371651..ba983ec 100644\n--- a/include/pkgmeta/render.h\n+++ b/include/pkgmeta/render.h\n@@ -19,9 +19,9 @@ inline std::string& as_lvalue(std::string&& text)\n \n // Applies f to every value of a map, keeping the keys.\n template <class Key, class Value, class F>\n-std::map<Key, std::result_of_t<F(const Value&)>> map_values(const std::map<Key, Value>& in, F f)\n+std::map<Key, std::invoke_result_t<F, const Value&>> map_values(const std::map<Key, Value>& in, F f)\n {\n-    std::map<Key, std::result_of_t<F(const Value&)>> out;\n+    std::map<Key, std::invoke_result_t<F, const Value&>> out;\n     for (const auto& [key, value] : in)\n         out.emplace(key, f(value));\n     return out;\ndiff --git a/src/manifest.cpp b/src/manifest.cpp\nindex ffb9553..c5556a3 100644\n--- a/src/manifest.cpp\n+++ b/src/manifest.cpp\n@@ -20,8 +20,8 @@ std::string at_line(std::size_t line, const std::string& message)\n     return \"line \" + std::to_string(line) + \": \" + message;\n }\n \n-static_assert(std::is_same<decltype(Manifest::requires), std::vector<Dependency>>::value,\n-              \"requires holds dependencies\");\n+static_assert(std::is_same<decltype(Manifest::requirements), std::vector<Dependency>>::value,\n+              \"requirements holds dependencies\");\n \n } // namespace\n \n@@ -57,8 +57,8 @@ ParseResult parse_manifest(std::string_view text, const ParseOptions& options)\n             Dependency dependency{std::string(value.substr(0, space)), \"*\"};\n             if (space != std::string_view::npos)\n                 dependency.constraint = std::string(trim(value.substr(space + 1)));\n-            manifest.requires.push_back(dependency);\n-            if (static_cast<int>(manifest.requires.size()) > options.max_requires)\n+            manifest.requirements.push_back(dependency);\n+            if (static_cast<int>(manifest.requirements.size()) > options.max_requires)\n                 return {std::nullopt, at_line(number, \"too many dependencies\")};\n         } else if (key == \"provides\") {\n             manifest.provides.emplace_back(value);\ndiff --git a/src/render.cpp b/src/render.cpp\nindex 9105e42..a4758fa 100644\n--- a/src/render.cpp\n+++ b/src/render.cpp\n@@ -8,7 +8,7 @@ namespace {\n \n const char* branch(bool last)\n {\n-    return last ? u8\"\u00e2\u201d\u201d\u00e2\u201d\u20ac \" : u8\"\u00e2\u201d\u0153\u00e2\u201d\u20ac \";\n+    return reinterpret_cast<const char*>(last ? u8\"\u00e2\u201d\u201d\u00e2\u201d\u20ac \" : u8\"\u00e2\u201d\u0153\u00e2\u201d\u20ac \");\n }\n \n } // namespace\n@@ -16,9 +16,9 @@ const char* branch(bool last)\n std::string render_tree(const Manifest& manifest)\n {\n     std::string out = manifest.name + \" \" + manifest.version.to_string() + \"\\n\";\n-    for (std::size_t i = 0; i < manifest.requires.size(); ++i) {\n-        const Dependency& dependency = manifest.requires[i];\n-        out += branch(i + 1 == manifest.requires.size());\n+    for (std::size_t i = 0; i < manifest.requirements.size(); ++i) {\n+        const Dependency& dependency = manifest.requirements[i];\n+        out += branch(i + 1 == manifest.requirements.size());\n         out += dependency.name + \" \" + dependency.constraint + \"\\n\";\n     }\n     return out;\n@@ -27,7 +27,7 @@ std::string render_tree(const Manifest& manifest)\n void Report::add_all(const std::vector<std::string>& lines)\n {\n     std::for_each(lines.begin(), lines.end(),\n-                  [=](const std::string& line) { lines_.push_back(prefix_ + line); });\n+                  [=, this](const std::string& line) { lines_.push_back(prefix_ + line); });\n }\n \n bool Report::append_line(std::string& out, const std::string& line)\ndiff --git a/src/resolve.cpp b/src/resolve.cpp\nindex 2398ac3..7c05f97 100644\n--- a/src/resolve.cpp\n+++ b/src/resolve.cpp\n@@ -14,7 +14,7 @@ public:\n     explicit TraceScope(std::vector<std::string>* trace) : trace_(trace) {}\n     ~TraceScope()\n     {\n-        if (trace_ != nullptr && std::uncaught_exception())\n+        if (trace_ != nullptr && std::uncaught_exceptions())\n             trace_->push_back(\"aborted\");\n     }\n \n@@ -48,7 +48,7 @@ struct Walk {\n             throw ResolveError(\"unknown package \" + name);\n         mark = Mark::visiting;\n         note(\"visit \" + name);\n-        std::vector<Dependency> dependencies = found->second.requires;\n+        std::vector<Dependency> dependencies = found->second.requirements;\n         std::sort(dependencies.begin(), dependencies.end(),\n                   [](const Dependency& a, const Dependency& b) { return a.name < b.name; });\n         for (const Dependency& dependency : dependencies) {\ndiff --git a/tests/manifest_test.cpp b/tests/manifest_test.cpp\nindex 0577df5..718128e 100644\n--- a/tests/manifest_test.cpp\n+++ b/tests/manifest_test.cpp\n@@ -25,11 +25,11 @@ TEST(ManifestTest, ParsesEveryKey)\n     const pkgmeta::Manifest& manifest = *result.manifest;\n     EXPECT_EQ(\"app\", manifest.name);\n     EXPECT_EQ(\"1.2.0\", manifest.version.to_string());\n-    ASSERT_EQ(2u, manifest.requires.size());\n-    EXPECT_EQ(\"json\", manifest.requires[0].name);\n-    EXPECT_EQ(\">=3.0\", manifest.requires[0].constraint);\n-    EXPECT_EQ(\"log\", manifest.requires[1].name);\n-    EXPECT_EQ(\"*\", manifest.requires[1].constraint);\n+    ASSERT_EQ(2u, manifest.requirements.size());\n+    EXPECT_EQ(\"json\", manifest.requirements[0].name);\n+    EXPECT_EQ(\">=3.0\", manifest.requirements[0].constraint);\n+    EXPECT_EQ(\"log\", manifest.requirements[1].name);\n+    EXPECT_EQ(\"*\", manifest.requirements[1].constraint);\n     ASSERT_EQ(1u, manifest.provides.size());\n     EXPECT_EQ(\"app-cli\", manifest.provides[0]);\n }\ndiff --git a/tests/render_test.cpp b/tests/render_test.cpp\nindex 58a59e3..508abf9 100644\n--- a/tests/render_test.cpp\n+++ b/tests/render_test.cpp\n@@ -9,8 +9,8 @@ TEST(RenderTest, Tree)\n     pkgmeta::Manifest manifest;\n     manifest.name = \"app\";\n     manifest.version = pkgmeta::semver::Version(1, 2, 0);\n-    manifest.requires.push_back({\"json\", \">=3.0\"});\n-    manifest.requires.push_back({\"log\", \"*\"});\n+    manifest.requirements.push_back({\"json\", \">=3.0\"});\n+    manifest.requirements.push_back({\"log\", \"*\"});\n     EXPECT_EQ(\"app 1.2.0\\n\"\n               \"\\xE2\\x94\\x9C\\xE2\\x94\\x80 json >=3.0\\n\"\n               \"\\xE2\\x94\\x94\\xE2\\x94\\x80 log *\\n\",\ndiff --git a/tests/resolve_test.cpp b/tests/resolve_test.cpp\nindex 4350309..1867e8d 100644\n--- a/tests/resolve_test.cpp\n+++ b/tests/resolve_test.cpp\n@@ -10,12 +10,12 @@ using pkgmeta::ResolveError;\n namespace {\n \n Manifest package(const std::string& name, const std::string& version,\n-                 std::vector<pkgmeta::Dependency> requires = {})\n+                 std::vector<pkgmeta::Dependency> requirements = {})\n {\n     Manifest manifest;\n     manifest.name = name;\n     manifest.version = *pkgmeta::semver::parse_version(version);\n-    manifest.requires = std::move(requires);\n+    manifest.requirements = std::move(requirements);\n     return manifest;\n }\n \n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 71.1
+    },
+    {
+      "id": "cpp17-legacy-to-cpp23",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 13,
+        "duration_ms": 97073,
+        "total_cost_usd_equivalent": 0.25309159999999997,
+        "usage": {
+          "input_tokens": 24,
+          "cache_creation_input_tokens": 33974,
+          "cache_read_input_tokens": 523415,
+          "output_tokens": 6466,
+          "output_tokens_details": {
+            "thinking_tokens": 670
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 33974,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 762,
+              "cache_read_input_tokens": 58568,
+              "cache_creation_input_tokens": 2620,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2620
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "The `bump_standard` unit succeeded on attempt 1 of 4. The result is commit `cc042142493f` on branch `codecoremorph/20261102-181550-3735`, which changes 9 files. Your own branch is untouched, and I didn't merge anything. The build and tests passed on that attempt.\n\n**Files:** `CMakeLists.txt` and `tests/CMakeLists.txt` were the unit's files. The codemod set `CMAKE_CXX_STANDARD` and `cxx_std_` to 23 in the top-level `CMakeLists.txt`. It also made one replacement in `src/resolve.cpp`. The build then failed because the code no longer compiled under C++23, so I edited seven more files that the rule allows for a standard bump.\n\n**Fixes for C++23:**\n- **`requires` keyword:** `Manifest::requires` is now `Manifest::dependencies`, because `requires` is a keyword since C++20. I updated every use in `manifest.h`, `manifest.cpp`, `render.cpp`, `resolve.cpp` and the three test files.\n- **`std::result_of_t`:** replaced with `std::invoke_result_t` in `render.h`, since the old one is removed.\n- **`as_lvalue`:** it now returns `static_cast<std::string&>(text)`. C++23 treats a by-value parameter as an rvalue in a return statement, so the old `return text;` no longer compiled.\n- **`u8` literals:** the two box-drawing strings in `render.cpp` are plain literals with the same bytes, written as hex escapes. `u8` literals are `char8_t` in C++20.\n- **Lambda capture:** `[=]` became `[=, this]` in `Report::add_all`.\n- **`ParseOptions`:** I removed `ParseOptions() = default;` so `ParseOptions{true, 8}` works as an aggregate again.\n\n**For review:**\n- `Manifest::requires` is a public member, so the rename affects any outside callers.\n- The manifest file format still uses the key `\"requires\"`; only the C++ member was renamed.\n- The tests changed only for the rename. No assertions were altered, disabled or weakened.\n\nTo review: `git diff 1c01c6faaf08 codecoremorph/20261102-181550-3735`"
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Raise to C++23 and fix fallout: rename Manifest::requires (keyword in C++20) to dependencies; invoke_result_t for removed result_of_t; plain literals for u8 box characters; [=, this]; ParseOptions made an aggregate again; static_cast in as_lvalue (C++23 implicit move).",
+      "review_notes": [
+        "Public member Manifest::requires renamed to dependencies; test files updated only for the rename (no assertions changed).",
+        "The manifest text key \"requires\" is unchanged.",
+        "u8 literals replaced by byte-identical plain literals using hex escapes.",
+        "Removed ParseOptions() = default so ParseOptions{true, 8} is an aggregate again."
+      ],
+      "warnings": [],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/pkgmeta/manifest.h",
+        "include/pkgmeta/render.h",
+        "src/manifest.cpp",
+        "src/render.cpp",
+        "src/resolve.cpp",
+        "tests/manifest_test.cpp",
+        "tests/render_test.cpp",
+        "tests/resolve_test.cpp"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex a6a34d2..ed75183 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,7 +1,7 @@\n cmake_minimum_required(VERSION 3.21)\n project(PkgMeta CXX)\n \n-set(CMAKE_CXX_STANDARD 17)\n+set(CMAKE_CXX_STANDARD 23)\n set(CMAKE_CXX_STANDARD_REQUIRED ON)\n set(CMAKE_CXX_EXTENSIONS OFF)\n \n@@ -12,7 +12,7 @@ add_library(pkgmeta\n     src/resolve.cpp\n )\n target_include_directories(pkgmeta PUBLIC include)\n-target_compile_features(pkgmeta PUBLIC cxx_std_17)\n+target_compile_features(pkgmeta PUBLIC cxx_std_23)\n \n enable_testing()\n add_subdirectory(tests)\ndiff --git a/include/pkgmeta/manifest.h b/include/pkgmeta/manifest.h\nindex 145d893..6c4a448 100644\n--- a/include/pkgmeta/manifest.h\n+++ b/include/pkgmeta/manifest.h\n@@ -17,13 +17,12 @@ struct Dependency {\n struct Manifest {\n     std::string name;\n     semver::Version version;\n-    std::vector<Dependency> requires;\n+    std::vector<Dependency> dependencies;\n     std::vector<std::string> provides;\n };\n \n // Parser options. An aggregate: callers write ParseOptions{true, 4}.\n struct ParseOptions {\n-    ParseOptions() = default;\n     bool strict = false;    // unknown keys are errors instead of being ignored\n     int max_requires = 64;  // more dependencies than this is an error\n };\ndiff --git a/include/pkgmeta/render.h b/include/pkgmeta/render.h\nindex 4371651..5929a9b 100644\n--- a/include/pkgmeta/render.h\n+++ b/include/pkgmeta/render.h\n@@ -14,14 +14,14 @@ namespace pkgmeta {\n // Lets a temporary bind to an API that takes a non-const reference.\n inline std::string& as_lvalue(std::string&& text)\n {\n-    return text;\n+    return static_cast<std::string&>(text);\n }\n \n // Applies f to every value of a map, keeping the keys.\n template <class Key, class Value, class F>\n-std::map<Key, std::result_of_t<F(const Value&)>> map_values(const std::map<Key, Value>& in, F f)\n+std::map<Key, std::invoke_result_t<F, const Value&>> map_values(const std::map<Key, Value>& in, F f)\n {\n-    std::map<Key, std::result_of_t<F(const Value&)>> out;\n+    std::map<Key, std::invoke_result_t<F, const Value&>> out;\n     for (const auto& [key, value] : in)\n         out.emplace(key, f(value));\n     return out;\ndiff --git a/src/manifest.cpp b/src/manifest.cpp\nindex ffb9553..66c09e8 100644\n--- a/src/manifest.cpp\n+++ b/src/manifest.cpp\n@@ -20,8 +20,8 @@ std::string at_line(std::size_t line, const std::string& message)\n     return \"line \" + std::to_string(line) + \": \" + message;\n }\n \n-static_assert(std::is_same<decltype(Manifest::requires), std::vector<Dependency>>::value,\n-              \"requires holds dependencies\");\n+static_assert(std::is_same<decltype(Manifest::dependencies), std::vector<Dependency>>::value,\n+              \"dependencies holds dependencies\");\n \n } // namespace\n \n@@ -57,8 +57,8 @@ ParseResult parse_manifest(std::string_view text, const ParseOptions& options)\n             Dependency dependency{std::string(value.substr(0, space)), \"*\"};\n             if (space != std::string_view::npos)\n                 dependency.constraint = std::string(trim(value.substr(space + 1)));\n-            manifest.requires.push_back(dependency);\n-            if (static_cast<int>(manifest.requires.size()) > options.max_requires)\n+            manifest.dependencies.push_back(dependency);\n+            if (static_cast<int>(manifest.dependencies.size()) > options.max_requires)\n                 return {std::nullopt, at_line(number, \"too many dependencies\")};\n         } else if (key == \"provides\") {\n             manifest.provides.emplace_back(value);\ndiff --git a/src/render.cpp b/src/render.cpp\nindex 9105e42..28d6262 100644\n--- a/src/render.cpp\n+++ b/src/render.cpp\n@@ -8,7 +8,7 @@ namespace {\n \n const char* branch(bool last)\n {\n-    return last ? u8\"\u00e2\u201d\u201d\u00e2\u201d\u20ac \" : u8\"\u00e2\u201d\u0153\u00e2\u201d\u20ac \";\n+    return last ? \"\\xE2\\x94\\x94\\xE2\\x94\\x80 \" : \"\\xE2\\x94\\x9C\\xE2\\x94\\x80 \";\n }\n \n } // namespace\n@@ -16,9 +16,9 @@ const char* branch(bool last)\n std::string render_tree(const Manifest& manifest)\n {\n     std::string out = manifest.name + \" \" + manifest.version.to_string() + \"\\n\";\n-    for (std::size_t i = 0; i < manifest.requires.size(); ++i) {\n-        const Dependency& dependency = manifest.requires[i];\n-        out += branch(i + 1 == manifest.requires.size());\n+    for (std::size_t i = 0; i < manifest.dependencies.size(); ++i) {\n+        const Dependency& dependency = manifest.dependencies[i];\n+        out += branch(i + 1 == manifest.dependencies.size());\n         out += dependency.name + \" \" + dependency.constraint + \"\\n\";\n     }\n     return out;\n@@ -27,7 +27,7 @@ std::string render_tree(const Manifest& manifest)\n void Report::add_all(const std::vector<std::string>& lines)\n {\n     std::for_each(lines.begin(), lines.end(),\n-                  [=](const std::string& line) { lines_.push_back(prefix_ + line); });\n+                  [=, this](const std::string& line) { lines_.push_back(prefix_ + line); });\n }\n \n bool Report::append_line(std::string& out, const std::string& line)\ndiff --git a/src/resolve.cpp b/src/resolve.cpp\nindex 2398ac3..984e16c 100644\n--- a/src/resolve.cpp\n+++ b/src/resolve.cpp\n@@ -14,7 +14,7 @@ public:\n     explicit TraceScope(std::vector<std::string>* trace) : trace_(trace) {}\n     ~TraceScope()\n     {\n-        if (trace_ != nullptr && std::uncaught_exception())\n+        if (trace_ != nullptr && std::uncaught_exceptions())\n             trace_->push_back(\"aborted\");\n     }\n \n@@ -48,7 +48,7 @@ struct Walk {\n             throw ResolveError(\"unknown package \" + name);\n         mark = Mark::visiting;\n         note(\"visit \" + name);\n-        std::vector<Dependency> dependencies = found->second.requires;\n+        std::vector<Dependency> dependencies = found->second.dependencies;\n         std::sort(dependencies.begin(), dependencies.end(),\n                   [](const Dependency& a, const Dependency& b) { return a.name < b.name; });\n         for (const Dependency& dependency : dependencies) {\ndiff --git a/tests/manifest_test.cpp b/tests/manifest_test.cpp\nindex 0577df5..32e6a7a 100644\n--- a/tests/manifest_test.cpp\n+++ b/tests/manifest_test.cpp\n@@ -25,11 +25,11 @@ TEST(ManifestTest, ParsesEveryKey)\n     const pkgmeta::Manifest& manifest = *result.manifest;\n     EXPECT_EQ(\"app\", manifest.name);\n     EXPECT_EQ(\"1.2.0\", manifest.version.to_string());\n-    ASSERT_EQ(2u, manifest.requires.size());\n-    EXPECT_EQ(\"json\", manifest.requires[0].name);\n-    EXPECT_EQ(\">=3.0\", manifest.requires[0].constraint);\n-    EXPECT_EQ(\"log\", manifest.requires[1].name);\n-    EXPECT_EQ(\"*\", manifest.requires[1].constraint);\n+    ASSERT_EQ(2u, manifest.dependencies.size());\n+    EXPECT_EQ(\"json\", manifest.dependencies[0].name);\n+    EXPECT_EQ(\">=3.0\", manifest.dependencies[0].constraint);\n+    EXPECT_EQ(\"log\", manifest.dependencies[1].name);\n+    EXPECT_EQ(\"*\", manifest.dependencies[1].constraint);\n     ASSERT_EQ(1u, manifest.provides.size());\n     EXPECT_EQ(\"app-cli\", manifest.provides[0]);\n }\ndiff --git a/tests/render_test.cpp b/tests/render_test.cpp\nindex 58a59e3..b4da391 100644\n--- a/tests/render_test.cpp\n+++ b/tests/render_test.cpp\n@@ -9,8 +9,8 @@ TEST(RenderTest, Tree)\n     pkgmeta::Manifest manifest;\n     manifest.name = \"app\";\n     manifest.version = pkgmeta::semver::Version(1, 2, 0);\n-    manifest.requires.push_back({\"json\", \">=3.0\"});\n-    manifest.requires.push_back({\"log\", \"*\"});\n+    manifest.dependencies.push_back({\"json\", \">=3.0\"});\n+    manifest.dependencies.push_back({\"log\", \"*\"});\n     EXPECT_EQ(\"app 1.2.0\\n\"\n               \"\\xE2\\x94\\x9C\\xE2\\x94\\x80 json >=3.0\\n\"\n               \"\\xE2\\x94\\x94\\xE2\\x94\\x80 log *\\n\",\ndiff --git a/tests/resolve_test.cpp b/tests/resolve_test.cpp\nindex 4350309..3ca5f86 100644\n--- a/tests/resolve_test.cpp\n+++ b/tests/resolve_test.cpp\n@@ -10,12 +10,12 @@ using pkgmeta::ResolveError;\n namespace {\n \n Manifest package(const std::string& name, const std::string& version,\n-                 std::vector<pkgmeta::Dependency> requires = {})\n+                 std::vector<pkgmeta::Dependency> dependencies = {})\n {\n     Manifest manifest;\n     manifest.name = name;\n     manifest.version = *pkgmeta::semver::parse_version(version);\n-    manifest.requires = std::move(requires);\n+    manifest.dependencies = std::move(dependencies);\n     return manifest;\n }\n \n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 99.6
+    },
+    {
+      "id": "templates-concepts",
+      "rules": [
+        "bump_standard",
+        "use_concepts_for_templates"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt",
+        "include/meta/traits.h",
+        "include/meta/math.h"
+      ],
+      "claude": {
+        "exit_code": 0,
+        "is_error": false,
+        "subtype": "success",
+        "num_turns": 9,
+        "duration_ms": 81083,
+        "total_cost_usd_equivalent": 0.17237049999999998,
+        "usage": {
+          "input_tokens": 16,
+          "cache_creation_input_tokens": 27065,
+          "cache_read_input_tokens": 297694,
+          "output_tokens": 3416,
+          "output_tokens_details": {
+            "thinking_tokens": 576
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 27065,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "global",
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 630,
+              "cache_read_input_tokens": 51796,
+              "cache_creation_input_tokens": 2483,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 2483
+              },
+              "type": "message"
+            }
+          ],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "result": "Unit U-0001 succeeded on the first attempt. The change is one commit, `298c3e9f916d`, on branch `codecoremorph/20261102-181729-1f2e`. The build and tests passed.\n\n- **Rules:** `bump_standard` and `use_concepts_for_templates`.\n- **Files:** `CMakeLists.txt`, `tests/CMakeLists.txt`, `include/meta/traits.h` and `include/meta/math.h`. The commit changes 3 of the 4.\n- **`CMakeLists.txt`:** a codemod set the standard to 20.\n- **`include/meta/traits.h`:** I added an `Arithmetic` concept, which replaces the repeated `is_arithmetic` constraint.\n- **`include/meta/math.h`:** I converted nine `std::enable_if` uses to `requires` clauses.\n  - These are `gcd`, `lcm`, `lerp`, `clamp`, both `absDiff` overloads, `sum`, `mean` and `power`.\n  - `clamp`, `power` and `sum` use `Arithmetic`.\n  - The other constraints keep the same `std::` traits as before, so overload selection is unchanged.\n- **`tests/CMakeLists.txt`:** unchanged.\n\n**Left unfinished:** the tool left one warning, one remaining `enable_if` site. It is `meta::enable_if_c` in `traits.h`, a public helper that nothing in the project uses. It wraps `std::enable_if` and can't be written as a constraint, so I left it to keep the public API stable. A reviewer may want to decide whether to remove it.\n\nThe sandbox mode in the manifest is `native`, so the builds and tests ran directly on this machine, not in Docker.\n\nI didn't merge anything. To review, run `git diff 8df440e5e52b codecoremorph/20261102-181729-1f2e`."
+      },
+      "passed": true,
+      "units_started": 1,
+      "status": "succeeded",
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "succeeded"
+      ],
+      "reason": null,
+      "summary": "Bump to C++20 and replace std::enable_if SFINAE in meta/math.h with requires-clauses; add a named Arithmetic concept in meta/traits.h for the repeated is_arithmetic constraint.",
+      "review_notes": [
+        "meta::enable_if_c in traits.h is a public, unused helper that wraps std::enable_if; it cannot be expressed as a constraint and was left unchanged to keep the API stable.",
+        "Constraints use the same std traits as before, so overload selection is unchanged."
+      ],
+      "warnings": [
+        "use_concepts_for_templates: 1 site(s) left (a warning)"
+      ],
+      "changed_files": [
+        "CMakeLists.txt",
+        "include/meta/math.h",
+        "include/meta/traits.h"
+      ],
+      "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex d632bcc..bda2d90 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -1,7 +1,7 @@\n cmake_minimum_required(VERSION 3.21)\n project(MetaTemplates CXX)\n \n-set(CMAKE_CXX_STANDARD 11)\n+set(CMAKE_CXX_STANDARD 20)\n set(CMAKE_CXX_STANDARD_REQUIRED ON)\n set(CMAKE_CXX_EXTENSIONS OFF)\n \ndiff --git a/include/meta/math.h b/include/meta/math.h\nindex 5c929d9..663f264 100644\n--- a/include/meta/math.h\n+++ b/include/meta/math.h\n@@ -11,7 +11,9 @@ namespace meta {\n \n // Greatest common divisor, for integers only.\n template <typename T>\n-typename std::enable_if<std::is_integral<T>::value, T>::type gcd(T a, T b) {\n+T gcd(T a, T b)\n+    requires std::is_integral<T>::value\n+{\n     while (b != 0) {\n         T t = a % b;\n         a = b;\n@@ -21,7 +23,9 @@ typename std::enable_if<std::is_integral<T>::value, T>::type gcd(T a, T b) {\n }\n \n template <typename T>\n-typename std::enable_if<std::is_integral<T>::value, T>::type lcm(T a, T b) {\n+T lcm(T a, T b)\n+    requires std::is_integral<T>::value\n+{\n     if (a == 0 || b == 0) {\n         return 0;\n     }\n@@ -31,36 +35,40 @@ typename std::enable_if<std::is_integral<T>::value, T>::type lcm(T a, T b) {\n }\n \n // Linear interpolation, for floating point only.\n-template <typename T,\n-          typename = typename std::enable_if<std::is_floating_point<T>::value>::type>\n-T lerp(T a, T b, T t) {\n+template <typename T>\n+T lerp(T a, T b, T t)\n+    requires std::is_floating_point<T>::value\n+{\n     return a + (b - a) * t;\n }\n \n // clamp for any arithmetic type.\n-template <typename T>\n-typename std::enable_if<std::is_arithmetic<T>::value, T>::type clamp(T value, T low, T high) {\n+template <Arithmetic T>\n+T clamp(T value, T low, T high) {\n     return value < low ? low : (high < value ? high : value);\n }\n \n // Absolute difference: unsigned types can't go negative, so they get their own overload.\n template <typename T>\n-typename std::enable_if<std::is_unsigned<T>::value, T>::type absDiff(T a, T b) {\n+T absDiff(T a, T b)\n+    requires std::is_unsigned<T>::value\n+{\n     return a > b ? a - b : b - a;\n }\n \n template <typename T>\n-typename std::enable_if<std::is_signed<T>::value, T>::type absDiff(T a, T b) {\n+T absDiff(T a, T b)\n+    requires std::is_signed<T>::value\n+{\n     T d = a - b;\n     return d < 0 ? -d : d;\n }\n \n // Sum of any container of arithmetic values.\n template <typename Container>\n-typename std::enable_if<is_container<Container>::value &&\n-                            std::is_arithmetic<typename Container::value_type>::value,\n-                        typename Container::value_type>::type\n-sum(const Container& values) {\n+typename Container::value_type sum(const Container& values)\n+    requires is_container<Container>::value && Arithmetic<typename Container::value_type>\n+{\n     typedef typename Container::value_type T;\n     typedef typename Container::const_iterator It;\n     T total = T();\n@@ -72,8 +80,9 @@ sum(const Container& values) {\n \n // Mean, always computed in double.\n template <typename Container>\n-typename std::enable_if<is_container<Container>::value, double>::type mean(\n-    const Container& values) {\n+double mean(const Container& values)\n+    requires is_container<Container>::value\n+{\n     if (values.size() == 0) {\n         return 0.0;\n     }\n@@ -101,8 +110,8 @@ T power(T base, unsigned exponent, std::false_type /*integral*/) {\n }\n }  // namespace detail\n \n-template <typename T>\n-typename std::enable_if<std::is_arithmetic<T>::value, T>::type power(T base, unsigned exponent) {\n+template <Arithmetic T>\n+T power(T base, unsigned exponent) {\n     return detail::power(base, exponent, std::is_integral<T>());\n }\n \ndiff --git a/include/meta/traits.h b/include/meta/traits.h\nindex bdb1225..f54db6d 100644\n--- a/include/meta/traits.h\n+++ b/include/meta/traits.h\n@@ -53,6 +53,10 @@ struct is_pair : std::false_type {};\n template <typename A, typename B>\n struct is_pair<std::pair<A, B> > : std::true_type {};\n \n+// Arithmetic: integral or floating point (same set as std::is_arithmetic).\n+template <typename T>\n+concept Arithmetic = std::is_arithmetic<T>::value;\n+\n // enable_if shortcuts, C++11 style (std::enable_if_t is C++14).\n template <bool B, typename T = void>\n struct enable_if_c {\n",
+      "user_tree_clean": true,
+      "cost_usd": 0.0,
+      "seconds": 83.6
+    }
+  ]
+}

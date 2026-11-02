@@ -1,0 +1,149 @@
+{
+  "date": "2026-11-02T17:31:39+00:00",
+  "model": "ollama/qwen3:4b",
+  "options": {
+    "effort": null,
+    "num_ctx": 32768
+  },
+  "sandbox": "native",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20
+  },
+  "cases": 4,
+  "passed": 1,
+  "success_rate": 0.25,
+  "cost_usd": 0.0,
+  "seconds": 4928.0,
+  "results": [
+    {
+      "id": "typedefs-codemods-only",
+      "rules": [
+        "replace_typedefs_with_using"
+      ],
+      "files": [
+        "include/geo/types.h",
+        "include/geo/vector.h",
+        "src/vector.cpp"
+      ],
+      "passed": true,
+      "agent_skipped": true,
+      "attempts": 0,
+      "attempt_outcomes": [],
+      "reason": null,
+      "summary": null,
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [
+        "include/geo/types.h",
+        "include/geo/vector.h",
+        "src/vector.cpp"
+      ],
+      "seconds": 16.1,
+      "llm_calls": 0,
+      "tokens": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "cost_usd": 0.0
+    },
+    {
+      "id": "ownership-cache",
+      "rules": [
+        "convert_raw_pointers_to_smart_pointers"
+      ],
+      "files": [
+        "include/inventory/cache.h",
+        "src/cache.cpp"
+      ],
+      "passed": false,
+      "agent_skipped": false,
+      "attempts": 4,
+      "attempt_outcomes": [
+        "build_failed",
+        "build_failed",
+        "tests_failed",
+        "edits_rejected"
+      ],
+      "reason": "the retry budget (3) ran out; the last attempt ended with edits_rejected",
+      "summary": null,
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [],
+      "seconds": 3078.7,
+      "llm_calls": 9,
+      "tokens": {
+        "input_tokens": 70009,
+        "output_tokens": 52784,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "cost_usd": 0.0
+    },
+    {
+      "id": "removed-features-functional-cpp17",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt",
+        "include/toolkit/functional.h",
+        "src/functional.cpp"
+      ],
+      "passed": false,
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "error"
+      ],
+      "reason": "the Ollama request to http://localhost:11434 timed out (None)",
+      "summary": null,
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [],
+      "seconds": 628.0,
+      "llm_calls": 0,
+      "tokens": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "cost_usd": 0.0
+    },
+    {
+      "id": "cpp17-legacy-to-cpp23",
+      "rules": [
+        "bump_standard"
+      ],
+      "files": [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt"
+      ],
+      "passed": false,
+      "agent_skipped": false,
+      "attempts": 1,
+      "attempt_outcomes": [
+        "error"
+      ],
+      "reason": "the Ollama request to http://localhost:11434 timed out (None)",
+      "summary": null,
+      "review_notes": [],
+      "warnings": [],
+      "changed_files": [],
+      "seconds": 1205.2,
+      "llm_calls": 1,
+      "tokens": {
+        "input_tokens": 6144,
+        "output_tokens": 9174,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "cost_usd": 0.0
+    }
+  ]
+}

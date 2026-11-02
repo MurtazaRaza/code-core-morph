@@ -1,0 +1,83 @@
+# The C++ eval set (Phase 4): single work units on the fixture projects, one per line of work
+# the agent does. Run with: uv run python bench/evals.py --provider anthropic (costs money)
+#
+# A case passes when its unit succeeds: it builds under the unit's standard, every
+# baseline-passing test still passes, and the rules' error-level post-conditions hold
+# (detector sites gone). Cases where codemods alone suffice are controls: they must pass
+# without a model call.
+cases:
+  - id: typedefs-codemods-only
+    fixture: typedefs
+    migration: [cpp11, cpp20]
+    rules: [replace_typedefs_with_using]
+    files: [include/geo/types.h, include/geo/vector.h, src/vector.cpp]
+  - id: c-compat-typedefs-cpp-headers
+    fixture: c-compat
+    migration: [cpp11, cpp20]
+    rules: [replace_typedefs_with_using]
+    files: [include/ccore/buffer.hpp, include/ccore/table.hpp, src/buffer_wrapper.cpp, src/table.cpp]
+  - id: ownership-cache
+    fixture: ownership
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/inventory/cache.h, src/cache.cpp]
+  - id: ownership-item
+    fixture: ownership
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/inventory/item.h, src/item.cpp]
+  - id: ownership-factory
+    fixture: ownership
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/inventory/factory.h, src/factory.cpp, tests/factory_test.cpp]
+  - id: ownership-order
+    fixture: ownership
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/inventory/order.h, src/order.cpp]
+  - id: ownership-warehouse
+    fixture: ownership
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/inventory/warehouse.h, src/warehouse.cpp]
+  - id: multi-module-pipeline
+    fixture: multi-module
+    migration: [cpp11, cpp20]
+    rules: [convert_raw_pointers_to_smart_pointers]
+    files: [include/mm/core/pipeline.h, src/core/pipeline.cpp]
+  - id: removed-features-functional-cpp17
+    fixture: removed-features
+    migration: [cpp11, cpp17]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt, include/toolkit/functional.h, src/functional.cpp]
+  - id: removed-features-everything-cpp20
+    fixture: removed-features
+    migration: [cpp11, cpp20]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt]
+  - id: cpp98-legacy-to-cpp11
+    fixture: cpp98-legacy
+    migration: [cpp98, cpp11]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt]
+  - id: cpp98-legacy-to-cpp20
+    fixture: cpp98-legacy
+    migration: [cpp98, cpp20]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt]
+  - id: cpp17-legacy-to-cpp20
+    fixture: cpp17-legacy
+    migration: [cpp17, cpp20]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt]
+  - id: cpp17-legacy-to-cpp23
+    fixture: cpp17-legacy
+    migration: [cpp17, cpp23]
+    rules: [bump_standard]
+    files: [CMakeLists.txt, tests/CMakeLists.txt]
+  - id: templates-concepts
+    fixture: templates
+    migration: [cpp11, cpp20]
+    rules: [bump_standard, use_concepts_for_templates]
+    files: [CMakeLists.txt, tests/CMakeLists.txt, include/meta/traits.h, include/meta/math.h]
