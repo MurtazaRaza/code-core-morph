@@ -10,8 +10,8 @@ CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents 
 
 ## Current status
 
-**Phases 0 and 1 complete on Windows; Phase 2 (C++ adapter) complete natively on Windows, with its Docker parts and the benchmark measurement still open.** The native toolchain (llvm-mingw, LLVM 18, D-32/D-33) installs without admin rights; all eight fixtures (six C++11, plus `cpp98-legacy` and `cpp17-legacy`) configure, build, test and index natively under their own standards; `typedefs` migrates to C++20 and C++23 with codemods alone. Still open: building the C++ image (Docker Desktop's disk image must first move to the E: drive), the `docker`-marked tests against a real daemon, and the NFR-1.1 measurement on leveldb (runs in Docker). Linux and macOS runs wait for CI (Backlog, D-28).
-`uv run pytest -m toolchain` uses the native toolchain installed under `CODECOREMORPH_HOME`.
+**Phases 0, 1 and 2 complete on Windows (native and Docker).** Phase 2 delivered the C++ adapter for C++98/03 through C++23 (D-38): the native toolchain (llvm-mingw, LLVM 18, D-32/D-33) installs without admin rights; the `codecoremorph-cpp:local` image builds with `scripts/build-image cpp`; all eight fixtures (six C++11, plus `cpp98-legacy` and `cpp17-legacy`) configure, build, test and index in both modes; `typedefs` migrates to C++20 and C++23 with codemods alone; leveldb indexes at a projected 41 s per 100k lines (NFR-1.1, `bench/results/`). Linux and macOS runs and image publishing wait for CI (Backlog, D-28). Next: Phase 3.
+`uv run pytest -m toolchain` uses the native toolchain installed under `CODECOREMORPH_HOME`; `uv run pytest -m docker` uses the local image (`scripts/build-image cpp`) or the published one.
 Update this section whenever a phase completes.
 
 ## Stack

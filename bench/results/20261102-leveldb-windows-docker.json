@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-02T13:56:31+00:00",
+  "project": "leveldb 1.23 (99b3c03b3284)",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "lines_of_code": 28664,
+  "configure_s": 9.19,
+  "index_cold_s": 11.8,
+  "index_warm_s": 3.22,
+  "projected_100k_lines_s": 41.2,
+  "nfr_1_1_target_s": 60.0,
+  "index_stats": {
+    "translation_units": 70,
+    "parsed": 70,
+    "cached": 0,
+    "failed": 0,
+    "files": 162,
+    "symbols": 4528,
+    "references": 56139,
+    "dependencies": 409
+  },
+  "index_timings": {
+    "helper_s": 11.172,
+    "parse_s": 11.032,
+    "ingest_s": 0.594
+  },
+  "warm_stats": {
+    "translation_units": 70,
+    "parsed": 0,
+    "cached": 70,
+    "failed": 0,
+    "files": 162,
+    "symbols": 4528,
+    "references": 56139,
+    "dependencies": 409
+  },
+  "libclang": "clang version 18.1.1",
+  "problems": [],
+  "note": "Indexing only; graph building joins the measurement in Phase 3."
+}

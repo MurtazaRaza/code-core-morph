@@ -138,7 +138,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 - [x] Normalized index models and the SQLite-backed index store (SPEC §7.2)
 
 **C++ toolchain image (`images/cpp/`)**
-- [ ] Dockerfile: Ubuntu 22.04 plus system packages (C/C++ headers, ccache, Python), then `scripts/install-toolchain.sh cpp --prefix /opt/codecoremorph` installs the pinned tools from the manifest, and pip installs the hash-pinned `libclang` wheel. Runs as a non-root user. *(written, with `scripts/build-image`; not built yet: Docker's disk image must move to E: first)*
+- [x] Dockerfile: Ubuntu 22.04 plus system packages (C/C++ headers, ccache, Python), then `scripts/install-toolchain.sh cpp --prefix /opt/codecoremorph` installs the pinned tools from the manifest, and pip installs the hash-pinned `libclang` wheel. Runs as a non-root user. *(built locally with `scripts/build-image cpp` as `codecoremorph-cpp:local`, 2.75 GB; tool versions match the manifest; publishing waits for CI)*
 - [x] Provisioner: resolve the image (override, then the digest in `images/cpp/image.lock`, then a local build by image ID), pull it, start it with its toolchain environment (FR-1.2); native detection of tools and versions with an actionable report (FR-1.3)
 
 **Native C++ toolchain scripts (SPEC §7.15)**
@@ -155,7 +155,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 **Fixtures (`fixtures/cpp/`)**, intentionally legacy, CMake + GoogleTest, each 300–2,000 LOC:
 - [x] C++11: `ownership`, `typedefs`, `templates`, `removed-features`, `c-compat`, `multi-module`
 - [x] Other standards (D-38): `cpp98-legacy` (C++98; breaks under C++11) and `cpp17-legacy` (C++17; breaks under C++20 and C++23)
-- [ ] Each fixture builds and passes its tests under its own standard in the image *(verified natively on Windows; the image run waits for the image build)*
+- [x] Each fixture builds and passes its tests under its own standard in the image *(and natively on Windows)*
 
 **C++ adapter (`codecoremorph.adapters.cpp`)**
 - [x] `configure`: CMake + Ninja, out of source, `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, standard override
@@ -180,7 +180,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 **Benchmark (`bench/`)**
 - [x] Evaluate leveldb, yaml-cpp and tinyxml2 against the SPEC §12 criteria; pick one and pin its commit (§16 Q3): leveldb 1.23 (D-37); `bench/fetch.py` and `bench/measure.py`
-- [ ] Measure NFR-1.1 (indexing + graph) and record the result in `bench/results/` *(not run yet: configuring leveldb executes its build scripts, so the measurement runs in Docker and waits for the image)*
+- [x] Measure NFR-1.1 (indexing) and record the result in `bench/results/`: in Docker on Windows (20 CPUs), leveldb's 28.7k lines index in 11.8 s cold and 3.2 s warm, a linear 41 s per 100k lines against the 60 s target. Graph building joins the measurement in Phase 3
 
 CI tasks from this phase (build and publish the image, run `install-toolchain cpp` on every OS, the fixtures in the image) moved to the Backlog CI item (D-32).
 
@@ -193,10 +193,10 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 - Applicability and `validate` checks for every supported upgrade, unknown standards, downgrades and rules the target can't use
 
 ### Exit criteria
-- Every fixture: configure, build, test and index succeed in Docker on Linux CI, and natively where a toolchain exists *(native: done on Windows; Docker: waits for the image)*
-- The `typedefs` fixture migrates with codemods alone and stays green *(done natively)*
-- The benchmark is chosen and pinned; the NFR-1.1 result is recorded, and any gap has a written plan *(chosen and pinned; measurement pending)*
-- `install-toolchain cpp` works without admin rights on Windows, Linux and macOS, and a fixture builds and passes natively with the installed tools; the image's tool versions match the manifest *(Windows: done; Linux and macOS wait for CI, D-28)*
+- Every fixture: configure, build, test and index succeed in Docker on Linux CI, and natively where a toolchain exists *(done natively on Windows and in Docker on Windows; Docker on Linux waits for CI, D-28)*
+- The `typedefs` fixture migrates with codemods alone and stays green *(done natively and in Docker)*
+- The benchmark is chosen and pinned; the NFR-1.1 result is recorded, and any gap has a written plan *(done: 41 s per 100k lines, indexing only; Phase 3 re-measures with graph building)*
+- `install-toolchain cpp` works without admin rights on Windows, Linux and macOS, and a fixture builds and passes natively with the installed tools; the image's tool versions match the manifest *(Windows and the image: done; Linux and macOS natively wait for CI, D-28)*
 
 ---
 

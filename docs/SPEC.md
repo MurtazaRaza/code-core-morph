@@ -760,6 +760,7 @@ A program that isn't found returns exit code 127 in both modes. Commands never r
   - build dir → `/build` (named volume)
   - tool caches (ccache, `~/.m2`, `~/.nuget`, cargo) → named volumes per image
 - **Hardening:** non-root UID, `--cap-drop=ALL`, `no-new-privileges`, and CPU, memory and PID limits from config.
+- **Volume ownership:** Docker creates named volumes owned by root, which the sandbox user can't write and, with no capabilities, can't take over. Before the sandbox container starts, a one-shot container (root with only `CAP_CHOWN`, no network, removed when done) hands the mount points of the build and tool-cache volumes to the sandbox user.
 - **Network:** controlled by `sandbox.network`.
   - `off`: no network at all.
   - `fetch_only` (default): network only during the adapter's dependency-fetch step (e.g. Maven resolve); off for build and test of migrated code.
@@ -1251,6 +1252,7 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 - Criteria: C++11, CMake, GoogleTest, 10–50k LOC, permissive license, raw-pointer-heavy code.
 - Candidates evaluated: leveldb, yaml-cpp, tinyxml2.
 - Selected: leveldb 1.23, pinned to an exact commit in `bench/pin.json` (D-37). `bench/fetch.py` clones it; `bench/measure.py` measures NFR-1.1 and records the result in `bench/results/`.
+- First result (2026-11-02, Docker on Windows 11, 20 CPUs): 28.7k lines, 70 translation units, indexed in 11.8 s cold and 3.2 s warm, a linear 41 s per 100k lines against NFR-1.1's 60 s. Graph building joins the measurement in Phase 3.
 
 ---
 
