@@ -33,6 +33,8 @@ CodeCoreMorph is an open-source tool that runs locally. Given a git repository a
 
 **The compiler and the test suite decide what's correct. The LLM only proposes changes.**
 
+The agent is either CodeCoreMorph's own loop, calling a model provider (Claude through the API, or a local model through Ollama), or a **host agent**: a coding agent that runs CodeCoreMorph as a tool. The first host is Claude Code, through the bundled `codecoremorph` skill; it makes the edits on the user's own Claude plan, and CodeCoreMorph makes no model calls (D-41, §7.6.1).
+
 ### 1.3 Non-goals (for now)
 
 - Not an interactive coding assistant, IDE extension or CI bot (D-04).
@@ -109,6 +111,8 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | D-37 | The benchmark project is leveldb 1.23 (`99b3c03b3284f5886f9ef9a4ef703d57373e61be`, BSD-3-Clause, about 28k lines, GoogleTest, raw-pointer heavy), resolving open question 3. yaml-cpp's tests need C++14 and its core already uses smart pointers; tinyxml2 is about 5k lines without GoogleTest. | Proposed |
 | D-38 | C++ migrations cover the popular standards, not only C++11 → C++20 (user request). Sources: C++98/03, 11, 14, 17, 20; targets: any newer standard up to C++23. C++26 waits for an LLVM with full support (the indexer's libclang is pinned to 18, D-33). Adapters list their standards oldest first (`AdapterCapabilities.standards`) and the core compares standards only through that list. Rules, detector patterns and codemod passes carry standard conditions; the rule with `applies_to.standard_bump` runs first, automatically, when the target is newer. `validate` checks standards and rules against the installed plugins. C++98/03 builds use GoogleTest 1.8.1, the last release that supports them. New fixtures `cpp98-legacy` and `cpp17-legacy`. | Proposed |
 | D-39 | Phase 3 planner details (§7.5.1). The file graph is includes plus header/source pair edges plus references to definitions, and a reference edge is dropped when its target already depends on its source through includes and pairs (a header using a type it only forward-declares would otherwise fuse unrelated files into one cycle). A small built-in graph module (iterative Tarjan, Kahn with a path tie-break) replaces networkx. The baseline runs before indexing, because configuring produces the compile commands the indexer needs and a project that doesn't build should stop early; tests failing in every run are excluded from parity like flaky ones, and a failed baseline exits with code 3. Units are capped at 20 files and a context of half the editor model's window; small `api_preserving` clusters merge up to 40k tokens; `project` rules plan their build-file unit plus the files with sites as predicted fallout; an `api_changing` unit adds every file declaring, defining or referencing the innermost symbol around each site. Rules apply only to files of their own language. `plan.json` holds no timestamps, run IDs, absolute paths or measured durations, so it is byte-for-byte deterministic; the time estimate is printed beside it. Model context windows and prices come from package data (`llm/models.json`) until Phase 4 discovery. Run worktrees get the base commit's submodules, cloned with `--shared` from the user's own submodule checkouts (no network). | Proposed |
+| D-40 | Phase 4 provider and agent details (§7.6, §7.7). The Anthropic provider targets SDK 2.x (API version 2026-10-21) and sends: adaptive thinking with `display: "summarized"` (readable reasoning for transcripts), `block_binding.prefix_mismatch_behavior: "error"` (beta `thinking-binding-controls-2026-08-01`), so an accidental history edit fails loudly, and `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`); after a mid-output fallback, the declined model's thinking and tool calls before the last `fallback` block are dropped, and cost is summed over `usage.iterations` at each model's prices. Eager input streaming is off when `base_url` points at a proxy. Errors map to `RateLimitedError`, `ProviderUnavailableError`, `LLMTimeoutError`, `ProviderAuthError`, `InvalidLLMRequestError`, `ContextOverflowError`, `RefusedError` and `BudgetExhaustedError`; a refusal is a result (`stop_reason: refusal`), not an exception. Ollama tool calls get IDs `call_<turn>_<n>`; its token count is an estimate. Cassettes are JSON, keyed by the hash of the request with line endings normalized; prompts never carry absolute paths, so cassettes replay on any machine, and the end-to-end cassettes are kept per sandbox, because compiler messages differ. `ScriptedProvider` authors cassettes without a live model. The agent keeps its edits between attempts and fixes forward; the unit rolls back only when it fails. A project-wide rule (the standard bump) runs its codemods on every code file and may edit files that fail to compile. clang-tidy fixes apply only for the requested checks: the compiler's own typo fix-its (`clang-diagnostic-*`) are dropped, after one rewrote `std::unary_function` into libc++'s internal `__unary_function`. Configure runs with `--fresh` when the standard changes. Prompt templates are versioned in `prompts/v1/`. | Proposed |
+| D-41 | Claude runs as a **host agent**, not through the API (user decision; details proposed). CodeCoreMorph ships a Claude Code skill (`codecoremorph skill install`) and the `codecoremorph unit` commands, so Claude Code, on the user's Claude plan, is the editor and fixer and CodeCoreMorph makes no model calls (§7.6.1). `unit start` prepares a unit (baseline, index, codemods, verification) and writes a context document and the edits file's path under `.codecoremorph/runs/<id>/`. The host reads the run worktree only through `unit read|ls|grep|symbol|refs|signature` and writes its edits as the `submit_edits` JSON. `unit submit` applies them through PatchEngine and verifies; `unit abort` removes the run. The host never edits files: changes found in the worktree that CodeCoreMorph didn't make are discarded and reported, and changes in the user's working tree are reported. The run *parks* between commands: its lock is marked `parked` and is never stale, and the worktree and (in Docker) the build volume stay. Each step that changes files ends with a checkpoint commit, and success squashes them into the unit's one commit (trailer `CodeCoreMorph-Models: host`). Attempts, edit retries and the retry budget work as in the built-in loop. The Anthropic and Ollama providers stay for unattended runs. The Phase 4 Claude evals run headless Claude Code with the skill (`bench/evals.py --agent claude-code`). Click's Windows wildcard expansion is off, so glob arguments arrive as written. | User |
 
 ---
 
@@ -144,7 +148,9 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 
 ```
 Interfaces   codecoremorph CLI                         Dashboard (FastAPI + React SPA, localhost only)
-                │ starts / controls runs           │ reads run state · writes approvals and aborts
+             (also driven by a host agent:            │ reads run state · writes approvals and aborts
+              Claude Code + skill, `unit` commands)   │
+                │ starts / controls runs           │
                 ▼                                  ▼
 Run engine   Orchestrator: LangGraph state machine, checkpoints, approval gates
 (1 process     ├─ Planner ........ symbol index → dependency graph → ordered work units
@@ -168,6 +174,7 @@ Execution    Sandbox: one Docker container per run     Anthropic API (Claude)
 - Toolchain commands (configure, build, test, index, codemods) run in **one long-lived container per run** in Docker mode, or as host processes in native mode.
 - Git operations are CodeCoreMorph's own trusted operations. They run on the host against the run worktree.
 - LLM calls go from the engine only to the configured provider endpoints.
+- With a host agent (D-41), a unit spans several `codecoremorph unit` commands. Between them the run is *parked*: no CodeCoreMorph process runs, the lock stays with the run, and the worktree and build stay for the next command.
 
 ### 4.3 Repository layout (target)
 
@@ -261,6 +268,7 @@ Every commit on `codecoremorph/<run-id>` builds and passes every baseline-passin
 | FR-3.5 | The agent can only read files in the run worktree and propose edits. It has no shell, network, build or test tools (D-19). | M | 4 |
 | FR-3.6 | Edits outside the unit's file scope are rejected unless policy allows the expansion (§7.10); allowed expansions are recorded. | M | 5 |
 | FR-3.7 | Model routing per role (`editor`, `fixer`, `test_writer`, `summarizer`), with optional escalation to another model after N failed attempts. | S | 4 |
+| FR-3.8 | A host agent (Claude Code, through a bundled skill) can be a unit's editor and fixer through CLI commands, with the same scope, PatchEngine, verification, feedback, budget and rollback guarantees as the built-in agent, and no model calls by CodeCoreMorph (D-41, §7.6.1). | M | 4 |
 
 ### FR-4 Verification and self-correction
 
@@ -679,6 +687,32 @@ attempt_failed: build feedback → [retries left?] ─yes→ agent_edit (fixer r
   - Separately list errors in files outside the unit ("likely caused by your changes to …").
 - **Test feedback:** regressed test IDs with their failure messages and truncated stacks, plus the test's source when it's small.
 - **Invariant feedback:** which invariant failed and what to change.
+- **Paths in prompts** are worktree-relative. Absolute paths in compiler and test output (toolchain headers, the sandbox mount) are shortened: the worktree's to relative paths, any other to `<system>/` and its last two parts. Prompts then carry no user names or machine layouts, and replay on any machine (D-40).
+- **Attempts in one unit (Phase 4, D-40).**
+  - The editor's attempt is a series of turns. Read-only tool calls (at most 30) are answered as `tool_result`s, until one `submit_edits`.
+  - Edits apply through PatchEngine. Edits outside the unit's files are rejected, except for a `project` rule: it may also edit build files and other in-scope files, such as files that fail to compile after the standard bump. A rejection is answered at once and counts against `max_edit_retries`.
+  - Verification: configure (when the standard or a build file changed), scan the rule sites, build, run the tests against the baseline, check the `detector_empty` post-conditions.
+  - A failure goes back to the `fixer`, in the same conversation, with the earlier edits kept. A reply cut off at `max_tokens` runs none of its tools. A turn without `submit_edits` gets one reminder, then the attempt ends with `no_submission`. A refusal ends the unit.
+  - The agent is skipped only when the codemods leave the unit green with no rule sites at all, and no rule is LLM guidance alone.
+
+### 7.6.1 Host agent (D-41)
+
+A **host agent** is a coding agent that runs CodeCoreMorph as a tool and makes a unit's edits itself. The first host is Claude Code: `codecoremorph skill install [--user | --project DIR]` copies the bundled `codecoremorph` skill (`src/codecoremorph/skills/`) into `.claude/skills/`, and the skill teaches Claude Code the workflow below. Installing also writes `command.txt` beside `SKILL.md`, the absolute path of the `codecoremorph` that installed it. The skill uses it when the command isn't on the PATH, so a CodeCoreMorph in a virtual environment needs no global install. The host's model works on the user's own plan; CodeCoreMorph calls no model.
+
+| Command | What it does |
+|---|---|
+| `unit start --rule R [FILE…]` | Creates the run (worktree, branch, lock), captures the baseline, indexes, runs the codemods and verifies. If nothing is left (FR-3.4), the unit is committed and the run ends. Otherwise the run parks, waiting for the host, and the command prints the context document and the edits file's paths. |
+| `unit read\|ls\|grep\|symbol\|refs\|signature` | The agent's read-only tools (§7.6) on the run worktree and index. They take no lock. |
+| `unit submit` | Applies the edits file through PatchEngine, with the unit's scope checks, then verifies as in §7.6. The result is success (one commit; the run ends), a rejection (nothing applied; same attempt, counts against `max_edit_retries`), feedback for the next attempt, or, when the retry budget is spent, a rollback. |
+| `unit abort [--reason]` | Removes the worktree, the run branch and the build. It starts no sandbox, so it works with Docker down or after a crash. |
+| `unit status`, `unit context` | The active unit (or the last one), and its context document. |
+
+- **Files.** `.codecoremorph/runs/<id>/` holds `host.json` (the unit's state), `context.md` (the current attempt's context) and `edits.json` (the host writes it; `submit` moves it into the attempt's artifacts). The host writes only there, inside the git-excluded state directory, never to project files.
+- **Context document.** It holds host instructions (`prompts/v1/host_system.md`), the rules and their guidance, and the same unit message as the built-in agent's first turn (§7.6): the files' full current text, out-of-unit declarations, the codemod summary, the remaining sites, and the build state or the last feedback. Unlike system prompts, it names the edits file's path; nothing caches it.
+- **Edits.** The edits file is the `submit_edits` object (§7.4), so the PatchEngine path, scope rules and rejection feedback are the built-in agent's.
+- **A clean worktree between commands.** Each step that changes files (codemods, an applied attempt) ends with a checkpoint commit on the run branch. A command finds the worktree on its last checkpoint. Anything else, edited files or commits made in the worktree, did not come through PatchEngine: it is discarded and reported. Success squashes the checkpoints into the unit's one commit (§7.9), with `CodeCoreMorph-Models: host`. Files that changed in the user's working tree while the unit ran are reported, never reverted. A `submit` that stops before its verification ends (a sandbox failure, an interrupt) goes back to the last checkpoint and restores the edits file, so it can simply run again.
+- **Parking.** Between commands the lock records `parked: true` and is never stale. Another run is refused with a hint to submit or abort. A second command of the same run waits until the first ends. The next command resumes the lock and reattaches to the worktree. Docker mode keeps the run's build volume and starts a fresh container, and every command runs in the executor the unit started with.
+- **Several units.** A run holds one unit until Phase 5 adds host-driven runs. The skill chains units with `unit start --base codecoremorph/<previous-run-id>`.
 
 ### 7.7 LLM provider layer
 
@@ -695,6 +729,8 @@ class LLMProvider(Protocol):
 - **`CompletionResult`:** content blocks (text, tool calls, opaque), a normalized stop reason (`end`, `tool_use`, `max_tokens`, `refusal`), usage (input, output, cache read, cache write), `cost_usd` and latency.
 - **Errors**, normalized: `RateLimited`, `ProviderUnavailable`, `AuthError`, `InvalidRequest`, `ContextOverflow`, `Refused`, `Timeout`.
 - **Ledger:** every call records usage and cost against role, unit and run (FR-8.3). The ledger enforces hard caps (NFR-7.1).
+
+The providers serve CodeCoreMorph's own agent loop: unattended runs, CI and local models. Interactive use with Claude goes through the host agent (§7.6.1), which needs no provider.
 
 **Anthropic provider (Claude).** The API changes often, so load the `claude-api` skill or the current SDK docs before implementing or changing this provider.
 - Use the official `anthropic` Python SDK. Credentials come from the SDK's default chain (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or an `ant auth login` profile). CodeCoreMorph adds no key handling of its own.
@@ -733,6 +769,7 @@ class LLMProvider(Protocol):
 - `RecordingProvider` wraps a real provider and writes cassettes, keyed by a hash of the normalized request.
 - `ReplayProvider` serves cassettes and **fails loudly on a miss**.
 - Cassettes live in `tests/cassettes/`.
+- `ScriptedProvider` answers with scripted results. Tests use it, and `pytest --record-cassettes` turns its scripts into cassettes without a live model.
 
 ### 7.8 Sandbox and provisioning
 
@@ -874,7 +911,9 @@ Every attempt is checked before commit (FR-4.4).
 | `codecoremorph debug index\|build\|test\|codemod …` | Developer tools for adapters | 2 |
 | `codecoremorph rules list`, `codecoremorph adapters list`, `codecoremorph providers list` | Plugin discovery | 2, 4 |
 | `codecoremorph toolchain install <lang>`, `codecoremorph toolchain list`, `codecoremorph toolchain path` | Run the bundled dependency scripts; show installed toolchains (§7.15) | 2 |
-| `codecoremorph debug unit --rule R FILE…` | Run one unit in isolation | 4 |
+| `codecoremorph debug unit --rule R [FILE…] [--record CASSETTE \| --replay CASSETTE] [--keep]` | Run one unit in isolation: codemods, agent, build, tests, feedback, retries. `--keep` commits a successful unit to its run branch | 4 |
+| `codecoremorph unit start\|submit\|abort\|status\|context …`, `codecoremorph unit read\|ls\|grep\|symbol\|refs\|signature …` | One unit with a host agent making the edits (§7.6.1) | 4 |
+| `codecoremorph skill install [--user \| --project DIR] [--force]`, `codecoremorph skill path` | Install the Claude Code skill (§7.6.1) | 4 |
 | `codecoremorph plan [CONFIG] [--base REF] [--sandbox MODE] [--json]` | Provision → baseline → index → plan; no code changes. Writes `plan.json` and `baseline.json` | 3 |
 | `codecoremorph run [CONFIG] [--base REF] [--yes]` | Full run | 5 |
 | `codecoremorph status [RUN] [--json]` | Progress and state | 5 |
@@ -1237,7 +1276,7 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 | Integration | Adapter against fixtures in Docker (`docker` marker) and native mode (`toolchain` marker); git operations on temporary repos | CI Linux (Docker); Windows native where toolchains exist |
 | End to end | Full `codecoremorph run` on fixtures with the replay provider | CI Linux |
 | Safety | Working-tree byte-identity, crash and resume, path traversal, prompt-injection fixture, budget exhaustion | CI |
-| Live evals | Fixture eval set against Claude and an Ollama model: success rate, attempts, cost per unit | Manual or nightly, opt-in (`live_llm` marker) |
+| Live evals | Fixture eval set against Claude (Claude Code with the skill, D-41) and an Ollama model: success rate, attempts, time; tokens and cost for providers | Manual or nightly, opt-in (`live_llm` marker) |
 | Benchmark | Pinned OSS C++11 project: index time (NFR-1.1), memory (NFR-1.2), migration success and cost | Manual or nightly; results in `bench/results/` |
 | Scripts | shellcheck (POSIX mode) on every `.sh`; manifest format check; `bootstrap-dev` and `install-toolchain` on clean Windows, Linux and macOS runners; checksum-mismatch, re-run and `--dry-run` behavior | CI when scripts or the manifest change, plus nightly |
 
@@ -1258,6 +1297,7 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 - Candidates evaluated: leveldb, yaml-cpp, tinyxml2.
 - Selected: leveldb 1.23, pinned to an exact commit in `bench/pin.json` (D-37). `bench/fetch.py` clones it; `bench/measure.py` measures NFR-1.1 and records the result in `bench/results/`.
 - Indexing plus graph generation (2026-11-02, Docker on Windows 11, 20 CPUs): 28.7k lines, 70 translation units, indexed in 10.9 s cold and 3.1 s warm, graph built in 0.06 s (122 files, 80 clusters, the largest 6 files): a linear 38 s per 100k lines against NFR-1.1's 60 s.
+- Evals (Phase 4): `bench/evals/cpp.yaml` holds 15 single units across the C++ rules (codemod-only controls, ownership conversions, standard bumps from C++98, C++11 and C++17 to C++11–C++23, concepts); `bench/evals.py` runs them and records pass rate, attempts and time in `bench/results/`. With `--agent claude-code`, it runs headless Claude Code (`claude -p`) with the skill installed in each case's project, on the user's Claude plan. With `--provider`, it runs CodeCoreMorph's own loop against a model provider and also records tokens and cost.
 - Plan (Phase 3, `bench/plan.py`, Docker): C++11 → C++20 with the example manifest's rules in 3.5 min, mostly building and testing the baseline twice (256 tests pass, 2 fail in every run). 27 units to run and 2 skipped, none too large, an estimated $13 with `claude-opus-5-5`. leveldb's vendored 2020 GoogleTest builds with `-Werror`, so `bench/pin.json` keeps clang 18's newer `-Wdeprecated-copy` and `-Wunused-but-set-variable` as warnings.
 
 ---

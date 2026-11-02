@@ -8,8 +8,8 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 3 of the plan). CodeCoreMorph can build, test, index and
-> plan a C++ migration (`codecoremorph plan`), but doesn't change code yet.
+> **Status:** early development (Phase 4 of the plan). CodeCoreMorph can plan a C++ migration
+> (`codecoremorph plan`) and migrate one work unit at a time, with Claude Code as the agent.
 
 ## Developer setup
 
@@ -40,6 +40,26 @@ uv run codecoremorph plan path/to/migration_config.yaml
 
 The plan builds and tests your project's base commit in a separate worktree, indexes it, and
 lists the ordered work units with their estimated cost. Your working tree is never touched.
+
+## Migrating with Claude Code
+
+CodeCoreMorph runs as a tool of [Claude Code](https://claude.com/claude-code): Claude makes the
+edits on your own Claude plan, and CodeCoreMorph applies them, builds, tests, feeds failures
+back and commits each verified unit to a `codecoremorph/<run-id>` branch. No API key is needed.
+
+Install the skill into your project from this checkout:
+
+```sh
+uv run codecoremorph skill install --project path/to/your/project   # or --user for every project
+```
+
+The skill records where this CodeCoreMorph is, so `codecoremorph` doesn't have to be on your
+PATH.
+
+Then, in Claude Code in that project, ask for the migration, for example *"use codecoremorph
+to replace the raw owning pointers in src/cache.cpp with smart pointers"*. The skill runs
+`codecoremorph unit start`, reads the unit's context, writes the edits and runs
+`codecoremorph unit submit` until the unit passes, then tells you which branch to review.
 
 ## Documentation
 

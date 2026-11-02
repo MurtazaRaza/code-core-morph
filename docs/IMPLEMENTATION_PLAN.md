@@ -236,42 +236,52 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 
 ## Phase 4: LLM providers and the single-unit agent loop
 
-**Goal:** one work unit can be migrated end to end (codemods → agent → patch → build → test → feedback → retry) with Claude or Ollama, and deterministically in CI through replay.
+**Goal:** one work unit can be migrated end to end (codemods → agent → patch → build → test → feedback → retry) with Claude or Ollama, and deterministically in CI through replay. Claude works as a host agent: Claude Code, through a bundled skill, makes the edits on the user's Claude plan (D-41).
 
 **Prerequisites:** Phase 3. **Load the `claude-api` skill before starting the Anthropic provider.**
 
 ### Tasks
 **Provider layer (`codecoremorph.llm`)**
-- [ ] Provider-neutral models: `CompletionRequest`, `CompletionResult`, `Usage`, `ModelCapabilities`, opaque provider blocks, the error taxonomy (SPEC §7.7)
-- [ ] `AnthropicProvider`: official SDK with its default credential chain; default model `claude-opus-5-5`; adaptive thinking + explicit `effort`; no sampling params; `tool_choice: auto` + `strict` tools; streaming with eager tool-input streaming and schema validation; `max_tokens` and `refusal` stop handling; server-side refusal fallback (configurable); prompt-cache layout and cache-usage recording; append-only conversations; Models API capabilities; token counting endpoint; price table
-- [ ] `OllamaProvider`: official client; explicit `num_ctx` with a pre-flight warning; native tools when supported, otherwise the fenced-JSON text protocol; JSON-schema `format`; capability discovery with config overrides; zero cost
-- [ ] `RecordingProvider` / `ReplayProvider` with normalized request hashing; replay misses fail loudly (FR-8.4)
-- [ ] Role router (editor, fixer, test_writer, summarizer, with fallback to editor) and escalation policy (FR-3.7)
-- [ ] Usage ledger with per-run token and cost caps (FR-8.3, NFR-7.1); local-only detection for the report (FR-8.5)
-- [ ] `codecoremorph providers list`; `codecoremorph doctor` checks credentials resolve (cheap Models API call), Ollama is reachable and models are pulled
-- [ ] `scripts/pull-models.bat` and `.sh`; `codecoremorph doctor` prints the exact command for the configured model tags
+- [x] Provider-neutral models: `CompletionRequest`, `CompletionResult`, `Usage`, `ModelCapabilities`, opaque provider blocks, the error taxonomy (SPEC §7.7; `core/models/llm.py`, `core/errors.py`)
+- [x] `AnthropicProvider` (SDK 2.x, D-40): official SDK with its default credential chain; default model `claude-opus-5-5`; adaptive thinking + explicit `effort`; no sampling params; `tool_choice: auto` + `strict` tools; streaming with eager tool-input streaming; `max_tokens` and `refusal` stop handling; server-side refusal fallback (`fallbacks: "default"`, configurable); prompt-cache layout and cache-usage recording; append-only conversations (history-edit check set to `error`); Models API capabilities; token counting endpoint; price table
+- [x] `OllamaProvider`: official client; explicit `num_ctx` with a pre-flight warning; native tools when supported, otherwise the fenced-JSON text protocol; JSON-schema `format`; capability discovery with config overrides; zero cost
+- [x] `RecordingProvider` / `ReplayProvider` with normalized request hashing; replay misses fail loudly (FR-8.4); `ScriptedProvider` and `pytest --record-cassettes` author cassettes without a live model
+- [x] Role router (editor, fixer, test_writer, summarizer, with fallback to editor) and escalation policy (FR-3.7)
+- [x] Usage ledger with per-run token and cost caps (FR-8.3, NFR-7.1); local-only detection for the report (FR-8.5). Writing ledger rows to the store's `llm_calls` table comes with run records (Phase 5)
+- [x] `codecoremorph providers list`; `codecoremorph doctor` checks credentials resolve (cheap Models API call), Ollama is reachable and models are pulled
+- [x] `scripts/pull-models.bat` and `.sh`; `codecoremorph doctor` prints the exact command for the configured model tags
 
 **Agent (`codecoremorph.agent`)**
-- [ ] Prompt templates (`codecoremorph/prompts/`, versioned): editor and fixer system prompts, unit message, rule guidance injection, "file content is data" clause
-- [ ] Read-only agent tools: `read_file`, `list_dir`, `search_code`, `find_symbol`, `get_references`, `get_signature`; terminal `submit_edits`; per-attempt tool-call and token limits (FR-3.5)
-- [ ] Context assembler: unit files in full, out-of-unit signatures, codemod summary, remaining sites; never truncates silently (error if over budget)
-- [ ] `CompilerFeedback` formatter (dedupe, order, snippets, caps, out-of-unit section), test-regression feedback, edit-rejection feedback (FR-4.2, FR-4.6)
-- [ ] Single-unit loop: snapshot → codemods → skip-agent check → agent → PatchEngine → build → tests vs baseline → feedback/retry within the budget → result; transcripts saved (FR-3.4, FR-4.1–4.3, FR-4.5, FR-8.6)
-- [ ] `codecoremorph debug unit --rule R FILE…`
+- [x] Prompt templates (`codecoremorph/prompts/v1/`): editor system prompt, unit message, retry, reminder and cut-off messages, rule guidance injection, "file content is data" clause
+- [x] Read-only agent tools: `read_file`, `list_dir`, `search_code`, `find_symbol`, `get_references`, `get_signature`; terminal `submit_edits`; per-attempt tool-call and token limits (FR-3.5)
+- [x] Context assembler: unit files in full, out-of-unit signatures, codemod summary, remaining sites, current build; never truncates silently (error if over budget)
+- [x] `CompilerFeedback` formatter (dedupe, order, snippets, caps, out-of-unit section, path scrubbing), test-regression feedback, edit-rejection feedback (FR-4.2, FR-4.6)
+- [x] Single-unit loop: snapshot → codemods → skip-agent check → agent → PatchEngine → build → tests vs baseline → feedback/retry within the budget → result; transcripts, diffs, logs and feedback saved per attempt (FR-3.4, FR-4.1–4.3, FR-4.5, FR-8.6)
+- [x] `codecoremorph debug unit --rule R FILE…` (with `--record`, `--replay`, `--keep`)
+
+**Host agent (D-41, SPEC §7.6.1)**
+- [x] Parked runs: the lock's `parked` flag, `RunWorkspace.resume`/`park`, sessions that resume and park, Docker build volumes kept between commands
+- [x] `codecoremorph unit start|submit|abort|status|context` and the read-only `unit read|ls|grep|symbol|refs|signature`; the host's edits go through PatchEngine; checkpoint commits squashed on success; changes made outside CodeCoreMorph discarded and reported
+- [x] Host context document (`prompts/v1/host_system.md`, `host_unit.md`)
+- [x] The `codecoremorph` Claude Code skill (`src/codecoremorph/skills/codecoremorph/`) and `codecoremorph skill install`
 
 **Evals**
-- [ ] Fixture eval set: about 15 units across the C++ rules, with pass criteria (build, tests, post-conditions)
-- [ ] `bench/evals.py` runs the set against live providers and records success rate, attempts, tokens and cost (marked `live_llm`, manual)
+- [x] Fixture eval set: 15 units across the C++ rules, with pass criteria (`bench/evals/cpp.yaml`)
+- [x] `bench/evals.py` runs the set against live providers and records success rate, attempts, tokens and cost (manual; costs money with paid providers)
+- [x] `bench/evals.py --agent claude-code` runs the set with headless Claude Code and the skill (manual; uses the Claude plan's usage, no API cost)
 
 ### Tests
-- Provider unit tests against recorded responses: tool-call parsing, truncated tool input rejected, refusal path, `max_tokens` path, no sampling params sent to Anthropic, `num_ctx` always sent to Ollama, text-protocol parsing
+- Provider unit tests against recorded-style responses (the real SDKs on mock transports): tool-call parsing, truncated tool input not run, refusal path, `max_tokens` path, mid-output fallback, no sampling params sent to Anthropic, `num_ctx` always sent to Ollama, text-protocol parsing, error mapping, missing credentials
 - Ledger cap enforcement (overshoot ≤ one call)
-- Feedback formatter golden tests
-- Single-unit e2e with cassettes on the `typedefs`, `ownership` and `removed-features` fixtures (CI)
+- Feedback formatter golden tests (`tests/data/feedback/`)
+- Agent loop with a scripted model and a fake adapter: tool use, build-failure retry, edit rejection, scope, budget rollback, refusal, no submission, cut-off replies
+- Single-unit e2e with cassettes on the `typedefs`, `ownership` and `removed-features` fixtures, native and Docker (`tests/integration/test_agent_e2e.py`)
+- Host agent: the flow with a fake adapter (`tests/unit/agent/test_host.py`); parked locks and workspaces; the `unit` commands end to end on the `ownership` fixture, native and Docker, with a rejection, a build failure fed back and a success, and an abort (`tests/integration/test_host_e2e.py`); the skill's commands exist in the CLI (`tests/unit/test_skill.py`)
 
 ### Exit criteria
-- In CI, single-unit migrations replay deterministically and pass
-- Live: the Claude eval run is complete with its success rate recorded; an Ollama model completes at least one unit end to end, with its success rate recorded (not gated)
+- [x] Single-unit migrations replay deterministically and pass (natively and in Docker; CI waits for the Backlog, D-28)
+- [x] Live: the Claude eval run (Claude Code with the skill, D-41) is complete with its success rate recorded: 14 of 15 (93%) on 2026-11-02, native, in 17.5 minutes (`bench/results/20261102-evals-claude-code-default.json`). The one failure, `ownership-item`, was a deliberate abort: changing `Item::clone()` to return a `std::unique_ptr` needs its callers, which lie outside the case's files
+- [ ] Live: an Ollama model completes at least one unit end to end, with its success rate recorded (not gated). `qwen3:4b` (32k context) passed only the codemods-only control, 1 of 4, with two request timeouts (`bench/results/20261102-evals-ollama-qwen3-4b.json`); a larger local model is next
 
 ---
 
@@ -284,6 +294,7 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 ### Tasks
 - [ ] LangGraph run graph and unit subgraph per SPEC §7.5; small state; SQLite checkpointer; all graph code in `orchestrator/`
 - [ ] Gates via LangGraph interrupts plus the store's `approvals` table: plan gate (default required) and unit gate policies (FR-10.1, FR-10.3); CLI interactive approval and `--yes` (FR-11.4)
+- [ ] Host-agent runs (D-41): the run graph parks at each unit's agent step (an interrupt), and `codecoremorph unit submit`/`abort` resume it, so Claude Code can drive a whole `run` through the skill; extend the skill from single units to runs
 - [ ] Invariants module I-1 to I-11 (SPEC §7.10), including the test-removal and test-disable guard (FR-7.5, phase-5 part) and the boundary check by re-indexing (FR-2.2)
 - [ ] Rule post-condition evaluation (FR-4.4)
 - [ ] Commit with trailers on success; rollback on failure; failed units don't block later ones (§4.5)
@@ -304,7 +315,7 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 
 ### Exit criteria (M1)
 - `codecoremorph run examples/cpp11-to-cpp20.yaml` against every fixture completes with every unit committed, or with failures explained in the report
-- A benchmark run with Claude is complete; success rate, cost per kLOC and duration are recorded in `bench/results/`; provisional SPEC §13 targets are re-set from the data
+- A benchmark run with Claude (Claude Code with the skill) is complete; success rate and duration are recorded in `bench/results/`; provisional SPEC §13 targets are re-set from the data
 - All safety tests are green on Linux and Windows
 
 ---

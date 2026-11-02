@@ -10,8 +10,8 @@ CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents 
 
 ## Current status
 
-**Phases 0 to 3 complete on Windows (native and Docker).** Phase 2 delivered the C++ adapter for C++98/03 through C++23 (D-38), with a native toolchain (llvm-mingw, LLVM 18, D-32/D-33) and the `codecoremorph-cpp:local` image (`scripts/build-image cpp`). Phase 3 delivered `codecoremorph plan` (D-39): baseline (configure, build, tests x N, flaky detection) → index → dependency graph (SCC clusters) → ordered work units with flags and token, cost and time estimates, written to `.codecoremorph/runs/<id>/plan.json` (byte-for-byte deterministic) and `baseline.json`. It plans all eight fixtures in both modes and leveldb (`bench/plan.py`: 27 units, about $13; indexing plus graph at a projected 38 s per 100k lines, NFR-1.1). Linux and macOS runs and image publishing wait for CI (Backlog, D-28). Next: Phase 4 (LLM providers and the single-unit agent loop; load the `claude-api` skill first).
-`uv run pytest -m toolchain` uses the native toolchain installed under `CODECOREMORPH_HOME`; `uv run pytest -m docker` uses the local image (`scripts/build-image cpp`) or the published one.
+**Phases 0 to 3 complete on Windows (native and Docker); Phase 4 complete except the Ollama eval.** Phase 2 delivered the C++ adapter for C++98/03 through C++23 (D-38), with a native toolchain (llvm-mingw, LLVM 18, D-32/D-33) and the `codecoremorph-cpp:local` image (`scripts/build-image cpp`). Phase 3 delivered `codecoremorph plan` (D-39): baseline → index → dependency graph → ordered work units with estimates, in a byte-for-byte deterministic `plan.json`. Phase 4 (D-40) delivered the Anthropic (SDK 2.x) and Ollama providers, record/replay cassettes, routing, the usage ledger, the single-unit agent loop and `codecoremorph debug unit`; single-unit migrations of `typedefs`, `ownership` and `removed-features` replay deterministically natively and in Docker (`tests/cassettes/cpp/`). Claude runs as a **host agent** (D-41): Claude Code, through the bundled `codecoremorph` skill (`codecoremorph skill install`), drives `codecoremorph unit start|submit|abort` on the user's Claude plan, with no API calls. Claude Code with the skill passed 14 of 15 eval units (`bench/results/`). Open: an Ollama model that completes an agent unit (`qwen3:4b` didn't). Linux and macOS runs and image publishing wait for CI (Backlog, D-28). Next after the evals: Phase 5.
+`uv run pytest -m toolchain` uses the native toolchain installed under `CODECOREMORPH_HOME`; `uv run pytest -m docker` uses the local image (`scripts/build-image cpp`) or the published one. `--record-cassettes` re-records the agent cassettes from their scripted model turns.
 Update this section whenever a phase completes.
 
 ## Stack
@@ -46,6 +46,7 @@ uv run pytest -m live_llm                          # real LLM calls; opt-in only
 uv run ruff check . ; uv run ruff format .
 uv run pyright
 uv run codecoremorph --help
+uv run codecoremorph skill install --project PATH  # the Claude Code skill (--user: every project)
 cd dashboard-ui; npm ci; npm run dev | npm run build | npm test   # Phase 7+
 ```
 
@@ -57,7 +58,7 @@ cd dashboard-ui; npm ci; npm run dev | npm run build | npm test   # Phase 7+
 4. **Every LLM call goes through the `LLMProvider` interface** (`llm/`). No SDK imports outside `llm/`. No `temperature` or other universal sampling knob; provider-specific options go in `provider_options`.
 5. **Never touch the user's working tree.** All writes go to the run worktree on branch `codecoremorph/<run-id>`. Never push, merge, rebase, or delete branches CodeCoreMorph didn't create (NFR-2.1, NFR-2.5).
 6. **Keep LangGraph state small:** IDs, counters, statuses. Diffs, logs, transcripts and indexes go in the store, referenced by ID (NFR-1.2). Graph construction stays inside `orchestrator/`.
-7. **The agent only reads and proposes.** Agent tools are read-only plus `submit_edits`. Build and test are graph steps, never agent tools (D-19).
+7. **The agent only reads and proposes.** Agent tools are read-only plus `submit_edits`. Build and test are graph steps, never agent tools (D-19). A host agent (Claude Code, D-41) gets the same contract through `codecoremorph unit`: it reads through `unit read|grep|…` and writes only the edits file; CodeCoreMorph discards anything else it finds in the worktree.
 8. **Prompts live in `src/codecoremorph/prompts/`** as versioned templates. No long prompt strings inline in code. Keep system prompts byte-stable (no timestamps or IDs) so prompt caching works.
 9. **Data crossing component boundaries uses the pydantic models in `codecoremorph.core`** (SPEC §9). Don't pass raw dicts between components.
 10. **The engine core is synchronous** (D-17). Parallelism goes only where the spec calls for it (indexing process pool).
