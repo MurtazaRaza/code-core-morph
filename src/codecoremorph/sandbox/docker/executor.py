@@ -434,3 +434,23 @@ def remove_run_resources(
             except (NotFound, APIError) as exc:
                 log.debug("couldn't remove volume %s: %s", getattr(volume, "name", "?"), exc)
     return removed
+
+
+def release_run(run_id: str) -> bool:
+    """Best effort: remove a finished run's container, network and build volume, for a command
+    that ends a parked run without starting its sandbox. False if Docker can't be reached."""
+    try:
+        client = _docker_client()
+    except Exception as exc:  # noqa: BLE001 - Docker being down must not block an abort
+        log.warning("couldn't reach Docker to remove run %s's volume: %s", run_id, exc)
+        return False
+    try:
+        remove_run_resources(client, run_id)
+        return True
+    except Exception as exc:  # noqa: BLE001 - see above
+        log.warning("couldn't remove run %s's Docker resources: %s", run_id, exc)
+        return False
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()

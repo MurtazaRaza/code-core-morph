@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from codecoremorph.core.errors import RepoLockedError, VcsError
+from codecoremorph.core.errors import RepoLockedError, RunNotActiveError, VcsError
 from codecoremorph.core.paths import HomeLayout
 from codecoremorph.vcs import LockInfo, RepoLock, RunWorkspace, read_lock
 
@@ -154,3 +154,84 @@ def test_failed_create_releases_the_lock(repo: Path) -> None:
 def test_home_inside_the_repository_is_refused(repo: Path) -> None:
     with pytest.raises(VcsError, match="inside the repository"):
         RunWorkspace.create(repo, RUN, home=HomeLayout(repo / "ccm-home"))
+
+
+# --------------------------------------------------------------------------- parked runs (D-41)
+
+
+def test_a_parked_lock_outlives_its_process_and_blocks_other_runs(tmp_path: Path) -> None:
+    path = tmp_path / ".codecoremorph" / "lock"
+    lock = RepoLock.acquire(path, RUN)
+    lock.park()
+    assert not lock.held
+    holder = read_lock(path)
+    assert holder is not None
+    assert holder.parked
+    # Even when the process that parked it has ended, a parked lock is not stale.
+    path.write_text(
+        holder.model_copy(update={"pid": _dead_pid()}).model_dump_json(), encoding="utf-8"
+    )
+    with pytest.raises(RepoLockedError, match="waiting for its agent") as info:
+        RepoLock.acquire(path, OTHER)
+    assert "codecoremorph unit abort" in (info.value.hint or "")
+
+
+def test_the_run_resumes_its_parked_lock(tmp_path: Path) -> None:
+    path = tmp_path / "lock"
+    RepoLock.acquire(path, RUN).park()
+    lock = RepoLock.resume(path, RUN)
+    holder = read_lock(path)
+    assert holder is not None
+    assert not holder.parked
+    assert holder.pid == os.getpid()
+    lock.release()
+    assert not path.exists()
+
+
+def test_resume_refuses_another_runs_lock_and_a_missing_one(tmp_path: Path) -> None:
+    path = tmp_path / "lock"
+    with pytest.raises(RunNotActiveError, match="not active"):
+        RepoLock.resume(path, RUN)
+    RepoLock.acquire(path, OTHER).park()
+    with pytest.raises(RunNotActiveError, match=f"belongs to run {OTHER}"):
+        RepoLock.resume(path, RUN)
+
+
+def test_resume_waits_for_a_running_command_of_the_run(tmp_path: Path) -> None:
+    path = tmp_path / "lock"
+    holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        _write_lock(path, pid=holder.pid, run_id=RUN)
+        with pytest.raises(RepoLockedError, match="still running"):
+            RepoLock.resume(path, RUN)
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+def test_workspace_parks_and_resumes(repo: Path, isolated_home: Path, git) -> None:
+    workspace = RunWorkspace.create(repo, RUN)
+    (workspace.worktree.path / "README.md").write_bytes(b"# edited in the run\n")
+    workspace.park()
+    assert workspace.worktree.path.is_dir()
+    with pytest.raises(RepoLockedError):
+        RunWorkspace.create(repo, OTHER)
+    again = RunWorkspace.resume(repo, RUN, base_commit=workspace.base_commit)
+    assert again.worktree.path == workspace.worktree.path
+    assert (again.worktree.path / "README.md").read_bytes() == b"# edited in the run\n"
+    assert again.build_dir.is_dir()
+    again.cleanup(delete_branch=True)
+    assert not (repo / ".codecoremorph" / "lock").exists()
+    assert not git(repo, "branch", "--list", "codecoremorph/*").strip()
+    assert (repo / "README.md").read_bytes() == b"# demo\n"
+
+
+def test_resuming_without_a_worktree_keeps_the_run_parked(repo: Path, isolated_home: Path) -> None:
+    workspace = RunWorkspace.create(repo, RUN)
+    workspace.park()
+    workspace.repository.remove_worktree(workspace.worktree.path)
+    with pytest.raises(VcsError, match=r"worktree of run .* is gone"):
+        RunWorkspace.resume(repo, RUN, base_commit=workspace.base_commit)
+    holder = read_lock(repo / ".codecoremorph" / "lock")
+    assert holder is not None
+    assert holder.parked

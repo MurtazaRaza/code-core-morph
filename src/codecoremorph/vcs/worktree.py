@@ -68,6 +68,13 @@ class Worktree:
         self.git.run("reset", "--hard", "--quiet", sha)
         self.git.run("clean", "-f", "-d", "--quiet")
 
+    def reset_soft(self, sha: str) -> None:
+        """Move the branch back to ``sha`` and keep every change since as uncommitted work
+        (squashes a host unit's checkpoint commits into one, D-41)."""
+        _check_sha(sha)
+        self.verify()
+        self.git.run("reset", "--soft", "--quiet", sha)
+
     def stage_all(self) -> None:
         self.git.run("add", "--all")
 
@@ -148,6 +155,10 @@ class Worktree:
         text = with_trailers(message, trailers) if trailers else message.rstrip("\n") + "\n"
         self.git.run(*args, stdin=text.encode("utf-8"), env=env)
         return self.head()
+
+    def can_commit(self, author: str | None) -> bool:
+        """Whether :meth:`commit` with this ``author`` has an identity to commit with."""
+        return author is not None or self._has_identity()
 
     def _has_identity(self) -> bool:
         return self.git.run("var", "GIT_COMMITTER_IDENT", check=False).returncode == 0

@@ -99,6 +99,10 @@ class RepoLockedError(VcsError):
     """Another CodeCoreMorph run holds the repository lock (FR-6.6)."""
 
 
+class RunNotActiveError(UsageError):
+    """A command continues a run that isn't active: it finished, was aborted, or never ran."""
+
+
 class SafetyViolationError(VcsError):
     """A guard against touching anything but the run worktree tripped (I-11). Always a bug."""
 
@@ -114,6 +118,58 @@ class BaselineError(CodeCoreMorphError):
     there is no green starting point to migrate from."""
 
     exit_code = ExitCode.ENVIRONMENT
+
+
+class LLMError(CodeCoreMorphError):
+    """A model provider call failed (SPEC §7.7 error taxonomy). ``retryable`` errors may
+    succeed on a later attempt."""
+
+    exit_code = ExitCode.ENVIRONMENT
+    retryable: bool = False
+
+
+class RateLimitedError(LLMError):
+    retryable = True
+
+
+class ProviderUnavailableError(LLMError):
+    """The provider is down, overloaded or unreachable."""
+
+    retryable = True
+
+
+class LLMTimeoutError(LLMError):
+    retryable = True
+
+
+class ProviderAuthError(LLMError):
+    """Credentials are missing, invalid or not allowed to use the model."""
+
+
+class InvalidLLMRequestError(LLMError):
+    """The provider rejected the request itself: usually a bug, or an unknown model."""
+
+    exit_code = ExitCode.INTERNAL
+
+
+class ContextOverflowError(LLMError):
+    """The prompt doesn't fit the model's context window."""
+
+
+class RefusedError(LLMError):
+    """The model declined the request, after any configured fallback."""
+
+
+class ReplayMissError(LLMError):
+    """A replayed test made a request its cassette doesn't hold (FR-8.4). Fails loudly."""
+
+    exit_code = ExitCode.INTERNAL
+
+
+class BudgetExhaustedError(CodeCoreMorphError):
+    """A run's token or cost cap is reached (FR-14.2, NFR-7.1)."""
+
+    exit_code = ExitCode.BUDGET_EXHAUSTED
 
 
 class InternalError(CodeCoreMorphError):

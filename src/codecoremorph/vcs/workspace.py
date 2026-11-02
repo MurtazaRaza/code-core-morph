@@ -6,6 +6,9 @@
 <CODECOREMORPH_HOME>/build/<run-id>/            build output, outside the worktree (FR-6.7)
 <CODECOREMORPH_HOME>/cache/<run-id>/            adapter caches
 ```
+
+A run that continues in a later command (a host agent's unit, D-41) parks the workspace
+instead of cleaning it up, and the next command resumes it.
 """
 
 from __future__ import annotations
@@ -111,6 +114,50 @@ class RunWorkspace:
             dirty=dirty,
             lock=lock,
         )
+
+    @classmethod
+    def resume(
+        cls,
+        repo_path: Path,
+        run_id: str,
+        *,
+        base_commit: str,
+        home: HomeLayout | None = None,
+    ) -> RunWorkspace:
+        """Take back a parked run's lock and reattach to its worktree, build and caches."""
+        validate_run_id(run_id)
+        home = home or HomeLayout.resolve()
+        repository = Repository.discover(repo_path)
+        lock = RepoLock.resume(repository.root / STATE_DIR_NAME / "lock", run_id)
+        try:
+            worktree = Worktree(home.worktree(run_id), run_branch(run_id))
+            if not worktree.path.is_dir():
+                raise VcsError(
+                    f"the worktree of run {run_id} is gone: {worktree.path}",
+                    hint="Stop the run with `codecoremorph unit abort`, then start again.",
+                )
+            worktree.verify()
+            build_dir = home.build_dir(run_id)
+            cache_dir = home.run_cache(run_id)
+            for directory in (build_dir, cache_dir):
+                directory.mkdir(parents=True, exist_ok=True)
+        except BaseException:
+            lock.park()  # the run stays active, so `unit abort` can still clean it up
+            raise
+        return cls(
+            run_id=run_id,
+            repository=repository,
+            base_commit=base_commit,
+            worktree=worktree,
+            build_dir=build_dir,
+            cache_dir=cache_dir,
+            dirty=DirtyState(),
+            lock=lock,
+        )
+
+    def park(self) -> None:
+        """Keep the worktree, branch, build and lock for the run's next command."""
+        self.lock.park()
 
     def cleanup(self, *, delete_branch: bool = False, keep_build: bool = False) -> None:
         """Remove the worktree (and, only if asked, the run branch), then release the lock.
