@@ -1,0 +1,447 @@
+# PAME: Implementation Plan
+
+This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has a goal, its prerequisites, a task checklist, tests, and exit criteria. Requirement IDs (`FR-`, `NFR-`, `D-`) point back to the spec.
+
+**Order of work (D-21).** Language version upgrades come first: C++ in the MVP, then Java, then C#. Cross-language migrations follow.
+
+## How to use this plan
+
+- Phases run in order. Tasks inside a phase can be reordered.
+- Tick a checkbox when its task has landed **with tests**.
+- A phase is done when every exit criterion is met and CI is green. Then update "Current status" in [CLAUDE.md](../CLAUDE.md).
+- If a task shows the spec is wrong or incomplete, update SPEC.md (and add a `D-xx` row) in the same change.
+- Items in **Backlog** at the end are deliberately unscheduled.
+
+## Milestones
+
+| Milestone | After phase | Outcome |
+|---|---|---|
+| **M1: MVP** | 5 | `pame run` migrates C++11 → C++20 end to end from the CLI, the branch stays green, a report is produced, and the benchmark is measured |
+| **M2: v0.1.0 public release** | 8 | Characterization tests, dashboard, docs, packaging, security review |
+| **M3: Java version upgrades** | 9 | Java adapter plus the Java 8 → 21 upgrade rule pack |
+| **M4: C# version upgrades** | 10 | C# adapter plus the C# modernization rule pack |
+| **M5: Cross-language** | 11 | Java → C# port with translated tests |
+| **M6: Rust** | 12 | A C++ module behind a C ABI replaced by Rust |
+
+## Phase overview
+
+| # | Phase | Main deliverables | Spec |
+|---|---|---|---|
+| 0 | Foundations | Repo, tooling, CI, config schema, core models, store, CLI skeleton | FR-1.1, FR-1.5–1.7, §8, §9 |
+| 1 | Workspace safety and execution | git worktrees and rollback, PatchEngine, Docker and native executors | FR-3.2, FR-3.3, FR-6, §7.4, §7.8, §7.9 |
+| 2 | C++ adapter and rules | C++ image, build, test, index, codemods, rule model, C++ rule pack v1, fixtures, benchmark pick | FR-1.2, FR-1.3, FR-2, FR-9, §7.1–7.3, §11.1 |
+| 3 | Graph, baseline and planner | Dependency DAG, baseline capture, work units, estimates, `pame plan` | FR-5, FR-7.1, FR-2.2, §7.5.1 |
+| 4 | LLM providers and single-unit loop | Anthropic + Ollama providers, replay, ledger, agent loop, feedback, `pame debug unit` | FR-3, FR-4, FR-8, §7.6, §7.7 |
+| 5 | Run orchestration (**M1**) | LangGraph run graph, gates, invariants, commit and rollback, resume, reports, full CLI | FR-4.4, FR-10, FR-11, FR-13, FR-14, §7.5, §7.10 |
+| 6 | Characterization tests | Untested-code detection, test generation and acceptance, assertion guard | FR-7.2–7.6, §7.11 |
+| 7 | Web dashboard | FastAPI + SSE API, React SPA, approvals in the UI | FR-12, §7.13 |
+| 8 | Hardening and v0.1.0 (**M2**) | `pame init`, docs site, security review, performance, plugin API versioning, release | FR-1.4, FR-15.3, NFR-1, NFR-5, NFR-10 |
+| 9 | Java adapter and upgrades (**M3**) | Java image, Spoon indexer, Maven, OpenRewrite, Java 8 → 21 rule pack | §11.2 |
+| 10 | C# adapter and upgrades (**M4**) | .NET image, Roslyn indexer, dotnet build and test, C# modernization pack | §11.3 |
+| 11 | Java → C# (**M5**) | Migration pairs, scaffolding, symbol map, skeleton-first strategy, test translation, multi-agent roles | §11.4 |
+| 12 | Rust / C++ FFI → Rust (**M6**) | Rust adapter, C-ABI replacement strategy, Corrosion integration | §11.5 |
+
+---
+
+## Phase 0: Foundations
+
+**Goal:** an empty but production-shaped project. Config can be validated, the core data contracts exist, and CI is green on Linux and Windows.
+
+**Prerequisites:** none.
+
+### Tasks
+- [ ] `git init`; add `.gitignore` (Python, Node, `.pame/`), `.gitattributes` (`* text=auto`; keep fixture files byte-exact with `-text` where needed), README stub, LICENSE (Apache-2.0, pending §16 Q1)
+- [ ] `pyproject.toml` with uv; `src/pame/` layout per SPEC §4.3; dependency groups `dev` and `docs`; console script `pame`
+- [ ] Tooling: ruff (lint + format, line length 100), pyright (strict for the packages listed in NFR-9.1), pytest with markers `docker`, `toolchain`, `live_llm`, `slow`; pre-commit hooks
+- [ ] CI (GitHub Actions): lint, type-check and unit tests on `ubuntu-latest` and `windows-latest`, Python 3.12 and 3.13
+- [ ] `pame.core`: domain models from SPEC §9 (config-independent ones first: `Diagnostic`, `BuildResult`, `TestCaseResult`, `TestReport`, `Edit`, `EditBatch`, `WorkUnit`, `Plan`, `Attempt`, `Event`, status enums), the error hierarchy (`pame.core.errors`), and run-ID generation
+- [ ] `pame.config`: the full manifest schema (SPEC §8) in pydantic, including the PRD aliases (`root_path`, `docker_sandbox`) and the `rollback_on_failure: false` rejection; a YAML loader that reports every error with its location; JSON Schema export
+- [ ] `pame.store`: SQLite schema v1 (`runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`), WAL mode, a simple versioned-migration runner, the artifact-directory helper and the event writer
+- [ ] `pame.logging`: stdlib logging with a Rich console handler, a JSON file handler, and a secret-redaction filter (NFR-5.3)
+- [ ] CLI skeleton (Typer): `pame --version`, `pame validate`, `pame schema`, `pame doctor` (checks Python, git ≥ 2.30, Docker reachability; more checks join later)
+- [ ] `examples/cpp11-to-cpp20.yaml`, matching SPEC §8
+
+### Tests
+- Config: valid example, each invalid-field class, aliases, error locations
+- Store: migrations from empty, concurrent reader + writer (WAL), event round-trip
+- Redaction filter catches API-key patterns
+
+### Exit criteria
+- `uv run pame validate examples/cpp11-to-cpp20.yaml` succeeds; broken variants list all errors with their locations
+- CI is green on Linux and Windows
+
+---
+
+## Phase 1: Workspace safety and execution layer
+
+**Goal:** PAME can safely create an isolated run workspace, apply multi-file edits atomically, run commands in Docker or natively, and roll back, without ever touching the user's working tree.
+
+**Prerequisites:** Phase 0.
+
+### Tasks
+**VCS (`pame.vcs`)**
+- [ ] git CLI wrapper with typed errors; detect the repo root, the base commit (`--base`, default `HEAD`), and dirty state (warn only)
+- [ ] Repo lock (`.pame/lock`, stale-lock detection); add `.pame/` to `.git/info/exclude` (FR-6.6, NFR-2.1)
+- [ ] Create branch `pame/<run-id>` plus a worktree under the user cache dir; remove both on cleanup (FR-6.2)
+- [ ] `snapshot()` → SHA; `rollback(sha)` = `reset --hard` + `clean -fd` scoped to the worktree (FR-6.3)
+- [ ] `commit(message, trailers)` with the SPEC §7.9 format and a configurable author (FR-6.4)
+- [ ] `diff(since)` → unified diff text plus changed-file list (FR-3.2)
+- [ ] Build-dir and cache-dir allocation outside the worktree (FR-6.7)
+
+**Patching (`pame.patching`)**
+- [ ] `Edit` / `EditBatch` models (replace, create, delete) and JSON Schema for `submit_edits`
+- [ ] Matcher: exact unique match → whitespace-tolerant unique match → rejection with the closest candidate and line numbers (SPEC §7.4)
+- [ ] Atomic multi-file apply: in-memory first, then temp file + rename per file; all or nothing (FR-3.3)
+- [ ] Preserve encoding (detect non-UTF-8 and BOM) and per-file line endings
+- [ ] Path safety: no `..`, no absolute paths, no `.git/`, no excluded paths, no symlink escape (I-1)
+
+**Sandbox (`pame.sandbox`)**
+- [ ] `Executor` protocol and `ExecResult` (SPEC §7.8), with output caps and full logs on disk
+- [ ] `NativeExecutor`: scrubbed environment, timeouts, process-tree kill on Windows and POSIX, reduced-isolation warning
+- [ ] `DockerExecutor`: one container per run, labels, worktree bind mount, build and cache volumes, non-root user, dropped capabilities, resource limits, `set_network()` via network connect/disconnect, cleanup on exit and crash
+- [ ] Executor selection (`auto` / `docker` / `native`) with clear messages (FR-1.3); Windows path translation
+- [ ] `pame doctor`: Docker daemon details, plus a warning about Windows bind-mount performance
+
+### Tests
+- PatchEngine property tests (Hypothesis): applying, then reverting through the reverse diff, restores the original bytes; all-or-nothing under injected failures; CRLF, LF and BOM preserved
+- VCS on temporary repos only: worktree lifecycle, rollback after arbitrary writes, commit trailers, lock contention
+- **Safety test:** hash the user's working tree, including untracked and dirty files; run create → edit → commit → rollback → cleanup; assert the hash is unchanged (NFR-2.1)
+- Executors: timeout kills child processes; output caps; Docker tests marked `docker` using a tiny public image
+
+### Exit criteria
+- In both executor modes, a scripted scenario (create worktree → apply a 3-file edit batch → run a command → roll back → commit → clean up) passes on Linux; native mode passes on Windows
+- The safety test passes on Linux and Windows
+
+---
+
+## Phase 2: C++ adapter, toolchain image and rules
+
+**Goal:** PAME can configure, build, test, index and codemod C++11 CMake projects, in Docker and natively, with structured results. Rules exist as data.
+
+**Prerequisites:** Phase 1.
+
+### Tasks
+**Adapter framework**
+- [ ] `LanguageAdapter` ABC, `AdapterContext`, `AdapterCapabilities`, `ToolchainSpec`, `CodemodSpec`, `CodemodResult` (SPEC §7.1); entry-point registry; `pame adapters list` (FR-15.1)
+- [ ] Normalized index models and the SQLite-backed index store (SPEC §7.2)
+
+**C++ toolchain image (`images/cpp/`)**
+- [ ] Dockerfile: Ubuntu LTS, pinned LLVM (clang, clang-tidy, libclang, clang-apply-replacements), CMake ≥ 3.21, Ninja, ccache, GoogleTest, Python + `libclang`; non-root user
+- [ ] CI workflow to build and publish to the registry (GHCR assumed, §16 Q8), writing the digest to `images/cpp/image.lock`
+- [ ] Provisioner: resolve the image from `ToolchainSpec`, pull it, verify the digest, start it (FR-1.2); native detection of tools and versions with an actionable report (FR-1.3)
+
+**Fixtures (`fixtures/cpp/`)**, intentionally legacy C++11, CMake + GoogleTest, each 300–2,000 LOC:
+- [ ] `ownership`, `typedefs`, `templates`, `removed-features`, `c-compat`, `multi-module`
+- [ ] Each fixture builds and passes its tests under C++11 in the image (verified in CI)
+
+**C++ adapter (`pame.adapters.cpp`)**
+- [ ] `configure`: CMake + Ninja, out of source, `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, standard override
+- [ ] `build` + diagnostic parsers: clang/gcc (notes, include chains), linker, CMake; MSVC best-effort; paths normalized to the worktree
+- [ ] `run_tests`: CTest `--output-junit` plus GoogleTest XML per case; stable test IDs; timeouts
+- [ ] `index`: libclang helper running in the sandbox; parallel over compile commands; emits the normalized JSON; cache keyed by (file hash, flags hash); marks `extern "C"`, `c_compatible` (headers included from `.c`) and `public_api`; skips excluded paths (FR-2.1, FR-2.3–2.5)
+- [ ] `run_codemods`: clang-tidy `-fix` per rule checks, header filter restricted to the unit's files, `clang-apply-replacements`
+- [ ] Optional capabilities: `parse_check` (`-fsyntax-only`), `format` (clang-format only when the project has a `.clang-format` file), `detect_disabled_tests`
+- [ ] `pame debug index|build|test|codemod` commands
+
+**Rules (`pame.rules`)**
+- [ ] Rule model and YAML loader (SPEC §7.3), entry-point registry, `rules_paths`, `pame rules list` (FR-9.1, FR-9.3, FR-9.4)
+- [ ] C++ rule pack v1 (SPEC §11.1): `bump_standard`, `replace_typedefs_with_using`, `convert_raw_pointers_to_smart_pointers`, `use_concepts_for_templates`, `modernize_basics`, with detectors, codemod mappings, guidance Markdown, examples and post-conditions; declare a minimum clang-tidy version
+
+**Benchmark (`bench/`)**
+- [ ] Evaluate leveldb, yaml-cpp and tinyxml2 against the SPEC §12 criteria; pick one and pin its commit (§16 Q3); add a fetch script and a measurement script
+- [ ] Measure NFR-1.1 (indexing + graph) and record the result in `bench/results/`
+
+### Tests
+- Diagnostic parsers: golden tests over captured compiler, linker and CMake outputs, including MSVC samples
+- Test-report parsing: golden JUnit and GoogleTest XML, including failures, skips and timeouts
+- Adapter integration (marked `docker`): every fixture configures, builds, tests and indexes; native runs marked `toolchain`
+- Codemod-only migration of `typedefs` to C++20 builds and passes its tests
+
+### Exit criteria
+- Every fixture: configure, build, test and index succeed in Docker on Linux CI, and natively where a toolchain exists
+- The `typedefs` fixture migrates with codemods alone and stays green
+- The benchmark is chosen and pinned; the NFR-1.1 result is recorded, and any gap has a written plan
+
+---
+
+## Phase 3: Dependency graph, baseline and planner
+
+**Goal:** `pame plan` produces a deterministic, explained migration plan for any fixture and the benchmark, without changing code.
+
+**Prerequisites:** Phase 2.
+
+### Tasks
+- [ ] File graph and symbol graph from the index; SCC condensation into a DAG of clusters (FR-2.1, D-14)
+- [ ] Boundary and public-API classification; fan-in queries (FR-2.2)
+- [ ] Baseline step: configure, build, test × `baseline_runs`; flaky-test detection; stop if the baseline build fails; store the baseline (FR-7.1)
+- [ ] Header/source pairing; rule detectors → per-file site counts
+- [ ] Unit formation per SPEC §7.5.1: project units (standard bump plus grouped fallout), api_preserving cluster units, api_changing fan-in units, `too_large` flag (FR-5.1–5.3)
+- [ ] Ordering: standard bump first, then rules in manifest order, leaves-first, path tie-break (FR-5.2, FR-5.6)
+- [ ] Token estimator (character-based, with a margin); size check against the editor model's context from config or package data, since live capability discovery arrives in Phase 4 (FR-5.4)
+- [ ] Cost and time estimate from the price table (FR-5.5)
+- [ ] Plan model, `plan.json`, Rich table rendering, `--json` output
+- [ ] `pame plan`: validate → prepare workspace → provision → index → baseline → plan; no edits (FR-5.7)
+
+### Tests
+- Graph: cycles condensed correctly, topological order stable, fan-in closure correct (synthetic graphs)
+- Planner determinism: same input gives the same `plan.json`, byte for byte
+- Unit sizing and `too_large` handling; `c_compatible` files skipped for C++-only rules
+- Baseline flaky detection, using a fixture test that reads a random seed from an environment variable
+
+### Exit criteria
+- `pame plan` works on every fixture and the benchmark; the plan is deterministic; estimates and flags are shown
+- A failing baseline build stops with an actionable message
+
+---
+
+## Phase 4: LLM providers and the single-unit agent loop
+
+**Goal:** one work unit can be migrated end to end (codemods → agent → patch → build → test → feedback → retry) with Claude or Ollama, and deterministically in CI through replay.
+
+**Prerequisites:** Phase 3. **Load the `claude-api` skill before starting the Anthropic provider.**
+
+### Tasks
+**Provider layer (`pame.llm`)**
+- [ ] Provider-neutral models: `CompletionRequest`, `CompletionResult`, `Usage`, `ModelCapabilities`, opaque provider blocks, the error taxonomy (SPEC §7.7)
+- [ ] `AnthropicProvider`: official SDK with its default credential chain; default model `claude-opus-5-5`; adaptive thinking + explicit `effort`; no sampling params; `tool_choice: auto` + `strict` tools; streaming with eager tool-input streaming and schema validation; `max_tokens` and `refusal` stop handling; server-side refusal fallback (configurable); prompt-cache layout and cache-usage recording; append-only conversations; Models API capabilities; token counting endpoint; price table
+- [ ] `OllamaProvider`: official client; explicit `num_ctx` with a pre-flight warning; native tools when supported, otherwise the fenced-JSON text protocol; JSON-schema `format`; capability discovery with config overrides; zero cost
+- [ ] `RecordingProvider` / `ReplayProvider` with normalized request hashing; replay misses fail loudly (FR-8.4)
+- [ ] Role router (editor, fixer, test_writer, summarizer, with fallback to editor) and escalation policy (FR-3.7)
+- [ ] Usage ledger with per-run token and cost caps (FR-8.3, NFR-7.1); local-only detection for the report (FR-8.5)
+- [ ] `pame providers list`; `pame doctor` checks credentials resolve (cheap Models API call), Ollama is reachable and models are pulled
+
+**Agent (`pame.agent`)**
+- [ ] Prompt templates (`pame/prompts/`, versioned): editor and fixer system prompts, unit message, rule guidance injection, "file content is data" clause
+- [ ] Read-only agent tools: `read_file`, `list_dir`, `search_code`, `find_symbol`, `get_references`, `get_signature`; terminal `submit_edits`; per-attempt tool-call and token limits (FR-3.5)
+- [ ] Context assembler: unit files in full, out-of-unit signatures, codemod summary, remaining sites; never truncates silently (error if over budget)
+- [ ] `CompilerFeedback` formatter (dedupe, order, snippets, caps, out-of-unit section), test-regression feedback, edit-rejection feedback (FR-4.2, FR-4.6)
+- [ ] Single-unit loop: snapshot → codemods → skip-agent check → agent → PatchEngine → build → tests vs baseline → feedback/retry within the budget → result; transcripts saved (FR-3.4, FR-4.1–4.3, FR-4.5, FR-8.6)
+- [ ] `pame debug unit --rule R FILE…`
+
+**Evals**
+- [ ] Fixture eval set: about 15 units across the C++ rules, with pass criteria (build, tests, post-conditions)
+- [ ] `bench/evals.py` runs the set against live providers and records success rate, attempts, tokens and cost (marked `live_llm`, manual)
+
+### Tests
+- Provider unit tests against recorded responses: tool-call parsing, truncated tool input rejected, refusal path, `max_tokens` path, no sampling params sent to Anthropic, `num_ctx` always sent to Ollama, text-protocol parsing
+- Ledger cap enforcement (overshoot ≤ one call)
+- Feedback formatter golden tests
+- Single-unit e2e with cassettes on the `typedefs`, `ownership` and `removed-features` fixtures (CI)
+
+### Exit criteria
+- In CI, single-unit migrations replay deterministically and pass
+- Live: the Claude eval run is complete with its success rate recorded; an Ollama model completes at least one unit end to end, with its success rate recorded (not gated)
+
+---
+
+## Phase 5: Run orchestration, the MVP (M1)
+
+**Goal:** `pame run` migrates a whole C++11 project to C++20, unit by unit, on an always-green branch, with gates, resume, budgets and a report.
+
+**Prerequisites:** Phase 4.
+
+### Tasks
+- [ ] LangGraph run graph and unit subgraph per SPEC §7.5; small state; SQLite checkpointer; all graph code in `orchestrator/`
+- [ ] Gates via LangGraph interrupts plus the store's `approvals` table: plan gate (default required) and unit gate policies (FR-10.1, FR-10.3); CLI interactive approval and `--yes` (FR-11.4)
+- [ ] Invariants module I-1 to I-11 (SPEC §7.10), including the test-removal and test-disable guard (FR-7.5, phase-5 part) and the boundary check by re-indexing (FR-2.2)
+- [ ] Rule post-condition evaluation (FR-4.4)
+- [ ] Commit with trailers on success; rollback on failure; failed units don't block later ones (§4.5)
+- [ ] Budgets: per-unit wall clock, per-run tokens and cost, graceful `budget_exhausted` (FR-14.1, FR-14.2)
+- [ ] Resume (`pame resume`): reset the worktree to the branch HEAD, restore the checkpoint (FR-14.3)
+- [ ] Abort: `pame abort` and Ctrl-C handling, with a second Ctrl-C forcing (FR-14.4)
+- [ ] Final verification: clean configure, full build, full tests
+- [ ] Reports: Markdown + JSON per FR-13.1, with a review-items section (FR-10.4); `pame report`
+- [ ] CLI: `run`, `status` (live progress, `--json`), `approve`, `reject`, `resume`, `abort`, `report`, `clean`; exit codes per SPEC §7.14 (FR-11)
+- [ ] Plan-gate exclusions from the CLI (`pame approve RUN --exclude U-0012,...`) (FR-5.8)
+
+### Tests
+- E2E with cassettes: every fixture migrated C++11 → C++20; every commit on the branch builds and passes tests (checked by replaying the branch)
+- **Crash consistency:** kill the engine at randomized points (between nodes, mid-build, mid-LLM call); resume; the branch is green and the run completes (NFR-2.4)
+- Budget exhaustion mid-unit leaves a green branch and a report
+- Gate flows: approve, reject, exclude, resume while waiting
+- The working-tree safety test, repeated over a full run
+
+### Exit criteria (M1)
+- `pame run examples/cpp11-to-cpp20.yaml` against every fixture completes with every unit committed, or with failures explained in the report
+- A benchmark run with Claude is complete; success rate, cost per kLOC and duration are recorded in `bench/results/`; provisional SPEC §13 targets are re-set from the data
+- All safety tests are green on Linux and Windows
+
+---
+
+## Phase 6: Characterization tests
+
+**Goal:** untested code gets behavior-pinning tests before migration, and test edits during migration can't silently weaken them.
+
+**Prerequisites:** Phase 5.
+
+### Tasks
+- [ ] Untested-symbol detection from the symbol graph (direct reference or one call level from test files); `scope: all` option (SPEC §7.11)
+- [ ] `test_writer` prompts and a GoogleTest generation flow per unit, capped at `max_tests_per_unit`
+- [ ] Determinism lint (no time, random, filesystem, network or sleep/thread-timing APIs) (FR-7.3)
+- [ ] Acceptance: compiles, passes 3 times on the base code; one regeneration attempt; drop and report rejects
+- [ ] `adapter.register_test_files` for CMake (generated `CMakeLists.txt` include)
+- [ ] `characterize` graph node: commit before migration units; extend the baseline (FR-7.4)
+- [ ] `adapter.extract_assertions` for GoogleTest; assertion guard I-4; approval routing for `test_changes` (FR-7.5)
+- [ ] `keep: false` removal at the end of the run (FR-7.6); report section (counts, rejects, flagged edits)
+- [ ] `untested` fixture
+
+### Tests
+- **Mutation sanity check:** inject behavior changes into the `untested` fixture (off-by-one, swapped branches, changed constants); generated tests catch at least the threshold agreed in this phase (start at 60%, record the actual rate)
+- Determinism lint unit tests; assertion-guard detection on edited tests
+
+### Exit criteria
+- On `untested`, characterization tests are generated, accepted and committed, the migration completes, and the mutation check meets its threshold
+- Assertion edits are always flagged and gated per policy
+
+---
+
+## Phase 7: Web dashboard
+
+**Goal:** a local dashboard to watch runs live, review plans and diffs, and answer gates.
+
+**Prerequisites:** Phase 5 (Phase 6 is not required).
+
+### Tasks
+**Backend (`pame.dashboard`)**
+- [ ] FastAPI app with the endpoints in SPEC §7.13; read-only access to run data; approvals and aborts written through the store
+- [ ] SSE event stream tailing the `events` table (≤ 2 s latency, NFR-1.5)
+- [ ] Security: bind to 127.0.0.1, per-launch token (query param exchanged for a cookie), Host allowlist, no CORS, `--host` warning (FR-12.7)
+- [ ] `pame dashboard [--port]` opens the browser
+
+**Frontend (`dashboard-ui/`)**
+- [ ] Vite + React + TypeScript scaffold, routing, TanStack Query, SSE hook, light and dark themes
+- [ ] Runs list; run overview (status, step, progress, budget meters, current activity) (FR-12.1)
+- [ ] Plan review: units table with rules, flags and estimates; approve, reject, exclude (FR-12.2)
+- [ ] Dependency graph: Cytoscape.js, colored by unit status, search and filter (FR-12.3)
+- [ ] Unit detail: attempt timeline, Monaco side-by-side diff, diagnostics, test results, invariant results, transcript viewer; unit gate actions (FR-12.4)
+- [ ] Report view and download (FR-12.5)
+
+**Packaging**
+- [ ] CI builds the SPA; a hatch build hook copies the assets into `src/pame/dashboard/static/`; the dev-mode Vite proxy works
+
+### Tests
+- API tests (pytest + httpx): auth, Host check, endpoints, SSE
+- Frontend: Vitest component tests; one Playwright smoke test (start run → approve plan in the UI → see a unit commit)
+
+### Exit criteria
+- On a live fixture run, the plan gate and a unit gate can be approved from the dashboard, and progress updates live
+- An installed wheel serves the dashboard without Node present
+
+---
+
+## Phase 8: Hardening and v0.1.0 release (M2)
+
+**Goal:** a public, installable, documented, reviewed release.
+
+**Prerequisites:** Phases 6 and 7.
+
+### Tasks
+- [ ] `pame init`: detect CMake, C++ standard, source, test and include dirs; write a commented manifest (FR-1.4)
+- [ ] Docs site (MkDocs Material): getting started, concepts, config reference generated from the JSON Schema, rule authoring, adapter authoring, provider authoring, security model, troubleshooting (Docker on Windows/WSL2), FAQ
+- [ ] Security review against SPEC §10: path traversal fuzzing, a new `injection` fixture (adversarial comments) run end to end (the agent must not follow embedded instructions, and no out-of-scope edits), secret redaction audit, container hardening check, dashboard auth tests; write `SECURITY.md`
+- [ ] Performance: NFR-1.1 and NFR-1.2 checks in a nightly CI job on the benchmark; memory profiling of a full benchmark run
+- [ ] Plugin API versioning (`api_version` checks with clear errors) and a template repo for third-party plugins (FR-15.3)
+- [ ] Optional image signing (cosign)
+- [ ] Release engineering: semantic versioning, CHANGELOG, PyPI trusted publishing, image publishing with digests baked into the release, CONTRIBUTING, CODE_OF_CONDUCT, issue and PR templates
+- [ ] Resolve SPEC §16 Q1 (license), Q2 (name), Q6, Q7 and Q8
+
+### Exit criteria (M2)
+- On clean Windows, macOS and Linux machines: `uv tool install pame` → `pame init` → `pame run` on a fixture succeeds with Docker
+- The security review is complete with no open high-severity findings
+- v0.1.0 is tagged, published and documented
+
+---
+
+## Phase 9: Java adapter and Java version upgrades (M3)
+
+**Goal:** the second language. Java projects can be indexed, built and tested, and upgraded across Java versions.
+
+**Prerequisites:** Phase 8 (Phase 5 at minimum).
+
+### Tasks
+- [ ] `images/java/`: LTS JDK(s) needed for the source and target versions, Maven, Spoon-based indexer jar, OpenRewrite CLI or Maven plugin
+- [ ] Spoon indexer helper emitting the normalized index (symbols, references, imports, `native` methods as JNI boundaries)
+- [ ] Maven build driver and javac diagnostic parser; Surefire XML test parsing (JUnit 4/5); `fetch_only` network step for dependency resolution
+- [ ] OpenRewrite codemod runner; `detect_disabled_tests` and `extract_assertions` for JUnit; `register_test_files`
+- [ ] Java fixtures (Java 8, Maven, JUnit): legacy APIs, raw types, anonymous classes, `Date`/`Calendar`, removed or deprecated APIs
+- [ ] Java version-upgrade rule pack (e.g. 8 → 21): `bump_java_version` (project), language-feature rules (diamond, lambdas, try-with-resources, `var` where safe, switch expressions, records where safe), each mapped to OpenRewrite recipes plus LLM guidance
+- [ ] Characterization tests with JUnit 5
+- [ ] Live evals on Java fixtures
+
+### Exit criteria (M3)
+- Java fixtures migrate 8 → 21 end to end, branch green; zero changes to the orchestrator graph were needed (NFR-3.1 check)
+
+---
+
+## Phase 10: C# adapter and C# version upgrades (M4)
+
+**Goal:** the third language. C# projects can be indexed, built and tested, and modernized to a newer language version.
+
+**Prerequisites:** Phase 9 (Phase 5 at minimum).
+
+### Tasks
+- [ ] `images/dotnet/`: pinned .NET SDK, Roslyn-based indexer tool
+- [ ] Roslyn indexer helper (symbols, references, `DllImport`/`LibraryImport` as P/Invoke boundaries)
+- [ ] `dotnet build` driver plus MSBuild diagnostic parser; `dotnet test --logger trx` parsing (NUnit, xUnit, MSTest); `fetch_only` restore step
+- [ ] Roslyn analyzer and `dotnet format` codemod runner; disabled-test and assertion extraction
+- [ ] C# fixtures (older language-version style, SDK-style projects)
+- [ ] C# modernization rule pack: `bump_lang_version` (project), nullable reference types, file-scoped namespaces, pattern matching, records where safe, collection expressions where applicable
+- [ ] Live evals on C# fixtures
+
+### Exit criteria (M4)
+- C# fixtures migrate end to end, branch green; no orchestrator-graph changes needed
+
+---
+
+## Phase 11: Cross-language migration, Java → C# (M5)
+
+**Goal:** port a Java project to C# with translated tests proving parity.
+
+**Prerequisites:** Phases 9 and 10.
+
+### Tasks
+- [ ] Migration-pair support in config and orchestrator (source adapter plus target adapter); SPEC update for the relaxed green invariant (`pending_parity`)
+- [ ] `scaffold_project` for C# (solution, projects, test project) driven by the Java module structure
+- [ ] Symbol map store (Java FQN → C# name) and `java_to_csharp` mapping rule pack (collections, streams → LINQ, exceptions, generics, naming conventions)
+- [ ] Skeleton-first stage: generate compiling C# skeletons for every type
+- [ ] Body-filling stage: units leaves-first, each filling bodies and translating its tests (JUnit → NUnit/xUnit); parity by mapped test IDs
+- [ ] Multi-agent roles as subgraphs: source analyst, target author, mapping steward, reviewer
+- [ ] Cross-index boundary checks for mixed codebases (FR-2.2)
+- [ ] Dashboard: two-sided view (Java source ↔ C# target) in unit detail
+- [ ] Java → C# fixtures and evals
+
+### Exit criteria (M5)
+- A Java fixture is fully ported: the C# solution builds, every translated test passes, the mapping table is complete, and the report lists every deviation
+
+---
+
+## Phase 12: Rust target and C++ FFI → Rust (M6)
+
+**Goal:** replace a C++ module behind a C ABI with a Rust implementation, verified by the existing C++ tests.
+
+**Prerequisites:** Phase 5 (Phase 11 is not required).
+
+### Tasks
+- [ ] `images/rust/`: pinned toolchain, cargo-nextest, cbindgen, plus the C++ toolchain for mixed builds
+- [ ] Rust adapter: index (syn-based or rust-analyzer-based helper), `cargo build --message-format=json` diagnostics, nextest JUnit tests
+- [ ] Mixed-build integration via Corrosion; `scaffold_project` for a crate inside the CMake tree
+- [ ] `cpp_ffi_to_rust` strategy: choose a module with an `extern "C"` boundary, generate the crate, port its internals, keep the ABI identical (cbindgen header diff = empty), run the C++ tests through the ABI
+- [ ] ABI invariant (I-6 over exported C signatures)
+- [ ] Fixture: a C++ library with an `extern "C"` API and GoogleTest tests
+
+### Exit criteria (M6)
+- The fixture module is replaced by Rust; the original C++ tests pass unchanged; the exported ABI is identical
+
+---
+
+## Backlog (unscheduled)
+
+- Parallel unit execution across independent DAG branches (separate worktrees)
+- Golden-I/O differential harness (deferred by D-08)
+- Coverage-based untested-code detection (gcov/llvm-cov, JaCoCo, coverlet)
+- LLM reviewer pass on each unit's diff before commit
+- Message Batches API for bulk characterization-test generation (cost)
+- Gradle and Bazel support; MSBuild-native C++ (vcxproj)
+- Worktree-to-volume sync for faster Docker on Windows and macOS
+- Starting runs from the dashboard (FR-12.6), if not done in Phase 7
+- IDE extension and CI/PR bot (D-04)
