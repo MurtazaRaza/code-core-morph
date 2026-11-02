@@ -7,7 +7,6 @@ import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -15,21 +14,12 @@ import typer
 from rich.table import Table
 from rich.text import Text
 
-from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
-from codecoremorph.adapters.config import language_config
-from codecoremorph.adapters.registry import AdapterRegistry
 from codecoremorph.cli.output import handle_errors, status_label, stderr, stdout
-from codecoremorph.config import DEFAULT_CONFIG_NAME, load_config
-from codecoremorph.config.models import MigrationConfig, SandboxMode
+from codecoremorph.config import DEFAULT_CONFIG_NAME
+from codecoremorph.config.models import SandboxMode
 from codecoremorph.core.errors import ExitCode
-from codecoremorph.core.ids import new_run_id
 from codecoremorph.core.models import BuildResult, Diagnostic, Severity
-from codecoremorph.core.paths import HomeLayout
-from codecoremorph.rules.registry import RuleRegistry
-from codecoremorph.sandbox.executor import Executor
-from codecoremorph.sandbox.selection import choose_executor
-from codecoremorph.store.layout import StateDir
-from codecoremorph.vcs.workspace import RunWorkspace
+from codecoremorph.orchestrator.session import RunSession, open_session
 
 log = logging.getLogger(__name__)
 
@@ -44,95 +34,32 @@ SandboxOpt = Annotated[SandboxMode | None, typer.Option("--sandbox", help="Overr
 JsonOpt = Annotated[bool, typer.Option("--json", help="Print the result as JSON.")]
 
 
-@dataclass
-class Session:
-    config: MigrationConfig
-    adapter: LanguageAdapter
-    ctx: AdapterContext
-    workspace: RunWorkspace
-
-
-def _make_executor(
-    config: MigrationConfig,
-    mode: SandboxMode,
-    adapter: LanguageAdapter,
-    workspace: RunWorkspace,
-    log_dir: Path,
-) -> Executor:
-    from codecoremorph.sandbox.native import NativeExecutor
-    from codecoremorph.sandbox.toolchains import require_tools
-
-    lang = language_config(config)
-    spec = adapter.toolchain_requirements(lang)
-    choice = choose_executor(mode)
-    if choice.warning:
-        stderr().print(Text(f"warning: {choice.warning}", style="yellow"))
-    if choice.kind == "native":
-        native = NativeExecutor(
-            log_dir=log_dir / "exec",
-            toolchain_env=HomeLayout.resolve().toolchain_env(lang.language),
-        )
-        native.start()
-        require_tools(native, spec, cwd=str(workspace.worktree.path))
-        return native
-
-    from codecoremorph.sandbox.docker.executor import DockerExecutor, DockerSettings
-    from codecoremorph.sandbox.provisioning import resolve_image
-
-    sandbox = config.sandbox
-    docker = DockerExecutor(
-        DockerSettings(
-            image=resolve_image(spec, sandbox.image),
-            run_id=workspace.run_id,
-            worktree=workspace.worktree.path,
-            build_dir=workspace.build_dir,
-            cache_dir=workspace.cache_dir,
-            log_dir=log_dir / "exec",
-            network=sandbox.network,
-            cpus=sandbox.cpus,
-            memory=sandbox.memory,
-            pids_limit=sandbox.pids_limit,
-            toolchain_env=f"/opt/codecoremorph/toolchains/{lang.language}.env",
-        )
-    )
-    docker.start()
-    return docker
+def _warn(message: str) -> None:
+    stderr().print(Text(f"warning: {message}", style="yellow"))
 
 
 @contextmanager
 def session(
     config_path: Path, *, base: str | None, keep: bool, mode: SandboxMode | None
-) -> Iterator[Session]:
-    loaded = load_config(config_path)
-    config = loaded.config
-    project_root = (config_path.parent / config.project.root).resolve()
-    adapter = AdapterRegistry.discover().get(config.migration.source.language)
-    run_id = new_run_id()
-    workspace = RunWorkspace.create(project_root, run_id, base=base or config.migration.base)
-    executor: Executor | None = None
-    try:
-        log_dir = StateDir.for_repo(workspace.repository.root).run(run_id).ensure().root / "debug"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        executor = _make_executor(config, mode or config.sandbox.mode, adapter, workspace, log_dir)
-        ctx = AdapterContext(
-            worktree=workspace.worktree.path,
-            build_dir=workspace.build_dir,
-            cache_dir=workspace.cache_dir,
-            log_dir=log_dir,
-            executor=executor,
-            lang=language_config(config),
-        )
+) -> Iterator[RunSession]:
+    """A throwaway run workspace; ``keep`` keeps its branch, worktree build and caches."""
+    with open_session(
+        config_path,
+        base=base,
+        mode=mode,
+        log_subdir="debug",
+        check=False,
+        keep_build=keep,
+        delete_branch=not keep,
+        on_warning=_warn,
+    ) as s:
         stderr().print(
-            Text(f"run {run_id}: worktree {workspace.worktree.path} ({executor.kind} mode)")
+            Text(f"run {s.run_id}: worktree {s.workspace.worktree.path} ({s.executor.kind} mode)")
         )
-        yield Session(config, adapter, ctx, workspace)
-    finally:
-        if executor is not None:
-            executor.stop()
-        workspace.cleanup(delete_branch=not keep, keep_build=keep)
+        yield s
         if keep:
             stderr().print(
-                Text(f"kept branch {workspace.worktree.branch} and build {workspace.build_dir}")
+                Text(f"kept branch {s.workspace.worktree.branch} and build {s.workspace.build_dir}")
             )
 
 
@@ -164,7 +91,7 @@ def _where(diagnostic: Diagnostic) -> str:
     return f"{diagnostic.file_path}:{diagnostic.line or '?'}"
 
 
-def _configure(s: Session, as_json: bool) -> bool:
+def _configure(s: RunSession, as_json: bool) -> bool:
     result = s.adapter.configure(s.ctx)
     if not result.success or not as_json:
         _print_diagnostics(result, "configure")
@@ -280,9 +207,7 @@ def debug_codemod(
 ) -> None:
     """Run a rule's codemods and print the resulting diff."""
     with session(config, base=base, keep=keep, mode=sandbox) as s:
-        root = s.workspace.repository.root
-        registry = RuleRegistry.discover([root / p for p in s.config.migration.rules_paths])
-        loaded = registry.get(rule)
+        loaded = s.rules.get(rule)
         if not _configure(s, as_json):
             raise typer.Exit(int(ExitCode.COMPLETED_WITH_FAILURES))
         targets = list(files or [])

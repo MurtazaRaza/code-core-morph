@@ -9,22 +9,16 @@ from typing import Annotated
 import typer
 from rich.text import Text
 
-from codecoremorph.adapters.registry import AdapterRegistry
 from codecoremorph.cli.output import handle_errors, status_label, stdout
 from codecoremorph.config import (
     DEFAULT_CONFIG_NAME,
     SCHEMA_VERSION,
-    ConfigIssue,
     ConfigValidationError,
     IssueSeverity,
-    LoadedConfig,
     load_config,
-    locate_issues,
     manifest_json_schema,
 )
-from codecoremorph.config.models import Loc
-from codecoremorph.rules.applicability import check_migration
-from codecoremorph.rules.registry import RuleRegistry
+from codecoremorph.orchestrator.session import migration_issues
 
 
 @handle_errors
@@ -64,24 +58,6 @@ def validate_command(
             f"{target.language} {target.standard}; rules: {rules}"
         )
     )
-
-
-def migration_issues(path: Path, loaded: LoadedConfig) -> list[ConfigIssue]:
-    """The manifest's standards and rules, checked against the installed plugins."""
-    cfg = loaded.config
-    root = (path.parent / cfg.project.root).resolve()
-    rules = RuleRegistry.discover([root / p for p in cfg.migration.rules_paths])
-    adapters = AdapterRegistry.discover()
-    info = adapters.adapters.get(cfg.migration.source.language)
-    standards = info.adapter().capabilities().standards if info is not None else None
-    found: list[tuple[Loc, str, IssueSeverity]] = [
-        (p.loc, p.message, IssueSeverity(p.severity))
-        for p in check_migration(cfg, standards, rules)
-    ]
-    found += [((), f"plugin: {p}", IssueSeverity.WARNING) for p in adapters.problems]
-    found += [((), f"rule pack: {p}", IssueSeverity.WARNING) for p in rules.problems]
-    text = path.read_bytes().decode("utf-8-sig")
-    return locate_issues(text, found)
 
 
 @handle_errors

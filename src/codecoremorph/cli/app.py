@@ -13,6 +13,7 @@ from codecoremorph import __version__
 from codecoremorph.cli.debug import debug_app
 from codecoremorph.cli.doctor import doctor_command
 from codecoremorph.cli.output import print_error, stderr
+from codecoremorph.cli.plan import plan_command
 from codecoremorph.cli.plugins import adapters_app, rules_app
 from codecoremorph.cli.toolchain import toolchain_app
 from codecoremorph.cli.validate import schema_command, validate_command
@@ -58,6 +59,7 @@ def _global_options(
 app.command("validate")(validate_command)
 app.command("schema")(schema_command)
 app.command("doctor")(doctor_command)
+app.command("plan")(plan_command)
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(rules_app, name="rules")
 app.add_typer(toolchain_app, name="toolchain")
