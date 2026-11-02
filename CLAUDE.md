@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. The first target is **C++11 → C++20**. Java and C# version upgrades come next, then cross-language ports (Java → C#, C++ → Rust).
+CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. The first target is **C++ standard upgrades**: any of C++98/03, 11, 14, 17 or 20 to a newer standard, up to C++23 (D-38). Java and C# version upgrades come next, then cross-language ports (Java → C#, C++ → Rust).
 
 ## Read first
 
@@ -10,7 +10,8 @@ CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents 
 
 ## Current status
 
-**Phase 0 (Foundations) not started.** There's no code yet. The git repo is initialized.
+**Phases 0 and 1 complete on Windows; Phase 2 (C++ adapter) complete natively on Windows, with its Docker parts and the benchmark measurement still open.** The native toolchain (llvm-mingw, LLVM 18, D-32/D-33) installs without admin rights; all eight fixtures (six C++11, plus `cpp98-legacy` and `cpp17-legacy`) configure, build, test and index natively under their own standards; `typedefs` migrates to C++20 and C++23 with codemods alone. Still open: building the C++ image (Docker Desktop's disk image must first move to the E: drive), the `docker`-marked tests against a real daemon, and the NFR-1.1 measurement on leveldb (runs in Docker). Linux and macOS runs wait for CI (Backlog, D-28).
+`uv run pytest -m toolchain` uses the native toolchain installed under `CODECOREMORPH_HOME`.
 Update this section whenever a phase completes.
 
 ## Stack
@@ -90,7 +91,7 @@ cd dashboard-ui; npm ci; npm run dev | npm run build | npm test   # Phase 7+
 
 ## Platform notes
 
-- The main dev machine runs Windows 11 (PowerShell and Git Bash). CI runs Linux and Windows.
+- The main dev machine runs Windows 11 (PowerShell and Git Bash). CI is deferred (Backlog, D-28); until it exists, run ruff, pyright, pytest and shellcheck locally before calling a task done.
 - Always use `pathlib`, and never assume `/` or LF. Preserve each file's line endings and encoding.
 - Killing a process tree, the Docker Desktop path mapping, and CRLF behavior all differ on Windows. Cover these with tests rather than assumptions.
 

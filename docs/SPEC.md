@@ -46,7 +46,7 @@ CodeCoreMorph is an open-source tool that runs locally. Given a git repository a
 
 | Persona | Use case |
 |---|---|
-| Maintainer of a legacy C++ library or application | Move C++11 → C++20 and adopt modern idioms without breaking tests or the public API |
+| Maintainer of a legacy C++ library or application | Move from C++98/03, C++11, C++14 or C++17 to a newer standard (up to C++23) and adopt modern idioms without breaking tests or the public API |
 | Team porting a codebase | Java → C# port (later phase) |
 | Contributor | Add a language adapter, rule pack or LLM provider as a plugin |
 
@@ -56,7 +56,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 
 | Migration | Phase | Notes |
 |---|---|---|
-| C++11/14 → C++17/20 (standard bump + modernization rules) | 2–5 (MVP) | First and fully specified (§11.1) |
+| C++ standard upgrades: C++98/03, 11, 14, 17 or 20 → any newer standard up to C++23 (standard bump + modernization rules) | 2–5 (MVP) | First and fully specified (§11.1, D-38) |
 | Java version upgrades (e.g. Java 8 → 21) | 9 | First Java migration (§11.2) |
 | C# language-version modernization | 10 | First C# migration (§11.3) |
 | Java → C# | 11 | Cross-language strategy, §11.4 |
@@ -94,6 +94,20 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | D-22 | Dependencies are downloaded by plain scripts: `.bat` for Windows and POSIX `.sh` for Linux and macOS, driven by one pinned manifest. No installer framework (§7.15). | User |
 | D-23 | Docker toolchain images are built with the same install script and manifest as native installs, so both modes use identical tool versions. Every file CodeCoreMorph manages lives under `CODECOREMORPH_HOME`. | Proposed |
 | D-24 | The project is named **CodeCoreMorph** (package, CLI, entry points, branch prefix and state directory use `codecoremorph`). The PRD called it PAME. | User |
+| D-25 | Dependency-script details settled in Phase 0 (§7.15). The scripts also accept `file://` URLs for local archives (tests now, `--offline` later); the shipped manifest stays HTTPS-only, which `check-manifest.py` enforces. `CODECOREMORPH_MANIFEST` overrides the manifest path. Manifest URLs use a character set `cmd.exe` can't misread. A failed download gets 3 retries. `bootstrap-dev` downloads the pinned uv when uv is missing from PATH or older than 0.12.0 (resolves open question 10). uv keeps its cache and managed Pythons in its own standard locations. Pre-commit hooks are local and run the locked tools through `uv run`, so pre-commit downloads nothing. | Proposed |
+| D-26 | Manifest details settled in Phase 0 (§8). `MigrationConfig` lives in `codecoremorph.config`, so `core` depends on no other package. The loader reads YAML 1.2 scalars, where only `true` and `false` are booleans and `off` stays a string. Unknown keys are errors, and so are credential-shaped keys and values. Roles take `provider`, `model`, `effort`, `num_ctx` and `provider_options`, and may name a provider not listed under `llm.providers`. Run IDs use UTC. | Proposed |
+| D-27 | Store schema v1 details (§7.12). Tables are SQLite `STRICT`. Each row keeps the full model JSON in a `data` column next to queryable copies of key fields. An abort request is an `approvals` row with gate `run` and decision `abort`. Event IDs use `AUTOINCREMENT`, so SSE clients can resume by ID. | Proposed |
+| D-28 | CI (GitHub Actions) moves out of Phase 0 to the Backlog, for a later phase. Until then the checks run locally (ruff, pyright, pytest, shellcheck, pre-commit), and the Linux, macOS and Docker-mode parts of exit criteria wait for CI. The CI design in §12 is unchanged. | User |
+| D-29 | CodeCoreMorph runs git hardened (§7.9). Hooks are disabled (`core.hooksPath` is the null device), so neither the user's hooks nor anything planted in a repository runs during a run. Commit signing is off, so no passphrase prompt can stall a run. `--no-optional-locks` keeps read-only commands from rewriting the user's index. Variables that redirect git (`GIT_DIR`, `GIT_INDEX_FILE`, ...) are removed. Destructive commands run only in the run worktree, after checking its path and branch (I-11). The committer is the user's identity, or `git.author` when git has none. | Proposed |
+| D-30 | PatchEngine details (§7.4). Edits in a batch apply in order, against in-memory files, and every rejection is reported. Matching runs on a CRLF-normalized view mapped back to the raw text, so bytes outside an edit never change, even with mixed line endings. Replacements take the line ending of the region they replace; new files use LF. Files decode as BOM-marked UTF-8/16/32, then UTF-8, then cp1252, then Latin-1. Whitespace-tolerant matches re-indent the replacement. Paths whose last component is a symlink, and names Windows can't represent, are rejected on every platform. | Proposed |
+| D-31 | Executor details (§7.8). `run()` takes an optional `log_path`. Output is captured to files, and results keep the head and tail. Native mode kills process trees with a process group (POSIX) or a Job Object plus `taskkill /T` (Windows), resolves programs with the command's own PATH, and passes only allowlisted variables. Docker mode handles a timeout by restarting the container, and creates a per-run bridge network that `set_network` connects and disconnects. `sandbox.pids_limit` (default 4096) and `git.author` join the manifest. | Proposed |
+| D-32 | The Windows native C++ toolchain is llvm-mingw: self-contained clang, lld and libc++, no Visual Studio, no admin rights (resolves open question 9). MSVC-based projects still need Visual Studio Build Tools, detected not installed. Phase 2's CI tasks join the CI item in the Backlog (D-28). | User |
+| D-33 | LLVM is pinned to 18.1.8 everywhere (llvm-mingw 20240619 on Windows), because the indexer's libclang binding comes from the `libclang` wheel, whose latest release is 18.1.1, and libc++ 21 and later refuse to be parsed by an older libclang. The index helper asks the project's compiler for its header search path (`-E -v`) and parses with exactly those directories (`-nostdinc` plus `-isystem`). | Proposed |
+| D-34 | CodeCoreMorph applies clang-tidy's exported fixes itself instead of running `clang-apply-replacements` (which llvm-mingw doesn't ship): identical fixes from several translation units apply once, overlapping fixes are skipped with their whole diagnostic, fixes outside the unit's files are skipped, and replacements in CRLF files get CRLF. The standard bump's build-file edit is a codemod tool of its own, `cmake-standard`. `parse_check` runs each translation unit's own compile command with `-fsyntax-only`. | Proposed |
+| D-35 | Phase 2 contract details (§7.1–§7.3). Test IDs are `ctest:<name>` for every CTest entry plus `gtest:<Suite>.<Case>` for every GoogleTest case (from `GTEST_OUTPUT`); a CTest entry that wraps a GoogleTest binary yields both. When an ID appears more than once, the most significant status wins. References gain the kind `use`; templates are split into `class_template`, `function_template` and `alias_template`. Rule detectors are `pattern` (regular expressions with comments and strings masked), `adapter_query` or `hook`. A rule pack is a directory with `pack.yaml`; its entry point names the directory. Adapters get an optional `query()` for detector queries; `AdapterContext` gains `log_dir`, and `LanguageConfig` carries the target standard, build options, project paths and timeouts. The index helper runs as a Python script copied into the run cache and executed by the sandbox's interpreter. | Proposed |
+| D-36 | Toolchain image and script details (§7.8, §7.15). The manifest's `#!platforms group|tool p1,p2` lines let a tool cover only some platforms; macOS on Intel has no native C++ toolchain (LLVM publishes none) and uses Docker. Install markers record which archive members were extracted. Install scripts write `activate-<lang>` for their own shell (the `.sh` also writes the `.bat` on Windows). The C++ image is Ubuntu 22.04, because LLVM 18's Linux build needs libtinfo5; its libclang wheel is pinned by hash to `uv.lock`. `image.lock` holds `image=` and `digest=` lines; until CI publishes images (D-28), runs use a local build from `scripts/build-image`, referenced by its image ID. The Docker executor applies the image's `toolchains/<lang>.env`, as the native executor applies the host's. | Proposed |
+| D-37 | The benchmark project is leveldb 1.23 (`99b3c03b3284f5886f9ef9a4ef703d57373e61be`, BSD-3-Clause, about 28k lines, GoogleTest, raw-pointer heavy), resolving open question 3. yaml-cpp's tests need C++14 and its core already uses smart pointers; tinyxml2 is about 5k lines without GoogleTest. | Proposed |
+| D-38 | C++ migrations cover the popular standards, not only C++11 → C++20 (user request). Sources: C++98/03, 11, 14, 17, 20; targets: any newer standard up to C++23. C++26 waits for an LLVM with full support (the indexer's libclang is pinned to 18, D-33). Adapters list their standards oldest first (`AdapterCapabilities.standards`) and the core compares standards only through that list. Rules, detector patterns and codemod passes carry standard conditions; the rule with `applies_to.standard_bump` runs first, automatically, when the target is newer. `validate` checks standards and rules against the installed plugins. C++98/03 builds use GoogleTest 1.8.1, the last release that supports them. New fixtures `cpp98-legacy` and `cpp17-legacy`. | Proposed |
 
 ---
 
@@ -503,6 +517,7 @@ class LanguageAdapter(ABC):
 - Codemods, formatters and test registration may write files only inside the worktree. Core captures those writes in the attempt diff, and invariants check them like any other change.
 - Heavy analysis (libclang, Spoon, Roslyn) runs as a helper program inside the sandbox and emits normalized JSON. The host needs no language toolchain in Docker mode.
 - Adapters are stateless between calls, apart from `ctx.cache_dir`.
+- `capabilities().standards` lists the language standards the adapter builds and migrates, oldest first (C++: `cpp98` … `cpp23`). The core compares standards only through this list, for rule conditions and manifest checks, so it never hard-codes a language's versions (D-38).
 
 ### 7.2 Normalized symbol index
 
@@ -512,7 +527,7 @@ The index is stored in SQLite (`index.sqlite` in the run cache), so it isn't hel
 |---|---|
 | `FileEntry` | path, language, sha256, role (`source` / `header` / `test` / `build` / `generated` / `third_party`), `c_compatible`, `public_api`, encoding, line_ending |
 | `Symbol` | id (adapter-stable, e.g. a clang USR), name, qualified_name, kind (namespace, class, struct, union, enum, function, method, field, variable, typedef, alias, template, concept, macro, …), file, range, signature, visibility, is_definition, boundary (`none` / `c_abi` / `jni` / `pinvoke` / `public_api`) |
-| `Reference` | from_file, from_symbol?, to_symbol, kind (call, type_use, inherit, override, macro_expand), location |
+| `Reference` | from_file, from_symbol?, to_symbol, kind (call, type_use, inherit, override, macro_expand, use), location |
 | `FileDependency` | from_file, to_file, kind (include, import, module) |
 | `IndexMeta` | adapter, adapter version, tool versions, stats, timings |
 
@@ -547,6 +562,12 @@ skip:
 - `kind: project` covers build-configuration changes, such as the standard bump. Such units may edit build files.
 - A rule with only `llm` (natural-language only) applies to every in-scope file (FR-9.3).
 - Optional Python hooks (`hooks: module:function`) can add custom detectors or post-conditions.
+
+**Standards (D-38).** Standards compare in the language adapter's order (`AdapterCapabilities.standards`):
+- `applies_to: {min_target_standard, max_source_standard}` gates a whole rule. `applies_to: {standard_bump: true}` marks the standard-bump rule: the planner runs it first, automatically, whenever the target standard is newer than the source, so manifests don't list it.
+- A detector pattern can carry the same conditions, e.g. `{pattern: '\bauto_ptr\b', min_target_standard: cpp17}`: it is a site only when the migration's target removes what it matches.
+- A codemod pass can set `standard`: it parses under at least that standard instead of the build's, and is skipped when the target is older. The standard bump uses this to replace removed features while they still exist next to their replacements (`auto_ptr` under C++11, `uncaught_exception` under C++17).
+- `codecoremorph validate` checks the manifest against the installed adapter and rule packs: both standards known, no downgrade, every listed rule known and applicable to the migration. A listed standard-bump rule is a warning.
 
 ### 7.4 Edit format and PatchEngine
 
@@ -713,18 +734,24 @@ class LLMProvider(Protocol):
 
 ```python
 class Executor(Protocol):
-    kind: Literal["docker", "native"]
+    @property
+    def kind(self) -> Literal["docker", "native"]: ...
     def start(self) -> None: ...
-    def run(self, argv: list[str], *, cwd: str, env: dict[str, str] | None = None,
-            timeout_s: float, stdin: bytes | None = None) -> ExecResult: ...
+    def run(self, argv: Sequence[str], *, cwd: str, env: Mapping[str, str] | None = None,
+            timeout_s: float, stdin: bytes | None = None,
+            log_path: Path | None = None) -> ExecResult: ...   # log_path: where the full log goes
     def set_network(self, enabled: bool) -> None: ...
     def to_sandbox_path(self, host_path: Path) -> str: ...
     def stop(self) -> None: ...
 
 class ExecResult(BaseModel):
-    exit_code: int; stdout: str; stderr: str      # capped; full output in log_path
+    argv: list[str]; exit_code: int                # -1 if killed without an exit code
+    stdout: str; stderr: str                       # capped (head + tail); full output in log_path
+    stdout_truncated: bool; stderr_truncated: bool
     duration_s: float; timed_out: bool; log_path: Path
 ```
+
+A program that isn't found returns exit code 127 in both modes. Commands never receive credential-like variables (NFR-5.3).
 
 **Docker executor (default):**
 - **Container:** one per run, from the adapter's pinned image (`<registry>/codecoremorph-<lang>@sha256:…`), labeled `codecoremorph.run=<id>`.
@@ -737,6 +764,7 @@ class ExecResult(BaseModel):
   - `off`: no network at all.
   - `fetch_only` (default): network only during the adapter's dependency-fetch step (e.g. Maven resolve); off for build and test of migrated code.
   - `on`: network always available.
+- **Timeouts:** exec'd processes can't be killed through the Docker API, so a timeout restarts the container, which kills everything in it. The worktree, volumes and network setup survive (D-31).
 - **Cleanup:** the container is removed at run end. `codecoremorph clean` removes leftovers by label.
 - **Windows and macOS:** Docker Desktop with Linux containers. Bind-mount performance is a known risk (§15).
 
@@ -811,7 +839,7 @@ Every attempt is checked before commit (FR-4.4).
 
 - **`.codecoremorph/codecoremorph.db`** (SQLite, WAL mode): tables `runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`. Diagnostics and test results are JSON columns. Schema migrations are versioned.
 - **`.codecoremorph/runs/<id>/`:** `plan.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
-- **Writers:** the engine is the only writer of run data. The dashboard and CLI write only `approvals` rows and abort requests.
+- **Writers:** the engine is the only writer of run data. The dashboard and CLI write only `approvals` rows and abort requests. An abort request is an `approvals` row with gate `run` and decision `abort` (D-27).
 - **Retention:** `codecoremorph clean --older-than <days>`.
 
 ### 7.13 Dashboard
@@ -891,6 +919,7 @@ Everything CodeCoreMorph downloads comes through a small set of plain scripts. E
 | `scripts/bootstrap-dev.{bat,sh}` | Contributor setup. Uses uv from PATH if it's recent enough, otherwise downloads the pinned uv. Then installs Python with uv, runs `uv sync`, installs pre-commit hooks, and checks git and Docker. From Phase 7 it also installs a pinned portable Node. | 0 |
 | `scripts/install-toolchain.{bat,sh} <lang>` | Installs the pinned native toolchain for `cpp`, `java`, `csharp`, `rust` or `all` | 2 (cpp), 9, 10, 12 |
 | `scripts/pull-images.{bat,sh} [lang…]` | Pre-pulls pinned images listed in `images/<lang>/image.lock`. Optional, since CodeCoreMorph pulls on demand. | 2 |
+| `scripts/build-image.{bat,sh} <lang>` | Builds `images/<lang>/Dockerfile` locally as `codecoremorph-<lang>:local`, which runs use until a published image is pinned (D-36). | 2 |
 | `scripts/pull-models.{bat,sh} <tag>…` | Checks that Ollama is installed and running, then runs `ollama pull` for each tag. `codecoremorph doctor` prints this command with the configured tags. | 4 |
 | `scripts/lib/common.{bat,sh}` | Shared helpers: platform detection, manifest parsing, download with retries, SHA-256 check, extraction, logging | 0 |
 
@@ -909,12 +938,12 @@ Everything CodeCoreMorph downloads comes through a small set of plain scripts. E
 
 1. **Pinned.** Every download is listed in the manifest with a version and SHA-256. Nothing else is downloaded, apart from downloads that a pinned tool fetches and verifies itself (`uv python install`, rustup, `ollama pull`).
 2. **Verified.** The SHA-256 is checked before extraction. On a mismatch, the script deletes the file and stops.
-3. **No admin rights.** No `sudo`, no UAC prompt, no registry or system PATH changes. Nothing is written outside `CODECOREMORPH_HOME`, except the repo's `.venv` created by `bootstrap-dev`.
+3. **No admin rights.** No `sudo`, no UAC prompt, no registry or system PATH changes. Nothing is written outside `CODECOREMORPH_HOME`, except the repo's `.venv` created by `bootstrap-dev` and the directories uv manages itself (its cache and its managed Python installs, D-25).
 4. **Never pipes a download into a shell.** Installers such as `rustup-init` are downloaded as pinned files, verified, then run.
 5. **Idempotent and interruption-safe.**
    - An installed tool has a `.installed` marker holding its SHA-256. Re-running skips it unless `--force` is given.
    - Archives are extracted into a temporary directory, then moved into place. An interrupted install never leaves a half-installed tool.
-6. **HTTPS only.** Each download is retried up to 3 times.
+6. **HTTPS only.** The shipped manifest lists only HTTPS URLs. The scripts also accept `file://` URLs for local archives (D-25). A failed download is retried up to 3 times.
 
 **Manifest (`scripts/deps/manifest.txt`).** One line per tool and platform. Fields are pipe-separated with no spaces, so both `for /f` in `.bat` and `IFS='|' read` in `.sh` can parse it:
 
@@ -930,7 +959,9 @@ The rows above show the format only. Real versions and hashes are pinned in Phas
 - **Platforms:** `windows-x64`, `linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, or `any` (jars, source archives).
 - **Windows archives:** Windows rows use `.zip` or `.tar.gz`, because the built-in `tar.exe` isn't guaranteed to read `.tar.xz`.
 - **Version bumps:** maintainers run `scripts/deps/refresh-hashes.py`, which downloads each URL and rewrites its hash.
-- **CI check:** CI fails if a row is malformed or a tool is missing a supported platform.
+- **CI check:** `scripts/deps/check-manifest.py` fails if a row is malformed or a tool is missing a supported platform. CI runs it on every change.
+- **URLs** use only letters, digits and `._~/:+-`: no query strings, and no `%`, `!`, `^` or `&`, which `cmd.exe` would misread.
+- **Override:** `CODECOREMORPH_MANIFEST` points the scripts at a different manifest (tests, maintainers).
 
 **Install layout.** `CODECOREMORPH_HOME` defaults to:
 - Windows: `%LOCALAPPDATA%\codecoremorph`
@@ -957,12 +988,12 @@ The `CODECOREMORPH_HOME` environment variable overrides the default. The Python 
 
 | Language | Downloaded (pinned) | System prerequisites (detected, never installed) |
 |---|---|---|
-| cpp | LLVM release (clang, clang-tidy, clang-format, libclang), CMake, Ninja, and GoogleTest source built locally with the downloaded toolchain. On Windows, a self-contained clang toolchain that doesn't need Visual Studio (candidate: llvm-mingw, §16). | Linux: C/C++ standard library headers (`build-essential` or the distro equivalent). macOS: Xcode Command Line Tools. Windows, MSVC-based projects only: Visual Studio Build Tools (detected with `vswhere`). |
+| cpp | LLVM 18.1.8 (clang, clang-tidy, clang-format, lld; only these members of the archive are extracted), CMake, Ninja, and GoogleTest 1.12.1 (the last release that supports C++11) plus 1.8.1 (the last that supports C++98/03, built as C++98 for builds under those standards), both built locally with the downloaded toolchain. On Windows, llvm-mingw, which needs no Visual Studio (D-32). No native toolchain for macOS on Intel; use Docker (D-36). | Linux: C/C++ standard library headers (`build-essential` or the distro equivalent) and `xz`. macOS: Xcode Command Line Tools. Windows, MSVC-based projects only: Visual Studio Build Tools (detected with `vswhere`). |
 | java | Temurin JDKs for the source and target versions, Maven, CodeCoreMorph's Spoon indexer jar (release asset) | None |
 | csharp | .NET SDK archive, CodeCoreMorph's Roslyn indexer (release asset) | Linux: ICU libraries |
 | rust | `rustup-init` (pinned), a pinned Rust toolchain installed by rustup under `CODECOREMORPH_HOME`, cargo-nextest, cbindgen | Same as cpp (mixed builds) |
 
-The libclang Python binding is a Python dependency (the `libclang` wheel, installed by uv). It's pinned to the same major version as the downloaded LLVM.
+The libclang Python binding is a Python dependency (the `libclang` wheel, installed by uv). It's pinned to the same major version as the downloaded LLVM, which is why LLVM is pinned to 18.x (D-33).
 
 ---
 
@@ -981,10 +1012,10 @@ project:
 
 migration:
   base: HEAD                         # commit to start from
-  source: {language: cpp, standard: cpp11, build_system: cmake}
+  source: {language: cpp, standard: cpp11, build_system: cmake}   # cpp98 … cpp20
   target:
     language: cpp
-    standard: cpp20
+    standard: cpp20                  # the source standard or newer, up to cpp23
     rules:                           # applied in this order, after the standard bump
       - replace_typedefs_with_using
       - convert_raw_pointers_to_smart_pointers
@@ -997,10 +1028,13 @@ build:                               # adapter-specific, all optional
     build_targets: []                # empty = all
 
 llm:
-  providers:
+  providers:                         # optional connection settings; never credentials
     anthropic: {}                    # credentials from the Anthropic SDK's default chain
     ollama: {base_url: "http://localhost:11434"}
+    # each also takes max_retries, timeout_s and
+    # prices: {<model>: {input_usd_per_mtok, output_usd_per_mtok, cache_read_usd_per_mtok, ...}}
   roles:                             # unset roles fall back to `editor`
+    # effort is Anthropic's, num_ctx is Ollama's; other provider options go in provider_options
     editor:      {provider: anthropic, model: claude-opus-5-5, effort: high}
     test_writer: {provider: anthropic, model: claude-opus-5-5, effort: high}
     summarizer:  {provider: ollama, model: "<local-model-tag>", num_ctx: 32768}
@@ -1029,6 +1063,7 @@ sandbox:
   network: fetch_only                # off | fetch_only | on
   cpus: 4
   memory: "8g"
+  pids_limit: 4096                   # max processes in the container
 
 approvals:
   plan: required                     # required | auto
@@ -1045,11 +1080,19 @@ parity:
 
 reporting:
   store_transcripts: true
+
+git:
+  author: null                       # "Name <email>" for unit commits; default: your git identity
 ```
 
 **Compatibility with the PRD example:**
 - `project.root_path` is accepted as an alias for `project.root`.
 - `guardrails.docker_sandbox: true/false` is accepted as a deprecated alias for `sandbox.mode: docker/native`.
+
+**Parsing and validation (D-26):**
+- The manifest is read as YAML 1.2: only `true` and `false` are booleans, so `off` and `on` stay strings, and dates stay strings.
+- Unknown keys are errors, with a "did you mean" suggestion. So are duplicate keys, and credential-shaped keys or values (FR-1.6); the error never repeats the value.
+- `codecoremorph validate` reports every problem at once, as `file:line:col: error: key.path: message`.
 
 **Local-only example:** set every role to `{provider: ollama, model: <tag>, num_ctx: <n>}`. The report then states that no code left the machine (FR-8.5).
 
@@ -1057,7 +1100,7 @@ reporting:
 
 ## 9. Data contracts summary
 
-These pydantic models are defined in `src/codecoremorph/core/` and are the stable contracts between components. They serialize to JSON for the store, the dashboard API and reports.
+These pydantic models are defined in `src/codecoremorph/core/` (except `MigrationConfig`, which lives in `src/codecoremorph/config/` so that `core` depends on no other package, D-26) and are the stable contracts between components. They serialize to JSON for the store, the dashboard API and reports.
 
 | Model | Used by |
 |---|---|
@@ -1096,9 +1139,11 @@ These pydantic models are defined in `src/codecoremorph/core/` and are the stabl
 
 ### 11.1 C++ (MVP)
 
+**Standards (D-38):** sources C++98, C++03, C++11, C++14, C++17 and C++20; targets any newer standard up to C++23 (or the same standard, for modernization rules alone). C++03 builds as CMake's 98 (clang treats them alike). C++26 follows an LLVM upgrade.
+
 **Toolchain image (`images/cpp`):**
-- Ubuntu LTS base
-- pinned LLVM release: clang, clang-tidy, libclang, clang-apply-replacements
+- Ubuntu 22.04 LTS base (LLVM 18's Linux build needs libtinfo5, D-36)
+- pinned LLVM release: clang, clang-tidy, clang-format, lld
 - CMake ≥ 3.21 (for CTest JUnit output), Ninja, ccache
 - GoogleTest
 - Python with the `libclang` binding for the indexer helper
@@ -1111,6 +1156,7 @@ These pydantic models are defined in `src/codecoremorph/core/` and are the stabl
 
 **Build:**
 - Configure with CMake and Ninja, out of source, setting the standard through `CMAKE_CXX_STANDARD` for verification builds.
+- C++98/03 builds get a CMake initial-cache script (`-C`) that puts the C++98 GoogleTest first in `CMAKE_PREFIX_PATH`; the toolchain names its prefix in `CODECOREMORPH_CXX98_PREFIX_PATH`.
 - The standard-bump unit edits the build files permanently.
 - **Diagnostic parsers:**
   - clang/gcc text format, including notes and "in file included from" chains
@@ -1120,31 +1166,28 @@ These pydantic models are defined in `src/codecoremorph/core/` and are the stabl
 
 **Tests:**
 - CTest with `--output-junit`.
-- Where a CTest entry wraps a GoogleTest binary, `--gtest_output=xml` provides per-case IDs. Test IDs look like `gtest:<Suite>.<Case>` or `ctest:<name>`.
+- Where a CTest entry wraps a GoogleTest binary, `GTEST_OUTPUT=xml:<dir>/` provides per-case IDs. Test IDs look like `gtest:<Suite>.<Case>` or `ctest:<name>`; a wrapped binary yields both (D-35).
 
-**Codemods:** clang-tidy `-fix` with the rule's checks, limited to the unit's files (header filter), then `clang-apply-replacements`.
+**Codemods:** clang-tidy with the rule's checks and `--export-fixes`, limited to the unit's files (header filter); CodeCoreMorph applies the exported fixes itself (D-34). The standard bump edits the build files with the `cmake-standard` codemod.
 
 **Rule pack v1:**
 
 | Rule | Kind | Deterministic part (clang-tidy) | LLM part | Post-condition |
 |---|---|---|---|---|
-| `bump_standard` (cpp11 → cpp14/17/20) | project | Build-config edit; `modernize-replace-auto-ptr`, `modernize-use-noexcept`, `modernize-replace-random-shuffle` | Fix the remaining breakage under the new standard (list below) | Builds cleanly under the target standard |
+| `bump_standard` (any source → a newer standard, up to cpp23; runs automatically) | project | A pass under C++11 (`modernize-replace-auto-ptr`, `modernize-replace-random-shuffle`, `modernize-use-noexcept`), a pass under C++17 (`modernize-use-uncaught-exceptions`, `modernize-deprecated-ios-base-aliases`), then the build-config edit | Fix the remaining breakage under the new standard (list below) | Builds cleanly under the target standard |
 | `replace_typedefs_with_using` | api_preserving | `modernize-use-using` | Cases the check skips (macros, templates) | No `typedef` left in unit files (error) |
 | `convert_raw_pointers_to_smart_pointers` | api_changing | `modernize-make-unique`, `modernize-make-shared` | Ownership analysis: owning members, locals and returns → `unique_ptr` / `shared_ptr`; remove manual `delete`; update call sites; keep non-owning pointers raw and note them | No `delete` of converted symbols (warning) |
 | `use_concepts_for_templates` | api_preserving | `modernize-use-constraints` (`enable_if` → `requires`) | Named concepts for repeated constraints; SFINAE the check misses | No `std::enable_if` in unit files (warning) |
-| `modernize_basics` (optional bundle) | api_preserving | `use-nullptr`, `use-override`, `use-equals-default`, `use-equals-delete`, `loop-convert`, `deprecated-headers`, `redundant-void-arg` | none | clang-tidy reports zero remaining sites |
+| `modernize_basics` (optional bundle) | api_preserving | `use-nullptr`, `use-override`, `use-equals-default`, `use-equals-delete`, `loop-convert`, `deprecated-headers`, `redundant-void-arg`; with newer targets `type-traits` (C++14/17), `concat-nested-namespaces` and `unary-static-assert` (C++17), `use-starts-ends-with` (C++20), which clang-tidy runs only when the build's standard has them | none | clang-tidy reports zero remaining sites |
 
 Check availability depends on the pinned clang-tidy version. The pack declares a minimum version.
 
-**C++11 → C++20 breakage the standard-bump rule must handle:**
-- `std::auto_ptr`, `std::random_shuffle`, `std::bind1st`/`bind2nd`/`ptr_fun`, and dynamic exception specifications (all removed in C++17; `throw()` removed in C++20)
-- the `register` keyword and trigraphs
-- `std::uncaught_exception`
-- `u8` literals becoming `char8_t`
-- new keywords colliding with identifiers (`concept`, `requires`, `co_await`, `char8_t`, `consteval`, …)
-- C++20 rewritten comparison operators causing ambiguities
-- aggregates with user-declared constructors no longer being aggregates
-- deprecated implicit `this` capture via `[=]`
+**Breakage the standard-bump rule must handle.** Only the transitions between the source and the target apply; the rule's guidance has the fixes.
+- **C++98/03 → C++11:** identifiers that became keywords (`nullptr`, `constexpr`, `decltype`, `noexcept`, `static_assert`, `thread_local`, `char16_t`, …), including a home-made `nullptr`; a string literal directly followed by a macro (`"%"PRId64`); narrowing inside braces; `auto` as a storage class; streams converting to `bool` only explicitly; `std::make_pair<A, B>` with lvalues; destructors becoming `noexcept`, so a throwing destructor terminates (a test-visible behavior change, not a compile error)
+- **C++11 → C++14:** `constexpr` member functions no longer implicitly `const`
+- **C++14 → C++17:** `std::auto_ptr`, `std::random_shuffle`, `std::bind1st`/`bind2nd`/`ptr_fun`/`mem_fun`, `unary_function`/`binary_function`, dynamic exception specifications, the `register` keyword, trigraphs and the `ios_base` aliases removed; `noexcept` in the function type
+- **C++17 → C++20:** `throw()`, `std::uncaught_exception`, `result_of`, `not1`/`not2`, `is_literal_type`, `raw_storage_iterator` and `get_temporary_buffer` removed; new keywords colliding with identifiers (`concept`, `requires`, `co_await`, `char8_t`, `consteval`, …); `u8` literals becoming `char8_t`; rewritten comparison operators causing ambiguities; aggregates with user-declared constructors no longer aggregates; deprecated implicit `this` capture via `[=]`
+- **C++20 → C++23:** implicit move of returned rvalue-reference parameters (P2266), so `T& f(T&& x) { return x; }` no longer compiles; multi-argument subscripts; garbage-collection support removed; `aligned_storage` deprecated
 
 ### 11.2 Java (Phase 9)
 
@@ -1192,20 +1235,22 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 | Benchmark | Pinned OSS C++11 project: index time (NFR-1.1), memory (NFR-1.2), migration success and cost | Manual or nightly; results in `bench/results/` |
 | Scripts | shellcheck (POSIX mode) on every `.sh`; manifest format check; `bootstrap-dev` and `install-toolchain` on clean Windows, Linux and macOS runners; checksum-mismatch, re-run and `--dry-run` behavior | CI when scripts or the manifest change, plus nightly |
 
-**Fixture projects** (`fixtures/cpp/`): small CMake + GoogleTest projects in C++11, **intentionally legacy**:
+**Fixture projects** (`fixtures/cpp/`): small CMake + GoogleTest projects, **intentionally legacy**, in C++11 unless noted:
 - `ownership`: raw `new`/`delete`, owning pointers
 - `typedefs`
 - `templates`: SFINAE, `enable_if`
 - `removed-features`: `auto_ptr`, `throw()`, `register`, `random_shuffle`, `bind1st`
 - `c-compat`: headers shared with C
 - `multi-module`: library + app + public include dir
+- `cpp98-legacy` (C++98, no standard in its build files): a home-made `nullptr`, `"%"PRId64`, brace narrowing, stream-to-bool, a `char16_t` typedef, `auto int`, a throwing destructor, plus `auto_ptr`, `bind2nd`, `ptr_fun`, `throw()`; uses GoogleTest 1.8.1
+- `cpp17-legacy` (C++17): a member named `requires`, `u8` literals as `const char*`, an aggregate with a defaulted constructor, `result_of`, `uncaught_exception`, `[=]` capturing `this` (C++20); a returned rvalue-reference parameter (C++23)
 - `untested`: little test coverage, for characterization tests
 - `injection`: comments containing adversarial instructions
 
 **Benchmark selection (Phase 2).**
 - Criteria: C++11, CMake, GoogleTest, 10–50k LOC, permissive license, raw-pointer-heavy code.
-- Candidates to evaluate: leveldb, yaml-cpp, tinyxml2.
-- The selected project is pinned to an exact commit.
+- Candidates evaluated: leveldb, yaml-cpp, tinyxml2.
+- Selected: leveldb 1.23, pinned to an exact commit in `bench/pin.json` (D-37). `bench/fetch.py` clones it; `bench/measure.py` measures NFR-1.1 and records the result in `bench/results/`.
 
 ---
 
@@ -1245,14 +1290,14 @@ Check availability depends on the pinned clang-tidy version. The pack declares a
 
 1. ~~**License**~~: resolved, Apache-2.0 (D-20).
 2. ~~**Name**~~: resolved, CodeCoreMorph (D-24). As of 2026-11-02, `codecoremorph` was free on PyPI, npm and GitHub. Register the PyPI name early.
-3. **Benchmark project:** which one (Phase 2)?
+3. ~~**Benchmark project**~~: resolved, leveldb 1.23 (D-37).
 4. **Ollama model:** which one to recommend by default (decide from the Phase 4 evals)?
 5. **Parallel units:** process independent DAG branches in parallel worktrees? This is post-v0.1.
 6. **Starting runs from the dashboard:** should FR-12.6 be in v0.1?
 7. **Commit identity:** default to the user's identity, or a bot identity with the user as committer?
 8. **Container registry:** where to publish images (GHCR assumed).
-9. **Windows native C++ toolchain:** a self-contained clang toolchain that needs no Visual Studio (e.g. llvm-mingw), or require Visual Studio Build Tools? Decide in Phase 2.
-10. **uv in `bootstrap-dev`:** download a pinned uv when it's missing (proposed), or ask contributors to install uv themselves?
+9. ~~**Windows native C++ toolchain**~~: resolved, llvm-mingw (D-32).
+10. ~~**uv in `bootstrap-dev`**~~: resolved, download a pinned uv when uv is missing or older than 0.12.0 (D-25).
 
 ## 17. PRD traceability
 

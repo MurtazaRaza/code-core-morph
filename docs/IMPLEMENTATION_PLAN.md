@@ -8,7 +8,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 - Phases run in order. Tasks inside a phase can be reordered.
 - Tick a checkbox when its task has landed **with tests**.
-- A phase is done when every exit criterion is met and CI is green. Then update "Current status" in [CLAUDE.md](../CLAUDE.md).
+- A phase is done when every exit criterion is met and the checks (ruff, pyright, pytest, shellcheck) pass. CI comes later (Backlog, D-28). Then update "Current status" in [CLAUDE.md](../CLAUDE.md).
 - If a task shows the spec is wrong or incomplete, update SPEC.md (and add a `D-xx` row) in the same change.
 - Items in **Backlog** at the end are deliberately unscheduled.
 
@@ -27,9 +27,9 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 | # | Phase | Main deliverables | Spec |
 |---|---|---|---|
-| 0 | Foundations | Repo, tooling, CI, config schema, core models, store, CLI skeleton, dependency scripts and `bootstrap-dev` | FR-1.1, FR-1.5–1.10, §7.15, §8, §9 |
+| 0 | Foundations | Repo, tooling, config schema, core models, store, CLI skeleton, dependency scripts and `bootstrap-dev` | FR-1.1, FR-1.5–1.10, §7.15, §8, §9 |
 | 1 | Workspace safety and execution | git worktrees and rollback, PatchEngine, Docker and native executors | FR-3.2, FR-3.3, FR-6, §7.4, §7.8, §7.9 |
-| 2 | C++ adapter and rules | C++ image, `install-toolchain cpp`, build, test, index, codemods, rule model, C++ rule pack v1, fixtures, benchmark pick | FR-1.2, FR-1.3, FR-1.11, FR-1.13, FR-2, FR-9, §7.1–7.3, §7.15, §11.1 |
+| 2 | C++ adapter and rules | C++ image, `install-toolchain cpp`, build, test, index, codemods, rule model, C++ rule pack v1 for C++98/03 → C++23, fixtures, benchmark pick | FR-1.2, FR-1.3, FR-1.11, FR-1.13, FR-2, FR-9, §7.1–7.3, §7.15, §11.1 |
 | 3 | Graph, baseline and planner | Dependency DAG, baseline capture, work units, estimates, `codecoremorph plan` | FR-5, FR-7.1, FR-2.2, §7.5.1 |
 | 4 | LLM providers and single-unit loop | Anthropic + Ollama providers, replay, ledger, agent loop, feedback, `codecoremorph debug unit` | FR-3, FR-4, FR-8, §7.6, §7.7 |
 | 5 | Run orchestration (**M1**) | LangGraph run graph, gates, invariants, commit and rollback, resume, reports, full CLI | FR-4.4, FR-10, FR-11, FR-13, FR-14, §7.5, §7.10 |
@@ -45,34 +45,32 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 ## Phase 0: Foundations
 
-**Goal:** an empty but production-shaped project. Config can be validated, the core data contracts exist, and CI is green on Linux and Windows.
+**Goal:** an empty but production-shaped project. Config can be validated, the core data contracts exist, and a contributor can set up a development environment with one script.
 
 **Prerequisites:** none.
 
 ### Tasks
 - [x] `git init`
-- [ ] Add `.gitignore` (Python, Node, `.codecoremorph/`), `.gitattributes` (`* text=auto`; keep fixture files byte-exact with `-text` where needed; `*.bat text eol=crlf`; `*.sh text eol=lf`), README stub, LICENSE (Apache-2.0)
-- [ ] `pyproject.toml` with uv; `src/codecoremorph/` layout per SPEC §4.3; dependency groups `dev` and `docs`; console script `codecoremorph`
-- [ ] Tooling: ruff (lint + format, line length 100), pyright (strict for the packages listed in NFR-9.1), pytest with markers `docker`, `toolchain`, `live_llm`, `slow`; pre-commit hooks
-- [ ] CI (GitHub Actions): lint, type-check and unit tests on `ubuntu-latest` and `windows-latest`, Python 3.12 and 3.13
-- [ ] `codecoremorph.core`: domain models from SPEC §9 (config-independent ones first: `Diagnostic`, `BuildResult`, `TestCaseResult`, `TestReport`, `Edit`, `EditBatch`, `WorkUnit`, `Plan`, `Attempt`, `Event`, status enums), the error hierarchy (`codecoremorph.core.errors`), and run-ID generation
-- [ ] `codecoremorph.config`: the full manifest schema (SPEC §8) in pydantic, including the PRD aliases (`root_path`, `docker_sandbox`) and the `rollback_on_failure: false` rejection; a YAML loader that reports every error with its location; JSON Schema export
-- [ ] `codecoremorph.store`: SQLite schema v1 (`runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`), WAL mode, a simple versioned-migration runner, the artifact-directory helper and the event writer
-- [ ] `codecoremorph.logging`: stdlib logging with a Rich console handler, a JSON file handler, and a secret-redaction filter (NFR-5.3)
-- [ ] CLI skeleton (Typer): `codecoremorph --version`, `codecoremorph validate`, `codecoremorph schema`, `codecoremorph doctor` (checks Python, git ≥ 2.30, Docker reachability; more checks join later)
-- [ ] `examples/cpp11-to-cpp20.yaml`, matching SPEC §8
+- [x] Add `.gitignore` (Python, Node, `.codecoremorph/`), `.gitattributes` (`* text=auto`; keep fixture files byte-exact with `-text` where needed; `*.bat text eol=crlf`; `*.sh text eol=lf`), README stub, LICENSE (Apache-2.0)
+- [x] `pyproject.toml` with uv; `src/codecoremorph/` layout per SPEC §4.3; dependency groups `dev` and `docs`; console script `codecoremorph`
+- [x] Tooling: ruff (lint + format, line length 100), pyright (strict for the packages listed in NFR-9.1), pytest with markers `docker`, `toolchain`, `live_llm`, `slow`; pre-commit hooks
+- [x] `codecoremorph.core`: domain models from SPEC §9 (config-independent ones first: `Diagnostic`, `BuildResult`, `TestCaseResult`, `TestReport`, `Edit`, `EditBatch`, `WorkUnit`, `Plan`, `Attempt`, `Event`, status enums), the error hierarchy (`codecoremorph.core.errors`), and run-ID generation
+- [x] `codecoremorph.config`: the full manifest schema (SPEC §8) in pydantic, including the PRD aliases (`root_path`, `docker_sandbox`) and the `rollback_on_failure: false` rejection; a YAML loader that reports every error with its location; JSON Schema export
+- [x] `codecoremorph.store`: SQLite schema v1 (`runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`), WAL mode, a simple versioned-migration runner, the artifact-directory helper and the event writer
+- [x] `codecoremorph.logging`: stdlib logging with a Rich console handler, a JSON file handler, and a secret-redaction filter (NFR-5.3)
+- [x] CLI skeleton (Typer): `codecoremorph --version`, `codecoremorph validate`, `codecoremorph schema`, `codecoremorph doctor` (checks Python, git ≥ 2.30, Docker reachability; more checks join later)
+- [x] `examples/cpp11-to-cpp20.yaml`, matching SPEC §8
 
 **Dependency scripts (SPEC §7.15)**
-- [ ] `codecoremorph.core.paths`: `CODECOREMORPH_HOME` resolution per platform, with the environment override
-- [ ] `scripts/deps/manifest.txt` with the `dev` group (pinned uv for every supported platform)
-- [ ] `scripts/lib/common.bat` and `scripts/lib/common.sh`:
+- [x] `codecoremorph.core.paths`: `CODECOREMORPH_HOME` resolution per platform, with the environment override
+- [x] `scripts/deps/manifest.txt` with the `dev` group (pinned uv for every supported platform)
+- [x] `scripts/lib/common.bat` and `scripts/lib/common.sh`:
   - platform detection and manifest parsing
   - download with retries, SHA-256 check (`certutil` / `sha256sum` / `shasum`)
   - extract to a temp directory, then move into place; `.installed` markers
   - flags `--prefix`, `--force`, `--dry-run`; the §7.15 exit codes
-- [ ] `scripts/bootstrap-dev.bat` and `scripts/bootstrap-dev.sh`: uv (from PATH, or the pinned download) → `uv python install 3.12` → `uv sync` → `pre-commit install` → git and Docker checks
-- [ ] `scripts/deps/refresh-hashes.py` (maintainer tool: re-download URLs, rewrite hashes)
-- [ ] CI: shellcheck (POSIX mode) on every `.sh`; manifest format check; run `bootstrap-dev` on clean Windows and Linux runners
+- [x] `scripts/bootstrap-dev.bat` and `scripts/bootstrap-dev.sh`: uv (from PATH, or the pinned download) → `uv python install 3.12` → `uv sync` → `pre-commit install` → git and Docker checks
+- [x] `scripts/deps/refresh-hashes.py` (maintainer tool: re-download URLs, rewrite hashes)
 
 ### Tests
 - Config: valid example, each invalid-field class, aliases, error locations
@@ -82,8 +80,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 ### Exit criteria
 - `uv run codecoremorph validate examples/cpp11-to-cpp20.yaml` succeeds; broken variants list all errors with their locations
-- On clean Windows and Linux machines, a fresh clone → `scripts\bootstrap-dev.bat` or `./scripts/bootstrap-dev.sh` → `uv run codecoremorph --version` works, with no admin rights
-- CI is green on Linux and Windows
+- On a clean Windows machine, a fresh clone → `scripts\bootstrap-dev.bat` (cmd.exe) or `./scripts/bootstrap-dev.sh` (Git Bash) → `uv run codecoremorph --version` works, with no admin rights. Linux and macOS runs move to the CI item in the Backlog (D-28).
 
 ---
 
@@ -95,27 +92,27 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 ### Tasks
 **VCS (`codecoremorph.vcs`)**
-- [ ] git CLI wrapper with typed errors; detect the repo root, the base commit (`--base`, default `HEAD`), and dirty state (warn only)
-- [ ] Repo lock (`.codecoremorph/lock`, stale-lock detection); add `.codecoremorph/` to `.git/info/exclude` (FR-6.6, NFR-2.1)
-- [ ] Create branch `codecoremorph/<run-id>` plus a worktree under the user cache dir; remove both on cleanup (FR-6.2)
-- [ ] `snapshot()` → SHA; `rollback(sha)` = `reset --hard` + `clean -fd` scoped to the worktree (FR-6.3)
-- [ ] `commit(message, trailers)` with the SPEC §7.9 format and a configurable author (FR-6.4)
-- [ ] `diff(since)` → unified diff text plus changed-file list (FR-3.2)
-- [ ] Build-dir and cache-dir allocation outside the worktree (FR-6.7)
+- [x] git CLI wrapper with typed errors; detect the repo root, the base commit (`--base`, default `HEAD`), and dirty state (warn only)
+- [x] Repo lock (`.codecoremorph/lock`, stale-lock detection); add `.codecoremorph/` to `.git/info/exclude` (FR-6.6, NFR-2.1)
+- [x] Create branch `codecoremorph/<run-id>` plus a worktree under the user cache dir; remove both on cleanup (FR-6.2)
+- [x] `snapshot()` → SHA; `rollback(sha)` = `reset --hard` + `clean -fd` scoped to the worktree (FR-6.3)
+- [x] `commit(message, trailers)` with the SPEC §7.9 format and a configurable author (FR-6.4)
+- [x] `diff(since)` → unified diff text plus changed-file list (FR-3.2)
+- [x] Build-dir and cache-dir allocation outside the worktree (FR-6.7)
 
 **Patching (`codecoremorph.patching`)**
-- [ ] `Edit` / `EditBatch` models (replace, create, delete) and JSON Schema for `submit_edits`
-- [ ] Matcher: exact unique match → whitespace-tolerant unique match → rejection with the closest candidate and line numbers (SPEC §7.4)
-- [ ] Atomic multi-file apply: in-memory first, then temp file + rename per file; all or nothing (FR-3.3)
-- [ ] Preserve encoding (detect non-UTF-8 and BOM) and per-file line endings
-- [ ] Path safety: no `..`, no absolute paths, no `.git/`, no excluded paths, no symlink escape (I-1)
+- [x] `Edit` / `EditBatch` models (replace, create, delete) and JSON Schema for `submit_edits`
+- [x] Matcher: exact unique match → whitespace-tolerant unique match → rejection with the closest candidate and line numbers (SPEC §7.4)
+- [x] Atomic multi-file apply: in-memory first, then temp file + rename per file; all or nothing (FR-3.3)
+- [x] Preserve encoding (detect non-UTF-8 and BOM) and per-file line endings
+- [x] Path safety: no `..`, no absolute paths, no `.git/`, no excluded paths, no symlink escape (I-1)
 
 **Sandbox (`codecoremorph.sandbox`)**
-- [ ] `Executor` protocol and `ExecResult` (SPEC §7.8), with output caps and full logs on disk
-- [ ] `NativeExecutor`: scrubbed environment, timeouts, process-tree kill on Windows and POSIX, reduced-isolation warning; applies `<CODECOREMORPH_HOME>/toolchains/<lang>.env` when present (SPEC §7.15)
-- [ ] `DockerExecutor`: one container per run, labels, worktree bind mount, build and cache volumes, non-root user, dropped capabilities, resource limits, `set_network()` via network connect/disconnect, cleanup on exit and crash
-- [ ] Executor selection (`auto` / `docker` / `native`) with clear messages (FR-1.3); Windows path translation
-- [ ] `codecoremorph doctor`: Docker daemon details, plus a warning about Windows bind-mount performance
+- [x] `Executor` protocol and `ExecResult` (SPEC §7.8), with output caps and full logs on disk
+- [x] `NativeExecutor`: scrubbed environment, timeouts, process-tree kill on Windows and POSIX, reduced-isolation warning; applies `<CODECOREMORPH_HOME>/toolchains/<lang>.env` when present (SPEC §7.15)
+- [x] `DockerExecutor`: one container per run, labels, worktree bind mount, build and cache volumes, non-root user, dropped capabilities, resource limits, `set_network()` via network connect/disconnect, cleanup on exit and crash *(tested against a fake client; the `docker`-marked tests against a real daemon wait for a machine with Docker or for CI, D-28)*
+- [x] Executor selection (`auto` / `docker` / `native`) with clear messages (FR-1.3); Windows path translation
+- [x] `codecoremorph doctor`: Docker daemon details, plus a warning about Windows bind-mount performance
 
 ### Tests
 - PatchEngine property tests (Hypothesis): applying, then reverting through the reverse diff, restores the original bytes; all-or-nothing under injected failures; CRLF, LF and BOM preserved
@@ -131,64 +128,75 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 ## Phase 2: C++ adapter, toolchain image and rules
 
-**Goal:** CodeCoreMorph can configure, build, test, index and codemod C++11 CMake projects, in Docker and natively, with structured results. Rules exist as data.
+**Goal:** CodeCoreMorph can configure, build, test, index and codemod C++ CMake projects written in any standard from C++98/03 to C++20, and raise them to any newer standard up to C++23 (D-38), in Docker and natively, with structured results. Rules exist as data.
 
 **Prerequisites:** Phase 1.
 
 ### Tasks
 **Adapter framework**
-- [ ] `LanguageAdapter` ABC, `AdapterContext`, `AdapterCapabilities`, `ToolchainSpec`, `CodemodSpec`, `CodemodResult` (SPEC §7.1); entry-point registry; `codecoremorph adapters list` (FR-15.1)
-- [ ] Normalized index models and the SQLite-backed index store (SPEC §7.2)
+- [x] `LanguageAdapter` ABC, `AdapterContext`, `AdapterCapabilities`, `ToolchainSpec`, `CodemodSpec`, `CodemodResult` (SPEC §7.1); entry-point registry; `codecoremorph adapters list` (FR-15.1)
+- [x] Normalized index models and the SQLite-backed index store (SPEC §7.2)
 
 **C++ toolchain image (`images/cpp/`)**
-- [ ] Dockerfile: Ubuntu LTS plus system packages (C/C++ headers, ccache, Python + `libclang`). Then `scripts/install-toolchain.sh cpp --prefix /opt/codecoremorph` installs the pinned tools from the manifest: LLVM (clang, clang-tidy, libclang, clang-apply-replacements), CMake ≥ 3.21, Ninja, GoogleTest. Runs as a non-root user.
-- [ ] CI workflow to build and publish to the registry (GHCR assumed, §16 Q8), writing the digest to `images/cpp/image.lock`
-- [ ] Provisioner: resolve the image from `ToolchainSpec`, pull it, verify the digest, start it (FR-1.2); native detection of tools and versions with an actionable report (FR-1.3)
+- [ ] Dockerfile: Ubuntu 22.04 plus system packages (C/C++ headers, ccache, Python), then `scripts/install-toolchain.sh cpp --prefix /opt/codecoremorph` installs the pinned tools from the manifest, and pip installs the hash-pinned `libclang` wheel. Runs as a non-root user. *(written, with `scripts/build-image`; not built yet: Docker's disk image must move to E: first)*
+- [x] Provisioner: resolve the image (override, then the digest in `images/cpp/image.lock`, then a local build by image ID), pull it, start it with its toolchain environment (FR-1.2); native detection of tools and versions with an actionable report (FR-1.3)
 
 **Native C++ toolchain scripts (SPEC §7.15)**
-- [ ] Decide the Windows native C++ toolchain (SPEC §16 Q9): self-contained clang (e.g. llvm-mingw) or Visual Studio Build Tools
-- [ ] `cpp` rows in the manifest for every supported platform
-- [ ] `scripts/install-toolchain.bat` and `.sh` with `cpp` support:
-  - download, verify and extract each tool
-  - build GoogleTest with the downloaded toolchain
+- [x] Decide the Windows native C++ toolchain (SPEC §16 Q9): llvm-mingw (D-32)
+- [x] `cpp` rows in the manifest for every supported platform (`#!platforms` coverage lines; no macOS x64, D-36); LLVM pinned to 18.1.8 to match the libclang wheel (D-33)
+- [x] `scripts/install-toolchain.bat` and `.sh` with `cpp` support:
+  - download, verify and extract each tool (only the needed members of the LLVM archive)
+  - build GoogleTest 1.12.1 with the downloaded toolchain
   - write `cpp.env` and `activate-cpp.{bat,sh}`
   - check prerequisites, exiting 3 with install steps
-- [ ] `scripts/pull-images.bat` and `.sh`
-- [ ] `codecoremorph toolchain install|list|path`: thin wrapper that runs the matching script (FR-1.13)
-- [ ] CI, when scripts or the manifest change and nightly: run `install-toolchain cpp` on Windows, Linux and macOS, then build and test one fixture natively
+- [x] `scripts/pull-images.bat` and `.sh`; `scripts/build-image.bat` and `.sh`
+- [x] `codecoremorph toolchain install|list|path`: thin wrapper that runs the matching script (FR-1.13); the scripts ship in the wheel
 
-**Fixtures (`fixtures/cpp/`)**, intentionally legacy C++11, CMake + GoogleTest, each 300–2,000 LOC:
-- [ ] `ownership`, `typedefs`, `templates`, `removed-features`, `c-compat`, `multi-module`
-- [ ] Each fixture builds and passes its tests under C++11 in the image (verified in CI)
+**Fixtures (`fixtures/cpp/`)**, intentionally legacy, CMake + GoogleTest, each 300–2,000 LOC:
+- [x] C++11: `ownership`, `typedefs`, `templates`, `removed-features`, `c-compat`, `multi-module`
+- [x] Other standards (D-38): `cpp98-legacy` (C++98; breaks under C++11) and `cpp17-legacy` (C++17; breaks under C++20 and C++23)
+- [ ] Each fixture builds and passes its tests under its own standard in the image *(verified natively on Windows; the image run waits for the image build)*
 
 **C++ adapter (`codecoremorph.adapters.cpp`)**
-- [ ] `configure`: CMake + Ninja, out of source, `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, standard override
-- [ ] `build` + diagnostic parsers: clang/gcc (notes, include chains), linker, CMake; MSVC best-effort; paths normalized to the worktree
-- [ ] `run_tests`: CTest `--output-junit` plus GoogleTest XML per case; stable test IDs; timeouts
-- [ ] `index`: libclang helper running in the sandbox; parallel over compile commands; emits the normalized JSON; cache keyed by (file hash, flags hash); marks `extern "C"`, `c_compatible` (headers included from `.c`) and `public_api`; skips excluded paths (FR-2.1, FR-2.3–2.5)
-- [ ] `run_codemods`: clang-tidy `-fix` per rule checks, header filter restricted to the unit's files, `clang-apply-replacements`
-- [ ] Optional capabilities: `parse_check` (`-fsyntax-only`), `format` (clang-format only when the project has a `.clang-format` file), `detect_disabled_tests`
-- [ ] `codecoremorph debug index|build|test|codemod` commands
+- [x] `configure`: CMake + Ninja, out of source, `CMAKE_EXPORT_COMPILE_COMMANDS=ON`, standard override
+- [x] `build` + diagnostic parsers: clang/gcc (notes, include chains), linker, CMake; MSVC best-effort; paths normalized to the worktree
+- [x] `run_tests`: CTest `--output-junit` plus GoogleTest XML per case; stable test IDs; timeouts
+- [x] `index`: libclang helper running in the sandbox; parallel over compile commands; emits the normalized JSON; cache keyed by flags and validated by file hashes; marks `extern "C"`, `c_compatible` (headers included from `.c`) and `public_api`; skips excluded paths (FR-2.1, FR-2.3–2.5)
+- [x] `run_codemods`: clang-tidy with the rule's checks and `--export-fixes`, header filter restricted to the unit's files; CodeCoreMorph applies the fixes (D-34); `cmake-standard` for the standard bump
+- [x] Optional capabilities: `parse_check` (`-fsyntax-only`), `format` (clang-format only when the project has a `.clang-format` file), `detect_disabled_tests`, `query`
+- [x] `codecoremorph debug index|build|test|codemod` commands
 
 **Rules (`codecoremorph.rules`)**
-- [ ] Rule model and YAML loader (SPEC §7.3), entry-point registry, `rules_paths`, `codecoremorph rules list` (FR-9.1, FR-9.3, FR-9.4)
-- [ ] C++ rule pack v1 (SPEC §11.1): `bump_standard`, `replace_typedefs_with_using`, `convert_raw_pointers_to_smart_pointers`, `use_concepts_for_templates`, `modernize_basics`, with detectors, codemod mappings, guidance Markdown, examples and post-conditions; declare a minimum clang-tidy version
+- [x] Rule model and YAML loader (SPEC §7.3), entry-point registry, `rules_paths`, `codecoremorph rules list` (FR-9.1, FR-9.3, FR-9.4)
+- [x] C++ rule pack v1 (SPEC §11.1): `bump_standard`, `replace_typedefs_with_using`, `convert_raw_pointers_to_smart_pointers`, `use_concepts_for_templates`, `modernize_basics`, with detectors, codemod mappings, guidance Markdown, examples and post-conditions; declares clang-tidy 18 as the minimum
+
+**C++ standards (D-38)**
+- [x] `AdapterCapabilities.standards` (oldest first); the C++ adapter supports cpp98, cpp03, cpp11, cpp14, cpp17, cpp20 and cpp23
+- [x] Standard conditions on rules (`applies_to.standard_bump`, `min_target_standard`, `max_source_standard`), detector patterns and codemod passes (`standard`); `codecoremorph.rules.applicability`
+- [x] `codecoremorph validate` checks standards and rules against the installed adapter and rule packs, with locations
+- [x] C++98/03 builds: CMake's 98 for 03, GoogleTest 1.8.1 (manifest row `googletest-cxx98`, built as C++98 by `install-toolchain`) through a CMake initial-cache script
+- [x] clang-tidy passes with a `standard` parse under it (`--extra-arg=-std=`), skip C units, and are skipped when the target is older
+- [x] Rule pack: `bump_standard` covers every transition from C++98 to C++23 (patterns gated by target, passes under C++11 and C++17, guidance by transition); `modernize_basics` adds C++14/17/20 checks
 
 **Benchmark (`bench/`)**
-- [ ] Evaluate leveldb, yaml-cpp and tinyxml2 against the SPEC §12 criteria; pick one and pin its commit (§16 Q3); add a fetch script and a measurement script
-- [ ] Measure NFR-1.1 (indexing + graph) and record the result in `bench/results/`
+- [x] Evaluate leveldb, yaml-cpp and tinyxml2 against the SPEC §12 criteria; pick one and pin its commit (§16 Q3): leveldb 1.23 (D-37); `bench/fetch.py` and `bench/measure.py`
+- [ ] Measure NFR-1.1 (indexing + graph) and record the result in `bench/results/` *(not run yet: configuring leveldb executes its build scripts, so the measurement runs in Docker and waits for the image)*
+
+CI tasks from this phase (build and publish the image, run `install-toolchain cpp` on every OS, the fixtures in the image) moved to the Backlog CI item (D-32).
 
 ### Tests
 - Diagnostic parsers: golden tests over captured compiler, linker and CMake outputs, including MSVC samples
 - Test-report parsing: golden JUnit and GoogleTest XML, including failures, skips and timeouts
 - Adapter integration (marked `docker`): every fixture configures, builds, tests and indexes; native runs marked `toolchain`
-- Codemod-only migration of `typedefs` to C++20 builds and passes its tests
+- Codemod-only migration of `typedefs` to C++20 and to C++23 builds and passes its tests
+- Each version fixture builds under its source standard and fails to build under its target; the bump's clang-tidy passes replace `auto_ptr` and `uncaught_exception` in C++98 code
+- Applicability and `validate` checks for every supported upgrade, unknown standards, downgrades and rules the target can't use
 
 ### Exit criteria
-- Every fixture: configure, build, test and index succeed in Docker on Linux CI, and natively where a toolchain exists
-- The `typedefs` fixture migrates with codemods alone and stays green
-- The benchmark is chosen and pinned; the NFR-1.1 result is recorded, and any gap has a written plan
-- `install-toolchain cpp` works without admin rights on Windows, Linux and macOS, and a fixture builds and passes natively with the installed tools; the image's tool versions match the manifest
+- Every fixture: configure, build, test and index succeed in Docker on Linux CI, and natively where a toolchain exists *(native: done on Windows; Docker: waits for the image)*
+- The `typedefs` fixture migrates with codemods alone and stays green *(done natively)*
+- The benchmark is chosen and pinned; the NFR-1.1 result is recorded, and any gap has a written plan *(chosen and pinned; measurement pending)*
+- `install-toolchain cpp` works without admin rights on Windows, Linux and macOS, and a fixture builds and passes natively with the installed tools; the image's tool versions match the manifest *(Windows: done; Linux and macOS wait for CI, D-28)*
 
 ---
 
@@ -202,7 +210,8 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 - [ ] File graph and symbol graph from the index; SCC condensation into a DAG of clusters (FR-2.1, D-14)
 - [ ] Boundary and public-API classification; fan-in queries (FR-2.2)
 - [ ] Baseline step: configure, build, test × `baseline_runs`; flaky-test detection; stop if the baseline build fails; store the baseline (FR-7.1)
-- [ ] Header/source pairing; rule detectors → per-file site counts
+- [ ] Header/source pairing; rule detectors → per-file site counts, with detector patterns filtered by the migration's standards (`rules.applicability`, D-38)
+- [ ] Run the rule with `applies_to.standard_bump` first, automatically, when the target standard is newer; skip rules that don't apply; `plan` and `run` repeat `validate`'s standard and rule checks
 - [ ] Unit formation per SPEC §7.5.1: project units (standard bump plus grouped fallout), api_preserving cluster units, api_changing fan-in units, `too_large` flag (FR-5.1–5.3)
 - [ ] Ordering: standard bump first, then rules in manifest order, leaves-first, path tie-break (FR-5.2, FR-5.6)
 - [ ] Token estimator (character-based, with a margin); size check against the editor model's context from config or package data, since live capability discovery arrives in Phase 4 (FR-5.4)
@@ -470,6 +479,13 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 ## Backlog (unscheduled)
 
+- **CI (GitHub Actions)**, deferred from Phase 0 (D-28):
+  - lint, type-check and tests on `ubuntu-latest` and `windows-latest`, Python 3.12 and 3.13
+  - shellcheck (POSIX mode) on every `.sh`, the manifest format check, and a check that `.sh` scripts are executable in git
+  - `bootstrap-dev` on clean Windows, Linux and macOS runners
+  - the `docker`-marked tests, and the Linux parts of every phase's exit criteria
+  - build the toolchain images and publish them to the registry (GHCR assumed, §16 Q8), writing each digest to `images/<lang>/image.lock`
+  - `install-toolchain cpp` on Windows, Linux and macOS when scripts or the manifest change, and nightly, then build and test one fixture natively
 - Parallel unit execution across independent DAG branches (separate worktrees)
 - Golden-I/O differential harness (deferred by D-08)
 - Coverage-based untested-code detection (gcov/llvm-cov, JaCoCo, coverlet)
