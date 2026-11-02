@@ -1,0 +1,87 @@
+{
+  "date": "2026-11-02T14:57:48+00:00",
+  "project": "leveldb 1.23 (99b3c03b3284)",
+  "migration": "cpp11 -> cpp20",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 180.766,
+    "index_s": 25.938,
+    "graph_s": 0.078,
+    "plan_s": 1.187
+  },
+  "baseline": {
+    "passing": 256,
+    "failing": [
+      "ctest:env_test",
+      "gtest:EnvTest.ReadWrite"
+    ],
+    "flaky": [],
+    "build_s": 24.047,
+    "test_s": 74.398
+  },
+  "graph": {
+    "files": 122,
+    "edges": 898,
+    "clusters": 80,
+    "cyclic_clusters": 30,
+    "largest_cluster": 6
+  },
+  "rules": [
+    {
+      "id": "bump_standard",
+      "kind": "project",
+      "automatic": true,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 1
+    },
+    {
+      "id": "replace_typedefs_with_using",
+      "kind": "api_preserving",
+      "automatic": false,
+      "sites": 25,
+      "files": 9,
+      "skipped_files": 1,
+      "units": 5
+    },
+    {
+      "id": "convert_raw_pointers_to_smart_pointers",
+      "kind": "api_changing",
+      "automatic": false,
+      "sites": 413,
+      "files": 52,
+      "skipped_files": 1,
+      "units": 23
+    },
+    {
+      "id": "use_concepts_for_templates",
+      "kind": "api_preserving",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    }
+  ],
+  "units": {
+    "pending": 27,
+    "skipped": 2
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 3546275,
+    "cost_usd": 13.26
+  },
+  "duration_estimate_s": 7966.2,
+  "warnings": [
+    "use_concepts_for_templates: the detector found no sites, so the rule has no units"
+  ]
+}

@@ -10,7 +10,19 @@
   "license": "BSD-3-Clause",
   "configure_args": [
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-    "-DLEVELDB_BUILD_BENCHMARKS=OFF"
+    "-DLEVELDB_BUILD_BENCHMARKS=OFF",
+    "-DCMAKE_CXX_FLAGS=-Wno-error=deprecated-copy -Wno-error=unused-but-set-variable"
   ],
-  "exclude": ["third_party/**"]
+  "exclude": [
+    "third_party/**"
+  ],
+  "test_dirs": [
+    "*_test.cc",
+    "util/testutil.*",
+    "util/testharness.*"
+  ],
+  "public_api": [
+    "include/**"
+  ],
+  "build_note": "leveldb's vendored GoogleTest (2020) builds with -Werror; clang 18 adds -Wdeprecated-copy and -Wunused-but-set-variable, so those stay warnings."
 }
