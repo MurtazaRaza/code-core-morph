@@ -1,0 +1,15 @@
+# Normalize text files to LF in the repository.
+* text=auto
+
+# cmd.exe misparses labels in LF-only batch files; keep them CRLF everywhere.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# POSIX shell scripts and the dependency manifest must stay LF (a CR breaks `read`).
+*.sh text eol=lf
+scripts/deps/manifest.txt text eol=lf
+
+# Fixture projects are deliberately legacy test inputs: keep them byte-exact
+# (line endings, encodings, BOMs) so preservation tests mean something.
+fixtures/** -text
+tests/data/** -text

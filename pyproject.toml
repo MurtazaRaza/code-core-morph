@@ -1,0 +1,167 @@
+[project]
+name = "codecoremorph"
+version = "0.1.0.dev0"
+description = "Migrate codebases with LLM agents in a compile, test and fix loop, verified by real toolchains."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "CodeCoreMorph contributors" }]
+keywords = ["migration", "refactoring", "llm", "agents", "c++", "modernization"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
+dependencies = [
+    "docker>=7.1",      # Docker SDK: doctor checks now, DockerExecutor in Phase 1
+    "libclang==18.1.1", # C++ indexer; the same major version as the pinned LLVM (D-33)
+    "pydantic>=2.11",   # every boundary model
+    "pyyaml>=6.0.2",    # manifest loading with source positions
+    "rich>=14.0",       # CLI presentation and console logging
+    "typer>=0.16",      # CLI
+]
+
+[project.scripts]
+codecoremorph = "codecoremorph.cli:main"
+
+# Built-in plugins register like third-party ones (FR-15.1).
+[project.entry-points."codecoremorph.adapters"]
+cpp = "codecoremorph.adapters.cpp:CppAdapter"
+
+[project.entry-points."codecoremorph.rules"]
+cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.130",
+    "jsonschema>=4.24",     # checks the exported manifest schema against the example
+    "pre-commit>=4.2",
+    "pyright[nodejs]>=1.1.400",
+    "pytest>=8.4",
+    "pytest-cov>=6.2",
+    "ruff>=0.12",
+    "shellcheck-py>=0.10",  # shellcheck binary as a locked wheel, for scripts/*.sh
+    "types-docker>=7.1",
+    "types-pyyaml>=6.0",
+]
+docs = [
+    "mkdocs-material>=9.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codecoremorph"]
+
+# The dependency scripts and image definitions ship inside the package, so users who install
+# from PyPI can run `codecoremorph toolchain install` (FR-1.13).
+[tool.hatch.build.targets.wheel.force-include]
+"scripts/install-toolchain.sh" = "codecoremorph/_scripts/install-toolchain.sh"
+"scripts/install-toolchain.bat" = "codecoremorph/_scripts/install-toolchain.bat"
+"scripts/pull-images.sh" = "codecoremorph/_scripts/pull-images.sh"
+"scripts/pull-images.bat" = "codecoremorph/_scripts/pull-images.bat"
+"scripts/lib" = "codecoremorph/_scripts/lib"
+"scripts/deps/manifest.txt" = "codecoremorph/_scripts/deps/manifest.txt"
+"scripts/deps/manifest.py" = "codecoremorph/_scripts/deps/manifest.py"
+"images/cpp/image.lock" = "codecoremorph/_images/cpp/image.lock"
+
+[tool.uv]
+required-version = ">=0.12.0"
+
+# --------------------------------------------------------------------------- ruff
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["fixtures", "*.md"]  # docs hold illustrative snippets; never reformat them
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",  # pycodestyle, pyflakes
+    "I",            # isort
+    "N",            # pep8-naming
+    "UP",           # pyupgrade
+    "B",            # bugbear
+    "A",            # builtins shadowing
+    "C4",           # comprehensions
+    "PIE", "RET", "SIM",
+    "PT",           # pytest style
+    "PTH",          # use pathlib
+    "T20",          # no print outside the CLI layer
+    "BLE",          # no blind `except Exception`
+    "S",            # bandit
+    "RUF",
+]
+ignore = [
+    "S603",  # subprocess without shell: we always pass argv lists, never shell=True (S602 stays on)
+    "S607",  # executables resolved from PATH (git, docker) are intended
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/codecoremorph/cli/**" = ["T20"]
+"src/codecoremorph/logging.py" = ["A005"]  # the name is part of the documented API
+"scripts/**" = ["T20", "S310"]             # maintainer CLIs; S310: URLs come from the manifest
+"bench/**" = ["T20"]                       # maintainer CLIs
+"tests/**" = ["S101", "S105", "S106", "S108"]
+# Runs inside the sandbox with only the standard library and clang.cindex: untyped by design,
+# and it reports per-cursor libclang failures instead of crashing.
+"src/codecoremorph/adapters/cpp/helpers/*" = ["BLE001", "S603", "PTH", "SLF001", "T20"]
+
+[tool.ruff.format]
+line-ending = "auto"
+
+# --------------------------------------------------------------------------- pyright
+
+[tool.pyright]
+include = ["src", "tests", "scripts", "bench"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+# NFR-9.1 packages, plus the Phase 0 packages that every later phase builds on.
+strict = [
+    "src/codecoremorph/core",
+    "src/codecoremorph/config",
+    "src/codecoremorph/store",
+    "src/codecoremorph/patching",
+    "src/codecoremorph/vcs",
+    "src/codecoremorph/invariants",
+    "src/codecoremorph/planner",
+    "src/codecoremorph/orchestrator",
+]
+
+# --------------------------------------------------------------------------- pytest
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+    # The default run needs no Docker, toolchain or LLM. A later `-m` on the command line wins.
+    "-m", "not docker and not toolchain and not live_llm",
+]
+markers = [
+    "docker: needs a reachable Docker daemon",
+    "toolchain: needs native compilers and build tools",
+    "live_llm: calls a real LLM provider (costs money; opt-in only)",
+    "slow: takes more than a few seconds",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["codecoremorph"]
+branch = true

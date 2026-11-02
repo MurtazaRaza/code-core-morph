@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Node (dashboard-ui, Phase 7)
+node_modules/
+dashboard-ui/dist/
+
+# CodeCoreMorph state directory (when CodeCoreMorph runs against this repo)
+.codecoremorph/
+
+# OS
+.DS_Store
+Thumbs.db

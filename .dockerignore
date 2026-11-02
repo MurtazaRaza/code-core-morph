@@ -1,0 +1,6 @@
+# Toolchain images build from the repository root but need only these files.
+*
+!scripts/install-toolchain.sh
+!scripts/lib/common.sh
+!scripts/deps/manifest.txt
+!images/

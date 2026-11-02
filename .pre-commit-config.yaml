@@ -1,0 +1,34 @@
+# Local hooks only: every tool comes from the locked dev dependencies (uv.lock), so pre-commit
+# downloads nothing and every contributor runs the same versions. Needs `uv` on PATH.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: pyright
+        name: pyright
+        entry: uv run --frozen pyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+      - id: shellcheck
+        name: shellcheck (POSIX sh)
+        entry: uv run --frozen shellcheck --shell=sh --external-sources
+        language: system
+        files: \.sh$
+      - id: check-manifest
+        name: dependency manifest format
+        entry: uv run --frozen python scripts/deps/check-manifest.py
+        language: system
+        files: ^scripts/deps/
+        pass_filenames: false
