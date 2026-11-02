@@ -8,7 +8,7 @@ file does (FR-9.3).
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -69,6 +69,44 @@ def load_hook(spec: str) -> HookFn:
     return cast(HookFn, hook)
 
 
+def find_sites(
+    loaded: LoadedRule,
+    files: Sequence[str],
+    *,
+    worktree: Path,
+    read: Callable[[str], str | None],
+    order: StandardOrder,
+    source: str,
+    target: str,
+    query: QueryFn,
+) -> dict[str, list[RuleSite]]:
+    """The rule's detector sites in ``files``, by file, in line order. Empty without a
+    detector."""
+    detector = loaded.rule.detector
+    found: list[RuleSite] = []
+    if detector is None:
+        pass
+    elif detector.type is DetectorType.PATTERN:
+        patterns = active_patterns(order, detector, source, target)
+        if patterns:
+            for path in files:
+                text = read(path)
+                if text is not None:
+                    found += find_pattern_sites(path, text, patterns)
+    elif detector.type is DetectorType.ADAPTER_QUERY and detector.query is not None:
+        found = query(detector.query, list(files))
+    elif detector.hook is not None:
+        found = list(load_hook(detector.hook)(worktree, list(files)))
+    wanted = set(files)
+    sites: dict[str, list[RuleSite]] = {}
+    for site in found:
+        if site.file in wanted:
+            sites.setdefault(site.file, []).append(site)
+    for file_sites in sites.values():
+        file_sites.sort(key=lambda s: (s.line, s.column))
+    return dict(sorted(sites.items()))
+
+
 def scan_rule(
     loaded: LoadedRule,
     project: ProjectModel,
@@ -81,31 +119,14 @@ def scan_rule(
 ) -> RuleScan:
     rule = loaded.rule
     eligible = sorted(p for p, e in project.files.items() if e.language == rule.language)
-    sites: dict[str, list[RuleSite]] = {}
-    detector = rule.detector
-    found: list[RuleSite] = []
-    if detector is None:
-        pass
-    elif detector.type is DetectorType.PATTERN:
-        patterns = active_patterns(order, detector, source, target)
-        if patterns:
-            for path in eligible:
-                text = project.text(path)
-                if text is not None:
-                    found += find_pattern_sites(path, text, patterns)
-    elif detector.type is DetectorType.ADAPTER_QUERY and detector.query is not None:
-        found = query(detector.query, eligible)
-    elif detector.hook is not None:
-        found = list(load_hook(detector.hook)(project.worktree, eligible))
-    wanted = set(eligible)
-    for site in found:
-        if site.file in wanted:
-            sites.setdefault(site.file, []).append(site)
-    for file_sites in sites.values():
-        file_sites.sort(key=lambda s: (s.line, s.column))
-    return RuleScan(
-        loaded=loaded,
-        automatic=automatic,
-        eligible=eligible,
-        sites=dict(sorted(sites.items())),
+    sites = find_sites(
+        loaded,
+        eligible,
+        worktree=project.worktree,
+        read=project.text,
+        order=order,
+        source=source,
+        target=target,
+        query=query,
     )
+    return RuleScan(loaded=loaded, automatic=automatic, eligible=eligible, sites=sites)

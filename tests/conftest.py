@@ -108,3 +108,17 @@ def cpp_toolchain_env() -> Path:
     if not env.is_file():
         pytest.skip(f"no native C++ toolchain at {env}; run: codecoremorph toolchain install cpp")
     return env
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--record-cassettes",
+        action="store_true",
+        default=False,
+        help="Record LLM cassettes (tests/cassettes/) instead of replaying them.",
+    )
+
+
+@pytest.fixture
+def record_cassettes(request: pytest.FixtureRequest) -> bool:
+    return bool(request.config.getoption("--record-cassettes"))

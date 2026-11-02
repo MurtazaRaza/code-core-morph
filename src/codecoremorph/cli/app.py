@@ -14,8 +14,10 @@ from codecoremorph.cli.debug import debug_app
 from codecoremorph.cli.doctor import doctor_command
 from codecoremorph.cli.output import print_error, stderr
 from codecoremorph.cli.plan import plan_command
-from codecoremorph.cli.plugins import adapters_app, rules_app
+from codecoremorph.cli.plugins import adapters_app, providers_app, rules_app
+from codecoremorph.cli.skill import skill_app
 from codecoremorph.cli.toolchain import toolchain_app
+from codecoremorph.cli.unit import unit_app
 from codecoremorph.cli.validate import schema_command, validate_command
 from codecoremorph.core.errors import CodeCoreMorphError, ExitCode
 from codecoremorph.logging import configure_logging
@@ -62,14 +64,19 @@ app.command("doctor")(doctor_command)
 app.command("plan")(plan_command)
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(rules_app, name="rules")
+app.add_typer(providers_app, name="providers")
 app.add_typer(toolchain_app, name="toolchain")
+app.add_typer(unit_app, name="unit")
+app.add_typer(skill_app, name="skill")
 app.add_typer(debug_app, name="debug")
 
 
 def main(argv: list[str] | None = None) -> None:
     """Console-script entry point."""
     try:
-        app(args=argv, prog_name="codecoremorph")
+        # Click expands wildcards in arguments on Windows; globs such as `--glob "src/**"`
+        # must reach the command as written, as they do on every other platform.
+        app(args=argv, prog_name="codecoremorph", windows_expand_args=False)
     except CodeCoreMorphError as exc:  # raised outside a command body
         print_error(exc)
         raise SystemExit(int(exc.exit_code)) from exc

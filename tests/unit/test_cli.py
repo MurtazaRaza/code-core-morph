@@ -131,6 +131,8 @@ def fake_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "probe_docker",
         lambda: DockerProbe(reachable=True, server_version="27.0.1", os_type="linux"),
     )
+    # Unit tests never reach model providers (the Models API, a local Ollama).
+    monkeypatch.setattr(doctor_module, "check_providers", lambda path: [])
 
 
 @pytest.mark.usefixtures("fake_environment")
@@ -216,6 +218,20 @@ def test_main_success_exits_zero() -> None:
     assert info.value.code == 0
 
 
+def test_main_passes_wildcards_through_unexpanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: Click expanded `*` in arguments on Windows, so `--glob "src/**"` reached
+    the command as a list of files. Arguments arrive as written on every platform."""
+    (tmp_path / "a.yaml").write_text(EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.argv", ["codecoremorph", "validate", "*.yaml"])
+    with pytest.raises(SystemExit) as info:
+        main()
+    assert info.value.code == 2  # "*.yaml" itself doesn't exist; a.yaml wasn't substituted
+    assert "*.yaml" in capsys.readouterr().err
+
+
 def test_docker_details_and_bind_mount_warnings() -> None:
     probe = DockerProbe(
         reachable=True,
@@ -244,7 +260,7 @@ def test_docker_details_and_bind_mount_warnings() -> None:
 
 def test_help_lists_the_command_groups() -> None:
     result = runner.invoke(app, ["--help"])
-    for group in ("adapters", "rules", "toolchain", "debug"):
+    for group in ("adapters", "rules", "toolchain", "debug", "unit", "skill"):
         assert group in result.output
 
 
