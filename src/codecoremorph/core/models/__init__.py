@@ -12,6 +12,7 @@ from codecoremorph.core.models.adapters import (
 )
 from codecoremorph.core.models.attempts import Attempt, AttemptOutcome, InvariantResult
 from codecoremorph.core.models.base import CoreModel, Role, RunId, UnitId, WorktreePath
+from codecoremorph.core.models.baseline import Baseline, TestBaseline
 from codecoremorph.core.models.edits import (
     ApplyResult,
     CandidateRegion,
@@ -41,7 +42,16 @@ from codecoremorph.core.models.index import (
     SymbolKind,
     Visibility,
 )
-from codecoremorph.core.models.planning import Plan, UnitEstimate, UnitFlag, UnitStatus, WorkUnit
+from codecoremorph.core.models.planning import (
+    Plan,
+    PlanEstimate,
+    PlanGraph,
+    PlanRule,
+    UnitEstimate,
+    UnitFlag,
+    UnitStatus,
+    WorkUnit,
+)
 from codecoremorph.core.models.rules import (
     AppliesTo,
     CodemodSpec,
@@ -76,6 +86,7 @@ __all__ = [
     "ApplyResult",
     "Attempt",
     "AttemptOutcome",
+    "Baseline",
     "Boundary",
     "BuildResult",
     "CandidateRegion",
@@ -110,6 +121,9 @@ __all__ = [
     "LoadedRule",
     "PatternSpec",
     "Plan",
+    "PlanEstimate",
+    "PlanGraph",
+    "PlanRule",
     "Postcondition",
     "PostconditionType",
     "Reference",
@@ -131,6 +145,7 @@ __all__ = [
     "Symbol",
     "SymbolIndex",
     "SymbolKind",
+    "TestBaseline",
     "TestCaseResult",
     "TestReport",
     "TestSelection",

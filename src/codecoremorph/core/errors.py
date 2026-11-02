@@ -109,6 +109,13 @@ class SandboxError(HostEnvironmentError):
     """The sandbox (Docker or native) can't run a command as asked."""
 
 
+class BaselineError(CodeCoreMorphError):
+    """The project doesn't configure, build or pass its tests at the base commit (FR-7.1), so
+    there is no green starting point to migrate from."""
+
+    exit_code = ExitCode.ENVIRONMENT
+
+
 class InternalError(CodeCoreMorphError):
     """A bug in CodeCoreMorph. Report it with the log file attached."""
 

@@ -7,6 +7,7 @@ from enum import StrEnum
 from pydantic import Field, field_validator, model_validator
 
 from codecoremorph.core.models.base import CoreModel, UnitId, WorktreePath
+from codecoremorph.core.models.rules import RuleKind
 
 
 class UnitStatus(StrEnum):
@@ -44,9 +45,14 @@ class UnitFlag(StrEnum):
 
 
 class UnitEstimate(CoreModel):
-    context_tokens: int = Field(ge=0)
-    expected_attempts: float = Field(ge=1)
-    cost_usd: float | None = Field(default=None, ge=0, description="None for free providers")
+    context_tokens: int = Field(ge=0, description="The unit's context for the editor model")
+    expected_attempts: float = Field(
+        ge=0, description="Expected agent attempts; below 1 when codemods may finish the unit"
+    )
+    tokens: int = Field(default=0, ge=0, description="Expected tokens over every LLM call")
+    cost_usd: float | None = Field(
+        default=None, ge=0, description="None for free providers or unknown prices"
+    )
 
 
 class WorkUnit(CoreModel):
@@ -69,10 +75,52 @@ class WorkUnit(CoreModel):
         return sorted(set(flags))
 
 
-class Plan(CoreModel):
-    """The ordered list of work units. Deterministic for identical inputs (FR-5.6)."""
+class PlanRule(CoreModel):
+    """One rule of the plan, with its detector results (FR-5.5)."""
 
+    id: str
+    kind: RuleKind
+    automatic: bool = Field(
+        default=False, description="Runs without being listed: the standard bump (D-38)"
+    )
+    sites: int | None = Field(
+        default=None, description="Detector sites; None when the rule has no detector"
+    )
+    files: int = Field(default=0, ge=0, description="Files the rule applies to")
+    skipped_files: int = Field(default=0, ge=0, description="Excluded by the rule's skip list")
+    units: int = Field(default=0, ge=0)
+
+
+class PlanGraph(CoreModel):
+    """The dependency graph the plan was ordered by (FR-2.1)."""
+
+    files: int = Field(ge=0)
+    edges: int = Field(ge=0)
+    clusters: int = Field(ge=0)
+    cyclic_clusters: int = Field(ge=0, description="Clusters condensed from a cycle")
+    largest_cluster: int = Field(ge=0, description="Files in the largest cluster")
+
+
+class PlanEstimate(CoreModel):
+    model: str = Field(description='The editor model, "<provider>/<model>"')
+    context_window: int | None = Field(default=None, description="None when unknown")
+    unit_token_limit: int = Field(ge=1, description="A unit's context may not exceed this")
+    tokens: int = Field(ge=0)
+    cost_usd: float | None = Field(default=None, ge=0, description="None when not priced")
+
+
+class Plan(CoreModel):
+    """The ordered list of work units. Deterministic for identical inputs (FR-5.6): it holds
+    no timestamps, run IDs, absolute paths or measured durations."""
+
+    language: str | None = None
+    source_standard: str | None = None
+    target_standard: str | None = None
+    base_commit: str | None = None
+    rules: list[PlanRule] = Field(default_factory=list[PlanRule])
+    graph: PlanGraph | None = None
     units: list[WorkUnit] = Field(default_factory=list[WorkUnit])
+    estimate: PlanEstimate | None = None
     warnings: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")
@@ -94,3 +142,6 @@ class Plan(CoreModel):
     @property
     def total_estimated_cost_usd(self) -> float:
         return sum(u.estimate.cost_usd or 0.0 for u in self.units if u.estimate)
+
+    def units_with_status(self, status: UnitStatus) -> list[WorkUnit]:
+        return [u for u in self.units if u.status is status]
