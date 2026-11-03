@@ -28,7 +28,7 @@ TOKENS_ADDED_PER_CALL = 2_000  # tool results and feedback
 THINKING_TOKENS_PER_ATTEMPT = 4_000
 OUTPUT_SHARE = 0.5  # edits rewrite about half of the unit's text
 ATTEMPTS_WHEN_THE_AGENT_RUNS = 1.5
-LLM_SECONDS_PER_ATTEMPT = 120.0
+LLM_SECONDS_PER_ATTEMPT = 100.0  # the M1 benchmark: Claude Code averaged 103 s
 FALLBACK_CONTEXT_WINDOW = 32_768  # when the editor model's window is unknown
 
 

@@ -1,0 +1,936 @@
+{
+  "date": "2026-11-03T14:46:54+00:00",
+  "project": "leveldb 1.23 (99b3c03b3284)",
+  "migration": "cpp11 -> cpp20",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "99b3c03b3284f5886f9ef9a4ef703d57373e61be",
+  "seconds": 7980.8,
+  "runs_started": 1,
+  "run_id": "20261103-123434-ab66",
+  "ended_by_harness": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed_with_failures",
+    "reason": null,
+    "unit_counts": {
+      "committed": 24,
+      "failed": 3,
+      "skipped": 2
+    },
+    "success_rate": 0.889,
+    "agent_units": 23,
+    "attempts_per_agent_unit": 1.04,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "76baaf1149201aa04cff582c7c72fb202279a9f0",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 258,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 116.2
+    },
+    "rules": [
+      {
+        "id": "bump_standard",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "replace_typedefs_with_using",
+        "units": 5,
+        "committed": 4,
+        "planned_sites": 25,
+        "converted_sites": 9
+      },
+      {
+        "id": "convert_raw_pointers_to_smart_pointers",
+        "units": 23,
+        "committed": 19,
+        "planned_sites": 413,
+        "converted_sites": 252
+      },
+      {
+        "id": "use_concepts_for_templates",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      }
+    ],
+    "review_items": 116,
+    "duration_s": 7884.8,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 322.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 125.7,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 102.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 85.2,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 85.4,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 996.1,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 354.7,
+        "changed_files": 4,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 3,
+        "agent_skipped": false,
+        "duration_s": 623.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 192.0,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 229.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 325.8,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 523.7,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 345.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 235.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 188.6,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "failed",
+        "attempts": 0,
+        "agent_skipped": false,
+        "duration_s": 105.8,
+        "changed_files": 0,
+        "reason": "the agent gave the unit up: All 8 sites in util/env_posix.cc transfer ownership across the public Env API: NewSequentialFile/NewRandomAccessFile/NewWritableFile/NewAppendableFile/LockFile/NewLogger must store a new object into their T** out-parameter, and UnlockFile must delete the FileLock* the caller hands back (and deliberately keeps it on its error path). Converting them would require changing the public include/leveldb/env.h interface used by every Env implementation and caller; wrapping them as make_unique(...).release() would only be cosmetic. Left raw on purpose."
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 537.7,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 252.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 219.0,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "failed",
+        "attempts": 0,
+        "agent_skipped": false,
+        "duration_s": 116.2,
+        "changed_files": 0,
+        "reason": "the agent gave the unit up: Both sites in db/snapshot.h belong to SnapshotList, an intrusive circular doubly-linked list whose tail links back to the inline head_ node (not expressible with unique_ptr). SnapshotList::New() hands the snapshot to callers through the public DB::GetSnapshot() (returns const Snapshot*) and Delete() is reached through the public DB::ReleaseSnapshot(const Snapshot*), as the comment in Delete() notes. A real conversion would need a different list structure and a public API change; make_unique(...).release() wrapping would only be cosmetic. Left raw on purpose."
+      },
+      {
+        "id": "U-0022",
+        "status": "failed",
+        "attempts": 0,
+        "agent_skipped": false,
+        "duration_s": 112.1,
+        "changed_files": 0,
+        "reason": "the agent gave the unit up: No owning raw pointers in this unit: all 12 detector sites in db/version_edit.cc and db/version_edit.h are the identifier deleted_files_ (a std::set<std::pair<int, uint64_t>> held by value), and the only new/delete text in the files is the string literal \"new-file entry\". VersionEdit stores its FileMetaData by value, so there is nothing to convert."
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 183.2,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 195.6,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 188.1,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0026",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 177.2,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0027",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 182.5,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0028",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 319.1,
+        "changed_files": 1,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\leveldb\\.codecoremorph\\runs\\20261103-123434-ab66\\report.md"
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 4,
+    "duration_ms": 44784,
+    "total_cost_usd_equivalent": 27.24635080000001,
+    "usage": {
+      "input_tokens": 12,
+      "cache_creation_input_tokens": 16733,
+      "cache_read_input_tokens": 2826339,
+      "output_tokens": 3154,
+      "output_tokens_details": {
+        "thinking_tokens": 933
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 16733,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 2821,
+          "cache_read_input_tokens": 707075,
+          "cache_creation_input_tokens": 15570,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 15570
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The migration run is finished, but not fully clean: 24 of 29 units are committed, 3 were given up and 2 were skipped by the planner. The final clean build of the last commit (`76baaf1`) passed all 258 tests at C++20, apart from the caveats below. Everything is on branch `codecoremorph/20261103-123434-ab66` (base `99b3c03`), and your working tree and other branches weren't touched. The full report is at `E:\\codecoremorph-home\\bench\\leveldb\\.codecoremorph\\runs\\20261103-123434-ab66\\report.md`.\n\n**Standard bump (U-0001, commit `26aa30a`):** `CMakeLists.txt` now sets C++20. Only one thing broke: `std::memory_order` became a scoped enum, so `std::memory_order::memory_order_relaxed` in `util/env_posix.cc` and `util/env_windows.cc` became `std::memory_order_relaxed`.\n\n**Typedefs to `using`:** the deterministic tools did U-0002 to U-0005 on their own (9 sites).\n\n**Raw pointers to smart pointers:** 252 of 413 detected sites were converted.\n\n| Unit | Area | Attempts | Commit |\n|---|---|---|---|\n| U-0007 | `DBImpl`, `VersionSet`, `Status`, fault-injection test | 1 | `416c758` |\n| U-0008 | Env helpers, corruption/recovery/env tests | 1 | `f7b465c` |\n| U-0009 | table cache, `Table`, `Block`, merging iterator, iterator cleanup list | 3 | `75cfd28` |\n| U-0010 | `IteratorWrapper` | 1 | `c5fd4ce` |\n| U-0011 | `Arena` | 1 | `5dda657` |\n| U-0012 | log reader, repairer, dump tool, log tests | 1 | `25d3671` |\n| U-0013 | C API internals, `db_test`, `bloom_test` | 1 | `8e34ccf` |\n| U-0014 | in-memory Env and its test | 1 | `ccaeacb` |\n| U-0015 | LRU cache hash table, cache tests | 1 | `964e700` |\n| U-0016 | `PosixLogger` | 1 | `1a9b6bb` |\n| U-0018 | `BuildTable`, `ReadBlock`, `TableBuilder`, `table_test` | 2 | `cca6eab` |\n| U-0019 | `LookupKey` | 1 | `0fa44b0` |\n| U-0020 | `MemTable::NewIterator` | 1 | `a4d368f` |\n| U-0023 | `DBIter` | 1 | `2016924` |\n| U-0024 to U-0028 | `version_set_test`, issue tests, `env_posix_test` | 1, 1, 1, 1, 2 | `1eca8c4` \u2026 `76baaf1` |\n\n**Interface changes to review:**\n- **Public headers, private parts only:** `status.h`, `iterator.h`, `table.h` and `table_builder.h` now hold `unique_ptr` members. The API is the same, but code compiled against the old headers isn't binary-compatible.\n- **Internal functions that now return `std::unique_ptr`:** `VersionSet::PickCompaction`, `CompactRange`, `MakeInputIterator` and `MemTable::NewIterator`. All their callers are updated.\n\n**Pointers left raw on purpose:** converting these would change the public API or break an existing ownership scheme:\n- objects handed out through the Env `T**` out-parameters and `DB::Open`'s `DB**`;\n- the public `Iterator*`, `NewLRUCache` and `NewBloomFilterPolicy` factories;\n- the C API handles;\n- the ref-counted `MemTable`, `Version`, `FileMetaData` and memenv `FileState`;\n- the cache's deleter callbacks.\n\n**Units given up (each with its reason in the report):**\n- **U-0017 (`env_posix.cc`):** every site is an object handed across the public Env API.\n- **U-0021 (`snapshot.h`):** an intrusive circular list whose snapshots are handed out through `DB::GetSnapshot`/`ReleaseSnapshot`.\n- **U-0022 (`version_edit`):** all 12 hits were false positives on the name `deleted_files_`; there was nothing to convert.\n\n**Skipped by the planner:** U-0006 and U-0029, because `include/leveldb/c.h` is shared with C. No units were created for concepts, because the detector found no sites.\n\n**What the verification doesn't cover:**\n- **Excused tests:** `env_test` and `EnvTest.ReadWrite` already failed or were flaky before the migration, so they weren't checked.\n- **A pre-existing flaky race:** `EnvTest.ReadWrite` and `EnvPosixTest.TestOpenOnRead` both use `<test dir>/open_on_read.txt`, and ctest runs the two test binaries in parallel. It made attempts fail in U-0009, U-0018 and U-0028, and those passed on re-run without functional changes. Giving the two tests different file names would fix it.\n- **Not compiled by this build:** `util/env_windows.cc` (the `memory_order` fix) is unverified and should be built on Windows. `util/windows_logger.h` still has the raw buffer pattern that U-0016 converted in the POSIX logger.\n\nTo review: `git log 99b3c03..codecoremorph/20261103-123434-ab66` (one commit per unit) or `git diff 99b3c03 codecoremorph/20261103-123434-ab66`. I haven't merged or pushed anything.\n\nIf this needs to go to someone else, I can turn the report into a shareable page."
+  },
+  "work": {
+    "planned": {
+      "project_files": 132,
+      "project_lines": 28664,
+      "units": 27,
+      "rule_sites": {
+        "replace_typedefs_with_using": 25,
+        "convert_raw_pointers_to_smart_pointers": 413
+      },
+      "sites": 438,
+      "files": 73,
+      "lines": 19672,
+      "expected_agent_attempts": 24.3,
+      "verify_s": 105.5,
+      "estimated_s": 8329.0,
+      "planner_llm_s_per_attempt": 120.0
+    },
+    "done": {
+      "units": {
+        "committed": 24,
+        "failed": 3
+      },
+      "agent_units": 23,
+      "agent_attempts": 24,
+      "changed_files": 59,
+      "lines_added": 728,
+      "lines_deleted": 747
+    },
+    "time": {
+      "run_s": 7884.7,
+      "phases_s": {
+        "baselining": 193.1,
+        "indexing": 39.9,
+        "planning": 1.2,
+        "awaiting_plan_approval": 19.0,
+        "migrating": 7515.3,
+        "verifying": 116.2
+      },
+      "migrating_s": 7515.3,
+      "agent_s": 2462.3,
+      "unit_gates_s": 0.0,
+      "tools_s": 5053.0,
+      "unit_s": {
+        "mean": 278.2,
+        "median": 201.7,
+        "max": 999.2
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.9,
+      "agent_attempts_over_expected": 0.99,
+      "agent_s_per_attempt": 102.6,
+      "migrating_s_per_unit": 278.3,
+      "migrating_s_per_site": 17.2,
+      "migrating_s_per_changed_line": 5.1,
+      "run_min_per_1k_project_lines": 4.58
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "bump_standard"
+        ],
+        "files": 1,
+        "lines": 0,
+        "sites": 0,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 389.9,
+        "agent_s": 24.7,
+        "gate_s": 0.0,
+        "tools_s": 365.2,
+        "lines_changed": 12
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "replace_typedefs_with_using"
+        ],
+        "files": 5,
+        "lines": 1245,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 126.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 126.0,
+        "lines_changed": 10
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "replace_typedefs_with_using"
+        ],
+        "files": 2,
+        "lines": 1674,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 103.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 103.0,
+        "lines_changed": 4
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "replace_typedefs_with_using"
+        ],
+        "files": 1,
+        "lines": 2366,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 85.4,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 85.4,
+        "lines_changed": 2
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "replace_typedefs_with_using"
+        ],
+        "files": 1,
+        "lines": 834,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 85.6,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 85.6,
+        "lines_changed": 2
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 9,
+        "lines": 4693,
+        "sites": 87,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 999.2,
+        "agent_s": 663.1,
+        "gate_s": 0.0,
+        "tools_s": 336.1,
+        "lines_changed": 334
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 5,
+        "lines": 1471,
+        "sites": 19,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 360.3,
+        "agent_s": 124.7,
+        "gate_s": 0.0,
+        "tools_s": 235.6,
+        "lines_changed": 134
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 10,
+        "lines": 1273,
+        "sites": 33,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 3,
+        "agent_waits": 4,
+        "actual_s": 627.3,
+        "agent_s": 309.4,
+        "gate_s": 0.0,
+        "tools_s": 318.0,
+        "lines_changed": 132
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 92,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 195.9,
+        "agent_s": 34.2,
+        "gate_s": 0.0,
+        "tools_s": 161.7,
+        "lines_changed": 10
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 2,
+        "lines": 137,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 236.5,
+        "agent_s": 54.7,
+        "gate_s": 0.0,
+        "tools_s": 181.7,
+        "lines_changed": 15
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 6,
+        "lines": 1660,
+        "sites": 33,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 330.7,
+        "agent_s": 153.0,
+        "gate_s": 0.0,
+        "tools_s": 177.7,
+        "lines_changed": 157
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 5,
+        "lines": 3254,
+        "sites": 75,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 527.2,
+        "agent_s": 319.4,
+        "gate_s": 0.0,
+        "tools_s": 207.8,
+        "lines_changed": 188
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 4,
+        "lines": 758,
+        "sites": 29,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 350.7,
+        "agent_s": 126.1,
+        "gate_s": 0.0,
+        "tools_s": 224.7,
+        "lines_changed": 107
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 4,
+        "lines": 856,
+        "sites": 38,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 240.6,
+        "agent_s": 59.2,
+        "gate_s": 0.0,
+        "tools_s": 181.4,
+        "lines_changed": 44
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 130,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 191.7,
+        "agent_s": 26.5,
+        "gate_s": 0.0,
+        "tools_s": 165.3,
+        "lines_changed": 10
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 893,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "failed",
+        "attempts": 0,
+        "agent_waits": 1,
+        "actual_s": 106.0,
+        "agent_s": 26.9,
+        "gate_s": 0.0,
+        "tools_s": 79.1,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 7,
+        "lines": 1544,
+        "sites": 43,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 544.7,
+        "agent_s": 198.9,
+        "gate_s": 0.0,
+        "tools_s": 345.8,
+        "lines_changed": 156
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 2,
+        "lines": 360,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 279.5,
+        "agent_s": 38.5,
+        "gate_s": 0.0,
+        "tools_s": 241.0,
+        "lines_changed": 11
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 3,
+        "lines": 361,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 224.3,
+        "agent_s": 51.3,
+        "gate_s": 0.0,
+        "tools_s": 173.0,
+        "lines_changed": 21
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 95,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "failed",
+        "attempts": 0,
+        "agent_waits": 1,
+        "actual_s": 116.4,
+        "agent_s": 25.0,
+        "gate_s": 0.0,
+        "tools_s": 91.3,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 3,
+        "lines": 409,
+        "sites": 12,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "failed",
+        "attempts": 0,
+        "agent_waits": 1,
+        "actual_s": 115.3,
+        "agent_s": 17.4,
+        "gate_s": 0.0,
+        "tools_s": 97.9,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 2,
+        "lines": 344,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 189.5,
+        "agent_s": 20.0,
+        "gate_s": 0.0,
+        "tools_s": 169.5,
+        "lines_changed": 5
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 336,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 201.7,
+        "agent_s": 34.5,
+        "gate_s": 0.0,
+        "tools_s": 167.2,
+        "lines_changed": 31
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 90,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 192.9,
+        "agent_s": 25.6,
+        "gate_s": 0.0,
+        "tools_s": 167.3,
+        "lines_changed": 13
+      },
+      {
+        "id": "U-0026",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 59,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 181.1,
+        "agent_s": 19.5,
+        "gate_s": 0.0,
+        "tools_s": 161.6,
+        "lines_changed": 13
+      },
+      {
+        "id": "U-0027",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 131,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 186.2,
+        "agent_s": 24.8,
+        "gate_s": 0.0,
+        "tools_s": 161.4,
+        "lines_changed": 11
+      },
+      {
+        "id": "U-0028",
+        "rules": [
+          "convert_raw_pointers_to_smart_pointers"
+        ],
+        "files": 1,
+        "lines": 353,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 308.5,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 323.4,
+        "agent_s": 84.9,
+        "gate_s": 0.0,
+        "tools_s": 238.5,
+        "lines_changed": 53
+      }
+    ]
+  }
+}

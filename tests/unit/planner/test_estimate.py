@@ -96,4 +96,4 @@ def test_duration_counts_pending_units_only() -> None:
         test_s=5.0,
         logs={"build": Path("build.log")},
     )
-    assert estimate_duration_s(plan, baseline) == 15.0 + 1.0 * (15.0 + 120.0)
+    assert estimate_duration_s(plan, baseline) == 15.0 + 1.0 * (15.0 + 100.0)

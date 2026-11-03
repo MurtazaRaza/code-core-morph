@@ -10,8 +10,9 @@ Claude plan Claude Code is logged in with: no API key and no per-token bill, but
 uses a good part of the plan's limits. The migration happens on the run's own branch; the
 project's checkout isn't changed.
 
-The run's status, every unit's outcome, the final verification, the time taken and Claude
-Code's usage go to bench/results/<date>-m1-<project>-<system>-<sandbox>-claude-code.json.
+The run's status, every unit's outcome, the final verification, the time taken against the
+work the plan held (bench/work.py) and Claude Code's usage go to
+bench/results/<date>-m1-<project>-<system>-<sandbox>-claude-code.json.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from plan import manifest
+from work import measure
 
 from codecoremorph.cli.skill import install_skill
 from codecoremorph.core.models import RunReport, RunStatus
@@ -196,6 +198,7 @@ def main(argv: list[str]) -> int:
         "user_tree_clean": not _git(root, "status", "--porcelain").strip(),
         "run": _summary(place, run.id) if run else {"status": RunStatus.FAILED.value,
                                                     "reason": "no run was started"},
+        "work": measure(place, run.id, root, list(pin["exclude"])) if run else None,
         "claude": claude,
     }  # fmt: skip
     results = BENCH / "results"
@@ -204,7 +207,7 @@ def main(argv: list[str]) -> int:
     system = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
     out = results / f"{stamp}-m1-{pin['project']}-{system}-{args.sandbox}-claude-code.json"
     out.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in record.items() if k not in ("claude",)}, indent=2))
+    print(json.dumps({k: v for k, v in record.items() if k not in ("claude", "work")}, indent=2))
     print(f"\nwrote {out}")
     return 0
 
