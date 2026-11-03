@@ -43,6 +43,7 @@ from codecoremorph.core.models import (
     LoadedRule,
     Role,
 )
+from codecoremorph.parity.baseline import BaselineCache, unit_baseline
 from codecoremorph.vcs.messages import unit_commit_message
 from codecoremorph.vcs.worktree import Worktree
 
@@ -114,12 +115,16 @@ class HostUnit:
         *,
         language: str,
         author: str | None,
+        baselines: BaselineCache | None = None,
     ):
+        """``baselines`` receives the baseline of the unit's commit when it succeeds, so a unit
+        started from that commit reuses its test results (D-42)."""
         self.runner = runner
         self.rules = list(rules)
         self.files = files
         self.language = language
         self.author = author
+        self.baselines = baselines
 
     @property
     def worktree(self) -> Worktree:
@@ -150,6 +155,7 @@ class HostUnit:
             codemods=codemods,
             sites=check.sites,
             configured_standard=self.runner.configured_standard,
+            error_lines=self.runner.error_lines,
         )
         if self.runner.nothing_left(check, self.rules):
             state = self._update(state, agent_skipped=True, warnings=check.warnings)
@@ -219,6 +225,7 @@ class HostUnit:
             attempts=[*state.attempts, record],
             sites=verification.sites,
             configured_standard=self.runner.configured_standard,
+            error_lines=self.runner.error_lines,
         )
         if verification.ok:
             state = self._update(state, warnings=verification.warnings)
@@ -270,6 +277,7 @@ class HostUnit:
             attempts=state.attempts_allowed,
             status=status,
             edits_file=str(self.files.edits),
+            uncompiled=state.uncompiled,
         )
         return text + "\n"
 
@@ -361,6 +369,7 @@ class HostUnit:
         changed: list[str] = []
         if self.worktree.has_changes():
             changed = [f.path for f in self.worktree.diff(state.snapshot).files]
+            by_tools = [c.file for c in state.codemods.changes] if state.codemods else []
             message = unit_commit_message(
                 run_id=state.run_id,
                 unit_id=state.unit.id,
@@ -369,8 +378,10 @@ class HostUnit:
                 summary=summary,
                 attempts=len(state.attempts),
                 models=[HOST_MODEL] if state.attempts else [],
+                codemod_files=[f for f in by_tools if f in changed],
             )
             commit = self.worktree.commit(message, author=self.author)
+            self._store_baseline(state, commit)
         state = self._update(
             state,
             status=HostStatus.SUCCEEDED,
@@ -402,6 +413,22 @@ class HostUnit:
             f"Unit {state.unit.id} failed: {reason}. It was rolled back.\n\n"
             f"The last feedback:\n\n{feedback.strip()}",
         )
+
+    def _store_baseline(self, state: HostUnitState, commit: str) -> None:
+        """The unit's final verification ran the tests on ``commit``: keep them as that
+        commit's baseline for the next unit."""
+        report = self.runner.last_tests
+        if self.baselines is None or report is None:
+            return
+        lang = self.runner.verify_context(self.rules).lang
+        baseline = unit_baseline(
+            self.runner.baseline,
+            report,
+            commit=commit,
+            standard=lang.standard,
+            run_id=state.run_id,
+        )
+        self.baselines.put(baseline, sandbox=state.sandbox, lang=lang, run_id=state.run_id)
 
     def _checkpoint(self, state: HostUnitState, what: str) -> HostUnitState:
         if not self.worktree.has_changes():

@@ -63,9 +63,12 @@ def make_context(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Mak
     kind: str = request.param
     executors: list[Executor] = []
 
-    def make(fixture: str, standard: str = "cpp11", target: str = "cpp20") -> AdapterContext:
+    def make(
+        fixture: str, standard: str = "cpp11", target: str = "cpp20", source: Path | None = None
+    ) -> AdapterContext:
+        """A copy of ``fixtures/cpp/<fixture>``, or of the project at ``source``."""
         work = tmp_path / fixture
-        shutil.copytree(FIXTURES_DIR / fixture, work)
+        shutil.copytree(source or FIXTURES_DIR / fixture, work)
         for name in ("build", "cache", "logs"):
             (tmp_path / f"{fixture}-{name}").mkdir()
         executor: Executor
@@ -278,3 +281,52 @@ def test_bump_codemods_replace_removed_features_in_cpp98_code(make_context: Make
     transaction = (ctx.worktree / "src" / "transaction.cpp").read_text(encoding="utf-8")
     assert "std::uncaught_exceptions()" in transaction
     assert "std::uncaught_exception()" not in transaction
+
+
+DOT_INCLUDE = {
+    ".clang-format": "BasedOnStyle: Google\nDerivePointerAlignment: false\n",
+    "CMakeLists.txt": (
+        "cmake_minimum_required(VERSION 3.21)\n"
+        "project(dotinclude CXX)\n"
+        "set(CMAKE_CXX_STANDARD 11)\n"
+        'include_directories(".")\n'
+        "add_library(core src/core.cpp)\n"
+    ),
+    "src/core.h": (
+        "#pragma once\n#include <map>\n#include <string>\nnamespace core {\n"
+        "typedef std::map<std::string, int*> Table;\n"
+        "int count(const Table& t);\n}  // namespace core\n"
+    ),
+    "src/core.cpp": (
+        '#include "src/core.h"\nnamespace core {\n'
+        "typedef const Table* TablePtr;\n"
+        "int count(const Table& t) { return static_cast<int>(t.size()); }\n"
+        "}  // namespace core\n"
+    ),
+}
+
+
+def test_codemods_reach_headers_found_through_dot_and_keep_the_projects_style(
+    make_context: MakeContext, tmp_path: Path
+) -> None:
+    """Regression (D-42, leveldb): with include_directories("."), clang names a header
+    `<root>/./src/core.h`, which the anchored header filter never matched, so clang-tidy
+    skipped every header; and its fixes printed pointers as `int *` against the project's
+    .clang-format."""
+    source = tmp_path / "dot-include-source"
+    for rel, text in DOT_INCLUDE.items():
+        (source / rel).parent.mkdir(parents=True, exist_ok=True)
+        (source / rel).write_text(text, encoding="utf-8", newline="\n")
+    ctx = make_context("dot-include", source=source)
+    adapter = CppAdapter()
+    assert adapter.configure(ctx).success
+    adapter.index(ctx)
+    spec = CodemodSpec(tool="clang-tidy", checks=["modernize-use-using"])
+    result = adapter.run_codemods(ctx, [spec], ["src/core.h", "src/core.cpp"])
+    assert {c.file for c in result.changes} == {"src/core.h", "src/core.cpp"}
+    header = (ctx.worktree / "src" / "core.h").read_text(encoding="utf-8")
+    assert "using Table = std::map<std::string, int*>;" in header
+    assert "int count(const Table& t);" in header  # an unchanged line stays as it was
+    source_text = (ctx.worktree / "src" / "core.cpp").read_text(encoding="utf-8")
+    assert "using TablePtr = const Table*;" in source_text
+    assert adapter.build(ctx).success

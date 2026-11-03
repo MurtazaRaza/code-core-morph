@@ -195,3 +195,48 @@ def test_an_aborted_unit_leaves_nothing(project: Project, git: GitRunner) -> Non
     assert aborted["reason"] == "needs an API change"
     assert not git(project.root, "branch", "--list", "codecoremorph/*").strip()
     assert not (project.root / ".codecoremorph" / "lock").exists()
+
+
+def test_a_unit_on_the_bumps_branch_builds_at_the_new_standard(project: Project) -> None:
+    """Regression (D-42): units started from the standard bump's branch were configured with
+    the manifest's source standard (-DCMAKE_CXX_STANDARD=11), and every unit reran the
+    baseline's tests although the previous unit had just run them on the same commit."""
+    bump = project.json("start", "--rule", "bump_standard")
+    assert bump["status"] == "succeeded", bump["message"]
+    assert bump["standard"] == "cpp20"
+    second = project.json("start", "--base", bump["branch"], "--rule", RULE, CACHE_H, CACHE_CPP)
+    assert second["status"] == "waiting_for_agent", second["message"]
+    assert second["standard"] == "cpp20"
+    run = project.root / ".codecoremorph" / "runs" / second["run_id"]
+    baseline = json.loads((run / "baseline.json").read_text(encoding="utf-8"))
+    assert baseline["standard"] == "cpp20"
+    assert baseline["tests_from"] == f"unit {bump['run_id']}"
+    configure = (run / "logs" / "configure.log").read_text(encoding="utf-8")
+    assert "-DCMAKE_CXX_STANDARD=20" in configure
+    assert project.cli("unit", "abort").exit_code == 0
+
+
+def test_plan_units_run_by_id_and_reuse_the_plans_baseline(project: Project) -> None:
+    planned = runner.invoke(app, ["plan", str(project.config), "--json"])
+    assert planned.exit_code == 0, planned.output
+    listed = project.cli("unit", "list", "--json")
+    assert listed.exit_code == 0, listed.output
+    units = json.loads(listed.stdout)["units"]
+    assert units[0]["rules"] == ["bump_standard"]
+    assert all(u["outcome"] is None for u in units)
+    plan_run = Path(json.loads(listed.stdout)["plan"]).parent.name
+
+    started = project.json("start", "--plan-unit", units[0]["id"])
+    assert started["unit"]["id"] == units[0]["id"]
+    assert started["plan_unit"] == units[0]["id"]
+    run = project.root / ".codecoremorph" / "runs" / started["run_id"]
+    baseline = json.loads((run / "baseline.json").read_text(encoding="utf-8"))
+    assert baseline["tests_from"] == f"baseline {plan_run}"
+    if started["status"] == "waiting_for_agent":
+        assert project.cli("unit", "abort").exit_code == 0
+    after = json.loads(project.cli("unit", "list", "--json").stdout)["units"]
+    assert after[0]["outcome"] in ("succeeded", "aborted")
+
+    mixed = project.cli("unit", "start", "--plan-unit", units[0]["id"], "--rule", RULE)
+    assert mixed.exit_code == 2
+    assert "don't add --rule" in mixed.output

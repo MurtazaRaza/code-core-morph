@@ -61,6 +61,14 @@ to replace the raw owning pointers in src/cache.cpp with smart pointers"*. The s
 `codecoremorph unit start`, reads the unit's context, writes the edits and runs
 `codecoremorph unit submit` until the unit passes, then tells you which branch to review.
 
+For a whole migration (*"move this project to C++20"*), the skill runs `codecoremorph plan`,
+tells you what the plan holds, and works through its units one after another
+(`codecoremorph unit list`, `unit start --plan-unit U-0002 --base <previous branch>`). Each
+unit builds on the previous unit's branch, at the standard that branch already has. The last
+branch holds every unit as its own commit. The report names the tests that already failed
+before the migration and the files your build never compiles (another platform's sources),
+because neither was checked.
+
 ## Documentation
 
 - [docs/SPEC.md](docs/SPEC.md): product and technical specification

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
@@ -29,7 +29,7 @@ from codecoremorph.config import (
 from codecoremorph.config.models import Loc, MigrationConfig, SandboxMode
 from codecoremorph.core.ids import new_run_id
 from codecoremorph.core.paths import HomeLayout
-from codecoremorph.rules.applicability import check_migration
+from codecoremorph.rules.applicability import StandardOrder, check_migration
 from codecoremorph.rules.registry import RuleRegistry
 from codecoremorph.sandbox.executor import Executor
 from codecoremorph.sandbox.selection import choose_executor
@@ -121,6 +121,26 @@ def start_executor(
     )
     docker.start()
     return docker
+
+
+def build_standard(adapter: LanguageAdapter, ctx: AdapterContext, config: MigrationConfig) -> str:
+    """The standard to build the base commit with: the manifest's source standard, or the
+    newer one the project's build files already set there (D-42).
+
+    A unit started from a branch that has the standard bump must build at the new standard:
+    forcing the source standard on it would verify its changes against the old one."""
+    source = config.migration.source
+    detected = adapter.project_standard(ctx)
+    order = StandardOrder(source.language, tuple(adapter.capabilities().standards))
+    if detected is None or not order.known(detected) or not order.newer(detected, source.standard):
+        return source.standard
+    log.info(
+        "the build files already set %s, newer than the manifest's source %s: building at %s",
+        detected,
+        source.standard,
+        detected,
+    )
+    return detected
 
 
 def _stop(executor: Executor, *, keep_build: bool) -> None:
@@ -220,6 +240,9 @@ def open_session(
             executor=executor,
             lang=language_config(config),
         )
+        standard = build_standard(adapter, ctx, config)
+        if standard != ctx.lang.standard:
+            ctx = replace(ctx, lang=language_config(config, standard=standard))
         session = RunSession(
             config_path=config_path,
             loaded=loaded,

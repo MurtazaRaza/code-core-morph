@@ -68,6 +68,7 @@ from codecoremorph.core.models.planning import (
     UnitFlag,
     UnitStatus,
     WorkUnit,
+    owned_files,
 )
 from codecoremorph.core.models.rules import (
     AppliesTo,
@@ -193,4 +194,5 @@ __all__ = [
     "Visibility",
     "WorkUnit",
     "WorktreePath",
+    "owned_files",
 ]

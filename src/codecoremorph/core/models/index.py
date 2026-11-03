@@ -139,6 +139,11 @@ class IndexMeta(CoreModel):
     tool_versions: dict[str, str] = Field(default_factory=dict[str, str])
     stats: dict[str, int] = Field(default_factory=dict[str, int])
     timings: dict[str, float] = Field(default_factory=dict[str, float])
+    uncompiled: list[str] = Field(
+        default_factory=list[str],
+        description="Code files outside the excluded paths that no compile command reaches "
+        "(another platform's sources, disabled targets): builds and tests can't check them",
+    )
 
 
 class SymbolIndex(CoreModel):

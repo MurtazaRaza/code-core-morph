@@ -264,6 +264,7 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 - [x] `codecoremorph unit start|submit|abort|status|context` and the read-only `unit read|ls|grep|symbol|refs|signature`; the host's edits go through PatchEngine; checkpoint commits squashed on success; changes made outside CodeCoreMorph discarded and reported
 - [x] Host context document (`prompts/v1/host_system.md`, `host_unit.md`)
 - [x] The `codecoremorph` Claude Code skill (`src/codecoremorph/skills/codecoremorph/`) and `codecoremorph skill install`
+- [x] Fixes from the leveldb trial (D-42): chained units build at the standard their base sets; uncompiled code is indexed, warned about and checked for repeated build errors; the header filter accepts `./` paths; codemod lines follow the project's `.clang-format`; the bump leaves CMake comments alone; `unit start` honors skip lists and takes `--plan-unit`; `unit list`; commit messages name the codemods' files; baselines are reused by commit; `api_changing` units own their fan-in's sites with header/source partners and list `reference_files`; the skill explains the plan's scope, runs every pending unit when asked and reports excused tests and uncompiled files
 
 **Evals**
 - [x] Fixture eval set: 15 units across the C++ rules, with pass criteria (`bench/evals/cpp.yaml`)
@@ -277,6 +278,7 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 - Agent loop with a scripted model and a fake adapter: tool use, build-failure retry, edit rejection, scope, budget rollback, refusal, no submission, cut-off replies
 - Single-unit e2e with cassettes on the `typedefs`, `ownership` and `removed-features` fixtures, native and Docker (`tests/integration/test_agent_e2e.py`)
 - Host agent: the flow with a fake adapter (`tests/unit/agent/test_host.py`); parked locks and workspaces; the `unit` commands end to end on the `ownership` fixture, native and Docker, with a rejection, a build failure fed back and a success, and an abort (`tests/integration/test_host_e2e.py`); the skill's commands exist in the CLI (`tests/unit/test_skill.py`)
+- Trial regressions (D-42): a unit on the bump's branch builds at C++20 and reuses its baseline (`test_host_e2e.py`); clang-tidy fixes reach headers found through `include_directories(".")` and keep the project's pointer style (`test_cpp_fixtures.py`); the bump leaves comments alone and the build files' standard is detected (`test_cmake.py`); echoes of build errors in uncompiled files, skip lists, plan units, baseline reuse, planner ownership (`test_unverified.py`, `test_host_plan.py`, `test_baseline.py`, `test_planner.py`)
 
 ### Exit criteria
 - [x] Single-unit migrations replay deterministically and pass (natively and in Docker; CI waits for the Backlog, D-28)

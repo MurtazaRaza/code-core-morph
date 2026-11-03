@@ -66,3 +66,21 @@ def test_trailers_are_validated() -> None:
         with_trailers("subject", {"Key": "multi\nline"})
     assert parse_trailers("subject only") == {}
     assert parse_trailers("subject\n\nbody text, not trailers") == {}
+
+
+def test_the_message_names_the_files_the_deterministic_tools_changed() -> None:
+    """Regression: a 5-file unit's message described only the 2 files the agent edited."""
+    message = unit_commit_message(
+        run_id="20261102-194408-dc66",
+        unit_id="U-0001",
+        rules=["replace_typedefs_with_using"],
+        files=["db/dbformat.h", "db/memtable.h", "db/skiplist_test.cc"],
+        summary="Replace the typedefs in db/dbformat.h and db/memtable.h.",
+        attempts=1,
+        models=["host"],
+        codemod_files=["db/skiplist_test.cc"],
+    )
+    body = message.split("\n\n")
+    assert body[1] == "Replace the typedefs in db/dbformat.h and db/memtable.h."
+    assert body[2] == "Deterministic tools changed db/skiplist_test.cc."
+    assert parse_trailers(message)["CodeCoreMorph-Models"] == "host"

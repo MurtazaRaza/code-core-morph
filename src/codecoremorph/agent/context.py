@@ -25,6 +25,7 @@ from codecoremorph.core.models import (
     CodemodResult,
     LoadedRule,
     Message,
+    RuleKind,
     RuleSite,
     SystemBlock,
     ToolSpec,
@@ -36,6 +37,7 @@ from codecoremorph.prompts import render
 from codecoremorph.store.index import IndexStore
 
 MAX_SIGNATURES = 80
+MAX_UNCOMPILED = 40
 MAX_SITES_SHOWN = 40
 _FENCE_LANGUAGES = {
     ".h": "cpp", ".hh": "cpp", ".hpp": "cpp", ".hxx": "cpp", ".inl": "cpp", ".ipp": "cpp",
@@ -171,6 +173,12 @@ def unit_message(
         shown.append(f"[{len(signatures) - MAX_SIGNATURES} more; use {find_symbol}]")
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
+    if unit.reference_files:
+        note += (
+            "In this unit only for their references to the symbols it changes: "
+            f"{', '.join(unit.reference_files)}. Update their uses as the change needs; their "
+            "own rule sites are other units' work.\n\n"
+        )
     return render(
         "unit_message",
         unit_id=unit.id,
@@ -238,8 +246,12 @@ def host_document(
     attempts: int,
     status: str,
     edits_file: str,
+    uncompiled: Sequence[str] = (),
 ) -> str:
-    """The context document of a host agent's attempt (D-41): instructions, rules, unit."""
+    """The context document of a host agent's attempt (D-41): instructions, rules, unit.
+
+    A project rule's unit (the standard bump) also lists ``uncompiled``: code the build never
+    compiles, which the bump may break unnoticed (D-42)."""
     instructions = render(
         "host_system", language=language, source=source, target=target, edits_file=edits_file
     )
@@ -252,6 +264,22 @@ def host_document(
         build=build,
         find_symbol="`codecoremorph unit symbol`",
     )
+    if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
+        shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]
+        if len(uncompiled) > MAX_UNCOMPILED:
+            shown.append(f"- … and {len(uncompiled) - MAX_UNCOMPILED} more")
+        message = "\n\n".join(
+            [
+                message.strip(),
+                "## Files this build doesn't compile",
+                "This build configuration never compiles these files (another platform's "
+                "sources, disabled targets), so neither the build nor the tests check them. "
+                "The unit may edit them. When the build reports an error, look for the same "
+                "code in them and fix it the same way, and name in review_notes the ones you "
+                "changed: nothing verifies those changes.",
+                "\n".join(shown),
+            ]
+        )
     return render(
         "host_unit",
         unit_id=unit.id,

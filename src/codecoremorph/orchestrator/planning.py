@@ -15,12 +15,13 @@ from pathlib import Path
 from codecoremorph.core.models import Baseline, LoadedRule, Plan, Role, RuleSite, SymbolIndex
 from codecoremorph.llm.catalog import model_info
 from codecoremorph.orchestrator.session import RunSession
-from codecoremorph.parity.baseline import capture_baseline
+from codecoremorph.parity.baseline import BaselineCache, capture_baseline
 from codecoremorph.planner.estimate import Estimator, estimate_duration_s, unit_token_limit
 from codecoremorph.planner.planner import PlannerSettings, build_plan
 from codecoremorph.planner.project import ProjectModel
-from codecoremorph.planner.sites import RuleScan, scan_rule
+from codecoremorph.planner.sites import RuleScan, find_sites, scan_rule
 from codecoremorph.rules.applicability import StandardOrder, rule_excludes, standard_bump_rules
+from codecoremorph.store.layout import StateDir
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,32 @@ class PlanOutcome:
     plan_path: Path
     baseline_path: Path
     timings: dict[str, float] = field(default_factory=dict[str, float])
+
+
+def baseline_cache(session: RunSession) -> BaselineCache:
+    return BaselineCache(StateDir.for_repo(session.workspace.repository.root).baselines_dir)
+
+
+def reusable_baseline(session: RunSession, step: StepSink) -> Baseline:
+    """The base commit's baseline: the tests are reused when a plan or an earlier unit ran
+    them on this commit, with the same standard, sandbox and build options (D-42)."""
+    config = session.config
+    cache = baseline_cache(session)
+    commit = session.workspace.base_commit
+    kind = session.executor.kind
+    known = cache.get(commit, sandbox=kind, lang=session.ctx.lang)
+    baseline = capture_baseline(
+        session.adapter,
+        session.ctx,
+        base_commit=commit,
+        runs=config.parity.baseline_runs,
+        require_tests=config.guardrails.require_passing_tests,
+        on_step=lambda name: step(f"baseline: {name}"),
+        reuse=known,
+    )
+    if known is None:
+        cache.put(baseline, sandbox=kind, lang=session.ctx.lang, run_id=session.run_id)
+    return baseline
 
 
 def migration_rules(session: RunSession, order: StandardOrder) -> list[tuple[LoadedRule, bool]]:
@@ -83,14 +110,7 @@ def make_plan(session: RunSession, *, on_step: StepSink | None = None) -> PlanOu
     timings: dict[str, float] = {}
 
     started = time.monotonic()
-    baseline = capture_baseline(
-        adapter,
-        ctx,
-        base_commit=session.workspace.base_commit,
-        runs=config.parity.baseline_runs,
-        require_tests=config.guardrails.require_passing_tests,
-        on_step=lambda name: step(f"baseline: {name}"),
-    )
+    baseline = reusable_baseline(session, step)
     timings["baseline_s"] = time.monotonic() - started
     baseline_path = session.artifacts.root / BASELINE_FILE
     _write_json(baseline_path, baseline.model_dump_json(indent=2))
@@ -140,6 +160,7 @@ def make_plan(session: RunSession, *, on_step: StepSink | None = None) -> PlanOu
         shown = "; ".join(index.problems[:3])
         more = f" (and {len(index.problems) - 3} more)" if len(index.problems) > 3 else ""
         warnings.append(f"the indexer reported {len(index.problems)} problems: {shown}{more}")
+    warnings += uncompiled_warnings(project, scans, order=order, source=source, target=target)
     plan = build_plan(
         project,
         scans,
@@ -164,3 +185,45 @@ def make_plan(session: RunSession, *, on_step: StepSink | None = None) -> PlanOu
         baseline_path=baseline_path,
         timings={k: round(v, 3) for k, v in timings.items()},
     )
+
+
+def uncompiled_warnings(
+    project: ProjectModel,
+    scans: list[RuleScan],
+    *,
+    order: StandardOrder,
+    source: str,
+    target: str,
+) -> list[str]:
+    """The plan's warnings about code this build never compiles (D-42): the rules plan no
+    units for it, and the standard bump's patterns still find what the target removes there."""
+    if not project.uncompiled:
+        return []
+    files = project.uncompiled
+    more = f" and {len(files) - 10} more" if len(files) > 10 else ""
+    warnings = [
+        f"{len(files)} code file(s) aren't compiled by this build configuration (another "
+        f"platform's sources or disabled targets), so no unit verifies them: "
+        f"{', '.join(files[:10])}{more}. Check changes to them on a platform that builds them"
+    ]
+    for scan in scans:
+        if not scan.automatic:
+            continue
+        found = find_sites(
+            scan.loaded,
+            files,
+            worktree=project.worktree,
+            read=project.text,
+            order=order,
+            source=source,
+            target=target,
+            query=lambda _name, _files: [],
+        )
+        for path, sites in found.items():
+            lines = ", ".join(str(s.line) for s in sites[:10])
+            warnings.append(
+                f"{path} isn't compiled by this build and has {len(sites)} site(s) "
+                f"{scan.rule_id} must fix (lines {lines}); the standard bump unit can edit it, "
+                "but nothing verifies the fix"
+            )
+    return warnings

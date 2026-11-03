@@ -9,7 +9,10 @@ always give the same plan, byte for byte (FR-5.6).
 - ``api_preserving`` rules: one unit per cluster, split by header/source pair when a cluster
   is too large, and merged with the next clusters while they stay small.
 - ``api_changing`` rules: a cluster's files with sites plus the fan-in of the symbols enclosing
-  those sites; a unit over the size limit is ``too_large`` and skipped (FR-5.3).
+  those sites; a unit over the size limit is ``too_large`` and skipped (FR-5.3). A unit takes
+  on the sites of the fan-in files no earlier unit covers, together with their header/source
+  partners; fan-in files whose sites an earlier unit covers are its ``reference_files``
+  (D-42).
 """
 
 from __future__ import annotations
@@ -47,7 +50,7 @@ _SKIP_FLAGS = {
     SkipCondition.PUBLIC_API: UnitFlag.PUBLIC_API,
     SkipCondition.TEST: UnitFlag.TOUCHES_TESTS,
 }
-_SKIP_REASONS = {
+SKIP_REASONS = {
     SkipCondition.C_COMPATIBLE: "headers shared with C",
     SkipCondition.PUBLIC_API: "public API files",
     SkipCondition.TEST: "test files",
@@ -70,9 +73,10 @@ class _Draft:
     flags: set[UnitFlag] = field(default_factory=set[UnitFlag])
     note: str | None = None
     sized: bool = True  # build-configuration units are mechanical edits, never too large
+    references: list[str] = field(default_factory=list[str])  # fan-in files, sites elsewhere
 
 
-def _skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
+def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
     if condition is SkipCondition.C_COMPATIBLE:
         return entry.c_compatible
     if condition is SkipCondition.PUBLIC_API:
@@ -163,7 +167,8 @@ class _Former:
         rule = scan.rule_id
         drafts: list[_Draft] = []
         # Sites in files an earlier unit already includes (through its fan-in) are that unit's
-        # work, so they don't get a unit of their own.
+        # work, so they don't get a unit of their own; a later unit that reaches such a file
+        # again has it for its references only.
         covered: set[str] = set()
         for cluster in self.cluster_groups(files):
             group = [f for f in cluster if f not in covered]
@@ -171,12 +176,29 @@ class _Former:
                 continue
             sites: list[RuleSite] = [s for f in group for s in scan.sites.get(f, [])]
             reached = self.project.fan_in(self.project.symbols_at(sites))
-            unit_files = sorted({*group, *(f for f in reached if f in editable)})
+            # The files whose sites this unit takes on: its own, and the fan-in's not yet
+            # covered. Each comes with its header/source partner, where the members and
+            # signatures its sites change are declared (db_impl.cc's deletes need db_impl.h).
+            owned = {*group, *(f for f in reached if f in scan.sites and f not in covered)}
+            owned &= editable
+            owned |= {p for f in owned for p in self.project.partners.get(f, []) if p in editable}
+            unit_files = sorted({*owned, *(f for f in reached if f in editable)})
+            references = sorted(f for f in unit_files if f in scan.sites and f not in owned)
             outside = sorted(f for f in reached if f not in editable)
-            draft = _Draft(rule=rule, files=unit_files, sites=self.site_counts(scan, unit_files))
+            draft = _Draft(
+                rule=rule,
+                files=unit_files,
+                sites=self.site_counts(scan, sorted(owned)),
+                references=references,
+            )
             notes: list[str] = []
             if len(unit_files) > len(group):
                 notes.append(f"fan-in adds {len(unit_files) - len(group)} files")
+            if references:
+                notes.append(
+                    f"{len(references)} for their references only (their sites are earlier "
+                    "units' work)"
+                )
             if outside:
                 more = f" (+{len(outside) - 3})" if len(outside) > 3 else ""
                 shown = ", ".join(outside[:3]) + more
@@ -188,7 +210,7 @@ class _Former:
             draft.note = "; ".join(notes) or None
             drafts.append(draft)
             if draft.status is UnitStatus.PENDING:
-                covered.update(f for f in unit_files if f in scan.sites)
+                covered.update(f for f in owned if f in scan.sites)
         return drafts
 
     def size_note(self, files: Sequence[str], rule: str) -> str:
@@ -224,7 +246,7 @@ class _Former:
         files: list[str] = []
         for path in scan.targets():
             entry = self.project.files[path]
-            condition = next((c for c in rule.skip if _skip_matches(c, entry)), None)
+            condition = next((c for c in rule.skip if skip_matches(c, entry)), None)
             if condition is None:
                 files.append(path)
             else:
@@ -247,7 +269,7 @@ class _Former:
                         sites=self.site_counts(scan, paths),
                         status=UnitStatus.SKIPPED,
                         flags={_SKIP_FLAGS[condition]},
-                        note=f"skipped: {scan.rule_id} doesn't apply to {_SKIP_REASONS[condition]}",
+                        note=f"skipped: {scan.rule_id} doesn't apply to {SKIP_REASONS[condition]}",
                     )
                 )
         for draft in drafts:
@@ -341,6 +363,7 @@ def build_plan(
                 seq=seq,
                 rules=[draft.rule],
                 files=draft.files,
+                reference_files=draft.references,
                 rule_sites=draft.sites,
                 flags=sorted(draft.flags),
                 status=draft.status,

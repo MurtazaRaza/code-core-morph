@@ -3,7 +3,9 @@ codemods (SPEC §7.1, §11.1)."""
 
 from __future__ import annotations
 
+import difflib
 import json
+import logging
 import os
 import re
 import shlex
@@ -24,6 +26,7 @@ from codecoremorph.adapters.cpp.cmake import (
     configure_command,
     cxx_standard_number,
     is_cmake_file,
+    lowest_standard,
     std_flag,
 )
 from codecoremorph.adapters.cpp.diagnostics import parse_cmake_output, parse_compiler_output
@@ -34,7 +37,13 @@ from codecoremorph.adapters.cpp.fixes import (
     requested_check,
 )
 from codecoremorph.adapters.cpp.helpers.cpp_index_helper import split_windows
-from codecoremorph.adapters.cpp.indexing import COMPILE_COMMANDS, HEADER_EXTENSIONS, run_index
+from codecoremorph.adapters.cpp.indexing import (
+    COMPILE_COMMANDS,
+    HEADER_EXTENSIONS,
+    SOURCE_EXTENSIONS,
+    build_files,
+    run_index,
+)
 from codecoremorph.adapters.cpp.paths import PathMapper
 from codecoremorph.adapters.cpp.testing import (
     ReportParseError,
@@ -45,6 +54,7 @@ from codecoremorph.adapters.cpp.testing import (
     read_gtest_dir,
 )
 from codecoremorph.core.errors import ConfigError
+from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     AdapterCapabilities,
     BuildResult,
@@ -66,14 +76,16 @@ from codecoremorph.core.models import (
     ToolchainSpec,
     ToolRequirement,
 )
-from codecoremorph.patching.textfile import TextFile
+from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.rules.applicability import StandardOrder
 from codecoremorph.rules.detectors import mask_c_family
 from codecoremorph.sandbox.executor import full_output
 from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore
 
-SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx", ".c++", ".cp")
+log = logging.getLogger(__name__)
+
 MIN_LLVM = "18"
+STYLE_FILES = (".clang-format", "_clang-format")
 _STD_FLAG = re.compile(r"[-/]std[:=](c|gnu)\+\+(\w+)")
 INSTALL_HINT = (
     "Install the pinned native toolchain with `codecoremorph toolchain install cpp` "
@@ -113,6 +125,9 @@ class CppAdapter(LanguageAdapter):
                 ToolRequirement(name="clang", min_version=MIN_LLVM, purpose="C compiler"),
                 ToolRequirement(name="clang++", min_version=MIN_LLVM, purpose="C++ compiler"),
                 ToolRequirement(name="clang-tidy", min_version=MIN_LLVM, purpose="codemods"),
+                ToolRequirement(
+                    name="clang-format", min_version=MIN_LLVM, purpose="formatting codemod output"
+                ),
                 ToolRequirement(name="cmake", min_version="3.21", purpose="build system"),
                 ToolRequirement(name="ctest", min_version="3.21", purpose="test runner"),
                 ToolRequirement(name="ninja", min_version="1.10", purpose="build tool"),
@@ -313,6 +328,16 @@ class CppAdapter(LanguageAdapter):
 
     # ------------------------------------------------------------------ index
 
+    def project_standard(self, ctx: AdapterContext) -> str | None:
+        """The oldest standard the project's own CMake files set (excluded paths don't count)."""
+        texts: list[str] = []
+        for rel in build_files(ctx.worktree, PathMatcher(ctx.lang.exclude)):
+            try:
+                texts.append(TextFile.decode((ctx.worktree / rel).read_bytes()).text)
+            except BinaryFileError:
+                continue  # not a CMake file after all
+        return lowest_standard(texts)
+
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
         # Unchanged translation units come from the helper's cache, so re-indexing after an
         # edit costs only the units that include the edited files (FR-2.4).
@@ -329,11 +354,12 @@ class CppAdapter(LanguageAdapter):
         remaining: list[Diagnostic] = []
         diagnostics: list[Diagnostic] = []
         logs: list[Path] = []
+        originals: dict[str, bytes] = {}  # files clang-tidy changed, as they were before
         for number, spec in enumerate(codemods, start=1):
             if spec.tool == "cmake-standard":
                 changes = self._bump_standard(ctx, files)
             elif spec.tool == "clang-tidy":
-                changes, extra = self._clang_tidy(ctx, spec, files, number)
+                changes, extra = self._clang_tidy(ctx, spec, files, number, originals)
                 skipped += extra.skipped
                 remaining += extra.remaining
                 diagnostics += extra.diagnostics
@@ -345,6 +371,7 @@ class CppAdapter(LanguageAdapter):
                 )
             for path, count in changes.items():
                 totals[path] = totals.get(path, 0) + count
+        logs += self._format_changed_lines(ctx, originals)
         return CodemodResult(
             changes=[CodemodChange(file=f, replacements=n) for f, n in sorted(totals.items())],
             skipped=skipped,
@@ -369,8 +396,42 @@ class CppAdapter(LanguageAdapter):
                 changes[path] = edit.replacements
         return changes
 
+    def _format_changed_lines(self, ctx: AdapterContext, originals: dict[str, bytes]) -> list[Path]:
+        """clang-format the lines clang-tidy changed, in files a project ``.clang-format``
+        covers: clang-tidy prints the types it writes in its own style (``Iterator *``), not
+        the project's. Only the changed lines are formatted, never the rest of the file."""
+        logs: list[Path] = []
+        for number, (rel, before) in enumerate(sorted(originals.items()), start=1):
+            if not _styled(ctx.worktree, rel):
+                continue
+            host = ctx.worktree / rel
+            ranges = changed_line_ranges(before, host.read_bytes())
+            if not ranges:
+                continue
+            argv = [
+                "clang-format",
+                "-i",
+                "--style=file",
+                "--fallback-style=none",
+                *[f"--lines={first}:{last}" for first, last in ranges],
+                ctx.sandbox(host),
+            ]
+            result, output = self._run(
+                ctx, argv, f"codemod-format-{number}.log", timeout_s=ctx.lang.build_timeout_s
+            )
+            logs.append(result.log_path)
+            if not result.ok:
+                # Formatting is cosmetic: the codemod's change stands, unformatted.
+                log.warning("clang-format failed on %s: %s", rel, output.strip()[-500:])
+        return logs
+
     def _clang_tidy(
-        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str], number: int
+        self,
+        ctx: AdapterContext,
+        spec: CodemodSpec,
+        files: list[str],
+        number: int,
+        originals: dict[str, bytes],
     ) -> tuple[dict[str, int], CodemodResult]:
         mapper = self._mapper(ctx)
         unit = set(files)
@@ -392,7 +453,7 @@ class CppAdapter(LanguageAdapter):
             "-p",
             ctx.sandbox(ctx.build_dir),
             f"--checks=-*,{','.join(spec.checks)}",
-            f"--header-filter={_header_filter(mapper, headers)}",
+            f"--header-filter={_header_filter(headers)}",
             f"--export-fixes={ctx.sandbox(fixes_path)}",
             "--quiet",
             *standard_args,
@@ -428,6 +489,7 @@ class CppAdapter(LanguageAdapter):
         with_fix = fixed_sites(fixes, key_of=key_of, read=read)
         outcome = apply_fixes(fixes, key_of=key_of, read=read)
         for rel, data in outcome.new_contents.items():
+            originals.setdefault(rel, read(rel))
             _write_atomic(ctx.worktree / rel, data)
         remaining = [
             d
@@ -505,7 +567,7 @@ class CppAdapter(LanguageAdapter):
         return [d for d in diagnostics if d.severity is not Severity.NOTE]
 
     def format(self, ctx: AdapterContext, files: list[str]) -> None:
-        if not any((ctx.worktree / name).is_file() for name in (".clang-format", "_clang-format")):
+        if not any((ctx.worktree / name).is_file() for name in STYLE_FILES):
             return  # never impose a style on a project that has none
         code = [f for f in files if f.lower().endswith(SOURCE_EXTENSIONS + HEADER_EXTENSIONS)]
         if not code:
@@ -620,14 +682,57 @@ def syntax_only_command(entry: dict[str, Any], *, windows: bool) -> list[str]:
     return [*out, "-fsyntax-only"]
 
 
-def _header_filter(mapper: PathMapper, headers: list[str]) -> str:
+_REGEX_SPECIAL = re.compile(r"([.^$|()\[\]{}*+?\\])")
+
+
+def _llvm_escape(text: str) -> str:
+    """Escape for llvm::Regex (POSIX extended): only its metacharacters."""
+    return _REGEX_SPECIAL.sub(r"\\\1", text)
+
+
+def _header_filter(headers: list[str]) -> str:
+    """clang-tidy's ``--header-filter`` for the unit's headers.
+
+    clang names a header by the include directory it was found through, so the same file can
+    be ``/workspace/db/x.h``, ``/workspace/./db/x.h`` (``include_directories(".")``) or
+    ``/workspace/src/../db/x.h``. The filter therefore matches the worktree-relative path at
+    the end of the name, with ``./`` allowed between its parts; fixes are then kept only for
+    the unit's own files, by their normalized path. Plain groups only: llvm::Regex has no
+    ``(?:``."""
     if not headers:
         return "^$"
-    parts = []
-    for header in headers:
-        segments = [re.escape(s) for s in mapper.sandbox(header).split("/")]
-        parts.append(r"[/\\]".join(segments))
-    return "^(" + "|".join(parts) + ")$"
+    parts = [r"([/\\]\.)*[/\\]".join(_llvm_escape(s) for s in h.split("/")) for h in headers]
+    return r"(^|[/\\])(" + "|".join(parts) + ")$"
+
+
+def _styled(worktree: Path, rel: str) -> bool:
+    """Whether a ``.clang-format`` of the project (not one above the worktree) covers ``rel``."""
+    directory = (worktree / rel).parent
+    while True:
+        if any((directory / name).is_file() for name in STYLE_FILES):
+            return True
+        if directory == worktree or worktree not in directory.parents:
+            return False
+        directory = directory.parent
+
+
+def changed_line_ranges(before: bytes, after: bytes) -> list[tuple[int, int]]:
+    """The 1-based, inclusive line ranges of ``after`` that differ from ``before``."""
+    try:
+        old = TextFile.decode(before).text.splitlines()
+        new = TextFile.decode(after).text.splitlines()
+    except BinaryFileError:
+        return []
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    ranges: list[tuple[int, int]] = []
+    for tag, _, _, j1, j2 in matcher.get_opcodes():
+        if tag == "equal" or j1 == j2:
+            continue
+        if ranges and ranges[-1][1] >= j1:
+            ranges[-1] = (ranges[-1][0], j2)
+        else:
+            ranges.append((j1 + 1, j2))
+    return ranges
 
 
 def _failure_diagnostic(step: str, result: Any) -> Diagnostic:

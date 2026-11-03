@@ -4,6 +4,7 @@ The host agent (Claude Code, through the ``codecoremorph`` skill) runs these com
 the unit's context document, writes its edits to the edits file and submits them. CodeCoreMorph
 makes no model calls. The run parks between commands; the repository has one active unit.
 
+  list    the plan's units and how far each got
   start   validate, baseline, index, codemods, verify; then wait for edits (or finish)
   submit  apply the edits file, build, test; commit, or feedback for the next attempt
   abort   discard the unit and its run branch
@@ -80,7 +81,32 @@ def _payload(
         "review_notes": state.review_notes,
         "reason": state.reason,
         "attempts": [a.model_dump(mode="json") for a in state.attempts],
+        "plan_unit": state.plan_unit,
+        "standard": state.configured_standard,
+        "excused_tests": state.excused_tests,
+        "uncompiled": state.uncompiled,
     }
+
+
+def _listed(items: list[str], limit: int = 10) -> str:
+    more = f" and {len(items) - limit} more" if len(items) > limit else ""
+    return ", ".join(items[:limit]) + more
+
+
+def _unverified_lines(state: HostUnitState) -> list[str]:
+    """What the unit's verification didn't cover, for the agent's report to the user."""
+    lines: list[str] = []
+    if state.excused_tests:
+        lines.append(
+            f"excused: {len(state.excused_tests)} test(s) already failed or were flaky before "
+            f"the unit, so they don't count: {_listed(state.excused_tests)}"
+        )
+    if state.uncompiled:
+        lines.append(
+            f"not compiled: this build never compiles {len(state.uncompiled)} file(s), so it "
+            f"can't check them: {_listed(state.uncompiled)}"
+        )
+    return lines
 
 
 def _report(step: HostStep, files: HostFiles, as_json: bool) -> None:
@@ -94,6 +120,8 @@ def _report(step: HostStep, files: HostFiles, as_json: bool) -> None:
         if state.status is HostStatus.SUCCEEDED and state.commit:
             for note in state.review_notes:
                 _echo(f"review: {note}")
+            for line in _unverified_lines(state):
+                _echo(line)
             _echo(
                 f"The change is on branch {run_branch(state.run_id)}; the project's own branch "
                 f"is unchanged. Review it with `git diff {state.base_commit[:12]} "
@@ -107,8 +135,9 @@ def _report(step: HostStep, files: HostFiles, as_json: bool) -> None:
 @handle_errors
 def unit_start(
     rule: Annotated[
-        list[str], typer.Option("--rule", "-r", help="Rule of the unit (repeat for several).")
-    ],
+        list[str] | None,
+        typer.Option("--rule", "-r", help="Rule of the unit (repeat for several)."),
+    ] = None,
     files: Annotated[
         list[str] | None,
         typer.Argument(
@@ -125,21 +154,109 @@ def unit_start(
     sandbox: Annotated[
         SandboxMode | None, typer.Option("--sandbox", help="Override sandbox.mode.")
     ] = None,
+    plan_unit: Annotated[
+        str | None,
+        typer.Option(
+            "--plan-unit",
+            help="Run this unit of the latest plan (e.g. U-0002): its rules and files.",
+        ),
+    ] = None,
     as_json: JsonOpt = False,
 ) -> None:
     """Start a unit: baseline, index, codemods and checks, then wait for the agent's edits.
 
+    Name the unit with --plan-unit (see `codecoremorph unit list`), or with --rule and files.
     Prints where the context document and the edits file are. If the deterministic tools
     finish the unit alone, it is committed to its run branch right away.
     """
+    from codecoremorph.core.errors import UsageError
     from codecoremorph.orchestrator.session import open_session
-    from codecoremorph.orchestrator.unit import start_host_unit
+    from codecoremorph.orchestrator.unit import HostRun, start_host_unit
 
+    planned = None
+    if plan_unit is not None:
+        if rule or files:
+            raise UsageError(
+                "--plan-unit names the unit's rules and files; don't add --rule or files",
+                hint=f"Run `codecoremorph unit start --plan-unit {plan_unit}` alone.",
+            )
+        planned = HostRun.for_config(config).plan_unit(plan_unit)
+    elif not rule:
+        raise UsageError(
+            "name the unit: --plan-unit ID, or --rule RULE with its files",
+            hint="`codecoremorph unit list` shows the plan's units.",
+        )
+    else:
+        HostRun.for_config(config).refuse_skipped(list(rule), list(files or []))
     with open_session(config, base=base, mode=sandbox, log_subdir="logs", on_warning=_warn) as s:
-        _progress(f"run {s.run_id} ({s.executor.kind} mode)")
-        step = start_host_unit(s, rule_ids=list(rule), files=list(files or []), on_step=_progress)
+        _progress(f"run {s.run_id} ({s.executor.kind} mode, {s.ctx.lang.standard})")
+        step = start_host_unit(
+            s,
+            rule_ids=list(rule or []),
+            files=list(files or []),
+            on_step=_progress,
+            plan_unit=planned,
+        )
         host_files = HostFiles(s.artifacts.root)
     _report(step, host_files, as_json)
+
+
+@unit_app.command("list")
+@handle_errors
+def unit_list(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) -> None:
+    """The latest plan's units, in order, with what happened to each one so far."""
+    from codecoremorph.orchestrator.unit import HostRun
+
+    run = HostRun.for_config(config)
+    path, plan = run.plan()
+    progress = run.plan_progress()
+    rows: list[dict[str, Any]] = []
+    for unit in plan.units:
+        state = progress.get(unit.id)
+        rows.append(
+            {
+                "id": unit.id,
+                "rules": unit.rules,
+                "files": unit.files,
+                "reference_files": unit.reference_files,
+                "plan_status": unit.status.value,
+                "flags": [f.value for f in unit.flags],
+                "note": unit.note,
+                "outcome": state.status.value if state else None,
+                "run_id": state.run_id if state else None,
+                "branch": run_branch(state.run_id) if state and state.commit else None,
+                "reason": state.reason if state else None,
+            }
+        )
+    done = [s for s in progress.values() if s.status is HostStatus.SUCCEEDED and s.commit]
+    last = max(done, key=lambda s: s.updated_at, default=None)
+    if as_json:
+        payload = {
+            "plan": str(path),
+            "units": rows,
+            "last_branch": run_branch(last.run_id) if last else None,
+        }
+        _echo(json.dumps(payload, indent=2))
+        return
+    _echo(f"plan: {path}")
+    for row in rows:
+        state_text = row["outcome"] or row["plan_status"]
+        if row["branch"]:
+            state_text += f" ({row['branch']})"
+        flags = f" [{', '.join(row['flags'])}]" if row["flags"] else ""
+        _echo(
+            f"{row['id']} {state_text}: {', '.join(row['rules'])} on {len(row['files'])} "
+            f"file(s){flags}"
+        )
+        if row["plan_status"] != "pending" and row["note"]:
+            _echo(f"    {row['note']}")
+        if row["reason"]:
+            _echo(f"    reason: {row['reason']}")
+    if last is not None:
+        _echo(
+            f"last successful unit: {last.plan_unit or last.unit.id} on {run_branch(last.run_id)}"
+            "; start the next unit with --base on it"
+        )
 
 
 @unit_app.command("submit")
@@ -216,6 +333,7 @@ def unit_status(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) ->
         lines.append(f"commit {state.commit[:12]} on {run_branch(state.run_id)}")
     if state.reason:
         lines.append(f"reason: {state.reason}")
+    lines += _unverified_lines(state)
     message = "\n".join(lines)
     if as_json:
         _echo(json.dumps(_payload(state, message, [], files), indent=2))

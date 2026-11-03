@@ -59,8 +59,14 @@ def unit_commit_message(
     summary: str,
     attempts: int,
     models: Sequence[str],
+    codemod_files: Sequence[str] = (),
 ) -> str:
+    """The unit's commit message. ``summary`` is the agent's (it describes its own edits);
+    ``codemod_files`` adds the files the deterministic tools changed, which it may not name."""
     subject = f"codecoremorph({','.join(rules)}): {summarize_paths(files)}"
+    if codemod_files:
+        tools = f"Deterministic tools changed {', '.join(sorted(codemod_files))}."
+        summary = f"{summary.strip()}\n\n{tools}" if summary.strip() else tools
     trailers = {
         f"{TRAILER_PREFIX}Run": run_id,
         f"{TRAILER_PREFIX}Unit": unit_id,

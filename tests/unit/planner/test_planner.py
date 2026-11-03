@@ -291,3 +291,55 @@ def test_the_same_inputs_give_the_same_plan_byte_for_byte(
     assert first.model_dump_json(indent=2) == second.model_dump_json(indent=2)
     assert first.graph is not None
     assert first.graph.files == 8  # the C source too
+
+
+def _leveldb_like(p: FakeProject) -> ProjectModel:
+    """db.cpp deletes members db.h declares, and calls run() and Status(): the fan-in of the
+    app and status units both reach it."""
+    p.file("CMakeLists.txt", "project(x)\n")
+    p.file("src/status.h", "struct Status {\n  Status();\n  char* p;\n};\n")
+    p.file("src/status.cpp", '#include "status.h"\nStatus::Status() { p = new char; }\n')
+    p.file("src/app.h", "void run();\n")
+    p.file("src/app.cpp", '#include "app.h"\nvoid run() { int* x = new int; delete x; }\n')
+    p.file("src/db.h", '#include "status.h"\nstruct Db {\n  Db();\n  char* buf;\n};\n')
+    p.file(
+        "src/db.cpp",
+        '#include "db.h"\n#include "app.h"\nDb::Db() { buf = new char; run(); Status t; }\n',
+    )
+    p.dep("src/status.cpp", "src/status.h")
+    p.dep("src/app.cpp", "src/app.h")
+    p.dep("src/db.h", "src/status.h")
+    p.dep("src/db.cpp", "src/db.h")
+    p.dep("src/db.cpp", "src/app.h")
+    p.symbol("c:@S@Status@F@Status", "src/status.h", (2, 3), (2, 11), definition=False)
+    p.symbol("c:@S@Status@F@Status", "src/status.cpp", (2, 1), (2, 40), kind="method")
+    p.symbol("c:@F@run", "src/app.h", (1, 1), (1, 11), definition=False)
+    p.symbol("c:@F@run", "src/app.cpp", (2, 1), (2, 50))
+    p.symbol("c:@S@Db@F@Db", "src/db.h", (3, 3), (3, 7), definition=False)
+    p.symbol("c:@S@Db@F@Db", "src/db.cpp", (3, 1), (3, 50), kind="method")
+    p.ref("src/db.cpp", "c:@F@run", 3, 28)
+    p.ref("src/db.cpp", "c:@S@Status@F@Status", 3, 35)
+    p.build()
+    return ProjectModel.load(p.index_path, p.worktree, source_dirs=["src"])
+
+
+def test_a_units_sites_come_with_their_header_and_belong_to_one_unit(
+    fake_project: FakeProject,
+) -> None:
+    """Regression: leveldb's smart-pointer unit had db_impl.cc without db_impl.h, which
+    declares the members it deletes, and db_impl.cc's 36 sites were counted in 9 units."""
+    plan = _plan(_leveldb_like(fake_project), [POINTERS])
+    with_db = [u for u in plan.units if "src/db.cpp" in u.files]
+    owners = [u for u in with_db if "src/db.cpp" in u.rule_sites]
+    assert len(owners) == 1
+    (owner,) = owners
+    assert "src/db.h" in owner.files  # db.cpp's partner, where `buf` is declared
+    assert "src/db.cpp" not in owner.reference_files
+    others = [u for u in with_db if u is not owner]
+    assert others  # the other fan-in reaches db.cpp too
+    for other in others:
+        assert other.reference_files == ["src/db.cpp"]
+        assert "src/db.cpp" not in other.rule_sites
+        assert other.note is not None
+        assert "for their references only" in other.note
+    assert sum(u.rule_sites.get("src/db.cpp", 0) for u in plan.units) == 1

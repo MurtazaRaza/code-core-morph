@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from codecoremorph.core.errors import ConfigError
@@ -114,12 +115,88 @@ _PROPERTY = re.compile(r"(\bCXX_STANDARD\s+\"?)(\d+)\b")
 _FEATURE = re.compile(r"\bcxx_std_(\d+)\b")
 _FLAG = re.compile(r"([-/]std[:=](?:c|gnu)\+\+)(0x|1[14yz7]|11|2[03ab]|2c|98|03)\b")
 _PROJECT = re.compile(r"^[ \t]*project[ \t]*\(.*?\)", re.IGNORECASE | re.MULTILINE | re.DOTALL)
+_BRACKET_OPEN = re.compile(r"\[(=*)\[")
+
+
+def _bracket_end(text: str, match: re.Match[str]) -> int:
+    close = f"]{match.group(1)}]"
+    end = text.find(close, match.end())
+    return len(text) if end < 0 else end + len(close)
+
+
+def masked_comments(text: str) -> str:
+    """``text`` with its CMake comments (``# ...`` and ``#[[ ... ]]``) blanked out, keeping
+    every offset and line break, so patterns match only code. Quoted and bracket arguments
+    are code: a ``#`` inside them starts no comment."""
+    chars = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+        elif c == "#":
+            bracket = _BRACKET_OPEN.match(text, i + 1)
+            if bracket is not None:
+                end = _bracket_end(text, bracket)
+            else:
+                newline = text.find("\n", i)
+                end = n if newline < 0 else newline
+            for j in range(i, end):
+                if chars[j] not in "\r\n":
+                    chars[j] = " "
+            i = end
+        elif c == "[" and (bracket := _BRACKET_OPEN.match(text, i)) is not None:
+            i = _bracket_end(text, bracket)
+        else:
+            i += 1
+    return "".join(chars)
+
+
+def _sub_code(pattern: re.Pattern[str], replace: Callable[[re.Match[str]], str], text: str) -> str:
+    """``pattern.sub`` on the code of a CMake file; comments stay as they are."""
+    masked = masked_comments(text)
+    parts: list[str] = []
+    pos = 0
+    for match in pattern.finditer(masked):
+        if text[match.start() : match.end()] != match.group(0):
+            continue  # the match runs through a comment
+        parts += [text[pos : match.start()], replace(match)]
+        pos = match.end()
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
+def cmake_standards(text: str) -> list[str]:
+    """The C++ standard numbers a CMake file sets (``["11", "17"]``), comments ignored:
+    ``CMAKE_CXX_STANDARD``, ``CXX_STANDARD`` properties, ``cxx_std_NN`` and ``-std=``."""
+    code = masked_comments(text)
+    found = [m.group(2) for m in _SET_STANDARD.finditer(code)]
+    found += [m.group(2) for m in _PROPERTY.finditer(code)]
+    found += [m.group(1) for m in _FEATURE.finditer(code)]
+    found += [m.group(2) for m in _FLAG.finditer(code)]
+    numbers = [STANDARD_ALIASES.get(n, n) for n in found]
+    return [n for n in numbers if f"cpp{n}" in SUPPORTED_STANDARDS]
+
+
+def lowest_standard(texts: Iterable[str]) -> str | None:
+    """The oldest standard any of the build files sets, as ``cpp11``; None when none sets one.
+
+    After the standard bump every setting is at the target, so this is the target; before it,
+    it is the oldest standard the project builds any code with."""
+    numbers = [n for text in texts for n in cmake_standards(text)]
+    if not numbers:
+        return None
+    return f"cpp{min(numbers, key=_rank)}"
 
 
 def bump_cmake_standard(text: str, target: str, *, top_level: bool) -> StandardEdit:
     """Raise every C++ standard setting in a CMake file to ``target`` (``"20"``).
 
-    Settings already at or above the target are left alone. In the top-level file of a
+    Settings already at or above the target are left alone, and so are comments: a comment
+    that mentions ``-std=c++11`` describes the past, not the build. In the top-level file of a
     project that sets no standard at all, ``set(CMAKE_CXX_STANDARD ...)`` is added after
     ``project()``.
     """
@@ -151,15 +228,16 @@ def bump_cmake_standard(text: str, target: str, *, top_level: bool) -> StandardE
         count += 1
         return f"{match.group(1)}{target}"
 
+    code = masked_comments(text)
     sets_standard = bool(
-        _SET_STANDARD.search(text) or _PROPERTY.search(text) or _FEATURE.search(text)
+        _SET_STANDARD.search(code) or _PROPERTY.search(code) or _FEATURE.search(code)
     )
-    new = _SET_STANDARD.sub(replace_number, text)
-    new = _PROPERTY.sub(replace_number, new)
-    new = _FEATURE.sub(replace_feature, new)
-    new = _FLAG.sub(replace_flag, new)
+    new = _sub_code(_SET_STANDARD, replace_number, text)
+    new = _sub_code(_PROPERTY, replace_number, new)
+    new = _sub_code(_FEATURE, replace_feature, new)
+    new = _sub_code(_FLAG, replace_flag, new)
     if top_level and not sets_standard:
-        project = _PROJECT.search(new)
+        project = _PROJECT.search(masked_comments(new))
         if project is not None:
             newline = "\r\n" if "\r\n" in new else "\n"
             insert = (

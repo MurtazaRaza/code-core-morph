@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -11,12 +12,16 @@ from codecoremorph.agent.host import HostFiles, HostStep, HostUnit
 from codecoremorph.agent.loop import AgentSettings, UnitRunner
 from codecoremorph.core.errors import UsageError
 from codecoremorph.core.models import (
+    AppliesTo,
     AttemptOutcome,
     Baseline,
     HostFeedbackKind,
     HostStatus,
     HostUnitState,
+    LoadedRule,
     Role,
+    Rule,
+    RuleKind,
     TestBaseline,
 )
 from codecoremorph.store.layout import StateDir
@@ -277,3 +282,31 @@ def test_the_context_document_nests_the_unit_message(world: World) -> None:
     assert "## Work unit U-0001" in headings
     assert "#### include/geo.h" in headings
     assert "#pragma once" in context  # file text inside a fence is never re-headed
+
+
+def test_the_context_marks_reference_files_and_lists_uncompiled_code(world: World) -> None:
+    host = _host(world)
+    state = _start(host, "include/geo.h", "src/other.cpp").state
+    state = state.model_copy(
+        update={
+            "unit": state.unit.model_copy(update={"reference_files": ["src/other.cpp"]}),
+            "uncompiled": ["src/geo_win.cpp"],
+        }
+    )
+    context = host.context(state)
+    assert "only for their references to the symbols it changes: src/other.cpp" in context
+    # Only a project rule's unit (the standard bump) lists the code the build doesn't compile.
+    assert "src/geo_win.cpp" not in context
+    bump = LoadedRule(
+        rule=Rule(
+            id="bump_standard",
+            language="cpp",
+            kind=RuleKind.PROJECT,
+            description="Raise the standard.",
+            applies_to=AppliesTo(standard_bump=True),
+        ),
+        pack="test",
+        source=Path("bump_standard.yaml"),
+    )
+    host.rules = [bump]
+    assert "- src/geo_win.cpp" in host.context(state)

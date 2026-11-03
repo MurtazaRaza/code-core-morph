@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
 
@@ -38,6 +39,7 @@ log = logging.getLogger(__name__)
 HELPER_NAME = "cpp_index_helper.py"
 COMPILE_COMMANDS = "compile_commands.json"
 HEADER_EXTENSIONS = (".h", ".hh", ".hpp", ".hxx", ".h++", ".inl", ".ipp", ".tcc")
+SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx", ".c++", ".cp")
 _BUILD_DIR_NAMES = {".git", ".codecoremorph", "build", "out", "cmake-build-debug"}
 
 
@@ -111,18 +113,28 @@ class FileClassifier:
         )
 
 
-def build_files(worktree: Path, exclude: PathMatcher) -> list[str]:
-    """CMakeLists.txt and *.cmake files in the worktree (they belong to project-kind units)."""
+def _walk(worktree: Path, exclude: PathMatcher, wanted: Callable[[str], bool]) -> list[str]:
     found: list[str] = []
     for root, dirs, files in os.walk(worktree):
         dirs[:] = sorted(d for d in dirs if d not in _BUILD_DIR_NAMES)
         rel_root = Path(root).relative_to(worktree).as_posix()
         for name in sorted(files):
-            if name == "CMakeLists.txt" or name.endswith(".cmake"):
+            if wanted(name):
                 rel = name if rel_root == "." else f"{rel_root}/{name}"
                 if not exclude.matches(rel):
                     found.append(rel)
     return found
+
+
+def build_files(worktree: Path, exclude: PathMatcher) -> list[str]:
+    """CMakeLists.txt and *.cmake files in the worktree (they belong to project-kind units)."""
+    return _walk(worktree, exclude, lambda n: n == "CMakeLists.txt" or n.endswith(".cmake"))
+
+
+def code_files(worktree: Path, exclude: PathMatcher) -> list[str]:
+    """Every C and C++ source and header in the worktree, outside the excluded paths."""
+    extensions = SOURCE_EXTENSIONS + HEADER_EXTENSIONS
+    return _walk(worktree, exclude, lambda n: n.lower().endswith(extensions))
 
 
 def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = None) -> SymbolIndex:
@@ -217,6 +229,13 @@ def ingest(
         row = classifier.row(path, c_compatible=False, language="cmake")
         if row is not None:
             files.append(row)
+    # Code no compile command reaches (another platform's sources, disabled targets): builds
+    # and tests can't check changes to it, so units and reports name it (D-42).
+    uncompiled = [
+        p
+        for p in code_files(ctx.worktree, classifier.exclude)
+        if p not in c_files and not p.lower().endswith(".c")  # C sources: no C++ rule applies
+    ]
     public = {row[0] for row in files if row[5]}
     symbols = [_with_public_api(row, public) for row in symbols]
 
@@ -243,6 +262,7 @@ def ingest(
                 "parse_s": float(str(meta.get("seconds", 0.0))),
                 "ingest_s": round(time.monotonic() - started, 3),
             },
+            uncompiled=uncompiled,
         )
         store.set_meta(index_meta)
     finally:

@@ -45,3 +45,9 @@ class Baseline(CoreModel):
     build_s: float = Field(ge=0)
     test_s: float = Field(ge=0, description="Mean duration of one test run")
     logs: dict[str, Path] = Field(default_factory=dict[str, Path], description="Raw logs by step")
+    tests_from: str | None = Field(
+        default=None,
+        description="Set when this baseline didn't run the tests itself: where its test "
+        "results come from ('unit <run-id>': that unit's final verification ran them on this "
+        "commit; 'baseline <run-id>': an earlier baseline of this commit)",
+    )

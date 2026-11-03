@@ -7,14 +7,19 @@ If the baseline doesn't build, the run stops: there is no green starting point.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable, Sequence
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.core.errors import BaselineError
 from codecoremorph.core.models import (
     Baseline,
     BuildResult,
+    LanguageConfig,
     Severity,
     TestBaseline,
     TestReport,
@@ -89,8 +94,13 @@ def capture_baseline(
     runs: int,
     require_tests: bool,
     on_step: Callable[[str], None] | None = None,
+    reuse: Baseline | None = None,
 ) -> Baseline:
-    """Configure, build and run the tests ``runs`` times on the base commit."""
+    """Configure, build and run the tests ``runs`` times on the base commit.
+
+    With ``reuse`` (an earlier baseline of the same commit, standard and build options), the
+    tests don't run again: the build still does, because the run needs its build tree and the
+    warnings invariant needs this build's warnings."""
     step = on_step or (lambda _: None)
     step("configure")
     configured = adapter.configure(ctx)
@@ -100,6 +110,20 @@ def capture_baseline(
     built = adapter.build(ctx)
     if not built.success:
         raise _failure("build", built, base_commit)
+    if reuse is not None:
+        step(f"tests: reusing the results of {reuse.tests_from or 'an earlier baseline'}")
+        return reuse.model_copy(
+            update={
+                "build_warnings": _warnings_by_file(built),
+                "configure_s": round(configured.duration_s, 3),
+                "build_s": round(built.duration_s, 3),
+                "logs": {
+                    **reuse.logs,
+                    "configure": configured.log_path,
+                    "build": built.log_path,
+                },
+            }
+        )
     reports: list[TestReport] = []
     for n in range(1, runs + 1):
         step(f"test run {n} of {runs}")
@@ -136,3 +160,76 @@ def capture_baseline(
             "test": reports[-1].log_path,
         },
     )
+
+
+def baseline_tests_after_unit(previous: TestBaseline, report: TestReport) -> TestBaseline:
+    """The test baseline of a unit's commit, from its final verification: what passed there
+    passes, and the tests flaky before stay flaky (one run can't clear them)."""
+    flaky = set(previous.flaky)
+    passing: list[str] = []
+    failing: list[str] = []
+    skipped: list[str] = []
+    for case in sorted(report.cases, key=lambda c: c.test_id):
+        if case.test_id in flaky:
+            continue
+        if case.status is TestStatus.PASSED:
+            passing.append(case.test_id)
+        elif case.status is TestStatus.SKIPPED:
+            skipped.append(case.test_id)
+        else:
+            failing.append(case.test_id)
+    return TestBaseline(
+        runs=1, passing=passing, failing=failing, flaky=sorted(flaky), skipped=skipped
+    )
+
+
+def unit_baseline(
+    previous: Baseline, report: TestReport, *, commit: str, standard: str, run_id: str
+) -> Baseline:
+    """The baseline of the commit a unit made, for the next unit to start from (D-42)."""
+    return Baseline(
+        base_commit=commit,
+        standard=standard,
+        tests=baseline_tests_after_unit(previous.tests, report),
+        configure_s=previous.configure_s,
+        build_s=previous.build_s,
+        test_s=round(report.duration_s, 3),
+        logs={"test": report.log_path},
+        tests_from=f"unit {run_id}",
+    )
+
+
+class BaselineCache:
+    """Baselines by commit, standard, sandbox and build options, in the state directory.
+
+    The plan's baseline and each successful unit's final verification are stored, so a unit
+    started from that commit (``unit start --base codecoremorph/<run-id>``) reuses the test
+    results instead of running the whole suite again (D-42)."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def path(self, commit: str, *, sandbox: str, lang: LanguageConfig) -> Path:
+        digest = hashlib.sha256(lang.model_dump_json().encode("utf-8")).hexdigest()[:16]
+        return self.root / f"{commit}-{sandbox}-{digest}.json"
+
+    def get(self, commit: str, *, sandbox: str, lang: LanguageConfig) -> Baseline | None:
+        path = self.path(commit, sandbox=sandbox, lang=lang)
+        if not path.is_file():
+            return None
+        try:
+            found = Baseline.model_validate_json(path.read_bytes())
+        except ValidationError:
+            log.warning("ignoring an unreadable cached baseline: %s", path)
+            return None
+        return found if found.base_commit == commit and found.standard == lang.standard else None
+
+    def put(self, baseline: Baseline, *, sandbox: str, lang: LanguageConfig, run_id: str) -> None:
+        stored = baseline
+        if stored.tests_from is None:
+            stored = baseline.model_copy(update={"tests_from": f"baseline {run_id}"})
+        path = self.path(baseline.base_commit, sandbox=sandbox, lang=lang)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(stored.model_dump_json(indent=2), encoding="utf-8")
+        temporary.replace(path)

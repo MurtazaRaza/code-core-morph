@@ -22,17 +22,27 @@ You never need an API key: CodeCoreMorph makes no model calls in this mode. You 
 
 Run every command from the repository root, where `migration_config.yaml` is; each command also takes `-c PATH` for a manifest elsewhere.
 
-## 2. Choose the unit
+## 2. Plan the work and agree on its scope
 
 A unit is one or more rules applied to a small set of files, verified and committed together.
 
 - If the user named rules and files, use them. `codecoremorph rules list` shows the rules.
-- Otherwise run `codecoremorph plan --json` and take its `units` in order; each has `rules` and `files`. The plan puts the standard bump (`bump_standard`) first, because later units build at the new standard. `plan` builds and tests the project, so it can take minutes.
+- Otherwise run `codecoremorph plan` once (it builds and tests the project, so allow minutes), then `codecoremorph unit list`. It shows the plan's units in order: each one's rules, files and flags, and its state: `pending`, or `skipped` and `too_large` with the planner's reason, or what happened when it ran.
+
+Before starting, tell the user in a few lines what the plan holds, because the parts do different things:
+
+- **The standard bump** (`bump_standard`) comes first. It raises the standard in the build files and fixes what no longer compiles. The project then builds and passes its tests at the new standard, but its code is not modernized; the diff is often only a few lines.
+- **The modernization rules** change the code itself: typedefs to `using`, owning pointers to smart pointers, and so on. Give the number of units per rule, and point out units flagged `public_api` or `boundary`, which change an interface other code depends on.
+
+When the user asked for the migration without limits ("migrate to C++20", "run them all"), that means every pending unit, in order: go ahead without asking again. Ask once, up front, only when the scope is unclear, for example when a rule would change a public API the user didn't mention.
+
+Units the plan marks `skipped` or `too_large` are left out on purpose (`unit start` refuses them). Don't work around that; list them in your report with the plan's reason.
 
 ## 3. Migrate the unit
 
-1. **Start it:** `codecoremorph unit start --rule RULE [--rule RULE2] FILE...` (a project rule such as `bump_standard` needs no files). This builds and tests the project at the base commit, indexes it, runs the codemods and checks what is left; allow several minutes. If the codemods finish the unit alone, it is committed right away and you are done with it. Otherwise the output names a **context document** and an **edits file**.
-2. **Read the context document** in full with your file-reading tool. It holds the instructions, the rules and their guidance, the full current text of the unit's files, the declarations they use from other files, what the codemods changed, the rule sites left, and the build state.
+1. **Start it:** `codecoremorph unit start --plan-unit U-0002` for a unit of the plan, or `codecoremorph unit start --rule RULE [--rule RULE2] FILE...` (a project rule such as `bump_standard` needs no files). Add `--base` for every unit after the first (section 5). This builds the project at the base commit, tests it (or reuses the tests an earlier unit ran on that commit), indexes it, runs the codemods and checks what is left; allow a few minutes. If the codemods finish the unit alone, it is committed right away and you are done with it. Otherwise the output names a **context document** and an **edits file**.
+2. **Read the context document** in full with your file-reading tool. It holds the instructions, the rules and their guidance, the full current text of the unit's files, the declarations they use from other files, what the codemods changed, the rule sites left, and the build state. Files it marks as being in the unit *only for their references* are there so you can update their uses; their own rule sites belong to other units.
+   For the standard bump it may also list **files this build doesn't compile**: another platform's sources, such as `env_windows.cc` next to `env_posix.cc`. Nothing checks them. When the build reports an error, the feedback shows where the same code appears in them; fix it there the same way, and name those files in `review_notes` as unverified.
 3. **Look around when you need to:**
    - `codecoremorph unit read PATH [--from N] [--to M]`
    - `codecoremorph unit grep REGEX [--glob GLOB]`
@@ -60,7 +70,12 @@ Fix forward from the feedback: read the first error in each file first, since la
 
 ## 5. Several units
 
-Each `unit start` begins a new run from the base commit (`migration.base`, usually `HEAD`). To build a series, start each later unit from the previous unit's branch: `codecoremorph unit start --base codecoremorph/<previous-run-id> --rule ... FILES`. The last branch then holds every unit as its own commit. A unit that fails leaves nothing behind, so the next one can still start from the last successful branch.
+Each `unit start` begins a new run from the base commit (`migration.base`, usually `HEAD`). To build a series, start each later unit from the previous successful unit's branch: `codecoremorph unit start --plan-unit U-0003 --base codecoremorph/<previous-run-id>`. `codecoremorph unit list` names the last successful branch. The last branch then holds every unit as its own commit; the earlier branches stay, and the user can delete them once they have merged the result.
+
+- Every unit builds at the standard its base commit's build files set, so the units after the bump build and test at the new standard.
+- A unit started from an earlier unit's branch reuses the tests that unit just ran on the same commit, so it starts faster.
+- A unit that fails or is aborted leaves nothing behind: start the next one from the last successful branch.
+- When the user asked for all the units, start every pending unit in turn. If one can't be done, abort it with its reason and go on with the next. Don't skip the remaining units because an earlier one was hard: each unit's own context shows what it needs, and many are small.
 
 ## 6. Report to the user
 
@@ -69,9 +84,15 @@ For each unit, report:
 - the rules and files;
 - the outcome and the number of attempts;
 - the branch and commit;
-- the changed files and any review notes.
+- the changed files, any review notes and any warnings.
 
-Then say how to review it: `git diff <base> codecoremorph/<run-id>`, or `git log` on that branch. Leave merging to the user. `codecoremorph unit status --json` gives these details for the active unit, or for the last one.
+Then report what the verification did *not* cover, from the `excused:` and `not compiled:` lines of `unit submit` and `unit status` (`excused_tests` and `uncompiled` in `--json`):
+
+- **Excused tests** failed or were flaky before the migration, so they weren't checked. Name them; never write that all tests pass when some were excused.
+- **Files this build doesn't compile** (another platform's sources, disabled targets) aren't verified at all. Name the ones the units changed, and recommend building the result on a platform that compiles them.
+- **Units left out:** the plan's skipped and too-large units, and the ones you aborted, each with its reason.
+
+Then say how to review the work: `git diff <base> codecoremorph/<run-id>` for the last branch, or `git log` on it. Leave merging to the user. `codecoremorph unit status --json` gives these details for the active unit, or for the last one; `codecoremorph unit list` gives the whole plan.
 
 ## Troubleshooting
 
@@ -82,3 +103,6 @@ Then say how to review it: `git diff <base> codecoremorph/<run-id>`, or `git log
 | a rule doesn't apply to the migration | Pick a rule for this source and target standard (`codecoremorph rules list`) |
 | Docker isn't running | Ask the user to start Docker, or rerun `unit start` with `--sandbox native` if they accept builds on this machine |
 | no edits file | Write the edits file at the path `unit start` printed, then submit |
+| plan unit U-000N is skipped, or too_large | The planner left it out on purpose. Go on with the next pending unit and report it with the plan's reason |
+| RULE doesn't apply to headers shared with C (or test files, public API files) | The rule's skip list excludes these files. Leave them out of the unit; don't convert them by hand |
+| this repository has no plan yet | Run `codecoremorph plan`, then `codecoremorph unit list` |

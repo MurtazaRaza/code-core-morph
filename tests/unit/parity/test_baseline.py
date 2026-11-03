@@ -10,6 +10,7 @@ from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.core.errors import BaselineError, ExitCode
 from codecoremorph.core.models import (
     AdapterCapabilities,
+    Baseline,
     BuildResult,
     CodemodResult,
     CodemodSpec,
@@ -18,13 +19,20 @@ from codecoremorph.core.models import (
     LanguageConfig,
     Severity,
     SymbolIndex,
+    TestBaseline,
     TestCaseResult,
     TestReport,
     TestSelection,
     TestStatus,
     ToolchainSpec,
 )
-from codecoremorph.parity.baseline import capture_baseline, merge_test_runs
+from codecoremorph.parity.baseline import (
+    BaselineCache,
+    baseline_tests_after_unit,
+    capture_baseline,
+    merge_test_runs,
+    unit_baseline,
+)
 from codecoremorph.sandbox.executor import Executor
 
 P, F, S, E, T = (
@@ -196,3 +204,76 @@ def test_no_passing_tests(ctx: AdapterContext) -> None:
     assert "1 test, none passing" in caught.value.reason
     allowed = capture_baseline(empty, ctx, base_commit="d" * 40, runs=1, require_tests=False)
     assert allowed.tests.total == 0
+
+
+def test_a_reused_baseline_builds_but_runs_no_tests(ctx: AdapterContext) -> None:
+    """D-42: a unit started from another unit's commit reuses that unit's test results."""
+    adapter = FakeAdapter(
+        reports=[_report(Solid=P, Seeded=P), _report(Solid=P, Seeded=F)],
+        build=[_diag(Severity.WARNING, "src/b.cpp", "new warning")],
+    )
+    first = capture_baseline(adapter, ctx, base_commit="a" * 40, runs=2, require_tests=True)
+    adapter.calls.clear()
+    steps: list[str] = []
+    again = capture_baseline(
+        adapter,
+        ctx,
+        base_commit="a" * 40,
+        runs=2,
+        require_tests=True,
+        on_step=steps.append,
+        reuse=first.model_copy(update={"tests_from": "unit 20260101-000000-abcd"}),
+    )
+    assert adapter.calls == ["configure", "build"]
+    assert steps[-1] == "tests: reusing the results of unit 20260101-000000-abcd"
+    assert again.tests == first.tests
+    assert again.build_warnings == {"src/b.cpp": 1}  # this build's warnings, not the old ones
+    assert again.logs["test"] == first.logs["test"]
+
+
+def test_a_units_commit_gets_the_tests_of_its_final_verification() -> None:
+    previous = merge_test_runs([_report(A=P, B=F, C=P), _report(A=P, B=F, C=F)])
+    assert previous.flaky == ["gtest:C"]
+    after = baseline_tests_after_unit(previous, _report(A=P, B=F, C=P, New=P, Skip=S))
+    assert after.passing == ["gtest:A", "gtest:New"]
+    assert after.failing == ["gtest:B"]
+    assert after.flaky == ["gtest:C"]  # one passing run doesn't clear a flaky test
+    assert after.skipped == ["gtest:Skip"]
+
+
+def test_the_cache_keys_on_commit_standard_sandbox_and_build_options(tmp_path: Path) -> None:
+    cache = BaselineCache(tmp_path / "baselines")
+    lang = LanguageConfig(language="cpp", standard="cpp20", configure_args=["-DX=1"])
+    report = _report(A=P)
+    baseline = unit_baseline(
+        Baseline(
+            base_commit="0" * 40,
+            standard="cpp20",
+            tests=TestBaseline(runs=1, passing=["gtest:A"]),
+            configure_s=1,
+            build_s=2,
+            test_s=3,
+        ),
+        report,
+        commit="c" * 40,
+        standard="cpp20",
+        run_id="20260101-000000-abcd",
+    )
+    cache.put(baseline, sandbox="docker", lang=lang, run_id="20260101-000000-abcd")
+    found = cache.get("c" * 40, sandbox="docker", lang=lang)
+    assert found is not None
+    assert found.tests_from == "unit 20260101-000000-abcd"
+    assert cache.get("d" * 40, sandbox="docker", lang=lang) is None
+    assert cache.get("c" * 40, sandbox="native", lang=lang) is None
+    other_args = lang.model_copy(update={"configure_args": ["-DX=2"]})
+    assert cache.get("c" * 40, sandbox="docker", lang=other_args) is None
+    older = lang.model_copy(update={"standard": "cpp11"})
+    assert cache.get("c" * 40, sandbox="docker", lang=older) is None
+    # A plan's baseline is stored with where it came from.
+    plain = baseline.model_copy(update={"tests_from": None, "base_commit": "e" * 40})
+    cache.put(plain, sandbox="docker", lang=lang, run_id="20260101-000000-ffff")
+    stored = cache.get("e" * 40, sandbox="docker", lang=lang)
+    assert stored is not None
+    assert stored.tests_from == "baseline 20260101-000000-ffff"
+    cache.path("e" * 40, sandbox="docker", lang=lang).write_text("{not json", encoding="utf-8")
+    assert cache.get("e" * 40, sandbox="docker", lang=lang) is None

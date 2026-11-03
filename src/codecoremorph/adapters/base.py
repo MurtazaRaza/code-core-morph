@@ -96,6 +96,15 @@ class LanguageAdapter(ABC):
 
     # ------------------------------------------------------------------ optional
 
+    def project_standard(self, ctx: AdapterContext) -> str | None:
+        """The standard the project's own build files set in ``ctx.worktree`` (the oldest, when
+        they set several), or None when they set none or the adapter can't tell.
+
+        The core builds with the newer of this and the manifest's source standard, so a unit
+        based on a commit that already has the standard bump builds at the new standard
+        (D-42). Reads files only; runs no command."""
+        return None
+
     def parse_check(self, ctx: AdapterContext, files: list[str]) -> list[Diagnostic]:
         raise AdapterNotSupportedError(f"{self.language}: parse_check")
 

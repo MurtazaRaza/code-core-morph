@@ -51,6 +51,23 @@ class HostUnitState(CoreModel):
     build_files: list[str] = Field(default_factory=list[str])
     project_files: list[str] = Field(default_factory=list[str])
     scope_dirs: list[str] = Field(default_factory=list[str])
+    plan_unit: str | None = Field(
+        default=None, description="The plan unit this unit runs (`unit start --plan-unit`)"
+    )
+    uncompiled: list[str] = Field(
+        default_factory=list[str],
+        description="In-scope code files the build doesn't compile: changes to them, and build "
+        "errors they repeat, can't be verified (D-42)",
+    )
+    excused_tests: list[str] = Field(
+        default_factory=list[str],
+        description="Tests the baseline excludes from parity: failing or flaky before the unit",
+    )
+    error_lines: list[str] = Field(
+        default_factory=list[str],
+        description="Source lines that failed to compile during the unit, to find their echoes "
+        "in the uncompiled files",
+    )
     configured_standard: str
     max_retry_budget: int = Field(ge=0)
     max_edit_retries: int = Field(ge=0)

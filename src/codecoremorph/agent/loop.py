@@ -35,6 +35,12 @@ from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.agent.context import UnitContext, build_context, read_text
 from codecoremorph.agent.feedback import compiler_feedback, regression_feedback, sites_feedback
 from codecoremorph.agent.tools import ToolBox
+from codecoremorph.agent.unverified import (
+    echo_feedback,
+    echoes,
+    error_lines,
+    unverified_warnings,
+)
 from codecoremorph.config.models import GuardrailsConfig
 from codecoremorph.core.errors import ContextOverflowError, LLMError
 from codecoremorph.core.globs import PathMatcher
@@ -56,10 +62,12 @@ from codecoremorph.core.models import (
     RuleKind,
     RuleSite,
     StopReason,
+    TestReport,
     TestStatus,
     TextBlock,
     ToolResult,
     WorkUnit,
+    owned_files,
 )
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
@@ -170,9 +178,12 @@ class UnitRunner:
         project_files: Sequence[str] = (),
         scope_dirs: Sequence[str] = (".",),
         settings: AgentSettings | None = None,
+        uncompiled: Sequence[str] = (),
     ):
         """``project_files`` are the project's editable code files: a project-wide rule (the
         standard bump) runs its codemods on all of them, not only on the unit's files.
+        ``uncompiled`` are in-scope code files no compile command reaches: the build can't
+        check them, so their changes and the build errors they repeat are reported (D-42).
         ``llm`` may be None when a host agent makes the edits (``run`` needs it)."""
         self.adapter = adapter
         self.ctx = ctx
@@ -191,6 +202,11 @@ class UnitRunner:
         self._scope = None if everything else PathMatcher([d for d in scope_dirs if d != "."])
         self.settings = settings or AgentSettings()
         self.configured_standard = baseline.standard
+        self.uncompiled = list(uncompiled)
+        # Source lines that failed to compile during the unit, to find their echoes in the
+        # uncompiled files; a host unit keeps them in its state between commands.
+        self.error_lines: list[str] = []
+        self.last_tests: TestReport | None = None  # the last verification's test run
         self._engine = PatchEngine(worktree.path, exclude=ctx.lang.exclude)
 
     # ------------------------------------------------------------------ the unit
@@ -247,7 +263,7 @@ class UnitRunner:
         ]
         if not specs:
             return None
-        files = list(unit.files)
+        files = owned_files(unit)
         if any(r.rule.kind is RuleKind.PROJECT for r in rules):
             files += [f for f in self.project_files if f not in unit.files]
         return self.adapter.run_codemods(self.ctx, specs, files)
@@ -272,6 +288,7 @@ class UnitRunner:
         if not built.success:
             return self._build_failure(built, unit, "build", changed, sites)
         report = self.adapter.run_tests(ctx)
+        self.last_tests = report
         statuses = {c.test_id: c for c in report.cases}
         failing = [
             statuses[t]
@@ -304,7 +321,33 @@ class UnitRunner:
             return Verification(
                 ok=False, stage="postconditions", feedback="\n\n".join(problems), sites=sites
             )
+        warnings += self.unverified(unit, rules, ctx)
         return Verification(ok=True, stage="ok", sites=sites, warnings=warnings)
+
+    def unverified(
+        self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
+    ) -> list[str]:
+        """What a green verification couldn't check: changes to uncompiled files, build errors
+        those files still repeat, and a project rule's sites in them (D-42)."""
+        if not self.uncompiled:
+            return []
+        # Every change of the unit, checkpoints included: the run began at the base commit.
+        changed = {f.path for f in self.worktree.diff(self.baseline.base_commit).files}
+        warnings = unverified_warnings(
+            changed, self.uncompiled, echoes(self.error_lines, self.uncompiled, self.worktree.path)
+        )
+        project = [r for r in rules if r.rule.kind is RuleKind.PROJECT]
+        if project:
+            pseudo = unit.model_copy(update={"files": self.uncompiled, "reference_files": []})
+            for rule_id, by_file in self._sites(pseudo, project, ctx).items():
+                found = [s for file_sites in by_file.values() for s in file_sites]
+                if found:
+                    shown = ", ".join(f"{s.file}:{s.line}" for s in found[:10])
+                    warnings.append(
+                        f"{rule_id}: files this build doesn't compile still have {len(found)} "
+                        f"site(s) the target standard breaks: {shown}"
+                    )
+        return warnings
 
     def _build_failure(
         self,
@@ -322,6 +365,13 @@ class UnitRunner:
             step=step,
             roots=self._roots(self.ctx),
         )
+        if self.uncompiled:
+            for line in error_lines(result.errors, self.worktree.path):
+                if line not in self.error_lines:
+                    self.error_lines.append(line)
+            found = echoes(self.error_lines, self.uncompiled, self.worktree.path)
+            if found:
+                feedback = f"{feedback.rstrip()}\n\n{echo_feedback(found)}"
         return Verification(
             ok=False, stage=step, feedback=feedback, diagnostics=result.errors, sites=sites
         )
@@ -345,7 +395,7 @@ class UnitRunner:
         return {
             loaded.rule.id: find_sites(
                 loaded,
-                unit.files,
+                owned_files(unit),
                 worktree=self.worktree.path,
                 read=lambda path: read_text(self.worktree.path, path),
                 order=self.order,

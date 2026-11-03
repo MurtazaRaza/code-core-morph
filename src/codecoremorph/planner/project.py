@@ -79,6 +79,7 @@ class ProjectModel:
     partners: dict[str, list[str]]
     graph: ClusterGraph
     boundaries: dict[str, set[Boundary]]
+    uncompiled: list[str] = field(default_factory=list[str])  # in scope, never compiled
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -103,6 +104,8 @@ class ProjectModel:
                     edges[dep.from_file].add(dep.to_file)
             references = [(a, b) for a, b in store.reference_edges() if a in files and b in files]
             boundaries = {p: b for p, b in store.boundary_files().items() if p in files}
+            meta = store.meta()
+            uncompiled = sorted(p for p in (meta.uncompiled if meta else []) if in_scope.matches(p))
         partners = pair_headers(files, edges)
         for path, others in partners.items():
             edges[path].update(others)
@@ -121,6 +124,7 @@ class ProjectModel:
             partners=partners,
             graph=condense(files, edges),
             boundaries=boundaries,
+            uncompiled=uncompiled,
         )
 
     @property

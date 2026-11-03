@@ -22,6 +22,10 @@ def _ctx(tmp_path: Path) -> AdapterContext:
         "src/shared.h": b"typedef int t;\n",
         "tests/a_test.cpp": b"int t;\n",
         "third_party/lib.h": b"int lib;\n",
+        "third_party/unused.cc": b"int unused;\n",
+        "src/env_windows.cc": b"int windows_only;\n",
+        "src/windows_logger.h": b"int logger;\n",
+        "src/legacy.c": b"int c_only;\n",
         "build/CMakeLists.txt": b"# a stale in-tree build directory is not a build file\n",
     }
     for rel, data in files.items():
@@ -76,6 +80,9 @@ def test_ingest(tmp_path: Path) -> None:
     assert index.meta.tool_versions == {"libclang": "clang version 18.1.1"}
     assert index.meta.stats["symbols"] == 3
     assert index.meta.timings["helper_s"] == 0.7
+    # Code no compile command reaches: another platform's sources (D-42). Excluded paths and
+    # C sources don't count; the in-tree build directory is never walked.
+    assert index.meta.uncompiled == ["src/env_windows.cc", "src/windows_logger.h"]
     with IndexStore.open(index.path) as store:
         files = {f.path: f for f in store.files()}
         assert sorted(files) == [

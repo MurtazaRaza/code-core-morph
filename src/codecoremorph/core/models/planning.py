@@ -62,6 +62,12 @@ class WorkUnit(CoreModel):
     seq: int = Field(ge=1, description="Position in the plan, 1-based")
     rules: list[str] = Field(min_length=1)
     files: list[WorktreePath] = Field(min_length=1)
+    reference_files: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath],
+        description="Files in the unit only for their references to the symbols it changes "
+        "(an api_changing rule's fan-in): editable, but their own rule sites belong to another "
+        "unit, so the unit's codemods, site counts and postconditions leave them out",
+    )
     rule_sites: dict[str, int] = Field(default_factory=dict[str, int])
     flags: list[UnitFlag] = Field(default_factory=list[UnitFlag])
     status: UnitStatus = UnitStatus.PENDING
@@ -73,6 +79,12 @@ class WorkUnit(CoreModel):
     def _canonical_flags(cls, flags: list[UnitFlag]) -> list[UnitFlag]:
         # Sorted and unique, so identical plans serialize identically (FR-5.6).
         return sorted(set(flags))
+
+
+def owned_files(unit: WorkUnit) -> list[str]:
+    """The unit's files whose rule sites are its own: all but its reference files."""
+    references = set(unit.reference_files)
+    return [f for f in unit.files if f not in references]
 
 
 class PlanRule(CoreModel):

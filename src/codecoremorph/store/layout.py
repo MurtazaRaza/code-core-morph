@@ -103,5 +103,10 @@ class StateDir:
     def runs_dir(self) -> Path:
         return self.root / "runs"
 
+    @property
+    def baselines_dir(self) -> Path:
+        """Baselines by commit, reused by units started from that commit (D-42)."""
+        return self.root / "baselines"
+
     def run(self, run_id: str) -> RunArtifacts:
         return RunArtifacts(self.runs_dir / validate_run_id(run_id))
