@@ -97,6 +97,28 @@ def test_masking_ignores_comments_and_strings() -> None:
     assert sites[1].text.startswith("char c")
 
 
+def test_the_ownership_detector_finds_new_and_delete_expressions_only() -> None:
+    # The M1 benchmark planned a unit on leveldb's ``deleted_files_`` (57 such sites).
+    _, rules = load_pack(PACK_DIR)
+    rule = next(r.rule for r in rules if r.rule.id == "convert_raw_pointers_to_smart_pointers")
+    assert rule.detector is not None
+    patterns = [spec.pattern for spec in rule.detector.pattern_specs()]
+    text = (
+        "Item* a = new Item(1);\n"
+        "char* b = new char[8];\n"
+        "delete a;\n"
+        "delete[] b;\n"
+        "delete (a);\n"
+        "Owner(const Owner&) = delete;\n"
+        "std::set<int> deleted_files_;\n"
+        "deleter_(key, value);\n"
+        "bool newer = renew(x);\n"
+        'const char* s = "new-file entry";\n'
+    )
+    sites = find_pattern_sites("a.cc", text, patterns)
+    assert [s.line for s in sites] == [1, 2, 3, 4, 5]
+
+
 def test_detector_fields_must_match_its_type() -> None:
     with pytest.raises(ValidationError, match="needs `patterns`"):
         Detector(type=DetectorType.PATTERN)

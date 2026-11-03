@@ -10,7 +10,7 @@ detector:
   type: pattern
   patterns:
     - '\bnew\s+[A-Za-z_:]'
-    - '\bdelete\s*(\[\s*\]\s*)?[A-Za-z_(*]'   # delete expressions, not "= delete"
+    - '\bdelete\b\s*(\[\s*\]\s*)?[A-Za-z_(*]'   # delete expressions, not "= delete" or deleter_
 codemods:
   - tool: clang-tidy
     checks: [modernize-make-unique, modernize-make-shared]
