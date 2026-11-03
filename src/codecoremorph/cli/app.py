@@ -15,6 +15,16 @@ from codecoremorph.cli.doctor import doctor_command
 from codecoremorph.cli.output import print_error, stderr
 from codecoremorph.cli.plan import plan_command
 from codecoremorph.cli.plugins import adapters_app, providers_app, rules_app
+from codecoremorph.cli.run import (
+    abort_command,
+    approve_command,
+    clean_command,
+    reject_command,
+    report_command,
+    resume_command,
+    run_command,
+    status_command,
+)
 from codecoremorph.cli.skill import skill_app
 from codecoremorph.cli.toolchain import toolchain_app
 from codecoremorph.cli.unit import unit_app
@@ -62,6 +72,14 @@ app.command("validate")(validate_command)
 app.command("schema")(schema_command)
 app.command("doctor")(doctor_command)
 app.command("plan")(plan_command)
+app.command("run")(run_command)
+app.command("status")(status_command)
+app.command("approve")(approve_command)
+app.command("reject")(reject_command)
+app.command("resume")(resume_command)
+app.command("abort")(abort_command)
+app.command("report")(report_command)
+app.command("clean")(clean_command)
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(rules_app, name="rules")
 app.add_typer(providers_app, name="providers")

@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": "55c1395a1816be26937e2aeea7a99bff7bdcf718aaff408938ce3151a9a746cd",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: convert_raw_pointers_to_smart_pointers\\n\\n## Files in the unit\\n\\n### include/inventory/cache.h\\n\\n```cpp\\n#",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_read",
+            "name": "read_file",
+            "arguments": {
+              "path": "tests/cache_test.cpp",
+              "start_line": null,
+              "end_line": null
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "2b9fe45f7e923a9d062c46aa195e52875b90cab14b6dbb40d920ff1a8b75837d",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"tool_result\",\"call_id\":\"toolu_read\",\"name\":\"read_file\",\"content\":\"tests/cache_test.cpp (lines 1-43 of 43)\\n#include <gtest/gtest.h>\\n\\n#include \\\"inven",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_submit",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "include/inventory/cache.h",
+                  "search": "#include <map>\n#include <string>",
+                  "replace": "#include <map>\n#include <memory>\n#include <string>"
+                },
+                {
+                  "op": "replace",
+                  "path": "include/inventory/cache.h",
+                  "search": "    std::map<std::string, Node*> index_;",
+                  "replace": "    std::map<std::string, std::unique_ptr<Node>> index_;  // owns the nodes"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "#include \"inventory/cache.h\"\n",
+                  "replace": "#include \"inventory/cache.h\"\n\n#include <utility>\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "PriceCache::~PriceCache() {\n    Node* node = head_;\n    while (node != NULL) {\n        Node* next = node->next;\n        delete node;\n        node = next;\n    }\n}",
+                  "replace": "PriceCache::~PriceCache() {}  // index_ owns the nodes"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "void PriceCache::put(const std::string& key, double price) {\n    std::map<std::string, Node*>::iterator it = index_.find(key);\n    if (it != index_.end()) {\n        it->second->price = price;\n        unlink(it->second);\n        pushFront(it->second);",
+                  "replace": "void PriceCache::put(const std::string& key, double price) {\n    std::map<std::string, std::unique_ptr<Node>>::iterator it = index_.find(key);\n    if (it != index_.end()) {\n        it->second->price = price;\n        unlink(it->second.get());\n        pushFront(it->second.get());"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "        index_.erase(victim->key);\n        delete victim;",
+                  "replace": "        std::string evicted = victim->key;\n        index_.erase(evicted);  // destroys the node"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "    Node* node = new Node;",
+                  "replace": "    std::unique_ptr<Node> owned(new Node());\n    Node* node = owned.get();"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "    index_[key] = node;",
+                  "replace": "    index_[key] = std::move(owned);"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/cache.cpp",
+                  "search": "    std::map<std::string, Node*>::iterator it = index_.find(key);\n    if (it == index_.end()) {\n        return false;\n    }\n    unlink(it->second);\n    pushFront(it->second);",
+                  "replace": "    std::map<std::string, std::unique_ptr<Node>>::iterator it = index_.find(key);\n    if (it == index_.end()) {\n        return false;\n    }\n    unlink(it->second.get());\n    pushFront(it->second.get());"
+                }
+              ],
+              "summary": "PriceCache's index_ owns its nodes through std::unique_ptr; manual deletes are gone. The list links (prev, next, head_, tail_) stay raw, non-owning pointers.",
+              "review_notes": [
+                "new Node() stays: std::make_unique needs C++14, and this unit builds as C++11."
+              ]
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    }
+  ]
+}

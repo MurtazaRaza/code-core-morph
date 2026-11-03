@@ -15,7 +15,7 @@ from pathlib import Path
 from codecoremorph.core.errors import NothingToCommitError, SafetyViolationError, VcsError
 from codecoremorph.core.models.vcs import ChangedFile, DiffResult, FileChangeKind
 from codecoremorph.vcs.git import Git
-from codecoremorph.vcs.messages import with_trailers
+from codecoremorph.vcs.messages import TRAILER_PREFIX, parse_trailers, with_trailers
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 _AUTHOR_RE = re.compile(r"^(?P<name>[^<>\n]+?) <(?P<email>[^<>\s]+)>$")
@@ -80,6 +80,26 @@ class Worktree:
 
     def has_changes(self) -> bool:
         return bool(self.git.run("status", "--porcelain=v1", "-z").stdout)
+
+    def write_tree(self) -> str:
+        """The tree object of the worktree as it is now, without committing: a point to diff
+        against later (the agent's own changes, after the codemods')."""
+        self.stage_all()
+        return self.git.text("write-tree")
+
+    def restore_tree(self, tree: str) -> None:
+        """Put every file back as it is in ``tree`` (from :meth:`write_tree`); files made since
+        are removed. Only inside the run worktree (I-11)."""
+        _check_sha(tree)
+        self.verify()
+        self.git.run("checkout", "--quiet", tree, "--", ".")
+        self.git.run("clean", "-f", "-d", "--quiet")
+
+    def show(self, revision: str, path: str) -> bytes | None:
+        """A file's bytes at ``revision`` (a commit or tree SHA), or None if it didn't exist."""
+        _check_sha(revision)
+        result = self.git.run("cat-file", "blob", f"{revision}:{path}", check=False)
+        return result.stdout if result.returncode == 0 else None
 
     def diff_bytes(self, since: str) -> bytes:
         """The git-compatible patch (binary included) of all changes since ``since``."""
@@ -155,6 +175,22 @@ class Worktree:
         text = with_trailers(message, trailers) if trailers else message.rstrip("\n") + "\n"
         self.git.run(*args, stdin=text.encode("utf-8"), env=env)
         return self.head()
+
+    def parent(self, sha: str) -> str:
+        return self.git.text("rev-parse", "--verify", f"{_check_sha(sha)}^")
+
+    def unit_commits(self, since: str) -> dict[str, str]:
+        """Unit ID -> commit, for the unit commits on the branch since ``since`` (from their
+        ``CodeCoreMorph-Unit`` trailers). A resumed run finds the units that committed before
+        the engine stopped, even when its checkpoint didn't record them."""
+        out = self.git.run("log", "--format=%H%x00%B%x01", f"{_check_sha(since)}..HEAD").stdout
+        found: dict[str, str] = {}
+        for record in out.decode("utf-8", "replace").split("\x01"):
+            sha, _, body = record.strip().partition("\0")
+            unit = parse_trailers(body).get(f"{TRAILER_PREFIX}Unit")
+            if sha and unit and unit not in found:
+                found[unit] = sha
+        return found
 
     def can_commit(self, author: str | None) -> bool:
         """Whether :meth:`commit` with this ``author`` has an identity to commit with."""

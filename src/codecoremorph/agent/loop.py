@@ -16,7 +16,10 @@ snapshot → codemods → [sites left or verification failing?] → agent attemp
 A host agent (D-41) drives the same steps from outside, one command at a time:
 ``codemods``, ``verify`` and ``apply_edits`` are public for ``codecoremorph.agent.host``.
 
-Committing, unit gates and the full invariant set arrive with the run graph (Phase 5).
+With an :class:`InvariantChecker`, a green verification also runs the safety invariants
+(FR-4.4): a violation is feedback for the next attempt. A ``guard`` (the run's abort check) is
+called at safe points, and a ``deadline`` ends the unit when its time runs out (FR-14.1).
+Committing and the unit gate belong to the run graph (``codecoremorph.orchestrator.run``).
 """
 
 from __future__ import annotations
@@ -24,7 +27,8 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,6 +59,7 @@ from codecoremorph.core.models import (
     DetectorType,
     Diagnostic,
     EditBatch,
+    InvariantResult,
     LoadedRule,
     Message,
     PostconditionType,
@@ -69,12 +74,13 @@ from codecoremorph.core.models import (
     WorkUnit,
     owned_files,
 )
+from codecoremorph.invariants.checker import InvariantChecker
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
 from codecoremorph.patching.engine import PatchEngine
 from codecoremorph.patching.schema import SUBMIT_EDITS_TOOL
 from codecoremorph.planner.estimate import unit_token_limit
-from codecoremorph.planner.sites import find_sites
+from codecoremorph.planner.sites import find_sites, load_hook
 from codecoremorph.prompts import PROMPTS_VERSION, render
 from codecoremorph.rules.applicability import StandardOrder, codemod_applies
 from codecoremorph.store.layout import AttemptArtifacts, RunArtifacts
@@ -83,6 +89,12 @@ from codecoremorph.vcs.worktree import Worktree
 log = logging.getLogger(__name__)
 
 MAX_CUTOFFS = 2
+
+Guard = Callable[[], None]
+
+
+class UnitTimedOut(Exception):  # noqa: N818 - a signal inside the loop, not an error report
+    """The unit's wall-clock limit ran out (``guardrails.max_unit_minutes``)."""
 
 
 @dataclass(frozen=True)
@@ -112,6 +124,8 @@ class Verification:
     regressions: list[str] = field(default_factory=list[str])
     sites: dict[str, list[RuleSite]] = field(default_factory=dict[str, list[RuleSite]])
     warnings: list[str] = field(default_factory=list[str])
+    invariant_results: list[InvariantResult] = field(default_factory=list[InvariantResult])
+    approvals: list[str] = field(default_factory=list[str])  # why the unit gate must approve
 
 
 @dataclass
@@ -119,6 +133,7 @@ class UnitOutcome:
     unit_id: str
     succeeded: bool
     agent_skipped: bool = False
+    timed_out: bool = False
     attempts: list[Attempt] = field(default_factory=list[Attempt])
     changed_files: list[str] = field(default_factory=list[str])
     diff: str = ""
@@ -126,6 +141,8 @@ class UnitOutcome:
     summary: str | None = None
     review_notes: list[str] = field(default_factory=list[str])
     warnings: list[str] = field(default_factory=list[str])
+    approvals: list[str] = field(default_factory=list[str])
+    invariant_results: list[InvariantResult] = field(default_factory=list[InvariantResult])
     codemods: CodemodResult | None = None
     prompts_version: str = PROMPTS_VERSION
 
@@ -179,12 +196,18 @@ class UnitRunner:
         scope_dirs: Sequence[str] = (".",),
         settings: AgentSettings | None = None,
         uncompiled: Sequence[str] = (),
+        invariants: InvariantChecker | None = None,
+        guard: Guard | None = None,
+        deadline: float | None = None,
     ):
         """``project_files`` are the project's editable code files: a project-wide rule (the
         standard bump) runs its codemods on all of them, not only on the unit's files.
         ``uncompiled`` are in-scope code files no compile command reaches: the build can't
         check them, so their changes and the build errors they repeat are reported (D-42).
-        ``llm`` may be None when a host agent makes the edits (``run`` needs it)."""
+        ``llm`` may be None when a host agent makes the edits (``run`` needs it).
+        ``invariants`` checks green attempts (FR-4.4); ``guard`` raises to stop the run (an
+        abort) and is called before every attempt and model call; ``deadline`` is a
+        ``time.monotonic()`` value after which the unit ends as timed out."""
         self.adapter = adapter
         self.ctx = ctx
         self.worktree = worktree
@@ -207,7 +230,35 @@ class UnitRunner:
         # uncompiled files; a host unit keeps them in its state between commands.
         self.error_lines: list[str] = []
         self.last_tests: TestReport | None = None  # the last verification's test run
+        self.last_sites: dict[str, list[RuleSite]] = {}  # and the rule sites it found
+        self.invariants = invariants
+        self.guard = guard
+        self.deadline = deadline
+        # The tree after the codemods: the invariants measure the agent's own diff from it.
+        self.agent_base: str | None = None
         self._engine = PatchEngine(worktree.path, exclude=ctx.lang.exclude)
+
+    def checkpoint(self) -> None:
+        """A safe point: stop if the run is stopping (the guard raises) or time is up."""
+        if self.guard is not None:
+            self.guard()
+        if self.deadline is not None and time.monotonic() > self.deadline:
+            raise UnitTimedOut
+
+    @staticmethod
+    def project_rule(rules: Sequence[LoadedRule]) -> bool:
+        return any(r.rule.kind is RuleKind.PROJECT for r in rules)
+
+    def begin(self, unit: WorkUnit, rules: Sequence[LoadedRule]) -> None:
+        """Before the codemods: what the invariants compare the unit's attempts against."""
+        if self.invariants is not None:
+            self.invariants.begin(
+                self.ctx,
+                self.worktree,
+                unit,
+                self.index_path,
+                project_rule=self.project_rule(rules),
+            )
 
     # ------------------------------------------------------------------ the unit
 
@@ -232,14 +283,23 @@ class UnitRunner:
         verify_ctx = self.verify_context(rules)
         outcome = UnitOutcome(unit_id=unit.id, succeeded=False)
         try:
+            self.checkpoint()
+            self.begin(unit, rules)
             outcome.codemods = self.codemods(unit, rules)
+            self.agent_base = self.worktree.write_tree()
             check = self.verify(unit, rules, verify_ctx)
             if self.nothing_left(check, rules):
                 outcome.succeeded = True
                 outcome.agent_skipped = True
                 outcome.warnings = check.warnings
+                outcome.approvals = check.approvals
+                outcome.invariant_results = check.invariant_results
                 return self._finish(outcome, snapshot)
             self._agent(unit, rules, verify_ctx, outcome, check)
+        except UnitTimedOut:
+            outcome.succeeded = False
+            outcome.timed_out = True
+            outcome.reason = "the unit's time limit (guardrails.max_unit_minutes) ran out"
         except BaseException:
             self.worktree.rollback(snapshot)
             raise
@@ -284,6 +344,7 @@ class UnitRunner:
             rule_id: [s for file_sites in by_file.values() for s in file_sites]
             for rule_id, by_file in self._sites(unit, rules, ctx).items()
         }
+        self.last_sites = sites
         built = self.adapter.build(ctx)
         if not built.success:
             return self._build_failure(built, unit, "build", changed, sites)
@@ -297,32 +358,137 @@ class UnitRunner:
         ]
         missing = [t for t in self.baseline.tests.passing if t not in statuses]
         if failing or missing:
+            regressions = [c.test_id for c in failing] + missing
             return Verification(
                 ok=False,
                 stage="tests",
                 feedback=regression_feedback(failing, missing=missing, roots=self._roots(ctx)),
-                regressions=[c.test_id for c in failing] + missing,
+                regressions=regressions,
                 sites=sites,
+                invariant_results=[
+                    InvariantResult(
+                        invariant="I-5",
+                        passed=False,
+                        message=f"{len(regressions)} baseline-passing test(s) don't pass",
+                    )
+                ],
             )
-        warnings: list[str] = []
-        problems: list[str] = []
-        for loaded in rules:
-            found = sites.get(loaded.rule.id, [])
-            if not found:
-                continue
-            for post in loaded.rule.postconditions:
-                if post.type is not PostconditionType.DETECTOR_EMPTY:
-                    continue
-                if post.severity == "error":
-                    problems.append(sites_feedback(loaded.rule.id, found))
-                else:
-                    warnings.append(f"{loaded.rule.id}: {len(found)} site(s) left (a warning)")
+        problems, warnings = self.postconditions(unit, rules, sites)
         if problems:
             return Verification(
-                ok=False, stage="postconditions", feedback="\n\n".join(problems), sites=sites
+                ok=False,
+                stage="postconditions",
+                feedback="\n\n".join(problems),
+                sites=sites,
+                invariant_results=[
+                    InvariantResult(invariant="I-9", passed=False, message="sites left")
+                ],
             )
         warnings += self.unverified(unit, rules, ctx)
-        return Verification(ok=True, stage="ok", sites=sites, warnings=warnings)
+        results = [
+            InvariantResult(invariant="I-5", passed=True),
+            InvariantResult(invariant="I-9", passed=True),
+        ]
+        if self.invariants is None:
+            return Verification(
+                ok=True, stage="ok", sites=sites, warnings=warnings, invariant_results=results
+            )
+        checked = self.invariants.check(
+            ctx=ctx,
+            worktree=self.worktree,
+            unit=unit,
+            rules=rules,
+            allowed=lambda path: self.allowed(path, unit, rules),
+            baseline=self.baseline.tests,
+            built=built,
+            report=report,
+            agent_since=self.agent_base,
+        )
+        results += checked.results
+        if not checked.ok:
+            return Verification(
+                ok=False,
+                stage="invariants",
+                feedback=checked.feedback(),
+                sites=sites,
+                invariant_results=results,
+            )
+        return Verification(
+            ok=True,
+            stage="ok",
+            sites=sites,
+            warnings=warnings + checked.warnings,
+            invariant_results=results,
+            approvals=checked.approvals,
+        )
+
+    def postconditions(
+        self,
+        unit: WorkUnit,
+        rules: Sequence[LoadedRule],
+        sites: dict[str, list[RuleSite]],
+    ) -> tuple[list[str], list[str]]:
+        """The rules' post-conditions on a green build (I-9, FR-4.4): feedback for failed
+        ``error`` ones, and warnings for failed ``warning`` ones.
+
+        - ``detector_empty``: the rule's detector finds no site in the unit's own files.
+        - ``builds_cleanly``: holds, because the unit just built at the standard it targets.
+        - ``codemod_clean``: running the rule's codemods again changes nothing and reports no
+          site; whatever they would change is put back and fed back to the agent.
+        - ``hook``: ``module:function(worktree, files)`` returns no site."""
+        problems: list[str] = []
+        warnings: list[str] = []
+        for loaded in rules:
+            rule_id = loaded.rule.id
+            for post in loaded.rule.postconditions:
+                if post.type is PostconditionType.DETECTOR_EMPTY:
+                    found = sites.get(rule_id, [])
+                    text = sites_feedback(rule_id, found) if found else ""
+                elif post.type is PostconditionType.CODEMOD_CLEAN:
+                    text = self._codemod_leftovers(unit, loaded)
+                    found = [RuleSite(file="-", line=1)] if text else []
+                elif post.type is PostconditionType.HOOK and post.hook is not None:
+                    found = list(load_hook(post.hook)(self.worktree.path, owned_files(unit)))
+                    text = sites_feedback(rule_id, found) if found else ""
+                else:  # BUILDS_CLEANLY
+                    continue
+                if not found:
+                    continue
+                if post.severity == "error":
+                    problems.append(text)
+                elif post.type is PostconditionType.CODEMOD_CLEAN:
+                    warnings.append(f"{rule_id}: the rule's tools still find work (a warning)")
+                else:
+                    warnings.append(f"{rule_id}: {len(found)} site(s) left (a warning)")
+        return problems, warnings
+
+    def _codemod_leftovers(self, unit: WorkUnit, loaded: LoadedRule) -> str:
+        specs = [
+            spec for spec in loaded.rule.codemods if codemod_applies(self.order, spec, self.target)
+        ]
+        if not specs:
+            return ""
+        files = owned_files(unit)
+        before = self.worktree.write_tree()
+        result = self.adapter.run_codemods(self.ctx, specs, files)
+        diff = self.worktree.diff(before)
+        if diff.files:
+            self.worktree.restore_tree(before)
+        remaining = [d for d in result.remaining if d.file_path in files]
+        if not diff.files and not remaining:
+            return ""
+        lines = [
+            f"{loaded.rule.id}: the rule's tools still find work in the unit's files. Make "
+            "these changes yourself (they were not applied):"
+        ]
+        if diff.files:
+            patch = diff.patch.splitlines()
+            lines += ["", "```diff", *patch[:80], "```"]
+            if len(patch) > 80:
+                lines.append(f"[{len(patch) - 80} more diff lines]")
+        for d in remaining[:20]:
+            lines.append(f"- {d.file_path}:{d.line}: {d.message}")
+        return "\n".join(lines)
 
     def unverified(
         self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
@@ -466,7 +632,23 @@ class UnitRunner:
             route = new_route
             started = datetime.now(UTC)
             store = self.artifacts.attempt(unit.id, number).ensure()
-            end = self._attempt(llm, number, route, unit, rules, context, turns, toolbox, store)
+            try:
+                self.checkpoint()
+                end = self._attempt(llm, number, route, unit, rules, context, turns, toolbox, store)
+            except UnitTimedOut:
+                outcome.attempts.append(
+                    Attempt(
+                        run_id=self.run_id,
+                        unit_id=unit.id,
+                        number=number,
+                        role=role,
+                        model=route.name,
+                        started_at=started,
+                        finished_at=datetime.now(UTC),
+                        outcome=AttemptOutcome.TIMED_OUT,
+                    )
+                )
+                raise
             attempt = Attempt(
                 run_id=self.run_id,
                 unit_id=unit.id,
@@ -499,6 +681,7 @@ class UnitRunner:
                     ),
                     "diagnostics": verification.diagnostics[:50],
                     "regressions": verification.regressions,
+                    "invariant_results": verification.invariant_results,
                 }
             )
             store.diff_patch.write_text(diff.patch, encoding="utf-8")
@@ -510,6 +693,8 @@ class UnitRunner:
                 outcome.summary = end.batch.summary
                 outcome.review_notes = list(end.batch.review_notes)
                 outcome.warnings = verification.warnings
+                outcome.approvals = verification.approvals
+                outcome.invariant_results = verification.invariant_results
                 return
             failed = {
                 "configure": AttemptOutcome.BUILD_FAILED,
@@ -547,6 +732,7 @@ class UnitRunner:
         for message in turns.messages:  # the conversation so far, for this attempt's record
             self._log(store, message)
         while True:
+            self.checkpoint()
             flushed = turns.flush()
             if flushed is not None:
                 self._log(store, flushed)

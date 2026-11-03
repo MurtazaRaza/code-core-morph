@@ -26,10 +26,17 @@ class AttemptOutcome(StrEnum):
 
 
 class InvariantResult(CoreModel):
+    """One invariant's verdict on an attempt. A failed ``error`` fails the attempt and its
+    message is the agent's feedback; a failed ``warning`` is a review item; a result that
+    ``needs_approval`` sends the unit to its gate when the approval policy covers it."""
+
     invariant: str = Field(pattern=r"^I-\d+$", description='Invariant ID, e.g. "I-3"')
     passed: bool
     severity: Severity = Severity.ERROR
     message: str = ""
+    needs_approval: bool = Field(
+        default=False, description="Allowed only with a human's approval (I-4, I-6)"
+    )
 
 
 class Attempt(CoreModel):

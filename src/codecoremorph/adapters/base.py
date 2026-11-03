@@ -105,6 +105,11 @@ class LanguageAdapter(ABC):
         (D-42). Reads files only; runs no command."""
         return None
 
+    def clean_build(self, ctx: AdapterContext) -> None:
+        """Empty the build tree so the next ``configure`` and ``build`` start from nothing (the
+        run's final verification, SPEC §7.5). Runs commands through ``ctx.executor`` only."""
+        raise AdapterNotSupportedError(f"{self.language}: clean_build")
+
     def parse_check(self, ctx: AdapterContext, files: list[str]) -> list[Diagnostic]:
         raise AdapterNotSupportedError(f"{self.language}: parse_check")
 

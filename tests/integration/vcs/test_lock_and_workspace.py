@@ -79,6 +79,22 @@ def test_lock_from_another_host_is_never_broken(tmp_path: Path) -> None:
         RepoLock.acquire(path, RUN)
 
 
+def test_held_by_running_command_only_reads(tmp_path: Path) -> None:
+    from codecoremorph.vcs.lock import held_by_running_command
+
+    path = tmp_path / "lock"
+    assert not held_by_running_command(path, RUN)  # no lock
+    lock = RepoLock.acquire(path, RUN)
+    assert held_by_running_command(path, RUN)  # this process holds it
+    assert not held_by_running_command(path, OTHER)
+    lock.park()
+    assert not held_by_running_command(path, RUN)  # parked: no process works on it
+    _write_lock(path, pid=_dead_pid(), run_id=RUN)
+    before = path.read_bytes()
+    assert not held_by_running_command(path, RUN)  # stale
+    assert path.read_bytes() == before  # and left as it was
+
+
 def test_unreadable_lock_is_held_until_it_is_old(tmp_path: Path) -> None:
     path = tmp_path / "lock"
     path.write_bytes(b"")  # a writer crashed mid-write, or is writing right now

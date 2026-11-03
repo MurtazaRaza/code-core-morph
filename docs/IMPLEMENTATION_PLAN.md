@@ -294,19 +294,19 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 **Prerequisites:** Phase 4.
 
 ### Tasks
-- [ ] LangGraph run graph and unit subgraph per SPEC §7.5; small state; SQLite checkpointer; all graph code in `orchestrator/`
-- [ ] Gates via LangGraph interrupts plus the store's `approvals` table: plan gate (default required) and unit gate policies (FR-10.1, FR-10.3); CLI interactive approval and `--yes` (FR-11.4)
+- [x] LangGraph run graph per SPEC §7.5 (D-43: the session's setup precedes the graph; a unit is one node plus `unit_gate`); small state; SQLite checkpointer; all LangGraph calls in `orchestrator/graph.py`
+- [x] Gates via LangGraph interrupts plus the store's `approvals` table: plan gate (default required) and unit gate policies (FR-10.1, FR-10.3); CLI interactive approval and `--yes` (FR-11.4)
 - [ ] Host-agent runs (D-41): the run graph parks at each unit's agent step (an interrupt), and `codecoremorph unit submit`/`abort` resume it, so Claude Code can drive a whole `run` through the skill; extend the skill from single units to runs
-- [ ] Invariants module I-1 to I-11 (SPEC §7.10), including the test-removal and test-disable guard (FR-7.5, phase-5 part) and the boundary check by re-indexing (FR-2.2)
-- [ ] Rule post-condition evaluation (FR-4.4)
-- [ ] Commit with trailers on success; rollback on failure; failed units don't block later ones (§4.5)
-- [ ] Budgets: per-unit wall clock, per-run tokens and cost, graceful `budget_exhausted` (FR-14.1, FR-14.2)
-- [ ] Resume (`codecoremorph resume`): reset the worktree to the branch HEAD, restore the checkpoint (FR-14.3)
-- [ ] Abort: `codecoremorph abort` and Ctrl-C handling, with a second Ctrl-C forcing (FR-14.4)
-- [ ] Final verification: clean configure, full build, full tests
-- [ ] Reports: Markdown + JSON per FR-13.1, with a review-items section (FR-10.4); `codecoremorph report`
-- [ ] CLI: `run`, `status` (live progress, `--json`), `approve`, `reject`, `resume`, `abort`, `report`, `clean`; exit codes per SPEC §7.14 (FR-11)
-- [ ] Plan-gate exclusions from the CLI (`codecoremorph approve RUN --exclude U-0012,...`) (FR-5.8)
+- [x] Invariants module I-1 to I-11 (SPEC §7.10; I-4 comes with Phase 6), including the test-removal and test-disable guard (FR-7.5, phase-5 part) and the boundary check by re-indexing (FR-2.2); in single host units too
+- [x] Rule post-condition evaluation (FR-4.4): `detector_empty`, `builds_cleanly`, `codemod_clean`, `hook`
+- [x] Commit with trailers on success; rollback on failure; failed units don't block later ones (§4.5)
+- [x] Budgets: per-unit wall clock, per-run tokens and cost, graceful `budget_exhausted` (FR-14.1, FR-14.2)
+- [x] Resume (`codecoremorph resume`): reset the worktree to the branch HEAD, restore the checkpoint (FR-14.3); units committed before a kill are recognized by their trailers
+- [x] Abort: `codecoremorph abort` and Ctrl-C handling, with a second Ctrl-C forcing (FR-14.4); the first Ctrl-C parks the run (D-43)
+- [x] Final verification: clean configure, full build, full tests (`LanguageAdapter.clean_build`)
+- [x] Reports: Markdown + JSON per FR-13.1, with a review-items section (FR-10.4); `codecoremorph report`
+- [x] CLI: `run`, `status` (`--json`), `approve`, `reject`, `resume`, `abort`, `report`, `clean`; exit codes per SPEC §7.14 (FR-11)
+- [x] Plan-gate exclusions from the CLI (`codecoremorph approve RUN --exclude U-0012,...`) (FR-5.8)
 
 ### Tests
 - E2E with cassettes: every fixture migrated C++11 → C++20; every commit on the branch builds and passes tests (checked by replaying the branch)
@@ -314,6 +314,8 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 - Budget exhaustion mid-unit leaves a green branch and a report
 - Gate flows: approve, reject, exclude, resume while waiting
 - The working-tree safety test, repeated over a full run
+
+Landed so far: the run graph with the fake adapter (`tests/unit/orchestrator/test_run_engine.py`: commits, plan and unit gates, exclusions, parking and resume, failures, abort, Ctrl-C, the token budget, a unit committed before a crash); the CLI's lifecycle (`test_lifecycle.py`: decisions, offline aborts, status, clean); crash consistency, with the engine killed in its own process at six points (baseline build, unit verification, mid model call, the agent's verification, after a commit before its checkpoint, final verification) and resumed (`test_crash.py`); invariants and post-conditions (`tests/unit/invariants/`, `test_loop_invariants.py`, `test_postconditions.py`); whole runs with real toolchains, native and Docker (`tests/integration/test_run_e2e.py`: `typedefs` without a model, with the user's checkout byte-identical afterwards; `ownership` to C++20 with the bump and one agent unit replayed from a cassette, the other units excluded at the plan gate). Still to come: cassettes for every fixture's whole run.
 
 ### Exit criteria (M1)
 - `codecoremorph run examples/cpp11-to-cpp20.yaml` against every fixture completes with every unit committed, or with failures explained in the report

@@ -8,8 +8,9 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 4 of the plan). CodeCoreMorph can plan a C++ migration
-> (`codecoremorph plan`) and migrate one work unit at a time, with Claude Code as the agent.
+> **Status:** early development (Phase 5 of the plan). CodeCoreMorph can plan a C++ migration
+> (`codecoremorph plan`), migrate one work unit at a time with Claude Code as the agent, and
+> run a whole migration (`codecoremorph run`) with an API model.
 
 ## Developer setup
 
@@ -40,6 +41,22 @@ uv run codecoremorph plan path/to/migration_config.yaml
 
 The plan builds and tests your project's base commit in a separate worktree, indexes it, and
 lists the ordered work units with their estimated cost. Your working tree is never touched.
+
+`codecoremorph run` then migrates the whole project, unit by unit, onto the branch
+`codecoremorph/<run-id>`. Each unit is one commit that builds and passes your tests; a unit
+that can't be made green is rolled back and reported. The run asks you to approve the plan
+first (`--yes` skips that), and writes a report at the end:
+
+```sh
+uv run codecoremorph run path/to/migration_config.yaml
+uv run codecoremorph status            # from another terminal: progress, gates, usage
+uv run codecoremorph approve           # answer a gate the run waits at (or `reject`)
+uv run codecoremorph resume            # after Ctrl-C or a crash
+uv run codecoremorph report            # the report of the latest run
+```
+
+The agent of a `run` is a model API (Anthropic or a local Ollama model, set in the manifest's
+`llm` section). Driving a whole run from Claude Code is the next step.
 
 ## Migrating with Claude Code
 

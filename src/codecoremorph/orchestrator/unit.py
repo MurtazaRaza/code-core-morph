@@ -12,15 +12,15 @@ run branch. The full run graph (Phase 5) owns multi-unit runs.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from codecoremorph.agent.host import HostFiles, HostStep, HostUnit
-from codecoremorph.agent.loop import AgentSettings, UnitOutcome, UnitRunner
+from codecoremorph.agent.loop import AgentSettings, Guard, UnitOutcome, UnitRunner
 from codecoremorph.config import load_config
-from codecoremorph.config.models import SandboxMode
+from codecoremorph.config.models import SandboxMode, UnitApproval
 from codecoremorph.core.errors import ConfigError, RunNotActiveError, UsageError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.ids import run_branch, unit_id
@@ -33,11 +33,13 @@ from codecoremorph.core.models import (
     LoadedRule,
     Plan,
     RuleKind,
+    SymbolIndex,
     UnitStatus,
     WorkUnit,
 )
 from codecoremorph.core.models.vcs import DirtyState
 from codecoremorph.core.paths import HomeLayout
+from codecoremorph.invariants.checker import InvariantChecker, InvariantSettings
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.planning import BASELINE_FILE, baseline_cache, reusable_baseline
 from codecoremorph.orchestrator.session import RunSession, project_root
@@ -100,12 +102,15 @@ def prepare_unit(
     files: list[str],
     step: Step,
     planned: WorkUnit | None = None,
+    baseline: Baseline | None = None,
+    index: SymbolIndex | None = None,
 ) -> PreparedUnit:
     """Check the rules, capture the baseline, index, and resolve the unit's files.
 
     ``planned`` is the plan unit being run: the unit keeps its ID and position, and its
     reference files are in the unit only for their references to the symbols it changes
-    (their own rule sites belong to other units)."""
+    (their own rule sites belong to other units). A run passes the ``baseline`` and ``index``
+    it already has."""
     config = session.config
     migration = config.migration
     source, target = migration.source.standard, migration.target.standard
@@ -121,9 +126,11 @@ def prepare_unit(
                 hint="Pick a rule that applies to the manifest's migration.",
             )
     ctx = session.ctx
-    baseline = reusable_baseline(session, step)
-    step("index")
-    index = session.adapter.index(ctx)
+    if baseline is None:
+        baseline = reusable_baseline(session, step)
+    if index is None:
+        step("index")
+        index = session.adapter.index(ctx)
     code_roles = (FileRole.SOURCE, FileRole.HEADER, FileRole.TEST)
     with IndexStore.open(index.path) as store:
         entries = store.files()
@@ -171,13 +178,41 @@ def prepare_unit(
     )
 
 
-def _runner(
+def invariant_checker(
+    session: RunSession,
+    unit_id: str,
+    warnings_before: Mapping[str, int],
+) -> InvariantChecker:
+    """The safety invariants of one unit, set from the manifest (SPEC §7.10)."""
+    config = session.config
+    gated = config.approvals.unit in (UnitApproval.API_CHANGES, UnitApproval.ALL)
+    return InvariantChecker(
+        session.adapter,
+        InvariantSettings(
+            max_diff_lines=config.guardrails.max_unit_diff_lines,
+            new_warnings=config.guardrails.new_warnings.value,
+            gate_api_changes=gated,
+        ),
+        excluded=PathMatcher(session.ctx.lang.exclude).matches,
+        warnings_before=warnings_before,
+        store_dir=session.artifacts.unit_dir(unit_id),
+    )
+
+
+def make_runner(
     session: RunSession,
     prepared: PreparedUnit,
     llm: LLMService | None,
     settings: AgentSettings | None,
+    *,
+    warnings_before: Mapping[str, int] | None = None,
+    guard: Guard | None = None,
+    deadline: float | None = None,
 ) -> UnitRunner:
+    """The unit's runner, with its invariants. ``warnings_before`` defaults to the baseline's
+    warnings; a run passes the warnings as its last commit left them."""
     config = session.config
+    before = prepared.baseline.build_warnings if warnings_before is None else warnings_before
     return UnitRunner(
         adapter=session.adapter,
         ctx=session.ctx,
@@ -198,6 +233,9 @@ def _runner(
             config.guardrails, store_transcripts=config.reporting.store_transcripts
         ),
         uncompiled=prepared.uncompiled,
+        invariants=invariant_checker(session, prepared.unit.id, before),
+        guard=guard,
+        deadline=deadline,
     )
 
 
@@ -212,7 +250,7 @@ def run_single_unit(
 ) -> SingleUnitResult:
     step = on_step or _log_step
     prepared = prepare_unit(session, rule_ids=rule_ids, files=files, step=step)
-    runner = _runner(session, prepared, llm, settings)
+    runner = make_runner(session, prepared, llm, settings)
     unit = prepared.unit
     step(f"unit {unit.id}: {', '.join(rule_ids)} on {len(unit.files)} files")
     outcome = runner.run(unit, prepared.rules)
@@ -248,7 +286,7 @@ def start_host_unit(
     (session.artifacts.root / BASELINE_FILE).write_text(
         prepared.baseline.model_dump_json(indent=2), encoding="utf-8"
     )
-    runner = _runner(session, prepared, None, None)
+    runner = make_runner(session, prepared, None, None)
     worktree = session.workspace.worktree
     head = worktree.head()
     now = datetime.now(UTC)
@@ -318,9 +356,12 @@ def resume_host_unit(session: RunSession, state: HostUnitState) -> HostUnit:
         scope_dirs=state.scope_dirs,
         uncompiled=state.uncompiled,
     )
-    runner = _runner(session, prepared, None, None)
+    runner = make_runner(session, prepared, None, None)
     runner.configured_standard = state.configured_standard
     runner.error_lines = list(state.error_lines)
+    runner.agent_base = state.agent_base
+    if runner.invariants is not None:
+        runner.invariants.snapshot = state.snapshot
     return HostUnit(
         runner,
         rules,

@@ -145,7 +145,9 @@ class HostUnit:
         unit = state.unit
         ctx = self.runner.verify_context(self.rules)
         try:
+            self.runner.begin(unit, self.rules)
             codemods = self.runner.codemods(unit, self.rules)
+            self.runner.agent_base = self.worktree.write_tree()
             check = self.runner.verify(unit, self.rules, ctx)
         except BaseException:
             self.worktree.rollback(state.snapshot)
@@ -156,9 +158,15 @@ class HostUnit:
             sites=check.sites,
             configured_standard=self.runner.configured_standard,
             error_lines=self.runner.error_lines,
+            agent_base=self.runner.agent_base,
         )
         if self.runner.nothing_left(check, self.rules):
-            state = self._update(state, agent_skipped=True, warnings=check.warnings)
+            state = self._update(
+                state,
+                agent_skipped=True,
+                warnings=check.warnings,
+                approvals=check.approvals,
+            )
             return self._succeed(state, "Deterministic tools completed the unit.", [])
         state = self._checkpoint(state, "codemods")
         build = None if check.stage in ("postconditions", "ok") else check.feedback
@@ -217,6 +225,7 @@ class HostUnit:
             diff_lines=sum((f.added_lines or 0) + (f.removed_lines or 0) for f in diff.files),
             diagnostics=verification.diagnostics[:50],
             regressions=verification.regressions,
+            invariant_results=verification.invariant_results,
             summary=batch.summary,
             review_notes=list(batch.review_notes),
         )
@@ -228,7 +237,9 @@ class HostUnit:
             error_lines=self.runner.error_lines,
         )
         if verification.ok:
-            state = self._update(state, warnings=verification.warnings)
+            state = self._update(
+                state, warnings=verification.warnings, approvals=verification.approvals
+            )
             step = self._succeed(state, batch.summary, list(batch.review_notes))
             step.warnings[:0] = warnings
             return step
@@ -400,7 +411,9 @@ class HostUnit:
                 f"Unit {state.unit.id} succeeded: commit {commit[:12]} on branch "
                 f"{self.worktree.branch} changes {len(changed)} file(s)."
             )
-        return HostStep(state, text, list(state.warnings))
+        # A single unit has no gate: interface changes a run would ask about are for review.
+        review = [f"needs a human's review: {a}" for a in state.approvals]
+        return HostStep(state, text, [*state.warnings, *review])
 
     def _fail(self, state: HostUnitState, reason: str, feedback: str) -> HostStep:
         self.worktree.rollback(state.snapshot)

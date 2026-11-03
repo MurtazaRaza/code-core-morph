@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,7 +20,19 @@ from pydantic import JsonValue
 
 from codecoremorph.core.errors import StoreError
 from codecoremorph.core.ids import validate_run_id
-from codecoremorph.core.models import Event, EventType, RunRecord, RunStatus
+from codecoremorph.core.models import (
+    ApprovalDecision,
+    ApprovalGate,
+    ApprovalRecord,
+    Attempt,
+    Event,
+    EventType,
+    LlmCallRecord,
+    Role,
+    RunRecord,
+    RunStatus,
+    WorkUnit,
+)
 from codecoremorph.store.migrations import LATEST_VERSION, MIGRATIONS, SCHEMA_VERSION_TABLE
 
 log = logging.getLogger(__name__)
@@ -32,6 +44,10 @@ def _iso(value: datetime) -> str:
     if value.tzinfo is None:
         raise ValueError("timestamps stored in the database must be timezone-aware")
     return value.isoformat()
+
+
+def _json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 class Store:
@@ -185,6 +201,209 @@ class Store:
             )
             if cursor.rowcount != 1:
                 raise StoreError(f"run {run_id} is not in the state database")
+
+    def list_runs(self) -> list[RunRecord]:
+        """Every run, newest first (run IDs sort by time)."""
+        rows = self._conn.execute("SELECT id FROM runs ORDER BY id DESC").fetchall()
+        return [run for (run_id,) in rows if (run := self.get_run(str(run_id))) is not None]
+
+    def set_run_environment(self, run_id: str, environment: Mapping[str, JsonValue]) -> None:
+        """What the run ran with (NFR-6.1): versions, image digests, models, prompts."""
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE runs SET environment = ? WHERE id = ?",
+                (_json(dict(environment)), validate_run_id(run_id)),
+            )
+
+    def run_environment(self, run_id: str) -> dict[str, JsonValue]:
+        row = self._conn.execute(
+            "SELECT environment FROM runs WHERE id = ?", (validate_run_id(run_id),)
+        ).fetchone()
+        return {} if row is None else cast(dict[str, JsonValue], json.loads(row[0]))
+
+    # ------------------------------------------------------------------ units and attempts
+
+    def put_units(self, run_id: str, units: Sequence[WorkUnit], at: datetime) -> None:
+        """Insert or replace units (the plan's, then each status change)."""
+        with self.transaction() as conn:
+            conn.executemany(
+                "INSERT INTO units (run_id, id, seq, status, updated_at, data) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, id) DO UPDATE SET "
+                "seq = excluded.seq, status = excluded.status, "
+                "updated_at = excluded.updated_at, data = excluded.data",
+                [
+                    (
+                        validate_run_id(run_id),
+                        u.id,
+                        u.seq,
+                        u.status.value,
+                        _iso(at),
+                        u.model_dump_json(),
+                    )
+                    for u in units
+                ],
+            )
+
+    def units(self, run_id: str) -> list[WorkUnit]:
+        """A run's units in plan order."""
+        rows = self._conn.execute(
+            "SELECT data FROM units WHERE run_id = ? ORDER BY seq", (validate_run_id(run_id),)
+        )
+        return [WorkUnit.model_validate_json(row[0]) for row in rows]
+
+    def put_attempt(self, attempt: Attempt) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO attempts (run_id, unit_id, number, role, model, outcome, started_at, "
+                "finished_at, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (run_id, unit_id, number) DO UPDATE SET role = excluded.role, "
+                "model = excluded.model, outcome = excluded.outcome, "
+                "finished_at = excluded.finished_at, data = excluded.data",
+                (
+                    attempt.run_id,
+                    attempt.unit_id,
+                    attempt.number,
+                    attempt.role.value,
+                    attempt.model,
+                    attempt.outcome.value if attempt.outcome else None,
+                    _iso(attempt.started_at),
+                    _iso(attempt.finished_at) if attempt.finished_at else None,
+                    attempt.model_dump_json(),
+                ),
+            )
+
+    def attempts(self, run_id: str, unit_id: str | None = None) -> list[Attempt]:
+        sql = "SELECT data FROM attempts WHERE run_id = ?"
+        params: tuple[str, ...] = (validate_run_id(run_id),)
+        if unit_id is not None:
+            sql += " AND unit_id = ?"
+            params = (*params, unit_id)
+        rows = self._conn.execute(sql + " ORDER BY unit_id, number", params)
+        return [Attempt.model_validate_json(row[0]) for row in rows]
+
+    def delete_attempts(self, run_id: str, unit_id: str) -> None:
+        """Forget a unit's attempts: it starts over (a resume after a crash mid-unit)."""
+        with self.transaction() as conn:
+            conn.execute(
+                "DELETE FROM attempts WHERE run_id = ? AND unit_id = ?",
+                (validate_run_id(run_id), unit_id),
+            )
+
+    # ------------------------------------------------------------------ approvals
+
+    def add_approval(self, approval: ApprovalRecord) -> ApprovalRecord:
+        """Write a decision (the CLI's and the dashboard's only write, SPEC §7.12)."""
+        if approval.id is not None:
+            raise ValueError("approval already has an id; approvals are written once")
+        if self.get_run(approval.run_id) is None:
+            raise StoreError(
+                f"run {approval.run_id} is not in this repository's state database",
+                hint="`codecoremorph status` lists the runs.",
+            )
+        data = {"exclude": list(approval.exclude)}
+        with self.transaction() as conn:
+            cursor = conn.execute(
+                "INSERT INTO approvals (run_id, gate, unit_id, decision, reason, data, source, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    approval.run_id,
+                    approval.gate.value,
+                    approval.unit_id,
+                    approval.decision.value,
+                    approval.reason,
+                    _json(data),
+                    approval.source,
+                    _iso(approval.created_at),
+                ),
+            )
+        return approval.model_copy(update={"id": cursor.lastrowid})
+
+    def approvals(self, run_id: str, *, pending: bool = False) -> list[ApprovalRecord]:
+        """A run's decisions in the order they were written; ``pending`` ones the engine
+        hasn't acted on yet."""
+        sql = (
+            "SELECT id, run_id, gate, unit_id, decision, reason, data, source, created_at, "
+            "consumed_at FROM approvals WHERE run_id = ?"
+        )
+        if pending:
+            sql += " AND consumed_at IS NULL"
+        rows = self._conn.execute(sql + " ORDER BY id", (validate_run_id(run_id),))
+        return [
+            ApprovalRecord(
+                id=row[0],
+                run_id=row[1],
+                gate=ApprovalGate(row[2]),
+                unit_id=row[3],
+                decision=ApprovalDecision(row[4]),
+                reason=row[5],
+                exclude=cast(list[str], json.loads(row[6]).get("exclude", [])),
+                source=row[7],
+                created_at=datetime.fromisoformat(row[8]),
+                consumed_at=datetime.fromisoformat(row[9]) if row[9] else None,
+            )
+            for row in rows
+        ]
+
+    def consume_approval(self, approval_id: int, at: datetime) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE approvals SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL",
+                (_iso(at), approval_id),
+            )
+
+    # ------------------------------------------------------------------ model calls
+
+    def add_llm_call(self, call: LlmCallRecord) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT INTO llm_calls (run_id, unit_id, attempt, role, provider, model, "
+                "input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, "
+                "latency_s, stop_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                "?, ?)",
+                (
+                    call.run_id,
+                    call.unit_id,
+                    call.attempt,
+                    call.role.value,
+                    call.provider,
+                    call.model,
+                    call.input_tokens,
+                    call.output_tokens,
+                    call.cache_read_tokens,
+                    call.cache_write_tokens,
+                    call.cost_usd,
+                    call.latency_s,
+                    call.stop_reason,
+                    _iso(call.created_at),
+                ),
+            )
+
+    def llm_calls(self, run_id: str) -> list[LlmCallRecord]:
+        rows = self._conn.execute(
+            "SELECT run_id, unit_id, attempt, role, provider, model, input_tokens, "
+            "output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, "
+            "stop_reason, created_at FROM llm_calls WHERE run_id = ? ORDER BY id",
+            (validate_run_id(run_id),),
+        )
+        return [
+            LlmCallRecord(
+                run_id=row[0],
+                unit_id=row[1],
+                attempt=row[2],
+                role=Role(row[3]),
+                provider=row[4],
+                model=row[5],
+                input_tokens=row[6],
+                output_tokens=row[7],
+                cache_read_tokens=row[8],
+                cache_write_tokens=row[9],
+                cost_usd=row[10],
+                latency_s=row[11],
+                stop_reason=row[12],
+                created_at=datetime.fromisoformat(row[13]),
+            )
+            for row in rows
+        ]
 
     # ------------------------------------------------------------------ events
 

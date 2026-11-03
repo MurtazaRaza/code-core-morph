@@ -8,6 +8,7 @@ worktrees and their ``codecoremorph/<run-id>`` branches.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -33,6 +34,26 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 
 def same_path(a: Path, b: Path) -> bool:
     return os.path.normcase(a.resolve()) == os.path.normcase(b.resolve())
+
+
+@dataclass(frozen=True)
+class RepoFingerprint:
+    """The user's side of the repository: HEAD, the refs CodeCoreMorph didn't create, and
+    the uncommitted files. Compared before and after each unit (I-11)."""
+
+    head: str
+    refs: str
+    files: str
+
+    def changes(self, later: RepoFingerprint) -> list[str]:
+        found: list[str] = []
+        if later.head != self.head:
+            found.append("HEAD moved")
+        if later.refs != self.refs:
+            found.append("branches or tags changed")
+        if later.files != self.files:
+            found.append("uncommitted files changed")
+        return found
 
 
 @dataclass(frozen=True)
@@ -107,6 +128,32 @@ class Repository:
                 continue
             (untracked if status == b"??" else modified).append(path)
         return DirtyState(modified=modified, untracked=untracked)
+
+    def fingerprint(self) -> RepoFingerprint:
+        """What the user's checkout looks like now; never touches the index (I-11)."""
+        symbolic = self.git.run("symbolic-ref", "--quiet", "HEAD", check=False).text
+        head = self.git.run("rev-parse", "--verify", "--quiet", "HEAD", check=False).text
+        refs = [
+            line
+            for line in self.git.text(
+                "for-each-ref", "--format=%(refname) %(objectname)"
+            ).splitlines()
+            if not line.startswith(f"refs/heads/{BRANCH_PREFIX}")
+        ]
+        dirty = self.dirty_state()
+        files = hashlib.sha256()
+        for path in sorted([*dirty.modified, *dirty.untracked]):
+            files.update(path.encode("utf-8", "surrogateescape") + b"\0")
+            try:
+                stat = (self.root / path).stat()
+                files.update(f"{stat.st_size}:{stat.st_mtime_ns}\0".encode())
+            except OSError:
+                files.update(b"missing\0")
+        return RepoFingerprint(
+            head=f"{symbolic} {head}",
+            refs=hashlib.sha256("\n".join(sorted(refs)).encode("utf-8")).hexdigest(),
+            files=files.hexdigest(),
+        )
 
     def git_path(self, name: str) -> Path:
         """Location of a file in the git directory, resolved for linked worktrees too."""

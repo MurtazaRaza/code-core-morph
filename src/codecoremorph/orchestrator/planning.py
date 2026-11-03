@@ -103,23 +103,43 @@ def _write_json(path: Path, text: str) -> None:
 
 def make_plan(session: RunSession, *, on_step: StepSink | None = None) -> PlanOutcome:
     step = on_step or _log_step
-    config = session.config
-    migration = config.migration
-    ctx = session.ctx
-    adapter = session.adapter
     timings: dict[str, float] = {}
 
     started = time.monotonic()
     baseline = reusable_baseline(session, step)
     timings["baseline_s"] = time.monotonic() - started
-    baseline_path = session.artifacts.root / BASELINE_FILE
-    _write_json(baseline_path, baseline.model_dump_json(indent=2))
+    baseline_path = write_baseline(session, baseline)
 
     step("index")
     started = time.monotonic()
-    index = adapter.index(ctx)
+    index = session.adapter.index(session.ctx)
     timings["index_s"] = time.monotonic() - started
+    plan, plan_path = plan_from(session, baseline, index, step=step, timings=timings)
+    return PlanOutcome(
+        plan=plan,
+        baseline=baseline,
+        index=index,
+        duration_estimate_s=estimate_duration_s(plan, baseline),
+        plan_path=plan_path,
+        baseline_path=baseline_path,
+        timings={k: round(v, 3) for k, v in timings.items()},
+    )
 
+
+def plan_from(
+    session: RunSession,
+    baseline: Baseline,
+    index: SymbolIndex,
+    *,
+    step: StepSink,
+    timings: dict[str, float] | None = None,
+) -> tuple[Plan, Path]:
+    """Graph, rule scans and planner over an index; writes ``plan.json``."""
+    config = session.config
+    migration = config.migration
+    ctx = session.ctx
+    adapter = session.adapter
+    timings = {} if timings is None else timings
     step("graph")
     started = time.monotonic()
     project = ProjectModel.load(
@@ -176,15 +196,13 @@ def make_plan(session: RunSession, *, on_step: StepSink | None = None) -> PlanOu
     timings["plan_s"] = time.monotonic() - started
     plan_path = session.artifacts.plan_json
     _write_json(plan_path, plan.model_dump_json(indent=2))
-    return PlanOutcome(
-        plan=plan,
-        baseline=baseline,
-        index=index,
-        duration_estimate_s=estimate_duration_s(plan, baseline),
-        plan_path=plan_path,
-        baseline_path=baseline_path,
-        timings={k: round(v, 3) for k, v in timings.items()},
-    )
+    return plan, plan_path
+
+
+def write_baseline(session: RunSession, baseline: Baseline) -> Path:
+    path = session.artifacts.root / BASELINE_FILE
+    _write_json(path, baseline.model_dump_json(indent=2))
+    return path
 
 
 def uncompiled_warnings(

@@ -262,6 +262,20 @@ class CppAdapter(LanguageAdapter):
             log_path=result.log_path,
         )
 
+    def clean_build(self, ctx: AdapterContext) -> None:
+        # The build tree may be a Docker volume the host can't see, so the sandbox empties it:
+        # first the build outputs, then the CMake cache, which makes the next configure fresh.
+        build = ctx.sandbox(ctx.build_dir)
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        self._run(ctx, ["cmake", "--build", build, "--target", "clean"], "clean.log", timeout_s=600)
+        self._run(
+            ctx,
+            ["cmake", "-E", "rm", "-rf", f"{build}/CMakeCache.txt", f"{build}/CMakeFiles"],
+            "clean-cache.log",
+            timeout_s=120,
+        )
+        (ctx.cache_dir / "configured-standard").unlink(missing_ok=True)
+
     # ------------------------------------------------------------------ tests
 
     def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:

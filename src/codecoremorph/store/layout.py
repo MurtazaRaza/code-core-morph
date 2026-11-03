@@ -73,10 +73,14 @@ class RunArtifacts:
     def checkpoints_db(self) -> Path:
         return self.root / "checkpoints.sqlite"
 
+    def unit_dir(self, unit_id: str) -> Path:
+        """A unit's directory: its attempts, and what its invariants compare against."""
+        return self.root / "attempts" / validate_unit_id(unit_id)
+
     def attempt(self, unit_id: str, number: int) -> AttemptArtifacts:
         if number < 1:
             raise ValueError(f"attempt numbers start at 1, got {number}")
-        return AttemptArtifacts(self.root / "attempts" / validate_unit_id(unit_id) / str(number))
+        return AttemptArtifacts(self.unit_dir(unit_id) / str(number))
 
     def ensure(self) -> RunArtifacts:
         self.root.mkdir(parents=True, exist_ok=True)

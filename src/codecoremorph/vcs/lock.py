@@ -63,6 +63,15 @@ def _is_stale(path: Path, holder: LockInfo | None) -> bool:
     return holder.pid != os.getpid() and not pid_is_running(holder.pid)
 
 
+def held_by_running_command(path: Path, run_id: str) -> bool:
+    """Whether a live process of ``run_id`` holds the lock now: not parked and not stale.
+    Reads only; the lock file is not touched."""
+    holder = read_lock(path)
+    if holder is None or holder.run_id != run_id or holder.parked:
+        return False
+    return not _is_stale(path, holder)
+
+
 def _info(run_id: str) -> LockInfo:
     return LockInfo(
         run_id=run_id,

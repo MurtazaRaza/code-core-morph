@@ -78,10 +78,17 @@ def _failure(step: str, result: BuildResult, base: str) -> BaselineError:
     )
 
 
-def _warnings_by_file(result: BuildResult) -> dict[str, int]:
+def warnings_by_file(result: BuildResult) -> dict[str, int]:
+    """Distinct warnings per file (a header's warning repeats once per translation unit), as
+    the warnings invariant counts them (I-10)."""
+    seen: set[tuple[str, int | None, int | None, str]] = set()
     counts: dict[str, int] = {}
     for d in result.diagnostics:
-        if d.severity is Severity.WARNING and d.file_path is not None:
+        if d.severity is not Severity.WARNING or d.file_path is None:
+            continue
+        key = (d.file_path, d.line, d.column, d.message)
+        if key not in seen:
+            seen.add(key)
             counts[d.file_path] = counts.get(d.file_path, 0) + 1
     return dict(sorted(counts.items()))
 
@@ -114,7 +121,7 @@ def capture_baseline(
         step(f"tests: reusing the results of {reuse.tests_from or 'an earlier baseline'}")
         return reuse.model_copy(
             update={
-                "build_warnings": _warnings_by_file(built),
+                "build_warnings": warnings_by_file(built),
                 "configure_s": round(configured.duration_s, 3),
                 "build_s": round(built.duration_s, 3),
                 "logs": {
@@ -150,7 +157,7 @@ def capture_baseline(
         base_commit=base_commit,
         standard=ctx.lang.standard,
         tests=tests,
-        build_warnings=_warnings_by_file(built),
+        build_warnings=warnings_by_file(built),
         configure_s=round(configured.duration_s, 3),
         build_s=round(built.duration_s, 3),
         test_s=round(sum(r.duration_s for r in reports) / len(reports), 3),

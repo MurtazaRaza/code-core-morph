@@ -114,6 +114,7 @@ Language version upgrades come first: C++, then Java, then C#. Cross-language mi
 | D-40 | Phase 4 provider and agent details (§7.6, §7.7). The Anthropic provider targets SDK 2.x (API version 2026-10-21) and sends: adaptive thinking with `display: "summarized"` (readable reasoning for transcripts), `block_binding.prefix_mismatch_behavior: "error"` (beta `thinking-binding-controls-2026-08-01`), so an accidental history edit fails loudly, and `fallbacks: "default"` (beta `server-side-fallback-2026-07-01`); after a mid-output fallback, the declined model's thinking and tool calls before the last `fallback` block are dropped, and cost is summed over `usage.iterations` at each model's prices. Eager input streaming is off when `base_url` points at a proxy. Errors map to `RateLimitedError`, `ProviderUnavailableError`, `LLMTimeoutError`, `ProviderAuthError`, `InvalidLLMRequestError`, `ContextOverflowError`, `RefusedError` and `BudgetExhaustedError`; a refusal is a result (`stop_reason: refusal`), not an exception. Ollama tool calls get IDs `call_<turn>_<n>`; its token count is an estimate. Cassettes are JSON, keyed by the hash of the request with line endings normalized; prompts never carry absolute paths, so cassettes replay on any machine, and the end-to-end cassettes are kept per sandbox, because compiler messages differ. `ScriptedProvider` authors cassettes without a live model. The agent keeps its edits between attempts and fixes forward; the unit rolls back only when it fails. A project-wide rule (the standard bump) runs its codemods on every code file and may edit files that fail to compile. clang-tidy fixes apply only for the requested checks: the compiler's own typo fix-its (`clang-diagnostic-*`) are dropped, after one rewrote `std::unary_function` into libc++'s internal `__unary_function`. Configure runs with `--fresh` when the standard changes. Prompt templates are versioned in `prompts/v1/`. | Proposed |
 | D-41 | Claude runs as a **host agent**, not through the API (user decision; details proposed). CodeCoreMorph ships a Claude Code skill (`codecoremorph skill install`) and the `codecoremorph unit` commands, so Claude Code, on the user's Claude plan, is the editor and fixer and CodeCoreMorph makes no model calls (§7.6.1). `unit start` prepares a unit (baseline, index, codemods, verification) and writes a context document and the edits file's path under `.codecoremorph/runs/<id>/`. The host reads the run worktree only through `unit read|ls|grep|symbol|refs|signature` and writes its edits as the `submit_edits` JSON. `unit submit` applies them through PatchEngine and verifies; `unit abort` removes the run. The host never edits files: changes found in the worktree that CodeCoreMorph didn't make are discarded and reported, and changes in the user's working tree are reported. The run *parks* between commands: its lock is marked `parked` and is never stale, and the worktree and (in Docker) the build volume stay. Each step that changes files ends with a checkpoint commit, and success squashes them into the unit's one commit (trailer `CodeCoreMorph-Models: host`). Attempts, edit retries and the retry budget work as in the built-in loop. The Anthropic and Ollama providers stay for unattended runs. The Phase 4 Claude evals run headless Claude Code with the skill (`bench/evals.py --agent claude-code`). Click's Windows wildcard expansion is off, so glob arguments arrive as written. | User |
 | D-42 | Fixes from the leveldb host-agent trial (Phase 4). (1) A run builds at the newer of the manifest's source standard and the oldest standard the project's own build files set at the base commit (`LanguageAdapter.project_standard`), so units started from the bump's branch build at the target; they had been configured with `-DCMAKE_CXX_STANDARD=11`. (2) The index records `uncompiled`: in-scope C++ files no compile command reaches (another platform's sources). The plan warns about them, the bump unit's context lists them, build errors whose source line repeats in them are shown with the feedback, and a green unit warns about changes to them and about repeated error lines left. (3) clang-tidy's header filter matches the worktree-relative path at the end of the name, allowing `./` segments (`include_directories(".")` names headers `/workspace/./db/x.h`). (4) Lines a clang-tidy codemod changed are run through `clang-format --lines` when a `.clang-format` of the project covers the file; clang-format joins the toolchain requirements. (5) The `cmake-standard` codemod skips CMake comments. (6) `unit start` refuses files a rule's `skip` list excludes, and `--plan-unit U-000N` runs a pending unit of the latest plan; `unit list` shows the plan with each unit's outcome. (7) A unit's commit message names the files the codemods changed. (8) Baselines are cached by commit, standard, sandbox and build options (`.codecoremorph/baselines/`); a unit's final verification becomes its commit's baseline, so the next unit builds but doesn't rerun the tests. (9) `api_changing` units take on the sites of the fan-in files no earlier unit covers together with their header/source partners; fan-in files whose sites another unit owns are `reference_files`, left out of the unit's codemods, site counts and postconditions. The host state and `unit status` report the excused tests and the uncompiled files, and the skill reports them, explains the plan's scope before starting, and runs every pending unit when asked to. | Proposed |
+| D-43 | Phase 5 run details (§7.5, §7.10, §7.12). (1) Validating, preparing the workspace and provisioning happen when the engine opens its session, because they make the resources the nodes use; the graph starts at `baseline`. A unit is one node (the codemods, attempts and verification of `UnitRunner`) followed by `unit_gate`: a resume resets the worktree to the branch's last commit, so checkpoints inside a unit would buy nothing. (2) The unit gate comes after the unit's commit; rejecting it resets the branch to the commit before. The branch is then green at every moment, including while a unit waits, and a run parked at a unit gate keeps its commit across a restart. (3) The first Ctrl-C parks the run (the unit in progress rolls back; `codecoremorph resume` continues it), a second one stops at once; `codecoremorph abort` ends the run with its report, and ends a parked or crashed run without starting its sandbox. An environment error (credentials, Docker, a toolchain) also parks the run. (4) A unit that committed before the engine was killed is found by its `CodeCoreMorph-Unit` trailer; the ledger's totals are restored from `llm_calls`, so caps hold across a resume. (5) I-3 compares the adapter's disable markers by file and marker before and after; I-6 snapshots the interface symbols (public API and language boundaries, not private members or macros) of a unit holding such a file, or of a project rule's unit, and a change passes when the rule is `api_changing` (or a project rule) and every file using the symbol is in the unit; C ABI, JNI and P/Invoke changes never pass, and with `approvals.unit: api_changes \| all` a blocked change waits at the unit gate instead of failing; I-8 counts only the agent's lines, after the codemods; I-10 counts distinct warnings per file (the baseline too) in the files the unit changed; I-11 compares the user's HEAD, refs and uncommitted files before and after each unit and reports a change instead of aborting, because the user may keep working in their checkout during a long run, and the guards in `Worktree` are what keep destructive git commands in the run worktree. (6) Post-conditions: `builds_cleanly` holds once the unit builds; `codemod_clean` runs the rule's codemods again after a green build, puts back what they would change and feeds it to the agent; a `hook` is `module:function(worktree, files)` returning sites. (7) The final verification empties the build tree (`LanguageAdapter.clean_build`; CMake: the `clean` target and the cache), then configures, builds and runs every test; when it fails the run is `failed`. Excluded units count as left out (`completed_with_failures`). Exit codes: a parked run 5, a baseline that doesn't build 3. (8) Each unit writes `attempts/<unit>/result.json`, the final verification `final.json`. LangSmith tracing is switched off in the engine whatever the environment says (NFR-5.1). New runtime dependencies: `langgraph` and `langgraph-checkpoint-sqlite` (D-05). | Proposed |
 
 ---
 
@@ -608,22 +609,22 @@ The LLM submits a single `submit_edits` call:
 
 **Run graph:**
 
+Before the graph starts, the engine opens its session: it validates the manifest and resolves the plugins, takes the lock, creates the branch and worktree (writing `.git/info/exclude`), and chooses and starts the executor (pulling and verifying the image, or detecting native tools). These steps make the resources every node uses, so they are not checkpointed nodes (D-43). Any node goes to `report` when the run stops early: an abort, a budget, a rejected plan, a baseline that doesn't build.
+
 | Node | Does | Next |
 |---|---|---|
-| `load_config` | Validate the manifest, resolve plugins | `prepare_workspace` / fail |
-| `prepare_workspace` | Take the lock, create the branch and worktree, write `.git/info/exclude` | `provision` |
-| `provision` | Choose the executor, pull and verify the image or detect native tools, start the container | `baseline` |
-| `baseline` | Configure, build, run tests × N, record the baseline and flaky tests (D-39: configuring produces the compile commands indexing needs) | `index`; fail if the baseline doesn't build or has no passing tests |
+| `baseline` | Configure, build, run tests × N, record the baseline and flaky tests (D-39: configuring produces the compile commands indexing needs) | `index`; `report` (failed) if the baseline doesn't build or has no passing tests |
 | `index` | `adapter.index` → symbol index → graphs | `characterize` or `plan` |
-| `characterize` | *(optional)* Generate, validate and commit characterization tests (§7.11) | `plan` |
-| `plan` | Planner (§7.5.1) | `plan_gate` |
-| `plan_gate` | Interrupt for approval if `approvals.plan: required` | `next_unit` / `report` (rejected) |
-| `next_unit` | Pick the next pending unit; check budgets | `unit` subgraph / `final_verify` |
-| `unit` | Unit subgraph (below) | `next_unit` |
-| `final_verify` | Clean configure, full build, full test run | `report` |
-| `report` | Write the reports, release the lock, stop the container | END |
+| `characterize` | *(optional, Phase 6)* Generate, validate and commit characterization tests (§7.11) | `plan` |
+| `plan` | Planner (§7.5.1); the units go to the store | `plan_gate` |
+| `plan_gate` | Interrupt for approval if `approvals.plan: required` (and no `--yes`); apply exclusions | `next_unit` / `report` (rejected) |
+| `next_unit` | Pick the next pending unit; check budgets | `unit` / `final_verify` |
+| `unit` | The unit (below): codemods, attempts, verification and invariants, then one commit or a rollback | `unit_gate` if the policy asks / `next_unit` |
+| `unit_gate` | Interrupt for approval; the unit's commit is already on the branch, and a rejection resets the branch to the commit before (D-43) | `next_unit` |
+| `final_verify` | Empty the build tree, configure, full build, full test run | `report` |
+| `report` | Write the reports; the engine then releases the lock and stops the container | END |
 
-**Unit subgraph:**
+**Inside the `unit` node:**
 
 ```
 snapshot → codemods → [rule sites left OR build broken?] ─no─→ verify
@@ -639,9 +640,8 @@ snapshot → codemods → [rule sites left OR build broken?] ─no─→ verify
                          │ok
                   postconditions + invariants ──(violation)──→ attempt_failed
                          │ok
-                     unit_gate (interrupt if policy requires) ──(rejected)──→ rollback
-                         │approved
-                       commit → done
+                       commit → done (then the unit_gate node, if the policy requires;
+                                       a rejection rolls the commit back)
 
 attempt_failed: build feedback → [retries left?] ─yes→ agent_edit (fixer role, same conversation)
                                                  ─no──→ rollback → done (unit failed)
@@ -651,10 +651,11 @@ attempt_failed: build feedback → [retries left?] ─yes→ agent_edit (fixer r
 
 **State and checkpoints.**
 - Graph state holds only IDs, counters, statuses and budget counters. Diffs, logs, transcripts and indexes live in the store and are referenced by ID (NFR-1.2).
-- The LangGraph SQLite checkpointer saves after every node. Gates use LangGraph's human-in-the-loop interrupt. The engine waits for an approval record in the store, written by the CLI or dashboard, then resumes.
-- On resume, the worktree is first reset to the branch's last commit, which discards any partial unit (FR-14.3).
-- Budgets are checked before every LLM call and before each unit starts (FR-14.1).
-- All graph construction lives in `orchestrator/`, to contain LangGraph API changes.
+- The LangGraph SQLite checkpointer saves after every node (`durability="sync"`). Gates use LangGraph's human-in-the-loop interrupt. The engine answers it with an approval record from the store, written by the CLI's prompt, `codecoremorph approve|reject` or the dashboard; without an interactive terminal it waits for one (FR-11.4).
+- On resume, the worktree is first reset to the branch's last commit, which discards any partial unit (FR-14.3). A unit whose commit is on the branch but not in the checkpoint (the engine was killed in between) is recognized by its `CodeCoreMorph-Unit` trailer and not run again.
+- Budgets are checked before every LLM call and before each unit starts (FR-14.1); the per-unit wall clock (`guardrails.max_unit_minutes`) ends the unit as timed out.
+- Stop requests (Ctrl-C, `codecoremorph abort`) are checked at every node boundary, before every attempt and model call, and while waiting at a gate (D-43).
+- All LangGraph calls live in `orchestrator/graph.py`, to contain LangGraph API changes; LangSmith tracing is forced off (NFR-5.1).
 
 #### 7.5.1 Planner algorithm
 
@@ -870,7 +871,7 @@ Every attempt is checked before commit (FR-4.4).
 | I-8 | Diff size | Changed lines ≤ `max_unit_diff_lines` | Fail the attempt |
 | I-9 | Rule post-conditions | Per rule (§7.3) | `error` → feedback; `warning` → flag |
 | I-10 | Warnings | Warnings in unit files ≤ count before the unit (`guardrails.new_warnings: off \| warn \| fail`) | Flag or feedback |
-| I-11 | Git safety | Only the run worktree and `codecoremorph/<run-id>` are touched; the user's working tree hash is unchanged | Abort the run (this indicates a bug) |
+| I-11 | Git safety | Only the run worktree and `codecoremorph/<run-id>` are touched: destructive git commands check the worktree's path and branch first; the user's HEAD, refs and uncommitted files are compared before and after each unit | A failed path or branch check aborts the run (a bug); a change in the user's checkout is reported, since the user may be working there (D-43) |
 
 ### 7.11 Characterization tests (FR-7.2 to FR-7.6)
 
@@ -885,7 +886,7 @@ Every attempt is checked before commit (FR-4.4).
 ### 7.12 Persistence
 
 - **`.codecoremorph/codecoremorph.db`** (SQLite, WAL mode): tables `runs`, `units`, `attempts`, `llm_calls`, `approvals`, `events`, `schema_version`. Diagnostics and test results are JSON columns. Schema migrations are versioned.
-- **`.codecoremorph/runs/<id>/`:** `plan.json`, `baseline.json`, `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/<n>/` containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
+- **`.codecoremorph/runs/<id>/`:** `plan.json`, `baseline.json`, `final.json` (the final verification), `report.md`, `report.json`, `checkpoints.sqlite`, and `attempts/<unit>/` with the unit's `result.json` and `api-before.json` (I-6), and `<n>/` per attempt containing `diff.patch`, `build.log`, `test.log`, `transcript.jsonl` and `feedback.md`.
 - **`.codecoremorph/baselines/`:** baselines by commit, sandbox and a digest of the build options (standard included), from plans and from units' final verifications; a run on that commit reuses the test results (D-42).
 - **Writers:** the engine is the only writer of run data. The dashboard and CLI write only `approvals` rows and abort requests. An abort request is an `approvals` row with gate `run` and decision `abort` (D-27).
 - **Retention:** `codecoremorph clean --older-than <days>`.
@@ -920,13 +921,15 @@ Every attempt is checked before commit (FR-4.4).
 | `codecoremorph unit list\|start\|submit\|abort\|status\|context …`, `codecoremorph unit read\|ls\|grep\|symbol\|refs\|signature …` | One unit with a host agent making the edits (§7.6.1) | 4 |
 | `codecoremorph skill install [--user \| --project DIR] [--force]`, `codecoremorph skill path` | Install the Claude Code skill (§7.6.1) | 4 |
 | `codecoremorph plan [CONFIG] [--base REF] [--sandbox MODE] [--json]` | Provision → baseline → index → plan; no code changes. Writes `plan.json` and `baseline.json` | 3 |
-| `codecoremorph run [CONFIG] [--base REF] [--yes]` | Full run | 5 |
-| `codecoremorph status [RUN] [--json]` | Progress and state | 5 |
-| `codecoremorph approve RUN [--unit ID]`, `codecoremorph reject RUN [--unit ID] [--reason …]` | Answer gates | 5 |
-| `codecoremorph resume RUN` | Continue after a stop or crash | 5 |
-| `codecoremorph abort RUN` | Graceful stop | 5 |
-| `codecoremorph report RUN [--format md\|json]` | Print or export the report | 5 |
-| `codecoremorph clean [RUN\|--all] [--branches] [--older-than D]` | Remove CodeCoreMorph-created worktrees, containers and (optionally) branches | 5 |
+| `codecoremorph run [CONFIG] [--base REF] [--yes] [--sandbox MODE] [--json]` | Full run | 5 |
+| `codecoremorph status [RUN] [--all] [--json]` | Progress and state | 5 |
+| `codecoremorph approve [RUN] [--unit ID] [--exclude U-…,U-…] [--reason …]`, `codecoremorph reject [RUN] [--unit ID] [--reason …]` | Answer gates | 5 |
+| `codecoremorph resume [RUN] [--yes]` | Continue after a stop or crash | 5 |
+| `codecoremorph abort [RUN] [--reason …]` | Graceful stop | 5 |
+| `codecoremorph report [RUN] [--format md\|json]` | Print or export the report | 5 |
+| `codecoremorph clean [RUN\|--all] [--branches] [--older-than D] [--yes]` | Remove CodeCoreMorph-created worktrees, containers and (optionally) branches | 5 |
+
+The run commands find the repository through `--config` (default `migration_config.yaml`); `RUN` defaults to the latest run.
 | `codecoremorph dashboard [--port P]` | Start the web UI | 7 |
 | `codecoremorph init` | Generate a starter manifest | 8 |
 

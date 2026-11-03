@@ -47,6 +47,15 @@ class HostUnitState(CoreModel):
     target: str
     snapshot: str = Field(description="HEAD when the unit started: the rollback target")
     head: str = Field(description="The last checkpoint; the worktree is clean on it")
+    agent_base: str | None = Field(
+        default=None,
+        description="The tree after the codemods: the invariants measure the agent's diff "
+        "from it (I-8)",
+    )
+    approvals: list[str] = Field(
+        default_factory=list[str],
+        description="Interface changes a run's unit gate would ask a human to approve (I-6)",
+    )
     index_path: str | None = None
     build_files: list[str] = Field(default_factory=list[str])
     project_files: list[str] = Field(default_factory=list[str])

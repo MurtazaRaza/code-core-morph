@@ -70,6 +70,15 @@ from codecoremorph.core.models.planning import (
     WorkUnit,
     owned_files,
 )
+from codecoremorph.core.models.report import (
+    FinalVerification,
+    ReviewItem,
+    ReviewKind,
+    RuleSummary,
+    RunReport,
+    UnitResult,
+    UsageTotals,
+)
 from codecoremorph.core.models.rules import (
     AppliesTo,
     CodemodSpec,
@@ -86,7 +95,14 @@ from codecoremorph.core.models.rules import (
     SkipCondition,
     StandardRange,
 )
-from codecoremorph.core.models.runs import RunRecord, RunStatus
+from codecoremorph.core.models.runs import (
+    ApprovalDecision,
+    ApprovalGate,
+    ApprovalRecord,
+    LlmCallRecord,
+    RunRecord,
+    RunStatus,
+)
 from codecoremorph.core.models.vcs import ChangedFile, DiffResult, FileChangeKind
 from codecoremorph.core.models.verification import (
     BuildResult,
@@ -102,6 +118,9 @@ __all__ = [
     "AdapterCapabilities",
     "AppliesTo",
     "ApplyResult",
+    "ApprovalDecision",
+    "ApprovalGate",
+    "ApprovalRecord",
     "Attempt",
     "AttemptOutcome",
     "Baseline",
@@ -134,6 +153,7 @@ __all__ = [
     "FileDependency",
     "FileEntry",
     "FileRole",
+    "FinalVerification",
     "HealthStatus",
     "HostFeedbackKind",
     "HostStatus",
@@ -142,6 +162,7 @@ __all__ = [
     "InvariantResult",
     "LanguageConfig",
     "LineEnding",
+    "LlmCallRecord",
     "LlmGuidance",
     "LoadedRule",
     "Message",
@@ -158,12 +179,16 @@ __all__ = [
     "ReferenceKind",
     "RejectionReason",
     "ReplaceEdit",
+    "ReviewItem",
+    "ReviewKind",
     "Role",
     "Rule",
     "RuleKind",
     "RuleSite",
+    "RuleSummary",
     "RunId",
     "RunRecord",
+    "RunReport",
     "RunStatus",
     "Severity",
     "SkipCondition",
@@ -189,8 +214,10 @@ __all__ = [
     "UnitEstimate",
     "UnitFlag",
     "UnitId",
+    "UnitResult",
     "UnitStatus",
     "Usage",
+    "UsageTotals",
     "Visibility",
     "WorkUnit",
     "WorktreePath",
