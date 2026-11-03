@@ -179,6 +179,16 @@ class Worktree:
     def parent(self, sha: str) -> str:
         return self.git.text("rev-parse", "--verify", f"{_check_sha(sha)}^")
 
+    def below(self, author_email: str, since: str) -> str:
+        """HEAD without the commits on top of it authored by ``author_email`` (a host unit's
+        checkpoints, D-41): the newest commit since ``since`` by anyone else, or ``since``."""
+        out = self.git.run("log", "--format=%H %ae", f"{_check_sha(since)}..HEAD").stdout
+        for line in out.decode("utf-8", "replace").splitlines():
+            sha, _, email = line.partition(" ")
+            if email != author_email:
+                return sha
+        return since
+
     def unit_commits(self, since: str) -> dict[str, str]:
         """Unit ID -> commit, for the unit commits on the branch since ``since`` (from their
         ``CodeCoreMorph-Unit`` trailers). A resumed run finds the units that committed before

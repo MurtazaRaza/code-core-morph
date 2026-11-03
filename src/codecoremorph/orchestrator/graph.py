@@ -42,6 +42,7 @@ class RunState(TypedDict, total=False):
     status: str  # RunStatus value
     unit: str | None  # the unit being worked on, or None between units
     gate: bool  # the unit waits at its gate
+    agent: bool  # the unit waits for its host agent's edits (D-44)
     stop: str | None  # why the run stops early: aborted | budget_exhausted | rejected | failed
     reason: str | None  # one line for the report
     verified: bool | None  # the final verification passed
@@ -53,6 +54,10 @@ class Node(Protocol):
 
 Route = Callable[[RunState], str]
 STOP = END
+# The run graph loops once per unit (and once per host-agent attempt), so one invoke can take
+# many steps. LangGraph's default limit, 25 steps per invoke, would stop a run of about ten
+# units; the loops are bounded by the plan, so the limit only has to stay out of the way.
+_RECURSION_LIMIT = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -67,7 +72,8 @@ def wait_for_decision(request: Mapping[str, Any]) -> Any:
     """Inside a node: stop the graph until a decision arrives, then return it.
 
     The node runs again from its start when the graph resumes, so everything before this call
-    must be safe to repeat."""
+    must be safe to repeat. The first answer is kept: if the node fails after it, every later
+    resume replays that answer and ignores a new one."""
     return interrupt(dict(request))
 
 
@@ -106,7 +112,7 @@ class RunGraph:
 
     @property
     def _config(self) -> Any:
-        return {"configurable": {"thread_id": self.thread}}
+        return {"configurable": {"thread_id": self.thread}, "recursion_limit": _RECURSION_LIMIT}
 
     def started(self) -> bool:
         """Whether the graph has checkpoints for this run."""

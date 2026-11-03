@@ -2,8 +2,10 @@
 
 ```
 baseline → index → plan → plan_gate → next_unit ─┬→ unit ─┬→ unit_gate → next_unit
-                                        ↑        │        └→ next_unit
-                                        └────────┘   no unit left → final_verify → report
+                                        ↑        │    │   └→ next_unit
+                                        │        │    └→ agent ⟲ ─┬→ unit_gate → next_unit
+                                        └────────┘                └→ next_unit
+                                                     no unit left → final_verify → report
 ```
 
 Validating the manifest, preparing the workspace and provisioning the toolchain happen when
@@ -22,6 +24,13 @@ sends the graph straight to ``report``.
   the unit in progress rolls back, and ``codecoremorph resume`` continues it. A killed engine
   resumes the same way: the worktree goes back to the branch's last commit and the graph to
   its last checkpoint; a unit that committed before the kill is found by its trailers.
+- **Host agents** (``run --host-agent``, D-44). A coding agent that runs CodeCoreMorph as a
+  tool makes the edits, and no model is called. The ``unit`` node runs the codemods and the
+  first verification as ``HostUnit``; when edits are needed, the ``agent`` node interrupts and
+  the run parks. ``codecoremorph unit submit`` resumes it: the node applies and verifies the
+  edits and loops back to wait after a rejection or a failed attempt. ``unit abort`` gives the
+  unit up and the run goes on. A host's command never waits in the process: at a gate with no
+  decision in the store, the run parks for ``approve``/``reject`` and ``resume``.
 """
 
 from __future__ import annotations
@@ -33,13 +42,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import JsonValue
 
 from codecoremorph import __version__
 from codecoremorph.adapters.base import AdapterNotSupportedError
 from codecoremorph.adapters.config import language_config
+from codecoremorph.agent.host import CHECKPOINT_EMAIL, HostFiles, HostStep, HostUnit
 from codecoremorph.agent.loop import AgentSettings, UnitOutcome, UnitRunner
 from codecoremorph.config.models import MigrationConfig, PlanApproval, UnitApproval
 from codecoremorph.core.errors import (
@@ -60,7 +70,10 @@ from codecoremorph.core.models import (
     EventType,
     FileRole,
     FinalVerification,
+    HostStatus,
+    HostUnitState,
     LlmCallRecord,
+    LoadedRule,
     Role,
     RunRecord,
     RunStatus,
@@ -82,7 +95,14 @@ from codecoremorph.orchestrator.planning import (
     write_baseline,
 )
 from codecoremorph.orchestrator.session import RunSession, build_standard
-from codecoremorph.orchestrator.unit import PreparedUnit, make_runner, prepare_unit
+from codecoremorph.orchestrator.unit import (
+    PreparedUnit,
+    host_unit_state,
+    make_runner,
+    prepare_unit,
+    resume_host_unit,
+    user_tree_warnings,
+)
 from codecoremorph.parity.baseline import unit_baseline
 from codecoremorph.prompts import PROMPTS_VERSION
 from codecoremorph.report.build import (
@@ -146,6 +166,26 @@ class RunOptions:
     on_step: StepSink = _quiet
     on_warning: StepSink = _quiet
     on_stop_requested: Callable[[], None] = _nothing  # the first Ctrl-C
+    host: bool = False  # a host agent makes the edits and no model is called (D-44)
+
+
+AGENT_GATE = "agent"  # the interrupt where a unit waits for its host agent's edits
+
+
+@dataclass(frozen=True)
+class AgentAction:
+    """What the host agent's command asks of the unit that waits for it (D-44)."""
+
+    kind: Literal["submit", "abort"]
+    reason: str | None = None
+
+
+class _Park(Exception):  # noqa: N818 - control flow, not an error
+    """The run waits for someone outside this process: the host agent, or a decision."""
+
+    def __init__(self, request: dict[str, Any]):
+        super().__init__(str(request.get("gate")))
+        self.request = request
 
 
 @dataclass(frozen=True)
@@ -160,11 +200,14 @@ class RunResult:
     report_md: Path | None = None
     report_json: Path | None = None
     baseline_failed: bool = False
+    # Parked by design: a host-agent run waits for the agent's edits or for a decision.
+    awaiting: bool = False
+    notes: tuple[str, ...] = ()  # what the host agent's command did, for the agent to read
 
     @property
     def exit_code(self) -> ExitCode:
         if self.parked:
-            return ExitCode.ABORTED
+            return ExitCode.SUCCESS if self.awaiting else ExitCode.ABORTED
         if self.baseline_failed:
             return ExitCode.ENVIRONMENT
         return _EXIT_CODES.get(self.status, ExitCode.INTERNAL)
@@ -172,6 +215,37 @@ class RunResult:
 
 def _models(attempts: list[Attempt]) -> list[str]:
     return sorted({a.model for a in attempts if a.model})
+
+
+def agent_request(files: HostFiles, state: HostUnitState) -> dict[str, Any]:
+    """The ``agent`` interrupt's request: the unit that waits for its host agent's edits."""
+    return {
+        "gate": AGENT_GATE,
+        "run_id": state.run_id,
+        "unit": state.unit.id,
+        "rules": list(state.unit.rules),
+        "attempt": state.attempt,
+        "attempts_allowed": state.attempts_allowed,
+        "context_file": str(files.context),
+        "edits_file": str(files.edits),
+    }
+
+
+def _host_outcome(state: HostUnitState, warnings: list[str]) -> UnitOutcome:
+    """A host unit's end, as the run records units."""
+    return UnitOutcome(
+        unit_id=state.unit.id,
+        succeeded=state.status is HostStatus.SUCCEEDED,
+        agent_skipped=state.agent_skipped,
+        attempts=list(state.attempts),
+        changed_files=list(state.changed_files),
+        reason=state.reason,
+        summary=state.summary,
+        review_notes=list(state.review_notes),
+        warnings=list(warnings),
+        approvals=list(state.approvals),
+        codemods=state.codemods,
+    )
 
 
 class RunEngine:
@@ -218,6 +292,9 @@ class RunEngine:
         self._tests: set[str] | None = None
         # The standard the build tree is configured with; "" makes the next unit configure.
         self.configured_standard = ""
+        self.host_files = HostFiles(session.artifacts.root)  # the waiting host unit's files
+        self._agent_action: AgentAction | None = None  # the host command's, used once
+        self.notes: list[str] = []
         report = "report"
         self.graph = RunGraph(
             [
@@ -231,7 +308,9 @@ class RunEngine:
                 NodeSpec("next_unit", self._node_next_unit, self._route_next_unit,
                          ("unit", "final_verify", report)),
                 NodeSpec("unit", self._node_unit, self._route_unit,
-                         ("unit_gate", "next_unit", report)),
+                         (AGENT_GATE, "unit_gate", "next_unit", report)),
+                NodeSpec(AGENT_GATE, self._node_agent, self._route_unit,
+                         (AGENT_GATE, "unit_gate", "next_unit", report)),
                 NodeSpec("unit_gate", self._node_unit_gate, self._unless_stop("next_unit"),
                          ("next_unit", report)),
                 NodeSpec("final_verify", self._node_final_verify, report),
@@ -261,6 +340,8 @@ class RunEngine:
     def _route_unit(state: RunState) -> str:
         if state.get("stop"):
             return "report"
+        if state.get("agent"):
+            return AGENT_GATE
         return "unit_gate" if state.get("gate") else "next_unit"
 
     # ------------------------------------------------------------------ helpers
@@ -327,6 +408,7 @@ class RunEngine:
             "stop": "aborted",
             "unit": None,
             "gate": False,
+            "agent": False,
             "reason": request.reason if request else None,
         }
 
@@ -469,22 +551,29 @@ class RunEngine:
             return {"stop": "budget_exhausted", "reason": exc.message}
         for unit in self.store.units(self.run_id):
             if unit.status in (UnitStatus.PENDING, UnitStatus.IN_PROGRESS):
-                return {"unit": unit.id, "gate": False, "status": RunStatus.MIGRATING.value}
-        return {"unit": None, "gate": False}
+                return {
+                    "unit": unit.id,
+                    "gate": False,
+                    "agent": False,
+                    "status": RunStatus.MIGRATING.value,
+                }
+        return {"unit": None, "gate": False, "agent": False}
 
     def _node_unit(self, state: RunState) -> RunState:
         unit_id = state.get("unit")
         if unit_id is None:
-            return {"unit": None}
+            return {"unit": None, "agent": False}
         if (stop := self._stop_here()) is not None:
             return stop
         unit = self._unit(unit_id)
         session = self.session
         worktree = session.workspace.worktree
-        recovered = worktree.unit_commits(session.workspace.base_commit).get(unit_id)
+        base = session.workspace.base_commit
+        recovered = worktree.unit_commits(base).get(unit_id)
         if recovered is not None:
             return self._recover(unit, recovered)
-        worktree.rollback(worktree.head())  # a crash may have left a partial attempt
+        # A crash may have left a partial attempt, or a host unit's checkpoint commits.
+        worktree.rollback(worktree.below(CHECKPOINT_EMAIL, base))
         self.store.delete_attempts(self.run_id, unit_id)
         started = _now()
         unit = self._put_unit(unit, UnitStatus.IN_PROGRESS)
@@ -502,18 +591,24 @@ class RunEngine:
             )
         except (UsageError, ConfigError) as exc:
             return self._finish_failed(unit, started, f"the unit can't run: {exc.message}")
+        host = self.options.host
         runner = make_runner(
             session,
             prepared,
-            self.llm,
+            None if host else self.llm,
             AgentSettings.from_config(
                 self.config.guardrails, store_transcripts=self.config.reporting.store_transcripts
             ),
             warnings_before=self.warnings_map,
             guard=self.control.check,
-            deadline=time.monotonic() + self.config.guardrails.max_unit_minutes * 60,
+            # The limit measures the unit's model time: a host agent's own time isn't ours.
+            deadline=None
+            if host
+            else time.monotonic() + self.config.guardrails.max_unit_minutes * 60,
         )
         runner.configured_standard = self.configured_standard
+        if host:
+            return self._start_host_unit(unit, prepared, runner)
         try:
             outcome = runner.run(prepared.unit, prepared.rules)
         except StopRequestedError as stop:
@@ -526,17 +621,10 @@ class RunEngine:
         except BudgetExhaustedError as exc:
             self._put_unit(unit, UnitStatus.PENDING, "stopped: the run's budget ran out")
             self._refresh_standard()
-            return {"stop": "budget_exhausted", "unit": None, "reason": exc.message}
+            return {"stop": "budget_exhausted", "unit": None, "agent": False, "reason": exc.message}
         finally:
             self.configured_standard = runner.configured_standard
-        for attempt in outcome.attempts:
-            self.store.put_attempt(attempt)
-            self.events.emit(
-                EventType.ATTEMPT_FINISHED,
-                unit_id=unit_id,
-                attempt=attempt.number,
-                outcome=attempt.outcome.value if attempt.outcome else None,
-            )
+        self._record_attempts(unit_id, outcome.attempts)
         changes = before.changes(session.workspace.repository.fingerprint())
         if changes:
             outcome.warnings.append(
@@ -549,7 +637,166 @@ class RunEngine:
             return self._finish_failed(
                 unit, started, outcome.reason or "the unit failed", outcome=outcome
             )
-        return self._finish_succeeded(unit, started, outcome, runner, prepared)
+        return self._finish_succeeded(unit, started, outcome, runner, prepared.rules)
+
+    def _record_attempts(self, unit_id: str, attempts: list[Attempt]) -> None:
+        """Store the unit's attempts not stored yet (a host unit's arrive one per command)."""
+        known = {a.number for a in self.store.attempts(self.run_id, unit_id)}
+        for attempt in attempts:
+            if attempt.number in known:
+                continue
+            self.store.put_attempt(attempt)
+            self.events.emit(
+                EventType.ATTEMPT_FINISHED,
+                unit_id=unit_id,
+                attempt=attempt.number,
+                outcome=attempt.outcome.value if attempt.outcome else None,
+            )
+
+    # ------------------------------------------------------------------ host-agent units
+
+    def _start_host_unit(
+        self, unit: WorkUnit, prepared: PreparedUnit, runner: UnitRunner
+    ) -> RunState:
+        """The unit's codemods and first verification. Unless they finish it, the unit then
+        waits for the host agent's edits at the ``agent`` node (D-44)."""
+        session = self.session
+        state = host_unit_state(
+            session,
+            prepared,
+            runner,
+            plan_unit=unit.id,
+            configured_standard=runner.configured_standard,
+            user_tree=session.workspace.repository.dirty_state(),
+            in_run=True,
+        )
+        host = HostUnit(
+            runner,
+            prepared.rules,
+            self.host_files,
+            language=self.config.migration.source.language,
+            author=self.config.git.author,
+            commits=False,
+        )
+        try:
+            step = host.start(state)
+        finally:
+            self.configured_standard = runner.configured_standard
+        return self._after_host_step(unit, host, step)
+
+    def _node_agent(self, state: RunState) -> RunState:
+        """Wait for the host agent; then verify its edits (``codecoremorph unit submit``) or
+        give the unit up (``unit abort``). A rejection or a failed attempt waits again."""
+        # The command's action is for the unit that waited when the command started, and is
+        # used once: a unit that ends here or starts over doesn't pass it on to the next wait.
+        # LangGraph replays an interrupt's first answer when the node failed after it, so the
+        # answer's value means nothing; the action is the engine's.
+        action, self._agent_action = self._agent_action, None
+        unit_id = state.get("unit")
+        if unit_id is None:
+            return {"agent": False}
+        unit = self._unit(unit_id)
+        session = self.session
+        worktree = session.workspace.worktree
+        recovered = worktree.unit_commits(session.workspace.base_commit).get(unit_id)
+        if recovered is not None:  # the engine stopped between the unit's commit and here
+            return self._recover(unit, recovered)
+        current = self.host_files.load() if self.host_files.state.is_file() else None
+        if current is None or current.unit.id != unit_id or current.status.is_terminal:
+            return self._host_unit_lost(unit, current)
+        files = self.host_files
+        wait_for_decision(agent_request(files, current))
+        if action is None:  # a replayed answer, not the agent's command: wait again
+            return {"agent": True}
+        self.events.emit(EventType.GATE_DECIDED, gate=AGENT_GATE, unit_id=unit_id,
+                         decision=action.kind, source="host")  # fmt: skip
+        host = resume_host_unit(session, current, warnings_before=self.warnings_map, commits=False)
+        if action.kind == "abort":
+            worktree.rollback(current.snapshot)
+            why = "the agent gave the unit up" + (f": {action.reason}" if action.reason else "")
+            ended = current.model_copy(
+                update={
+                    "status": HostStatus.ABORTED,
+                    "reason": why,
+                    "head": current.snapshot,
+                    "updated_at": _now(),
+                }
+            )
+            files.save(ended)
+            message = f"Unit {unit_id} was given up ({why}) and rolled back; the run goes on."
+            return self._after_host_step(unit, host, HostStep(ended, message))
+        try:
+            step = host.submit(current)
+        finally:
+            self.configured_standard = host.runner.configured_standard
+        step.warnings += user_tree_warnings(session, current)
+        return self._after_host_step(unit, host, step)
+
+    def _after_host_step(self, unit: WorkUnit, host: HostUnit, step: HostStep) -> RunState:
+        """Record a host unit's step; a unit that ended is committed or failed like any other."""
+        state = step.state
+        self.notes += [f"warning: {w}" for w in step.warnings]
+        # A waiting unit's next step is the run's: the command prints it once, at the end.
+        waiting = state.status is HostStatus.WAITING
+        self.notes.append(f"Unit {unit.id}: {step.message}" if waiting else step.message)
+        unit_dir = self.session.artifacts.unit_dir(unit.id)
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        HostFiles(unit_dir).save(state)  # each unit's last host state, for the record
+        self._record_attempts(unit.id, state.attempts)
+        if waiting:
+            self.events.emit(
+                EventType.GATE_WAITING, gate=AGENT_GATE, unit_id=unit.id, attempt=state.attempt
+            )
+            return {"unit": unit.id, "agent": True, "gate": False}
+        outcome = _host_outcome(state, step.warnings)
+        if state.status is not HostStatus.SUCCEEDED:
+            self._refresh_standard()
+            return self._finish_failed(
+                unit, state.started_at, state.reason or "the unit failed", outcome=outcome
+            )
+        update = self._finish_succeeded(unit, state.started_at, outcome, host.runner, host.rules)
+        result = load_unit_result(self.session.artifacts, unit.id)
+        if result is not None and result.commit is not None:
+            done = state.model_copy(update={"commit": result.commit, "head": result.commit})
+            self.host_files.save(done)
+            HostFiles(unit_dir).save(done)
+            self.notes.append(
+                f"Unit {unit.id} is commit {result.commit[:12]} on branch "
+                f"{self.session.workspace.worktree.branch}."
+            )
+        return update
+
+    def _host_unit_lost(self, unit: WorkUnit, state: HostUnitState | None) -> RunState:
+        """The engine stopped after the host unit ended and before the run recorded it: a
+        failure is recorded now; a success whose commit didn't happen runs again."""
+        session = self.session
+        worktree = session.workspace.worktree
+        worktree.rollback(worktree.below(CHECKPOINT_EMAIL, session.workspace.base_commit))
+        if (
+            state is not None
+            and state.unit.id == unit.id
+            and state.status
+            in (
+                HostStatus.FAILED,
+                HostStatus.ABORTED,
+            )
+        ):
+            self._record_attempts(unit.id, state.attempts)
+            self._refresh_standard()
+            return self._finish_failed(
+                unit,
+                state.started_at,
+                state.reason or "the unit failed",
+                outcome=_host_outcome(state, []),
+            )
+        self.store.delete_attempts(self.run_id, unit.id)
+        self._put_unit(unit, UnitStatus.PENDING, "restarted: the engine stopped during the unit")
+        self.notes.append(
+            f"Unit {unit.id} starts over: CodeCoreMorph stopped before it recorded the unit's "
+            "result, so the last submission's changes are gone."
+        )
+        self._refresh_standard()
+        return {"unit": None, "gate": False, "agent": False}
 
     def _finish_failed(
         self,
@@ -575,7 +822,7 @@ class RunEngine:
         )
         write_json(unit_result_path(self.session.artifacts, unit.id), result)
         self._put_unit(unit, UnitStatus.FAILED, reason)
-        return {"unit": None, "gate": False}
+        return {"unit": None, "gate": False, "agent": False}
 
     def _finish_succeeded(
         self,
@@ -583,7 +830,7 @@ class RunEngine:
         started: datetime,
         outcome: UnitOutcome,
         runner: UnitRunner,
-        prepared: PreparedUnit,
+        rules: list[LoadedRule],
     ) -> RunState:
         session = self.session
         worktree = session.workspace.worktree
@@ -614,7 +861,7 @@ class RunEngine:
             )
             after = runner.invariants.warnings_after if runner.invariants else {}
             file_warnings = {p: after.get(p, 0) for p in changed}
-            self._cache_baseline(runner, prepared, commit)
+            self._cache_baseline(runner, rules, commit)
         reasons = self._gate_reasons(outcome, changed) if commit else []
         finished = _now()
         status = UnitStatus.AWAITING_APPROVAL if reasons else UnitStatus.COMMITTED
@@ -645,15 +892,15 @@ class RunEngine:
             self.warnings_map.update(file_warnings)
         self._put_unit(unit, status, "waiting for approval" if reasons else None)
         self._refresh_standard()
-        return {"unit": unit.id if reasons else None, "gate": bool(reasons)}
+        return {"unit": unit.id if reasons else None, "gate": bool(reasons), "agent": False}
 
-    def _cache_baseline(self, runner: UnitRunner, prepared: PreparedUnit, commit: str) -> None:
+    def _cache_baseline(self, runner: UnitRunner, rules: list[LoadedRule], commit: str) -> None:
         """The unit's last verification ran the tests on its commit: a unit or run started
         from that commit reuses them (D-42)."""
         report = runner.last_tests
         if report is None:
             return
-        lang = runner.verify_context(prepared.rules).lang
+        lang = runner.verify_context(rules).lang
         baseline = unit_baseline(
             self.baseline, report, commit=commit, standard=lang.standard, run_id=self.run_id
         )
@@ -697,7 +944,7 @@ class RunEngine:
         status = UnitStatus.AWAITING_APPROVAL if waiting else UnitStatus.COMMITTED
         self._put_unit(unit, status, "waiting for approval" if waiting else None)
         self._refresh_standard()
-        return {"unit": unit.id if waiting else None, "gate": waiting}
+        return {"unit": unit.id if waiting else None, "gate": waiting, "agent": False}
 
     def _node_unit_gate(self, state: RunState) -> RunState:
         unit_id = state.get("unit")
@@ -836,12 +1083,22 @@ class RunEngine:
 
     # ------------------------------------------------------------------ driving
 
-    def drive(self, *, fresh: bool) -> RunResult:
-        """Run the graph until it ends or parks, answering gates as they come."""
+    def drive(self, *, fresh: bool, agent: AgentAction | None = None) -> RunResult:
+        """Run the graph until it ends or parks, answering gates as they come. ``agent`` is a
+        host agent's ``unit submit`` or ``unit abort`` for the unit that waits for it."""
         worktree = self.session.workspace.worktree
+        if agent is not None:
+            pending = None if fresh else self.graph.pending()
+            if pending is None or pending.get("gate") != AGENT_GATE:
+                where = f"at its {pending['gate']} gate" if pending else "for nothing"
+                raise UsageError(
+                    f"run {self.run_id} doesn't wait for a unit's edits: it waits {where}",
+                    hint=f"`codecoremorph status {self.run_id}` shows what it waits for.",
+                )
+        self._agent_action = agent
         if not fresh:
-            worktree.rollback(worktree.head())  # discard a unit the engine didn't finish
-        waiting: dict[str, Any] | None = None
+            # Discard a unit step the engine didn't finish; a host unit's checkpoints stay.
+            worktree.rollback(worktree.head())
         try:
             with self.control.catching_ctrl_c(self.options.on_stop_requested):
                 if fresh:
@@ -853,20 +1110,12 @@ class RunEngine:
                     else:
                         outcome = self.graph.proceed()
                 while outcome.waiting is not None:
-                    waiting = outcome.waiting
-                    outcome = self.graph.resume(self._decide(waiting))
+                    outcome = self.graph.resume(self._decide(outcome.waiting))
+        except _Park as park:
+            return self._parked(park.request, awaiting=True)
         except (StopRequestedError, KeyboardInterrupt):
             self.events.emit(EventType.LOG, message="the engine stopped; the run is parked")
-            record = self.store.get_run(self.run_id)
-            return RunResult(
-                run_id=self.run_id,
-                status=record.status if record else RunStatus.MIGRATING,
-                reason="stopped",
-                branch=worktree.branch,
-                head=worktree.head(),
-                parked=True,
-                waiting=self.graph.pending(),
-            )
+            return self._parked(self.graph.pending(), awaiting=False)
         state = outcome.state
         artifacts = self.session.artifacts
         return RunResult(
@@ -878,11 +1127,33 @@ class RunEngine:
             report_md=artifacts.report_md,
             report_json=artifacts.report_json,
             baseline_failed=state.get("stop") == "baseline_failed",
+            notes=tuple(self.notes),
         )
 
-    def _decide(self, request: dict[str, Any]) -> int:
+    def _parked(self, waiting: dict[str, Any] | None, *, awaiting: bool) -> RunResult:
+        worktree = self.session.workspace.worktree
+        record = self.store.get_run(self.run_id)
+        return RunResult(
+            run_id=self.run_id,
+            status=record.status if record else RunStatus.MIGRATING,
+            reason=None if awaiting else "stopped",
+            branch=worktree.branch,
+            head=worktree.head(),
+            parked=True,
+            waiting=waiting,
+            awaiting=awaiting,
+            notes=tuple(self.notes),
+        )
+
+    def _decide(self, request: dict[str, Any]) -> int | str:
         """The ID of the approval that answers ``request``: one already in the store, the
-        user's answer to the prompt, or one written while the engine waits (FR-11.4)."""
+        user's answer to the prompt, or one written while the engine waits (FR-11.4). A host
+        agent's run parks instead of waiting; the unit waiting for the agent's edits goes on
+        only with the agent's command."""
+        if request.get("gate") == AGENT_GATE:
+            if self._agent_action is None:
+                raise _Park(request)
+            return AGENT_GATE  # ignored: the node takes the agent's action from the engine
         gate = ApprovalGate(str(request["gate"]))
         unit_id = request.get("unit")
         asked = False
@@ -902,6 +1173,8 @@ class RunEngine:
                 )
                 if stored.id is not None:
                     return stored.id
+            if self.options.host:  # the host agent asks the user, then runs `resume`
+                raise _Park(request)
             if self.options.ask is not None and not asked:
                 asked = True
                 answer = self.options.ask(request)
@@ -1003,17 +1276,22 @@ def new_run_record(session: RunSession) -> RunRecord:
     )
 
 
-def run_environment(session: RunSession, llm: LLMService) -> dict[str, JsonValue]:
-    """What the run runs with (NFR-6.1); the index node adds the tool versions."""
+def run_environment(
+    session: RunSession, llm: LLMService, *, host: bool = False
+) -> dict[str, JsonValue]:
+    """What the run runs with (NFR-6.1); the index node adds the tool versions. A host-agent
+    run (D-44) records ``agent: host`` and no model routes, since it calls no model."""
     routes: dict[str, JsonValue] = {role.value: llm.route(role).name for role in Role}
     found: dict[str, JsonValue] = {
         "codecoremorph": __version__,
         "config_path": str(session.config_path.resolve()),
         "sandbox": session.executor.kind,
+        "agent": "host" if host else "model",
         "prompts": PROMPTS_VERSION,
-        "models": routes,
         "build_standard": session.ctx.lang.standard,
     }
+    if not host:
+        found["models"] = routes
     image = getattr(getattr(session.executor, "settings", None), "image", None)
     if isinstance(image, str):
         found["image"] = image

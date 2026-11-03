@@ -12,10 +12,12 @@ from __future__ import annotations
 import logging
 import shutil
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+from codecoremorph.agent.host import CHECKPOINT_EMAIL, HostFiles
 from codecoremorph.config import load_config
 from codecoremorph.config.models import SandboxMode
 from codecoremorph.core.errors import (
@@ -30,6 +32,7 @@ from codecoremorph.core.models import (
     ApprovalRecord,
     Event,
     EventType,
+    HostStatus,
     RunRecord,
     RunStatus,
     UnitStatus,
@@ -37,10 +40,12 @@ from codecoremorph.core.models import (
 from codecoremorph.core.models.vcs import DirtyState
 from codecoremorph.core.paths import HomeLayout
 from codecoremorph.orchestrator.run import (
+    AgentAction,
     LlmFactory,
     RunEngine,
     RunOptions,
     RunResult,
+    agent_request,
     finish_report,
     new_run_record,
     reject_unit,
@@ -112,16 +117,20 @@ def _end_session(session: RunSession, result: RunResult) -> None:
     session.delete_branch = not result.parked and result.head == session.workspace.base_commit
 
 
-def _drive(session: RunSession, engine: RunEngine, *, fresh: bool) -> RunResult:
+def _drive(
+    session: RunSession, engine: RunEngine, *, fresh: bool, agent: AgentAction | None = None
+) -> RunResult:
     try:
-        result = engine.drive(fresh=fresh)
+        result = engine.drive(fresh=fresh, agent=agent)
     except CodeCoreMorphError as exc:
         # An environment problem (credentials, Docker, a toolchain): keep everything, so the
         # run continues once it is fixed.
         session.park = True
-        resume = (
-            f"The run is parked: then continue it with `codecoremorph resume {session.run_id}`."
-        )
+        if agent is not None and agent.kind == "submit":
+            again = "then run `codecoremorph unit submit` again: the edits file is back in place."
+        else:
+            again = f"then continue it with `codecoremorph resume {session.run_id}`."
+        resume = f"The run is parked: {again}"
         exc.hint = f"{exc.hint} {resume}" if exc.hint else resume
         raise
     except BaseException:
@@ -151,7 +160,9 @@ def start_run(
         with Store.open(StateDir.for_repo(session.workspace.repository.root).db_path) as store:
             store.create_run(new_run_record(session))
             engine = RunEngine(session, store, options=options, llm_factory=llm_factory)
-            store.set_run_environment(session.run_id, run_environment(session, engine.llm))
+            store.set_run_environment(
+                session.run_id, run_environment(session, engine.llm, host=options.host)
+            )
             engine.events.emit(
                 EventType.RUN_CREATED,
                 base_commit=session.workspace.base_commit,
@@ -165,10 +176,13 @@ def resume_run(
     run_id: str | None,
     *,
     options: RunOptions,
+    agent: AgentAction | None = None,
     llm_factory: LlmFactory | None = None,
     on_warning: WarningSink | None = None,
 ) -> RunResult:
-    """``codecoremorph resume``: continue a parked or crashed run from its last checkpoint."""
+    """``codecoremorph resume``: continue a parked or crashed run from its last checkpoint.
+    ``unit submit|abort`` pass the host agent's ``agent`` action for the unit waiting for it.
+    A run started with a host agent stays one (D-44)."""
     place = RunPlace.for_config(config_path)
     with place.store() as store:
         record = place.record(store, run_id)
@@ -178,6 +192,13 @@ def resume_run(
                 hint="Start a new run with `codecoremorph run`.",
             )
         environment = store.run_environment(record.id)
+    if environment.get("agent") == "host":
+        options = replace(options, host=True, ask=None)
+    elif agent is not None:
+        raise UsageError(
+            f"run {record.id} doesn't use a host agent: its model makes the edits",
+            hint=f"Continue it with `codecoremorph resume {record.id}`.",
+        )
     sandbox = environment.get("sandbox")
     mode = SandboxMode.DOCKER if sandbox == "docker" else SandboxMode.NATIVE
     manifest = environment.get("config_path")
@@ -189,7 +210,7 @@ def resume_run(
     ):
         engine = RunEngine(session, store, options=options, llm_factory=llm_factory)
         engine.events.emit(EventType.LOG, message="the run resumes")
-        return _drive(session, engine, fresh=False)
+        return _drive(session, engine, fresh=False, agent=agent)
 
 
 # --------------------------------------------------------------------------- decisions
@@ -306,7 +327,9 @@ def _finish_offline(
     head: str | None = None
     try:
         if worktree.path.is_dir():
-            worktree.rollback(worktree.head())
+            # A unit waiting for its host agent leaves checkpoint commits: they go too.
+            worktree.rollback(worktree.below(CHECKPOINT_EMAIL, base) if base else worktree.head())
+            _end_host_unit(artifacts.root, "the run was aborted")
             for unit in store.units(run_id):
                 if unit.status is UnitStatus.AWAITING_APPROVAL:
                     result = load_unit_result(artifacts, unit.id)
@@ -364,6 +387,37 @@ def _holds(place: RunPlace, run_id: str) -> bool:
     return holder is not None and holder.run_id == run_id
 
 
+def _end_host_unit(run_dir: Path, reason: str) -> None:
+    """Mark the run's unit that waits for its host agent as aborted."""
+    files = HostFiles(run_dir)
+    if not files.state.is_file():
+        return
+    state = files.load()
+    if state.in_run and state.status is HostStatus.WAITING:
+        files.save(
+            state.model_copy(
+                update={
+                    "status": HostStatus.ABORTED,
+                    "reason": reason,
+                    "head": state.snapshot,
+                    "updated_at": _now(),
+                }
+            )
+        )
+
+
+def waiting_agent(run_dir: Path) -> dict[str, Any] | None:
+    """The unit of a host-agent run that waits for the agent's edits, as the engine's
+    ``agent`` interrupt describes it; None if no unit waits."""
+    files = HostFiles(run_dir)
+    if not files.state.is_file():
+        return None
+    state = files.load()
+    if not state.in_run or state.status is not HostStatus.WAITING:
+        return None
+    return agent_request(files, state)
+
+
 # --------------------------------------------------------------------------- status
 
 
@@ -378,6 +432,7 @@ class RunOverview:
     engine_alive: bool
     events: list[Event]
     report_md: Path | None
+    agent: dict[str, Any] | None = None  # the unit waiting for its host agent's edits (D-44)
 
 
 def overview(place: RunPlace, store: Store, record: RunRecord, *, events: int = 10) -> RunOverview:
@@ -401,6 +456,9 @@ def overview(place: RunPlace, store: Store, record: RunRecord, *, events: int = 
         engine_alive=place.engine_alive(record.id),
         events=all_events[-events:],
         report_md=report if report.is_file() else None,
+        agent=None
+        if record.status.is_terminal
+        else waiting_agent(place.state_dir.run(record.id).root),
     )
 
 
@@ -497,4 +555,5 @@ __all__ = [
     "record_decision",
     "resume_run",
     "start_run",
+    "waiting_agent",
 ]

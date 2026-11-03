@@ -94,3 +94,39 @@ def test_a_hook_postcondition(world: World, monkeypatch: pytest.MonkeyPatch) -> 
         AttemptOutcome.SUCCEEDED,
     ]
     assert calls[0] == ["include/geo.h"]
+
+
+def test_a_check_failing_after_the_codemods_is_in_the_first_message(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A green build whose hook (or codemod_clean) check fails: the agent's first message
+    says what failed; the detector's own sites stay in their list."""
+
+    def hook(worktree: Path, files: list[str]) -> list[RuleSite]:
+        text = (worktree / "include" / "geo.h").read_text(encoding="utf-8")
+        return [RuleSite(file="include/geo.h", line=4, text="DECLARE(int, Id);")] * (
+            "DECLARE(int" in text
+        )
+
+    monkeypatch.setattr(loop, "load_hook", lambda spec: hook)
+    rule = _with(Postcondition(type=PostconditionType.HOOK, severity="error", hook="pkg.mod:check"))
+    runner, scripted = world.runner(
+        [reply(submit("s1", replace_edit("include/geo.h", "DECLARE(int, Id);", "using Id = int;")))]
+    )
+    outcome = runner.run(unit("include/geo.h"), [rule])
+    assert outcome.succeeded, outcome.reason
+    first = "".join(getattr(b, "text", "") for b in scripted.requests[0].messages[0].content)
+    assert "but the rules' checks fail" in first
+    assert "include/geo.h:4" in first
+
+
+def test_detector_sites_alone_leave_the_build_section_as_it_was() -> None:
+    sites_only = loop.Verification(ok=False, stage="postconditions", feedback="x: 1 site")
+    assert loop.first_build(sites_only) is None
+    told = loop.Verification(ok=False, stage="postconditions", feedback="a\n\nb", untold="b")
+    assert loop.first_build(told) == (
+        "The project builds and its tests pass, but the rules' checks fail:\n\nb"
+    )
+    broken = loop.Verification(ok=False, stage="build", feedback="error: x")
+    assert loop.first_build(broken) == "error: x"
+    assert loop.first_build(loop.Verification(ok=True, stage="ok")) is None

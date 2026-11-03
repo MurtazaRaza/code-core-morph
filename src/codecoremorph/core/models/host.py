@@ -63,6 +63,11 @@ class HostUnitState(CoreModel):
     plan_unit: str | None = Field(
         default=None, description="The plan unit this unit runs (`unit start --plan-unit`)"
     )
+    in_run: bool = Field(
+        default=False,
+        description="A unit of a whole run (`codecoremorph run --host-agent`, D-44): `unit "
+        "submit` and `unit abort` continue the run instead of ending it",
+    )
     uncompiled: list[str] = Field(
         default_factory=list[str],
         description="In-scope code files the build doesn't compile: changes to them, and build "

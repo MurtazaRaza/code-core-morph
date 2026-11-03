@@ -126,6 +126,24 @@ class Verification:
     warnings: list[str] = field(default_factory=list[str])
     invariant_results: list[InvariantResult] = field(default_factory=list[InvariantResult])
     approvals: list[str] = field(default_factory=list[str])  # why the unit gate must approve
+    # Failed rule checks the unit's context doesn't list as sites: a codemod_clean diff, a
+    # hook's sites.
+    untold: str = ""
+
+
+def first_build(check: Verification) -> str | None:
+    """The "current build" of a unit's first context, after the codemods: None when the unit
+    builds, passes its tests and has only rule sites left (the context lists those); the
+    failures of the rules' other checks; or the failed build, tests or invariants."""
+    if check.stage == "ok":
+        return None
+    if check.stage == "postconditions":
+        if not check.untold:
+            return None
+        return (
+            f"The project builds and its tests pass, but the rules' checks fail:\n\n{check.untold}"
+        )
+    return check.feedback
 
 
 @dataclass
@@ -373,12 +391,13 @@ class UnitRunner:
                     )
                 ],
             )
-        problems, warnings = self.postconditions(unit, rules, sites)
+        problems, warnings, untold = self.postconditions(unit, rules, sites)
         if problems:
             return Verification(
                 ok=False,
                 stage="postconditions",
                 feedback="\n\n".join(problems),
+                untold="\n\n".join(untold),
                 sites=sites,
                 invariant_results=[
                     InvariantResult(invariant="I-9", passed=False, message="sites left")
@@ -427,9 +446,10 @@ class UnitRunner:
         unit: WorkUnit,
         rules: Sequence[LoadedRule],
         sites: dict[str, list[RuleSite]],
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[str]]:
         """The rules' post-conditions on a green build (I-9, FR-4.4): feedback for failed
-        ``error`` ones, and warnings for failed ``warning`` ones.
+        ``error`` ones, warnings for failed ``warning`` ones, and the feedback of the failed
+        ``error`` ones other than ``detector_empty``, whose sites a unit's context lists.
 
         - ``detector_empty``: the rule's detector finds no site in the unit's own files.
         - ``builds_cleanly``: holds, because the unit just built at the standard it targets.
@@ -438,6 +458,7 @@ class UnitRunner:
         - ``hook``: ``module:function(worktree, files)`` returns no site."""
         problems: list[str] = []
         warnings: list[str] = []
+        untold: list[str] = []
         for loaded in rules:
             rule_id = loaded.rule.id
             for post in loaded.rule.postconditions:
@@ -456,11 +477,13 @@ class UnitRunner:
                     continue
                 if post.severity == "error":
                     problems.append(text)
+                    if post.type is not PostconditionType.DETECTOR_EMPTY:
+                        untold.append(text)
                 elif post.type is PostconditionType.CODEMOD_CLEAN:
                     warnings.append(f"{rule_id}: the rule's tools still find work (a warning)")
                 else:
                     warnings.append(f"{rule_id}: {len(found)} site(s) left (a warning)")
-        return problems, warnings
+        return problems, warnings, untold
 
     def _codemod_leftovers(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         specs = [
@@ -607,7 +630,7 @@ class UnitRunner:
                 target=self.target,
                 codemods=outcome.codemods,
                 remaining=check.sites,
-                build=None if check.stage in ("postconditions", "ok") else check.feedback,
+                build=first_build(check),
                 tools=toolbox.specs,
                 token_budget=budget,
             )

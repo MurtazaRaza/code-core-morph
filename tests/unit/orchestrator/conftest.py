@@ -29,6 +29,7 @@ from codecoremorph.llm.replay import Responder, ScriptedProvider
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.lifecycle import _end_session  # pyright: ignore[reportPrivateUsage]
 from codecoremorph.orchestrator.run import (
+    AgentAction,
     RunEngine,
     RunOptions,
     RunResult,
@@ -169,10 +170,13 @@ class EngineWorld:
         run_id: str | None = None,
         resume: bool = False,
         on_engine: Callable[[RunEngine], None] | None = None,
+        agent: AgentAction | None = None,
     ) -> tuple[RunResult, ScriptedProvider, RunSession]:
-        """Start (or resume) a run and drive it until it ends or parks."""
+        """Start (or resume) a run and drive it until it ends or parks. ``agent`` is a host
+        agent's action on the unit that waits for it (``unit submit|abort``)."""
         session = self.session(config_path, run_id=run_id, resume=resume)
         scripted = ScriptedProvider(list(script))
+        options = options or self.options()
 
         def factory(ledger: UsageLedger) -> LLMService:
             return LLMService(session.config.llm, ledger=ledger, providers={"anthropic": scripted})
@@ -180,15 +184,18 @@ class EngineWorld:
         with self.store() as store:
             if not resume:
                 store.create_run(new_run_record(session))
-            engine = RunEngine(
-                session, store, options=options or self.options(), llm_factory=factory
-            )
+            engine = RunEngine(session, store, options=options, llm_factory=factory)
             if not resume:
-                store.set_run_environment(session.run_id, run_environment(session, engine.llm))
+                store.set_run_environment(
+                    session.run_id, run_environment(session, engine.llm, host=options.host)
+                )
             if on_engine is not None:
                 on_engine(engine)
             try:
-                result = engine.drive(fresh=not resume)
+                result = engine.drive(fresh=not resume, agent=agent)
+            except BaseException:
+                session.workspace.park()  # as open_session does: the run stays resumable
+                raise
             finally:
                 engine.graph.close()
         _end_session(session, result)

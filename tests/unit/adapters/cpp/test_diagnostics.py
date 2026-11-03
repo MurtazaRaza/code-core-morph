@@ -133,6 +133,29 @@ def test_codes_dedupe_and_analyzer_origin() -> None:
     assert diags[2].file_path is None
 
 
+def test_a_header_error_keeps_the_same_copy_in_any_build_order() -> None:
+    """Every compile including a broken header reports its error, with its own include chain;
+    a parallel build prints the compiles in the order they finish."""
+    mapper = PathMapper("/workspace", "/build", case_insensitive=False)
+    via_transaction = [
+        "In file included from /workspace/src/transaction.cpp:1:",
+        "In file included from /workspace/include/transaction.h:8:",
+        "/workspace/include/compat.h:27:2: error: expected ';' after class",
+    ]
+    via_parse = [
+        "In file included from /workspace/src/parse.cpp:5:",
+        "/workspace/include/compat.h:27:2: error: expected ';' after class",
+    ]
+    own = ["/workspace/src/parse.cpp:11:12: error: no viable conversion"]
+    one = parse_compiler_output("\n".join([*via_parse, *own, *via_transaction]), mapper)
+    other = parse_compiler_output("\n".join([*via_transaction, *via_parse, *own]), mapper)
+    assert sorted(one, key=lambda d: d.file_path or "") == sorted(
+        other, key=lambda d: d.file_path or ""
+    )
+    (header,) = [d for d in one if d.file_path == "include/compat.h"]
+    assert [n.file_path for n in header.notes] == ["src/transaction.cpp", "include/transaction.h"]
+
+
 def test_relative_paths_resolve_against_the_build_directory() -> None:
     mapper = PathMapper("/workspace", "/build/sub", case_insensitive=False)
     (diag,) = parse_compiler_output("../../workspace/src/x.cpp:4:2: error: bad", mapper)

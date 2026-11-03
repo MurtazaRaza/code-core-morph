@@ -91,6 +91,16 @@ def render_markdown(report: RunReport) -> str:
             f"{t.get('flaky', 0)} are flaky and {t.get('skipped', 0)} are skipped. Only passing "
             "tests count for parity."
         )
+    if report.excused_tests:
+        excused = report.excused_tests
+        more = f" and {len(excused) - 20} more" if len(excused) > 20 else ""
+        out("")
+        out(
+            "Not checked, because they failed or were flaky before the run: "
+            + ", ".join(f"`{t}`" for t in excused[:20])
+            + more
+            + "."
+        )
     final = report.final
     if final is None or not final.ran:
         out("")
@@ -135,7 +145,7 @@ def render_markdown(report: RunReport) -> str:
 
     out("## Review")
     out("")
-    if not report.review:
+    if not report.review and not report.plan_warnings:
         out("Nothing needs review.")
     for kind, title in _REVIEW_TITLES.items():
         items = [r for r in report.review if r.kind is kind]
@@ -146,6 +156,12 @@ def render_markdown(report: RunReport) -> str:
         for item in items:
             prefix = f"{item.unit_id}: " if item.unit_id else ""
             out(f"- {prefix}{item.text}")
+        out("")
+    if report.plan_warnings:
+        out("### Plan warnings")
+        out("")
+        for warning in report.plan_warnings:
+            out(f"- {warning}")
         out("")
 
     if report.environment:

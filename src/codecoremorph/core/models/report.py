@@ -122,6 +122,14 @@ class RunReport(CoreModel):
     )
     rules: list[RuleSummary] = Field(default_factory=list[RuleSummary])
     baseline_tests: dict[str, int] = Field(default_factory=dict[str, int])
+    excused_tests: list[str] = Field(
+        default_factory=list[str],
+        description="Tests the baseline excused from parity: failing or flaky before the run",
+    )
+    plan_warnings: list[str] = Field(
+        default_factory=list[str],
+        description="The plan's warnings, such as code this build never compiles (D-42)",
+    )
     final: FinalVerification | None = None
     usage_by_role: dict[str, UsageTotals] = Field(default_factory=dict[str, UsageTotals])
     usage_total: UsageTotals = Field(default_factory=UsageTotals)

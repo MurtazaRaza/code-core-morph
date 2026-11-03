@@ -9,8 +9,8 @@ standard up to C++23. Java and C# version upgrades come next, then cross-languag
 (Java → C#, C++ → Rust).
 
 > **Status:** early development (Phase 5 of the plan). CodeCoreMorph can plan a C++ migration
-> (`codecoremorph plan`), migrate one work unit at a time with Claude Code as the agent, and
-> run a whole migration (`codecoremorph run`) with an API model.
+> (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
+> an API model as the agent, or migrate one work unit at a time.
 
 ## Developer setup
 
@@ -55,8 +55,8 @@ uv run codecoremorph resume            # after Ctrl-C or a crash
 uv run codecoremorph report            # the report of the latest run
 ```
 
-The agent of a `run` is a model API (Anthropic or a local Ollama model, set in the manifest's
-`llm` section). Driving a whole run from Claude Code is the next step.
+The agent of a plain `run` is a model API (Anthropic or a local Ollama model, set in the
+manifest's `llm` section). With `--host-agent`, Claude Code is the agent instead (next section).
 
 ## Migrating with Claude Code
 
@@ -78,13 +78,16 @@ to replace the raw owning pointers in src/cache.cpp with smart pointers"*. The s
 `codecoremorph unit start`, reads the unit's context, writes the edits and runs
 `codecoremorph unit submit` until the unit passes, then tells you which branch to review.
 
-For a whole migration (*"move this project to C++20"*), the skill runs `codecoremorph plan`,
-tells you what the plan holds, and works through its units one after another
-(`codecoremorph unit list`, `unit start --plan-unit U-0002 --base <previous branch>`). Each
-unit builds on the previous unit's branch, at the standard that branch already has. The last
-branch holds every unit as its own commit. The report names the tests that already failed
-before the migration and the files your build never compiles (another platform's sources),
-because neither was checked.
+For a whole migration (*"move this project to C++20"*), the skill starts
+`codecoremorph run --host-agent`. The run plans the units and stops for you to approve the
+plan; the skill tells you what it holds and asks (or approves it at once if you asked for
+everything). Then the run takes the units in order on one branch: whenever a unit needs edits
+the codemods couldn't make, it stops, Claude writes them, and `codecoremorph unit submit`
+verifies them and moves on. A unit that would change an interface can stop for your approval
+too, depending on the manifest's `approvals`. At the end the run builds the result from
+scratch, runs every test, and writes its report. The report names the tests that already
+failed before the migration and the files your build never compiles (another platform's
+sources), because neither was checked.
 
 ## Documentation
 

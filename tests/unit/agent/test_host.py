@@ -127,7 +127,7 @@ def test_the_host_reads_the_context_and_submits(world: World, git: GitRunner) ->
     assert (state.attempt, state.attempts_allowed) == (1, 3)
     assert state.head != snapshot  # the codemods' changes are a checkpoint
     assert not world.worktree.has_changes()
-    assert str(host.files.edits) in step.message
+    assert str(host.files.edits) in step.text
 
     context = host.files.context.read_text(encoding="utf-8")
     assert context.startswith("# CodeCoreMorph work unit U-0001: attempt 1 of 3")
@@ -174,7 +174,7 @@ def test_a_failed_build_is_fed_back_and_fixed(world: World, git: GitRunner) -> N
     assert (state.attempt, state.feedback_kind) == (2, HostFeedbackKind.FAILED)
     assert [a.outcome for a in state.attempts] == [AttemptOutcome.BUILD_FAILED]
     assert "The build failed with 1 error." in step.message
-    assert "Attempt 2 of 3" in step.message
+    assert "Attempt 2 of 3" in step.text
     context = host.files.context.read_text(encoding="utf-8")
     assert "Attempt 1 was applied and failed" in context
     assert broken in context  # the files show the earlier edits

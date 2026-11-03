@@ -26,6 +26,7 @@ from codecoremorph.invariants.checks import (
     check_tests_kept,
     check_unit_scope,
     check_warnings,
+    comparable_signature,
     patch_lines,
 )
 
@@ -138,6 +139,55 @@ def test_api_changes_ignore_moves_and_additions() -> None:
     assert "changed from `double geo::area(double, double)`" in change.describe()
     (removed,) = api_changes(old, [], files=["include/api.h"])
     assert "was removed" in removed.describe()
+
+
+def test_sfinae_that_became_a_requires_clause_is_no_api_change() -> None:
+    """use_concepts_for_templates keeps the interface while the spelled signature loses its
+    enable_if (the templates fixture's signatures, as the indexer prints them)."""
+    old = [
+        symbol("meta::gcd", "typename std::enable_if<std::is_integral<T>::value, T>::type "
+                            "meta::gcd()"),
+        symbol("meta::toString", "std::string meta::toString(bool)"),
+        symbol("meta::toString", "typename std::enable_if<std::is_arithmetic<T>::value && "
+                                 "!std::is_same<T, bool>::value, std::string>::type "
+                                 "meta::toString()"),
+        symbol("meta::Quantity::scaled",
+               "typename std::enable_if<std::is_convertible<U, T>::value, "
+               "Quantity<type-parameter-0-0, typename enable_if<std::is_arithmetic<T>::value, "
+               "void>::type>>::type meta::Quantity::scaled()"),
+        symbol("meta::reset", "std::enable_if_t<(sizeof(T) > 4)> meta::reset()"),
+    ]  # fmt: skip
+    new = [
+        symbol("meta::gcd", "T meta::gcd()"),
+        symbol("meta::toString", "std::string meta::toString()"),
+        symbol("meta::toString", "std::string meta::toString(bool)"),
+        symbol("meta::Quantity::scaled", "Quantity<type-parameter-0-0, void> "
+                                         "meta::Quantity::scaled()"),
+        symbol("meta::reset", "void meta::reset()"),
+    ]  # fmt: skip
+    assert api_changes(old, new, files=["include/api.h"]) == []
+    # A partial specialization's qualified name spells its enable_if argument.
+    spec = "meta::Quantity::Quantity<type-parameter-0-0, typename enable_if<std::is_arithmetic<T>"
+    specialized = [symbol(f"{spec}::value, void>::type>", "void meta::Quantity(T)")]
+    constrained = [
+        symbol("meta::Quantity::Quantity<type-parameter-0-0, void>", "void meta::Quantity(T)")
+    ]
+    assert api_changes(specialized, constrained, files=["include/api.h"]) == []
+    # A real change under the constraint still counts.
+    changed = [symbol("meta::gcd", "long meta::gcd()")]
+    (change,) = api_changes(old[:1], changed, files=["include/api.h"])
+    assert "std::enable_if<std::is_integral<T>::value, T>::type meta::gcd()" in change.describe()
+
+
+def test_comparable_signature_leaves_other_text_alone() -> None:
+    assert comparable_signature("double geo::area(double,  double)") == (
+        "double geo::area(double, double)"
+    )
+    unbalanced = "typename std::enable_if<C, T meta::f()"
+    assert comparable_signature(unbalanced) == unbalanced
+    assert comparable_signature("std::enable_if<C, int> meta::g()") == (
+        "std::enable_if<C, int> meta::g()"  # no ::type: not the SFINAE result
+    )
 
 
 def test_api_changes_skip_private_members_and_macros() -> None:

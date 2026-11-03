@@ -3,6 +3,8 @@
 The host agent (Claude Code, through the ``codecoremorph`` skill) runs these commands; it reads
 the unit's context document, writes its edits to the edits file and submits them. CodeCoreMorph
 makes no model calls. The run parks between commands; the repository has one active unit.
+In a whole run (``codecoremorph run --host-agent``, D-44), ``submit`` and ``abort`` act on the
+unit the run waits at, and the run then goes on.
 
   list    the plan's units and how far each got
   start   validate, baseline, index, codemods, verify; then wait for edits (or finish)
@@ -110,7 +112,7 @@ def _unverified_lines(state: HostUnitState) -> list[str]:
 
 
 def _report(step: HostStep, files: HostFiles, as_json: bool) -> None:
-    state, message, warnings = step.state, step.message, step.warnings
+    state, message, warnings = step.state, step.text, step.warnings
     if as_json:
         _echo(json.dumps(_payload(state, message, warnings, files), indent=2))
     else:
@@ -262,7 +264,10 @@ def unit_list(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) -> N
 @unit_app.command("submit")
 @handle_errors
 def unit_submit(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) -> None:
-    """Apply the edits file, build and test. Prints the result or the feedback to fix."""
+    """Apply the edits file, build and test. Prints the result or the feedback to fix.
+
+    In a run (`codecoremorph run --host-agent`), the run then goes on to its next unit that
+    needs your edits, a gate, or its end."""
     from codecoremorph.orchestrator.session import open_session
     from codecoremorph.orchestrator.unit import (
         HostRun,
@@ -273,6 +278,9 @@ def unit_submit(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) ->
     )
 
     state = HostRun.for_config(config).active()
+    if state.in_run:
+        _continue_run(config, state, "submit", None, as_json)
+        return
     with open_session(
         config,
         mode=sandbox_mode(state),
@@ -297,12 +305,34 @@ def unit_abort(
     ] = None,
     as_json: JsonOpt = False,
 ) -> None:
-    """Give the unit up: remove its worktree and run branch. Nothing is kept."""
+    """Give the unit up: remove its worktree and run branch. Nothing is kept.
+
+    In a run (`codecoremorph run --host-agent`), only the unit is given up: it rolls back,
+    counts as failed, and the run goes on with its next unit. `codecoremorph abort` ends the
+    run."""
     from codecoremorph.orchestrator.unit import HostRun, abort_host_unit
 
     run = HostRun.for_config(config)
+    state = run.active()
+    if state.in_run:
+        _continue_run(config, state, "abort", reason, as_json)
+        return
     step = abort_host_unit(run, reason)
     _report(step, run.files(step.state.run_id), as_json)
+
+
+def _continue_run(
+    config: Path, state: HostUnitState, kind: str, reason: str | None, as_json: bool
+) -> None:
+    """Resume a host-agent run with the agent's action on its waiting unit (D-44)."""
+    from codecoremorph.cli.run import finish_run, host_options
+    from codecoremorph.orchestrator.lifecycle import RunPlace, resume_run
+    from codecoremorph.orchestrator.run import AgentAction
+
+    action = AgentAction("submit") if kind == "submit" else AgentAction("abort", reason)
+    place = RunPlace.for_config(config)
+    result = resume_run(config, state.run_id, options=host_options(), agent=action)
+    finish_run(result, as_json, place)
 
 
 @unit_app.command("status")

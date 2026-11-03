@@ -287,34 +287,13 @@ def start_host_unit(
         prepared.baseline.model_dump_json(indent=2), encoding="utf-8"
     )
     runner = make_runner(session, prepared, None, None)
-    worktree = session.workspace.worktree
-    head = worktree.head()
-    now = datetime.now(UTC)
-    state = HostUnitState(
-        run_id=session.run_id,
-        config_path=str(session.config_path.resolve()),
-        worktree=str(worktree.path),
-        sandbox=session.executor.kind,
-        base_commit=session.workspace.base_commit,
-        unit=prepared.unit,
-        source=config.migration.source.standard,
-        target=config.migration.target.standard,
-        snapshot=head,
-        head=head,
-        index_path=str(prepared.index_path),
-        build_files=prepared.build_files,
-        project_files=prepared.project_files,
-        scope_dirs=prepared.scope_dirs,
+    state = host_unit_state(
+        session,
+        prepared,
+        runner,
         plan_unit=plan_unit.id if plan_unit else None,
-        uncompiled=prepared.uncompiled,
-        excused_tests=sorted({*prepared.baseline.tests.failing, *prepared.baseline.tests.flaky}),
         configured_standard=prepared.baseline.standard,
-        max_retry_budget=runner.settings.max_retry_budget,
-        max_edit_retries=runner.settings.max_edit_retries,
-        status=HostStatus.WAITING,
         user_tree=session.workspace.dirty,
-        started_at=now,
-        updated_at=now,
     )
     host = HostUnit(
         runner,
@@ -331,6 +310,50 @@ def start_host_unit(
     return result
 
 
+def host_unit_state(
+    session: RunSession,
+    prepared: PreparedUnit,
+    runner: UnitRunner,
+    *,
+    plan_unit: str | None,
+    configured_standard: str,
+    user_tree: DirtyState,
+    in_run: bool = False,
+) -> HostUnitState:
+    """A new host unit's state, on the worktree's HEAD (its snapshot)."""
+    config = session.config
+    worktree = session.workspace.worktree
+    head = worktree.head()
+    now = datetime.now(UTC)
+    return HostUnitState(
+        run_id=session.run_id,
+        config_path=str(session.config_path.resolve()),
+        worktree=str(worktree.path),
+        sandbox=session.executor.kind,
+        base_commit=session.workspace.base_commit,
+        unit=prepared.unit,
+        source=config.migration.source.standard,
+        target=config.migration.target.standard,
+        snapshot=head,
+        head=head,
+        index_path=str(prepared.index_path),
+        build_files=prepared.build_files,
+        project_files=prepared.project_files,
+        scope_dirs=prepared.scope_dirs,
+        plan_unit=plan_unit,
+        in_run=in_run,
+        uncompiled=prepared.uncompiled,
+        excused_tests=sorted({*prepared.baseline.tests.failing, *prepared.baseline.tests.flaky}),
+        configured_standard=configured_standard,
+        max_retry_budget=runner.settings.max_retry_budget,
+        max_edit_retries=runner.settings.max_edit_retries,
+        status=HostStatus.WAITING,
+        user_tree=user_tree,
+        started_at=now,
+        updated_at=now,
+    )
+
+
 def end_session(session: RunSession, state: HostUnitState) -> None:
     """Park a waiting unit's run; otherwise clean up, keeping the branch only with a commit."""
     session.park = state.status is HostStatus.WAITING
@@ -338,8 +361,15 @@ def end_session(session: RunSession, state: HostUnitState) -> None:
     session.keep_build = False
 
 
-def resume_host_unit(session: RunSession, state: HostUnitState) -> HostUnit:
-    """The host unit of a resumed session, rebuilt from its saved state."""
+def resume_host_unit(
+    session: RunSession,
+    state: HostUnitState,
+    *,
+    warnings_before: Mapping[str, int] | None = None,
+    commits: bool = True,
+) -> HostUnit:
+    """The host unit of a resumed session, rebuilt from its saved state. A run passes the
+    warnings its last commit left (I-10) and makes the unit's commit itself (D-44)."""
     config = session.config
     baseline = Baseline.model_validate_json((session.artifacts.root / BASELINE_FILE).read_bytes())
     rules = [session.rules.get(r) for r in state.unit.rules]
@@ -356,7 +386,7 @@ def resume_host_unit(session: RunSession, state: HostUnitState) -> HostUnit:
         scope_dirs=state.scope_dirs,
         uncompiled=state.uncompiled,
     )
-    runner = make_runner(session, prepared, None, None)
+    runner = make_runner(session, prepared, None, None, warnings_before=warnings_before)
     runner.configured_standard = state.configured_standard
     runner.error_lines = list(state.error_lines)
     runner.agent_base = state.agent_base
@@ -368,7 +398,8 @@ def resume_host_unit(session: RunSession, state: HostUnitState) -> HostUnit:
         HostFiles(session.artifacts.root),
         language=config.migration.source.language,
         author=config.git.author,
-        baselines=baseline_cache(session),
+        baselines=baseline_cache(session) if commits else None,
+        commits=commits,
     )
 
 
@@ -463,6 +494,12 @@ class HostRun:
             )
         files = self.files(holder.run_id)
         if not files.state.is_file():
+            if holder.parked:
+                raise RunNotActiveError(
+                    f"run {holder.run_id} doesn't wait for a unit's edits",
+                    reason="it is parked before its first unit, at its plan gate or after a stop",
+                    hint=f"`codecoremorph status {holder.run_id}` shows what it waits for.",
+                )
             raise RunNotActiveError(
                 f"run {holder.run_id} holds this repository, but it isn't a host unit",
                 reason="another CodeCoreMorph command is running here",

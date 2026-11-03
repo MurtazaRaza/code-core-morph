@@ -63,6 +63,15 @@ def _code(raw: str | None) -> str | None:
     return parts[-1] if parts else raw
 
 
+Key = tuple[object, ...]
+
+
+def _preference(diagnostic: Diagnostic) -> tuple[object, ...]:
+    """Of the copies of one error, the one to keep sorts first: the most notes, then by them."""
+    notes = tuple((n.file_path or "", n.line or 0, n.message) for n in diagnostic.notes)
+    return (-len(notes), notes)
+
+
 class _Builder:
     def __init__(self, mapper: PathMapper, origin: DiagnosticOrigin, base: str | None):
         self.mapper = mapper
@@ -70,10 +79,10 @@ class _Builder:
         self.base = base
         self.out: list[Diagnostic] = []
         self.pending_includes: list[Diagnostic] = []
-        self._seen: set[tuple[object, ...]] = set()
-        # True: notes attach to the last diagnostic; False: it was a duplicate, drop them;
-        # None: no diagnostic yet, so a note stands alone.
-        self._attach_notes: bool | None = None
+        self._where: dict[Key, int] = {}  # an error's place in out
+        # The diagnostic the next notes attach to, until another one comes.
+        self._current: tuple[Key, Diagnostic] | None = None
+        self._started = False  # before the first diagnostic, a note stands alone
 
     def location(
         self, file: str | None, line: str | None, col: str | None, message: str
@@ -89,29 +98,45 @@ class _Builder:
         return rel, line_no, col_no, message
 
     def add(self, diagnostic: Diagnostic) -> None:
-        if diagnostic.severity is Severity.NOTE and self._attach_notes is not None:
-            if self._attach_notes:
-                last = self.out[-1]
-                self.out[-1] = last.model_copy(update={"notes": [*last.notes, diagnostic]})
+        if diagnostic.severity is Severity.NOTE and self._started:
+            if self._current is not None:
+                key, current = self._current
+                notes = [*current.notes, diagnostic]
+                self._current = (key, current.model_copy(update={"notes": notes}))
             return
+        self.flush()
         if self.pending_includes:
             diagnostic = diagnostic.model_copy(
                 update={"notes": [*self.pending_includes, *diagnostic.notes]}
             )
             self.pending_includes = []
-        key = (
+        key: Key = (
             diagnostic.file_path,
             diagnostic.line,
             diagnostic.column,
             diagnostic.severity,
             diagnostic.message,
         )
-        if key in self._seen:  # the same header error, reported from several translation units
-            self._attach_notes = False  # and drop its notes, which were reported too
-            return
-        self._seen.add(key)
-        self.out.append(diagnostic)
-        self._attach_notes = diagnostic.severity is not Severity.NOTE
+        self._started = True
+        if diagnostic.severity is Severity.NOTE:
+            self._place(key, diagnostic)
+        else:
+            self._current = (key, diagnostic)
+
+    def flush(self) -> None:
+        if self._current is not None:
+            self._place(*self._current)
+            self._current = None
+
+    def _place(self, key: Key, diagnostic: Diagnostic) -> None:
+        """Keep one copy of an error a header gets from every translation unit including it:
+        the same copy whatever order a parallel build's compiles finished in."""
+        index = self._where.get(key)
+        if index is None:
+            self._where[key] = len(self.out)
+            self.out.append(diagnostic)
+        elif _preference(diagnostic) < _preference(self.out[index]):
+            self.out[index] = diagnostic
 
 
 def parse_compiler_output(
@@ -256,6 +281,7 @@ def parse_compiler_output(
                         origin=DiagnosticOrigin.LINKER,
                     )
                 )
+    builder.flush()
     return builder.out
 
 

@@ -106,6 +106,46 @@ def test_excluded_units_are_left_out(engine_world: EngineWorld) -> None:
     assert unit.status is UnitStatus.EXCLUDED
 
 
+def test_a_left_out_unit_is_reviewed_with_its_status_once(engine_world: EngineWorld) -> None:
+    from datetime import UTC, datetime
+
+    config = engine_world.manifest(plan="required")
+
+    def decide(request: dict[str, Any]) -> Any:
+        return engine_world.approval(
+            request["run_id"], ApprovalDecision.APPROVE, exclude=["U-0001"]
+        )
+
+    result, _, session = engine_world.run(config, [], options=engine_world.options(decide=decide))
+    with engine_world.store() as store:
+        (excluded,) = store.units(result.run_id)
+        texts = [r.text for r in _report(store, session, result.run_id).review]
+        assert texts == ["excluded: excluded at the plan gate"]
+        # The planner's notes already name the status.
+        skipped = excluded.model_copy(
+            update={"status": UnitStatus.SKIPPED, "note": "skipped: not for C headers"}
+        )
+        store.put_units(result.run_id, [skipped], datetime.now(UTC))
+        texts = [r.text for r in _report(store, session, result.run_id).review]
+    assert texts == ["skipped: not for C headers"]
+
+
+def _report(store: Any, session: Any, run_id: str) -> RunReport:
+    from codecoremorph.report.build import build_report
+
+    return build_report(
+        store,
+        session.artifacts,
+        run_id,
+        project="geo",
+        branch="b",
+        head=None,
+        status=RunStatus.COMPLETED_WITH_FAILURES,
+        reason=None,
+        finished_at=None,
+    )
+
+
 def test_a_parked_plan_gate_resumes_with_an_approval(engine_world: EngineWorld) -> None:
     config = engine_world.manifest(plan="required")
     result, _, _ = engine_world.run(

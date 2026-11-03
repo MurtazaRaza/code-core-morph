@@ -222,6 +222,68 @@ def is_api_symbol(symbol: Symbol) -> bool:
     )
 
 
+# SFINAE as the indexer spells it, in a return type or a template argument. Moving the
+# constraint to a requires-clause or a concept (use_concepts_for_templates) keeps the interface
+# but changes the spelled signature, so comparisons reduce it to the type it yields.
+_ENABLE_IF = re.compile(r"(?:typename\s+)?(?:std::)?enable_if(?P<alias>_t)?<")
+_OPENING, _CLOSING = "([{", ")]}"
+
+
+def _closing_bracket(text: str, start: int) -> int | None:
+    """The index of the ``>`` closing the ``<`` just before ``start``; None if unbalanced."""
+    angle, nested = 1, 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char in _OPENING:
+            nested += 1
+        elif char in _CLOSING:
+            nested -= 1
+        elif nested == 0 and char == "<":
+            angle += 1
+        elif nested == 0 and char == ">":
+            angle -= 1
+            if angle == 0:
+                return index
+    return None
+
+
+def _template_arguments(text: str) -> list[str]:
+    """Split ``text`` at the commas outside brackets."""
+    parts: list[str] = []
+    depth, begin = 0, 0
+    for index, char in enumerate(text):
+        if char in _OPENING or char == "<":
+            depth += 1
+        elif char in _CLOSING or char == ">":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(text[begin:index])
+            begin = index + 1
+    parts.append(text[begin:])
+    return [p.strip() for p in parts]
+
+
+def comparable_signature(signature: str) -> str:
+    """``signature`` with each ``std::enable_if<C, R>::type`` or ``std::enable_if_t<C, R>``
+    replaced by ``R`` (``void`` without one), for the I-6 comparison."""
+    text, position = signature, 0
+    while (match := _ENABLE_IF.search(text, position)) is not None:
+        close = _closing_bracket(text, match.end())
+        if close is None:
+            break
+        end = close + 1
+        if not match.group("alias"):
+            if not text.startswith("::type", end):
+                position = match.end()
+                continue
+            end += len("::type")
+        arguments = _template_arguments(text[match.end() : close])
+        result = arguments[1] if len(arguments) > 1 else "void"
+        text = text[: match.start()] + result + text[end:]
+        position = match.start()  # the result may hold another one
+    return " ".join(text.split())
+
+
 def _signatures(symbols: Iterable[Symbol]) -> dict[tuple[str, str], list[Symbol]]:
     grouped: dict[tuple[str, str], list[Symbol]] = {}
     for symbol in symbols:
@@ -234,17 +296,21 @@ def api_changes(
     before: Iterable[Symbol], after: Iterable[Symbol], *, files: Iterable[str]
 ) -> list[ApiChange]:
     """API symbols of ``files`` whose signatures changed or disappeared. Additions are not
-    changes; a symbol that only moved between the files counts as unchanged."""
+    changes; a symbol that only moved between the files counts as unchanged, and so does a
+    SFINAE constraint that became a requires-clause (:func:`comparable_signature`)."""
     wanted = set(files)
     old = {k: v for k, v in _signatures(before).items() if k[0] in wanted}
+    # A partial specialization's name spells its arguments, enable_if included.
     new_by_name: dict[str, set[str]] = {}
     for (_, name), symbols in _signatures(after).items():
-        new_by_name.setdefault(name, set()).update(s.signature or s.kind.value for s in symbols)
+        new_by_name.setdefault(comparable_signature(name), set()).update(
+            s.signature or s.kind.value for s in symbols
+        )
     changes: list[ApiChange] = []
     for (path, name), symbols in sorted(old.items()):
         signatures = {s.signature or s.kind.value for s in symbols}
-        now = new_by_name.get(name, set())
-        if signatures <= now:
+        now = new_by_name.get(comparable_signature(name), set())
+        if {comparable_signature(s) for s in signatures} <= {comparable_signature(s) for s in now}:
             continue
         boundary = next(
             (s.boundary for s in symbols if s.boundary is not Boundary.PUBLIC_API),

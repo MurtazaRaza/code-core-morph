@@ -82,6 +82,23 @@ def test_ordering_dedupes_and_puts_first_errors_first() -> None:
     assert [d.message for d in ordered] == ["first in a", "first in b", "cascade in a", "unused"]
 
 
+def test_ordering_doesnt_depend_on_the_build_order() -> None:
+    """A parallel build prints each compile's errors as it finishes: an error in a shared
+    header comes from either compile, with its own "included from" note."""
+    header = "include/h.h"
+    via_a = diag(header, 3, "bad", notes=[diag("src/a.cpp", 1, "included from here",
+                                                severity=Severity.NOTE)])  # fmt: skip
+    via_b = diag(header, 3, "bad", notes=[diag("src/b.cpp", 1, "included from here",
+                                                severity=Severity.NOTE)])  # fmt: skip
+    in_b = diag("src/b.cpp", 2, "first in b")
+    in_a = diag("src/a.cpp", 5, "first in a")
+    one = order_diagnostics([via_b, in_b, via_a, in_a])
+    other = order_diagnostics([in_a, via_a, in_b, via_b])
+    assert one == other
+    assert [d.file_path for d in one] == [header, "src/a.cpp", "src/b.cpp"]
+    assert one[0].notes[0].file_path == "src/a.cpp"  # the same representative every time
+
+
 def test_compiler_feedback_golden(worktree: Path) -> None:
     diagnostics = [
         diag("src/a.cpp", 4, "no matching function for call to 'make'", code=None,

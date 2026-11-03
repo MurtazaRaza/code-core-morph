@@ -5,10 +5,15 @@ SPEC §7.14).
 terminal; otherwise (or after ``later``) it waits for ``codecoremorph approve|reject`` from
 another terminal or the dashboard (FR-11.4). Ctrl-C parks the run (``resume`` continues it), a
 second Ctrl-C stops at once, and ``abort`` ends it with a report.
+
+``run --host-agent`` (D-44) is for a coding agent that runs CodeCoreMorph as a tool: the run
+parks, exit code 0, whenever it needs the agent's edits (``codecoremorph unit submit``) or a
+decision (``approve|reject``, then ``resume``), and the output says which.
 """
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 from datetime import UTC, datetime
@@ -41,7 +46,7 @@ from codecoremorph.orchestrator.lifecycle import (
     resume_run,
     start_run,
 )
-from codecoremorph.orchestrator.run import RunOptions, RunResult
+from codecoremorph.orchestrator.run import AGENT_GATE, RunOptions, RunResult
 from codecoremorph.report.build import load_unit_result
 from codecoremorph.report.render import render_markdown
 
@@ -143,37 +148,101 @@ def _ask(place: RunPlace) -> Any:
     return ask
 
 
-def _print_plan(plan: Plan) -> None:
-    console = stdout()
-    console.print(
-        Text(
-            f"Plan: {plan.language} {plan.source_standard} -> {plan.target_standard}, "
-            f"{len(plan.units)} units",
-            style="bold",
-        )
-    )
+def _plan_lines(plan: Plan, *, cost: bool = False) -> list[str]:
+    lines = [
+        f"Plan: {plan.language} {plan.source_standard} -> {plan.target_standard}, "
+        f"{len(plan.units)} units"
+    ]
     for unit in plan.units:
         flags = f" [{', '.join(f.value for f in unit.flags)}]" if unit.flags else ""
         status = "" if unit.status is UnitStatus.PENDING else f" ({unit.status.value})"
         files = ", ".join(unit.files[:3]) + (
             f" (+{len(unit.files) - 3})" if len(unit.files) > 3 else ""
         )
-        console.print(Text(f"  {unit.id}{status}  {', '.join(unit.rules)}: {files}{flags}"))
-    if plan.estimate is not None and plan.estimate.cost_usd is not None:
-        console.print(Text(f"  estimated cost: about ${plan.estimate.cost_usd:,.2f}"))
+        lines.append(f"  {unit.id}{status}  {', '.join(unit.rules)}: {files}{flags}")
+        if unit.status is not UnitStatus.PENDING and unit.note:
+            lines.append(f"      {unit.note}")
+    if cost and plan.estimate is not None and plan.estimate.cost_usd is not None:
+        lines.append(f"  estimated cost: about ${plan.estimate.cost_usd:,.2f}")
+    return lines
 
 
-def _options(place: RunPlace, *, yes: bool) -> RunOptions:
+def _print_plan(plan: Plan) -> None:
+    console = stdout()
+    first, *rest = _plan_lines(plan, cost=True)
+    console.print(Text(first, style="bold"))
+    for line in rest:
+        console.print(Text(line))
+
+
+def _options(place: RunPlace, *, yes: bool, host: bool = False) -> RunOptions:
     return RunOptions(
         yes=yes,
-        ask=_ask(place) if _interactive() else None,
+        ask=_ask(place) if _interactive() and not host else None,
         on_step=_step,
         on_warning=_warn,
         on_stop_requested=_stop_requested,
+        host=host,
     )
 
 
-def _finish(result: RunResult, as_json: bool) -> None:
+def host_options() -> RunOptions:
+    """Options for a host agent's command: no prompts; a gate without a decision parks."""
+    return RunOptions(on_step=_step, on_warning=_warn, on_stop_requested=_stop_requested, host=True)
+
+
+def _echo(text: str) -> None:
+    """Plain text on stdout, in UTF-8: a host agent copies `search` texts from feedback."""
+    stream = sys.stdout
+    if isinstance(stream, io.TextIOWrapper) and stream.encoding.lower().replace("-", "") != "utf8":
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    typer.echo(text)
+
+
+def _awaiting(place: RunPlace, result: RunResult) -> list[str]:
+    """What a host-agent run waits for, and the commands that answer it (D-44)."""
+    waiting = result.waiting or {}
+    run_id = result.run_id
+    gate = waiting.get("gate")
+    if gate == AGENT_GATE:
+        rules = ", ".join(waiting.get("rules") or [])
+        return [
+            f"Unit {waiting.get('unit')} ({rules}) waits for your edits: attempt "
+            f"{waiting.get('attempt')} of {waiting.get('attempts_allowed')}.",
+            f"Read the context document {waiting.get('context_file')}, write the edits to "
+            f"{waiting.get('edits_file')}, then run `codecoremorph unit submit`. To give the "
+            'unit up, run `codecoremorph unit abort --reason "..."`; the run goes on with the '
+            "next unit.",
+        ]
+    if gate == ApprovalGate.PLAN.value:
+        lines = ["The plan waits for approval."]
+        plan_path = place.state_dir.run(run_id).plan_json
+        if plan_path.is_file():
+            lines[0] = f"The plan waits for approval: {plan_path}"
+            lines += _plan_lines(Plan.model_validate_json(plan_path.read_bytes()))
+        lines.append(
+            f"Approve it with `codecoremorph approve {run_id}` (add `--exclude U-0003,...` to "
+            f"leave units out) or reject it with `codecoremorph reject {run_id}`, then run "
+            f"`codecoremorph resume {run_id}`."
+        )
+        return lines
+    if gate == ApprovalGate.UNIT.value:
+        unit = waiting.get("unit")
+        commit = str(waiting.get("commit") or "")[:12]
+        lines = [f"Unit {unit} waits for approval (commit {commit}):"]
+        lines += [f"  - {reason}" for reason in waiting.get("reasons") or []]
+        lines.append(
+            f"Keep it with `codecoremorph approve {run_id} --unit {unit}` or take it off the "
+            f"branch with `codecoremorph reject {run_id} --unit {unit}`, then run "
+            f"`codecoremorph resume {run_id}`."
+        )
+        return lines
+    return [f"Run {run_id} is parked. Continue it with `codecoremorph resume {run_id}`."]
+
+
+def finish_run(result: RunResult, as_json: bool, place: RunPlace) -> None:
+    """Print a run command's result and exit with the run's exit code (SPEC §7.14)."""
+    awaiting = _awaiting(place, result) if result.parked and result.awaiting else []
     if as_json:
         typer.echo(
             json.dumps(
@@ -182,7 +251,10 @@ def _finish(result: RunResult, as_json: bool) -> None:
                     "status": result.status.value,
                     "reason": result.reason,
                     "parked": result.parked,
+                    "awaiting": result.awaiting,
                     "waiting": result.waiting,
+                    "notes": list(result.notes),
+                    "next": "\n".join(awaiting) or None,
                     "branch": result.branch,
                     "head": result.head,
                     "report": str(result.report_md) if result.report_md else None,
@@ -191,34 +263,42 @@ def _finish(result: RunResult, as_json: bool) -> None:
                 indent=2,
             )
         )
-    else:
-        console = stdout()
-        if result.parked:
-            where = f" at the {result.waiting['gate']} gate" if result.waiting else ""
-            console.print(
-                Text.assemble(
-                    status_label("info"),
-                    f" run {result.run_id} is parked{where}. Continue it with "
-                    f"`codecoremorph resume {result.run_id}`, or end it with "
-                    f"`codecoremorph abort {result.run_id}`.",
-                )
-            )
-        else:
-            ok = result.status is RunStatus.COMPLETED
-            label = status_label(
-                "ok"
-                if ok
-                else "warn"
-                if result.status is RunStatus.COMPLETED_WITH_FAILURES
-                else "fail"
-            )
-            why = f" ({result.reason})" if result.reason else ""
-            console.print(Text.assemble(label, f" run {result.run_id}: {result.status.value}{why}"))
-            if result.head:
-                console.print(Text(f"branch: {result.branch} at {result.head[:12]}"))
-            if result.report_md:
-                console.print(Text(f"report: {result.report_md}"))
+        raise typer.Exit(int(result.exit_code))
+    for note in result.notes:
+        _echo(note)
+    if awaiting:
+        _echo("\n".join(awaiting))
+        raise typer.Exit(int(result.exit_code))
+    _finish_text(result)
     raise typer.Exit(int(result.exit_code))
+
+
+def _finish_text(result: RunResult) -> None:
+    console = stdout()
+    if result.parked:
+        where = f" at the {result.waiting['gate']} gate" if result.waiting else ""
+        console.print(
+            Text.assemble(
+                status_label("info"),
+                f" run {result.run_id} is parked{where}. Continue it with "
+                f"`codecoremorph resume {result.run_id}`, or end it with "
+                f"`codecoremorph abort {result.run_id}`.",
+            )
+        )
+        return
+    label = status_label(
+        "ok"
+        if result.status is RunStatus.COMPLETED
+        else "warn"
+        if result.status is RunStatus.COMPLETED_WITH_FAILURES
+        else "fail"
+    )
+    why = f" ({result.reason})" if result.reason else ""
+    console.print(Text.assemble(label, f" run {result.run_id}: {result.status.value}{why}"))
+    if result.head:
+        console.print(Text(f"branch: {result.branch} at {result.head[:12]}"))
+    if result.report_md:
+        console.print(Text(f"report: {result.report_md}"))
 
 
 # --------------------------------------------------------------------------- commands
@@ -234,18 +314,27 @@ def run_command(
     sandbox: Annotated[
         SandboxMode | None, typer.Option("--sandbox", help="Override sandbox.mode.")
     ] = None,
+    host_agent: Annotated[
+        bool,
+        typer.Option(
+            "--host-agent",
+            help="Your coding agent (Claude Code with the codecoremorph skill) writes the "
+            "edits; no model is called. The run parks whenever it needs the agent or a "
+            "decision.",
+        ),
+    ] = False,
     as_json: JsonOpt = False,
 ) -> None:
     """Migrate the project: plan, then every unit on the run branch, verified and reported.
 
     Every commit on codecoremorph/<run-id> builds and passes the baseline's tests. Ctrl-C parks
-    the run for `codecoremorph resume`.
+    the run for `codecoremorph resume`. With --host-agent, each unit that needs edits waits for
+    `codecoremorph unit submit` (D-44).
     """
     place = RunPlace.for_config(config)
-    result = start_run(
-        config, base=base, mode=sandbox, options=_options(place, yes=yes), on_warning=_warn
-    )
-    _finish(result, as_json)
+    options = _options(place, yes=yes, host=host_agent)
+    result = start_run(config, base=base, mode=sandbox, options=options, on_warning=_warn)
+    finish_run(result, as_json, place)
 
 
 @handle_errors
@@ -260,7 +349,7 @@ def resume_command(
     """Continue a parked or crashed run from its last checkpoint (FR-14.3)."""
     place = RunPlace.for_config(config)
     result = resume_run(config, run_id, options=_options(place, yes=yes), on_warning=_warn)
-    _finish(result, as_json)
+    finish_run(result, as_json, place)
 
 
 def _decide(
@@ -376,6 +465,7 @@ def status_command(
                     "units": view.unit_counts,
                     "current_unit": view.current,
                     "waiting": view.waiting,
+                    "agent": view.agent,
                     "tokens": view.tokens,
                     "cost_usd": view.cost_usd,
                     "engine_running": view.engine_alive,
@@ -397,6 +487,16 @@ def status_command(
         console.print(Text("units: " + ", ".join(f"{n} {s}" for s, n in view.unit_counts.items())))
     if view.current:
         console.print(Text(f"in progress: {view.current}"))
+    if view.agent and not view.engine_alive:
+        agent = view.agent
+        console.print(
+            Text(
+                f"waiting for the agent's edits: {agent['unit']}, attempt {agent['attempt']} of "
+                f"{agent['attempts_allowed']} (context: {agent['context_file']}; then "
+                "`codecoremorph unit submit`)",
+                style="yellow",
+            )
+        )
     if view.waiting:
         console.print(
             Text(
@@ -412,7 +512,7 @@ def status_command(
         console.print(Text(f"  {event.ts:%H:%M:%S} {event.type.value}{unit} {detail}", style="dim"))
     if view.report_md:
         console.print(Text(f"report: {view.report_md}"))
-    elif not r.status.is_terminal and not view.engine_alive:
+    elif not r.status.is_terminal and not view.engine_alive and not view.agent:
         console.print(Text(f"Continue it with `codecoremorph resume {r.id}`."))
 
 
@@ -503,6 +603,8 @@ __all__ = [
     "abort_command",
     "approve_command",
     "clean_command",
+    "finish_run",
+    "host_options",
     "reject_command",
     "report_command",
     "resume_command",

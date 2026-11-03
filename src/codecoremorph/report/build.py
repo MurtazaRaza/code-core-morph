@@ -130,7 +130,9 @@ def build_report(
             why = (result.reason if result else None) or unit.note or "no reason recorded"
             review.append(ReviewItem(kind=ReviewKind.FAILED_UNIT, unit_id=unit.id, text=why))
         elif unit.status in (UnitStatus.SKIPPED, UnitStatus.TOO_LARGE, UnitStatus.EXCLUDED):
-            text = f"{unit.status.value}: {unit.note or 'left out of the run'}"
+            note = unit.note or "left out of the run"
+            label = f"{unit.status.value}: "
+            text = note if note.startswith(label) else label + note  # the planner's say it
             review.append(ReviewItem(kind=ReviewKind.SKIPPED_UNIT, unit_id=unit.id, text=text))
         if result is None:
             continue
@@ -179,6 +181,8 @@ def build_report(
         }
         if tests
         else {},
+        excused_tests=sorted({*tests.failing, *tests.flaky}) if tests else [],
+        plan_warnings=list(plan.warnings),
         final=final,
         usage_by_role=dict(sorted(by_role.items())),
         usage_total=total,

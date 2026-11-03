@@ -110,11 +110,32 @@ def _render(d: Diagnostic, source: _Source) -> str:
     return "\n".join(parts)
 
 
+def _position(d: Diagnostic) -> tuple[object, ...]:
+    """Sort key: by file (diagnostics without one, such as the linker's, last), line and
+    column; of duplicates, the one with the most notes first."""
+    notes = tuple((n.file_path or "", n.line or 0, n.message) for n in d.notes)
+    return (
+        d.file_path is None,
+        d.file_path or "",
+        d.line or 0,
+        d.column or 0,
+        d.code or "",
+        d.message,
+        -len(notes),
+        notes,
+    )
+
+
 def order_diagnostics(diagnostics: Sequence[Diagnostic]) -> list[Diagnostic]:
-    """Errors (each file's first error first), then warnings; deduplicated."""
+    """Errors (each file's first error first), then warnings; deduplicated.
+
+    The order doesn't depend on the build's: a parallel build prints each compile's output as
+    it finishes, and an error in a header comes from whichever compile including it finished
+    first, with that compile in its "included from" note. Diagnostics are sorted by place
+    before deduplicating, so the same build gives the same feedback every time."""
     seen: set[tuple[str | None, int | None, str | None, str]] = set()
     unique: list[Diagnostic] = []
-    for d in diagnostics:
+    for d in sorted(diagnostics, key=_position):
         if d.severity is Severity.NOTE:
             continue
         key = (d.file_path, d.line, d.code, d.severity.value)

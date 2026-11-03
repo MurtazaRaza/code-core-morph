@@ -18,6 +18,9 @@ Between commands the worktree is clean: a step that changes files ends with a ch
 commit, and success squashes the checkpoints into the unit's commit. A change found in the
 worktree when a command starts was made outside CodeCoreMorph: it is discarded and reported,
 so every edit still goes through PatchEngine.
+
+In a whole run (``codecoremorph run --host-agent``, D-44) the run graph takes these steps in
+its ``unit`` and ``agent`` nodes, and the run, not the unit, makes the commit.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from codecoremorph.agent.context import host_document
-from codecoremorph.agent.loop import UnitRunner
+from codecoremorph.agent.loop import UnitRunner, first_build
 from codecoremorph.core.errors import UsageError, VcsError
 from codecoremorph.core.models import (
     Attempt,
@@ -53,7 +56,8 @@ STATE_FILE = "host.json"
 CONTEXT_FILE = "context.md"
 EDITS_FILE = "edits.json"
 HOST_MODEL = "host"
-CHECKPOINT_AUTHOR = "CodeCoreMorph <checkpoint@codecoremorph.invalid>"
+CHECKPOINT_EMAIL = "checkpoint@codecoremorph.invalid"
+CHECKPOINT_AUTHOR = f"CodeCoreMorph <{CHECKPOINT_EMAIL}>"
 _FAILED_STAGES = {
     "configure": AttemptOutcome.BUILD_FAILED,
     "build": AttemptOutcome.BUILD_FAILED,
@@ -96,6 +100,11 @@ class HostStep:
     state: HostUnitState
     message: str
     warnings: list[str] = field(default_factory=list[str])
+    next_step: str | None = None  # what the host does next, when the unit waits for it
+
+    @property
+    def text(self) -> str:
+        return f"{self.message}\n{self.next_step}" if self.next_step else self.message
 
 
 def _problems(exc: ValidationError) -> str:
@@ -116,15 +125,19 @@ class HostUnit:
         language: str,
         author: str | None,
         baselines: BaselineCache | None = None,
+        commits: bool = True,
     ):
         """``baselines`` receives the baseline of the unit's commit when it succeeds, so a unit
-        started from that commit reuses its test results (D-42)."""
+        started from that commit reuses its test results (D-42). With ``commits`` false (a unit
+        of a whole run, D-44), success leaves the unit's changes staged on its snapshot, and
+        the run commits them, records them and asks its gate."""
         self.runner = runner
         self.rules = list(rules)
         self.files = files
         self.language = language
         self.author = author
         self.baselines = baselines
+        self.commits = commits
 
     @property
     def worktree(self) -> Worktree:
@@ -169,7 +182,7 @@ class HostUnit:
             )
             return self._succeed(state, "Deterministic tools completed the unit.", [])
         state = self._checkpoint(state, "codemods")
-        build = None if check.stage in ("postconditions", "ok") else check.feedback
+        build = first_build(check)
         state = self._update(state, feedback=build, feedback_kind=HostFeedbackKind.INITIAL)
         return self._wait(state, "The unit needs your edits.")
 
@@ -255,8 +268,8 @@ class HostUnit:
             status = (
                 "Deterministic tools ran first; the unit's rules still need your edits."
                 if state.feedback is None
-                else "Deterministic tools ran first. The project doesn't build at the moment; "
-                "see the current build below."
+                else "Deterministic tools ran first, and the unit isn't done yet; see the "
+                "current build below."
             )
             build = state.feedback
         elif state.feedback_kind is HostFeedbackKind.REJECTED:
@@ -367,12 +380,12 @@ class HostUnit:
         lines = [headline]
         if state.feedback and state.feedback_kind is not HostFeedbackKind.INITIAL:
             lines += ["", state.feedback.strip(), ""]
-        lines.append(
+        next_step = (
             f"Attempt {state.attempt} of {state.attempts_allowed}. "
             f"The full context with the files' current text is in {self.files.context}. "
             f"Write the edits to {self.files.edits}, then run `codecoremorph unit submit`."
         )
-        return HostStep(state, "\n".join(lines))
+        return HostStep(state, "\n".join(lines), next_step=next_step)
 
     def _succeed(self, state: HostUnitState, summary: str, notes: list[str]) -> HostStep:
         self.worktree.reset_soft(state.snapshot)
@@ -380,6 +393,7 @@ class HostUnit:
         changed: list[str] = []
         if self.worktree.has_changes():
             changed = [f.path for f in self.worktree.diff(state.snapshot).files]
+        if changed and self.commits:
             by_tools = [c.file for c in state.codemods.changes] if state.codemods else []
             message = unit_commit_message(
                 run_id=state.run_id,
@@ -404,15 +418,17 @@ class HostUnit:
             feedback=None,
         )
         self.files.save(state)
-        if commit is None:
+        if not changed:
             text = f"Unit {state.unit.id} needed no changes."
+        elif commit is None:
+            text = f"Unit {state.unit.id} succeeded: it changes {len(changed)} file(s)."
         else:
             text = (
                 f"Unit {state.unit.id} succeeded: commit {commit[:12]} on branch "
                 f"{self.worktree.branch} changes {len(changed)} file(s)."
             )
         # A single unit has no gate: interface changes a run would ask about are for review.
-        review = [f"needs a human's review: {a}" for a in state.approvals]
+        review = [f"needs a human's review: {a}" for a in state.approvals] if self.commits else []
         return HostStep(state, text, [*state.warnings, *review])
 
     def _fail(self, state: HostUnitState, reason: str, feedback: str) -> HostStep:
