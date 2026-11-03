@@ -1,0 +1,14 @@
+{
+  "fixture": "typedefs",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [
+    "replace_typedefs_with_using"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 2
+  },
+  "submissions": {},
+  "recorded_from": "host-agent run 20261103-095909-b4e7"
+}

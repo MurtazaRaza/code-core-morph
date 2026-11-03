@@ -1,0 +1,139 @@
+{
+  "fixture": "removed-features",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 2
+  },
+  "submissions": {
+    "U-0001": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/toolkit/misc.h",
+            "search": "bool concept(const std::string& word);\nint requires(int level);",
+            "replace": "bool isConcept(const std::string& word);\nint requiredLevel(int level);"
+          },
+          {
+            "op": "replace",
+            "path": "include/toolkit/misc.h",
+            "search": "// An aggregate with a defaulted constructor: aggregate initialization works until C++20.\nstruct Range {\n    Range() = default;\n    int low;",
+            "replace": "// An aggregate: a user-declared constructor (even a defaulted one) would stop aggregate\n// initialization in C++20.\nstruct Range {\n    int low;"
+          },
+          {
+            "op": "replace",
+            "path": "include/toolkit/misc.h",
+            "search": "    bool operator==(const Version& other) { return major == other.major && minor == other.minor; }\n    bool operator!=(const Version& other) { return !(*this == other); }",
+            "replace": "    bool operator==(const Version& other) const {\n        return major == other.major && minor == other.minor;\n    }\n    bool operator!=(const Version& other) const { return !(*this == other); }"
+          },
+          {
+            "op": "replace",
+            "path": "src/misc.cpp",
+            "search": "bool concept(const std::string& word) {",
+            "replace": "bool isConcept(const std::string& word) {"
+          },
+          {
+            "op": "replace",
+            "path": "src/misc.cpp",
+            "search": "int requires(int level) {\n    int requires = level * 2;\n    return requires + 1;\n}",
+            "replace": "int requiredLevel(int level) {\n    int required = level * 2;\n    return required + 1;\n}"
+          },
+          {
+            "op": "replace",
+            "path": "src/misc.cpp",
+            "search": "    const char* text = u8\"hello, world\";",
+            "replace": "    const char* text = \"hello, world\";"
+          },
+          {
+            "op": "replace",
+            "path": "src/misc.cpp",
+            "search": "[=](int value) { total_ += value; }",
+            "replace": "[=, this](int value) { total_ += value; }"
+          },
+          {
+            "op": "replace",
+            "path": "tests/misc_test.cpp",
+            "search": "    EXPECT_TRUE(toolkit::concept(\"Graph\"));\n    EXPECT_FALSE(toolkit::concept(\"graph\"));\n    EXPECT_FALSE(toolkit::concept(\"\"));\n    EXPECT_EQ(7, toolkit::requires(3));",
+            "replace": "    EXPECT_TRUE(toolkit::isConcept(\"Graph\"));\n    EXPECT_FALSE(toolkit::isConcept(\"graph\"));\n    EXPECT_FALSE(toolkit::isConcept(\"\"));\n    EXPECT_EQ(7, toolkit::requiredLevel(3));"
+          },
+          {
+            "op": "replace",
+            "path": "include/toolkit/functional.h",
+            "search": "// Function objects in the C++98 style: derived from unary_function and binary_function.\nstruct IsEven : public std::unary_function<int, bool> {",
+            "replace": "// Function objects in the C++98 style; std::unary_function and std::binary_function, their\n// old base classes, were removed in C++17.\nstruct IsEven {"
+          },
+          {
+            "op": "replace",
+            "path": "include/toolkit/functional.h",
+            "search": "struct InRange : public std::binary_function<int, int, bool> {",
+            "replace": "struct InRange {"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "                   std::bind2nd(std::multiplies<int>(), factor));",
+            "replace": "                   [factor](int value) { return value * factor; });"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "                   std::bind1st(std::plus<int>(), amount));",
+            "replace": "                   [amount](int value) { return amount + value; });"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "std::count_if(values.begin(), values.end(), std::not1(IsEven()))",
+            "replace": "std::count_if(values.begin(), values.end(), std::not_fn(IsEven()))"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "        std::count_if(values.begin(), values.end(), std::bind2nd(InRange(), limit)));",
+            "replace": "        std::count_if(values.begin(), values.end(),\n                      [limit](int value) { return InRange()(value, limit); }));"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "                        std::not1(std::ptr_fun(isVowel)));",
+            "replace": "                        std::not_fn(isVowel));"
+          },
+          {
+            "op": "replace",
+            "path": "src/functional.cpp",
+            "search": "                   std::mem_fun_ref(&Entry::name));",
+            "replace": "                   std::mem_fn(&Entry::name));"
+          },
+          {
+            "op": "replace",
+            "path": "src/shuffle.cpp",
+            "search": "#include <algorithm>\n#include <random>",
+            "replace": "#include <algorithm>\n#include <utility>"
+          },
+          {
+            "op": "replace",
+            "path": "src/shuffle.cpp",
+            "search": "    Lcg rng(seed);\n    std::shuffle(out.begin(), out.end(), std::mt19937(std::random_device()()));\n    return out;",
+            "replace": "    Lcg rng(seed);\n    // std::random_shuffle(first, last, rng), removed in C++17, as libc++ ran it. std::shuffle\n    // needs another kind of generator, and the order must stay the same for a seed.\n    std::ptrdiff_t remaining = static_cast<std::ptrdiff_t>(out.size());\n    for (std::size_t first = 0; remaining > 1; ++first, --remaining) {\n        std::ptrdiff_t pick = rng(remaining);\n        if (pick != 0) {\n            std::swap(out[first], out[first + static_cast<std::size_t>(pick)]);\n        }\n    }\n    return out;"
+          },
+          {
+            "op": "replace",
+            "path": "src/shuffle.cpp",
+            "search": "    register long total = 0;\n    for (register int i = 0; i < count; ++i) {",
+            "replace": "    long total = 0;\n    for (int i = 0; i < count; ++i) {"
+          }
+        ],
+        "summary": "Build at C++20: rename the functions named concept and requires, drop the u8 literal, make Range an aggregate again, make Version's comparisons const, capture this explicitly, replace the removed binders, negators and function-object bases with lambdas, std::not_fn and std::mem_fn, remove register, and keep shuffled() deterministic per seed.",
+        "review_notes": [
+          "Public API: toolkit::concept and toolkit::requires are now toolkit::isConcept and toolkit::requiredLevel, since both names are C++20 keywords; the test calls were renamed with them.",
+          "The clang-tidy codemod replaced std::random_shuffle(first, last, rng) with std::shuffle and a std::random_device-seeded std::mt19937, which ignored the seeded Lcg and made shuffled() nondeterministic (ShuffleTest.IsDeterministicPerSeed). shuffled() now runs the loop libc++'s random_shuffle ran with the Lcg, so a seed gives the same order as before with libc++; with libstdc++, whose random_shuffle walked the range differently, the order for a seed changes (the tests check only the permutation and determinism).",
+          "Range lost its defaulted constructor so that it stays an aggregate in C++20; Range r; still leaves low and high uninitialized, as before."
+        ]
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261103-100020-9efe"
+}

@@ -1,0 +1,49 @@
+{
+  "fixture": "c-compat",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [
+    "replace_typedefs_with_using",
+    "modernize_basics"
+  ],
+  "status": "completed_with_failures",
+  "unit_counts": {
+    "committed": 3,
+    "skipped": 2
+  },
+  "submissions": {
+    "U-0004": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/ccore/buffer.hpp",
+            "search": "    StringList();\n    ~StringList();",
+            "replace": "    StringList();\n    StringList(const StringList&) = delete;\n    StringList& operator=(const StringList&) = delete;\n    ~StringList();"
+          },
+          {
+            "op": "replace",
+            "path": "include/ccore/buffer.hpp",
+            "search": "private:\n    StringList(const StringList&) = delete;\n    StringList& operator=(const StringList&) = delete;\n\n    ccore_list* list_;",
+            "replace": "private:\n    ccore_list* list_;"
+          },
+          {
+            "op": "replace",
+            "path": "include/ccore/table.hpp",
+            "search": "    explicit InternTable(size_t capacity);\n    ~InternTable();",
+            "replace": "    explicit InternTable(size_t capacity);\n    InternTable(const InternTable&) = delete;\n    InternTable& operator=(const InternTable&) = delete;\n    ~InternTable();"
+          },
+          {
+            "op": "replace",
+            "path": "include/ccore/table.hpp",
+            "search": "private:\n    InternTable(const InternTable&) = delete;\n    InternTable& operator=(const InternTable&) = delete;\n\n    ccore_set set_;",
+            "replace": "private:\n    ccore_set set_;"
+          }
+        ],
+        "summary": "StringList's and InternTable's deleted copy operations are public, so a copy attempt reports that they are deleted rather than private.",
+        "review_notes": []
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261103-101735-e587"
+}

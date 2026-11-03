@@ -1,0 +1,44 @@
+{
+  "fixture": "templates",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [
+    "use_concepts_for_templates"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 2
+  },
+  "submissions": {
+    "U-0002": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/meta/format.h",
+            "search": "template <typename T>\ntypename std::enable_if<is_pair<T>::value, std::string>::type toString(const T& value);\n\ntemplate <typename T>\ntypename std::enable_if<is_container<T>::value, std::string>::type toString(const T& value);\n\ntemplate <typename T>\ntypename std::enable_if<is_pair<T>::value, std::string>::type toString(const T& value) {",
+            "replace": "template <typename T>\nstd::string toString(const T& value) requires is_pair<T>::value;\n\ntemplate <typename T>\nstd::string toString(const T& value) requires is_container<T>::value;\n\ntemplate <typename T>\nstd::string toString(const T& value) requires is_pair<T>::value {"
+          },
+          {
+            "op": "replace",
+            "path": "include/meta/format.h",
+            "search": "template <typename T>\ntypename std::enable_if<is_container<T>::value, std::string>::type toString(const T& value) {",
+            "replace": "template <typename T>\nstd::string toString(const T& value) requires is_container<T>::value {"
+          },
+          {
+            "op": "replace",
+            "path": "include/meta/format.h",
+            "search": "template <typename T>\nclass Quantity<T, typename std::enable_if<std::is_arithmetic<T>::value>::type> {",
+            "replace": "template <typename T>\n    requires std::is_arithmetic<T>::value\nclass Quantity<T> {"
+          }
+        ],
+        "summary": "The remaining enable_if constraints become requires-clauses: the pair and container overloads of toString, and Quantity's specialization for arithmetic types.",
+        "review_notes": [
+          "meta::enable_if_c in traits.h still wraps std::enable_if: it is a public helper that nothing in the project uses any more, and removing it would change the public API, which this rule keeps. It can go in an API-changing cleanup.",
+          "Quantity's primary template keeps its Enable parameter, so Quantity<T> and Quantity<T, void> name the same types as before."
+        ]
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261103-101245-a7c1"
+}

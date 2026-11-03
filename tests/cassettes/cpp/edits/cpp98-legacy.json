@@ -1,0 +1,134 @@
+{
+  "fixture": "cpp98-legacy",
+  "source": "cpp98",
+  "target": "cpp20",
+  "rules": [
+    "replace_typedefs_with_using"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 3
+  },
+  "submissions": {
+    "U-0001": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/ledger/compat.h",
+            "search": "// A null pointer constant that converts to any pointer type but never to an integer, so\n// overloads taking int and T* resolve the way callers expect. Some standard libraries already\n// provide one as a macro.\n#ifndef nullptr\nconst class nullptr_t_\n{\npublic:\n    template <class T>\n    operator T*() const\n    {\n        return 0;\n    }\n\n    template <class C, class T>\n    operator T C::*() const\n    {\n        return 0;\n    }\n\nprivate:\n    void operator&() const;\n} nullptr = {};\n#endif\n\n",
+            "replace": ""
+          },
+          {
+            "op": "replace",
+            "path": "include/ledger/text.h",
+            "search": "// A UTF-16 code unit, for the export format of the old reporting system.\ntypedef unsigned short char16_t;\ntypedef std::vector<char16_t> Utf16;",
+            "replace": "// A UTF-16 code unit, for the export format of the old reporting system. (Not named\n// char16_t, which is a keyword since C++11.)\ntypedef unsigned short utf16_unit;\ntypedef std::vector<utf16_unit> Utf16;"
+          },
+          {
+            "op": "replace",
+            "path": "src/text.cpp",
+            "search": "        out.push_back(static_cast<char16_t>(code_point));",
+            "replace": "        out.push_back(static_cast<utf16_unit>(code_point));"
+          },
+          {
+            "op": "replace",
+            "path": "src/text.cpp",
+            "search": "    out.push_back(static_cast<char16_t>(0xD800 + (code_point >> 10)));\n    out.push_back(static_cast<char16_t>(0xDC00 + (code_point & 0x3FF)));",
+            "replace": "    out.push_back(static_cast<utf16_unit>(0xD800 + (code_point >> 10)));\n    out.push_back(static_cast<utf16_unit>(0xDC00 + (code_point & 0x3FF)));"
+          },
+          {
+            "op": "replace",
+            "path": "src/text.cpp",
+            "search": "    register size_t i = 0;",
+            "replace": "    size_t i = 0;"
+          },
+          {
+            "op": "replace",
+            "path": "src/text.cpp",
+            "search": "    auto int written = 0;",
+            "replace": "    int written = 0;"
+          },
+          {
+            "op": "replace",
+            "path": "src/parse.cpp",
+            "search": "    return std::getline(in, field, ',');",
+            "replace": "    return static_cast<bool>(std::getline(in, field, ','));"
+          },
+          {
+            "op": "replace",
+            "path": "src/parse.cpp",
+            "search": "    bool ok = in >> units;",
+            "replace": "    bool ok = static_cast<bool>(in >> units);"
+          },
+          {
+            "op": "replace",
+            "path": "src/money.cpp",
+            "search": "    Money result = { m.cents * factor };",
+            "replace": "    Money result = { static_cast<long>(m.cents * factor) };"
+          },
+          {
+            "op": "replace",
+            "path": "src/format.cpp",
+            "search": "    sprintf(buffer, \"%\"PRId64, n);",
+            "replace": "    sprintf(buffer, \"%\" PRId64, n);"
+          },
+          {
+            "op": "replace",
+            "path": "src/format.cpp",
+            "search": "    sprintf(buffer, \"%s-%08\"PRId64, prefix, id);",
+            "replace": "    sprintf(buffer, \"%s-%08\" PRId64, prefix, id);"
+          },
+          {
+            "op": "replace",
+            "path": "src/format.cpp",
+            "search": "std::ptr_fun<int, int>(toupper)",
+            "replace": "[](int c) { return toupper(c); }"
+          },
+          {
+            "op": "replace",
+            "path": "src/inventory.cpp",
+            "search": "std::find_if(found, counts.end(), std::bind2nd(std::less<int>(), threshold))",
+            "replace": "std::find_if(found, counts.end(), [threshold](int count) { return count < threshold; })"
+          },
+          {
+            "op": "replace",
+            "path": "include/ledger/transaction.h",
+            "search": "    ~Transaction();",
+            "replace": "    ~Transaction() noexcept(false);  // may throw RollbackError, see above"
+          },
+          {
+            "op": "replace",
+            "path": "src/transaction.cpp",
+            "search": "Transaction::~Transaction()\n{",
+            "replace": "Transaction::~Transaction() noexcept(false)\n{"
+          }
+        ],
+        "summary": "Build at C++20: drop the home-made nullptr for the keyword, rename the char16_t typedef, remove register and auto storage classes, convert streams to bool explicitly, cast the narrowing Money initializer, space out the PRId64 literals, replace ptr_fun and bind2nd with lambdas, and let Transaction's destructor keep throwing RollbackError.",
+        "review_notes": [
+          "Transaction's destructor is noexcept(false): it throws RollbackError for a strict transaction destroyed without commit(), which the tests check, and C++11 destructors are noexcept by default, so it would have called std::terminate instead.",
+          "Public API: ledger::char16_t is now ledger::utf16_unit (still unsigned short); char16_t is a keyword since C++11. Utf16 keeps its element type.",
+          "compat.h no longer defines the C++98 nullptr class; the keyword replaces it. LEDGER_STATIC_ASSERT and LEDGER_NONCOPYABLE still compile and are left for a later modernization.",
+          "scale() truncates toward zero as before: the brace initializer needed an explicit static_cast<long> under C++11's narrowing rules."
+        ]
+      }
+    ],
+    "U-0003": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/ledger/compat.h",
+            "search": "#define LEDGER_STATIC_ASSERT(cond, name) typedef char ledger_static_assert_##name[(cond) ? 1 : -1]",
+            "replace": "#define LEDGER_STATIC_ASSERT(cond, name) using ledger_static_assert_##name = char[(cond) ? 1 : -1]"
+          }
+        ],
+        "summary": "The typedef that LEDGER_STATIC_ASSERT expands to is an alias declaration; a false condition still gives the array a negative size and fails to compile.",
+        "review_notes": [
+          "Nothing in the project uses LEDGER_STATIC_ASSERT any more; static_assert, a keyword since C++11, could replace it in a later cleanup."
+        ]
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261103-102234-73f5"
+}

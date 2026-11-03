@@ -1,0 +1,412 @@
+{
+  "fixture": "ownership",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [
+    "convert_raw_pointers_to_smart_pointers"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 6
+  },
+  "submissions": {
+    "U-0002": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/inventory/cache.h",
+            "search": "#include <map>\n#include <string>",
+            "replace": "#include <map>\n#include <memory>\n#include <string>"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/cache.h",
+            "search": "    std::map<std::string, Node*> index_;",
+            "replace": "    std::map<std::string, std::unique_ptr<Node>> index_;  // owns the nodes"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "#include \"inventory/cache.h\"\n",
+            "replace": "#include \"inventory/cache.h\"\n\n#include <utility>\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "PriceCache::~PriceCache() {\n    Node* node = head_;\n    while (node != NULL) {\n        Node* next = node->next;\n        delete node;\n        node = next;\n    }\n}",
+            "replace": "PriceCache::~PriceCache() {}  // index_ owns the nodes"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "void PriceCache::put(const std::string& key, double price) {\n    std::map<std::string, Node*>::iterator it = index_.find(key);\n    if (it != index_.end()) {\n        it->second->price = price;\n        unlink(it->second);\n        pushFront(it->second);",
+            "replace": "void PriceCache::put(const std::string& key, double price) {\n    std::map<std::string, std::unique_ptr<Node>>::iterator it = index_.find(key);\n    if (it != index_.end()) {\n        it->second->price = price;\n        unlink(it->second.get());\n        pushFront(it->second.get());"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "        index_.erase(victim->key);\n        delete victim;",
+            "replace": "        std::string evicted = victim->key;\n        index_.erase(evicted);  // destroys the node"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "    Node* node = new Node;",
+            "replace": "    std::unique_ptr<Node> owned = std::make_unique<Node>();\n    Node* node = owned.get();"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "    index_[key] = node;",
+            "replace": "    index_[key] = std::move(owned);"
+          },
+          {
+            "op": "replace",
+            "path": "src/cache.cpp",
+            "search": "    std::map<std::string, Node*>::iterator it = index_.find(key);\n    if (it == index_.end()) {\n        return false;\n    }\n    unlink(it->second);\n    pushFront(it->second);",
+            "replace": "    std::map<std::string, std::unique_ptr<Node>>::iterator it = index_.find(key);\n    if (it == index_.end()) {\n        return false;\n    }\n    unlink(it->second.get());\n    pushFront(it->second.get());"
+          }
+        ],
+        "summary": "PriceCache's index_ owns its nodes through std::unique_ptr; the manual deletes are gone. The list links (prev, next, head_, tail_) stay raw, non-owning pointers.",
+        "review_notes": [
+          "An evicted node is destroyed by index_.erase; its key is copied first, because erase(victim->key) would read the key of the node it destroys.",
+          "std::make_unique<Node>() value-initializes the node where new Node default-initialized it; every field is assigned right after, so behavior is the same."
+        ]
+      }
+    ],
+    "U-0003": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/inventory/item.h",
+            "search": "#include <string>\n\nnamespace inventory {\n\n// A stock item. Items are heap-allocated and owned by whoever holds the pointer;\n// clone() returns a new item the caller must delete.",
+            "replace": "#include <memory>\n#include <string>\n\nnamespace inventory {\n\n// A stock item. Items are heap-allocated and owned by whoever holds the pointer;\n// clone() returns a new item the caller owns."
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/item.h",
+            "search": "    virtual std::string describe() const;\n    virtual Item* clone() const;\n\n    static int liveCount();",
+            "replace": "    virtual std::string describe() const;\n    virtual std::unique_ptr<Item> clone() const;\n\n    static int liveCount();"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/item.h",
+            "search": "    virtual std::string describe() const;\n    virtual Item* clone() const;\n\nprivate:\n    int daysLeft_;",
+            "replace": "    virtual std::string describe() const;\n    virtual std::unique_ptr<Item> clone() const;\n\nprivate:\n    int daysLeft_;"
+          },
+          {
+            "op": "replace",
+            "path": "src/item.cpp",
+            "search": "Item* Item::clone() const { return new Item(*this); }",
+            "replace": "std::unique_ptr<Item> Item::clone() const { return std::make_unique<Item>(*this); }"
+          },
+          {
+            "op": "replace",
+            "path": "src/item.cpp",
+            "search": "Item* Perishable::clone() const { return new Perishable(*this); }",
+            "replace": "std::unique_ptr<Item> Perishable::clone() const { return std::make_unique<Perishable>(*this); }"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/warehouse.h",
+            "search": "#include <string>\n#include <vector>\n\n#include \"inventory/item.h\"",
+            "replace": "#include <memory>\n#include <string>\n#include <vector>\n\n#include \"inventory/item.h\""
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/warehouse.h",
+            "search": "    std::vector<Item*> items_;",
+            "replace": "    std::vector<std::unique_ptr<Item>> items_;"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "#include <cstddef>\n",
+            "replace": "#include <cstddef>\n#include <utility>\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "void Warehouse::clear() {\n    for (size_t i = 0; i < items_.size(); ++i) {\n        delete items_[i];\n    }\n    items_.clear();\n}",
+            "replace": "void Warehouse::clear() { items_.clear(); }"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "    Item* existing = find(item->name());\n    if (existing != NULL) {\n        existing->setQuantity(existing->quantity() + item->quantity());\n        delete item;\n        return;\n    }\n    items_.push_back(item);",
+            "replace": "    std::unique_ptr<Item> owned(item);\n    Item* existing = find(owned->name());\n    if (existing != NULL) {\n        existing->setQuantity(existing->quantity() + owned->quantity());\n        return;  // owned deletes the merged item\n    }\n    items_.push_back(std::move(owned));"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "    for (std::vector<Item*>::iterator it = items_.begin(); it != items_.end(); ++it) {\n        if ((*it)->name() == name) {\n            delete *it;\n            items_.erase(it);\n            return true;",
+            "replace": "    for (std::vector<std::unique_ptr<Item>>::iterator it = items_.begin(); it != items_.end();\n         ++it) {\n        if ((*it)->name() == name) {\n            items_.erase(it);  // destroys the item\n            return true;"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "        if (items_[i]->name() == name) {\n            return items_[i];\n        }",
+            "replace": "        if (items_[i]->name() == name) {\n            return items_[i].get();\n        }"
+          },
+          {
+            "op": "replace",
+            "path": "src/warehouse.cpp",
+            "search": "    for (std::vector<Item*>::iterator it = items_.begin(); it != items_.end(); ++it) {\n        if ((*it)->name() == name) {\n            Item* item = *it;\n            items_.erase(it);\n            return item;",
+            "replace": "    for (std::vector<std::unique_ptr<Item>>::iterator it = items_.begin(); it != items_.end();\n         ++it) {\n        if ((*it)->name() == name) {\n            Item* item = it->release();  // ownership goes to the caller\n            items_.erase(it);\n            return item;"
+          },
+          {
+            "op": "replace",
+            "path": "tests/item_test.cpp",
+            "search": "#include <gtest/gtest.h>\n\n#include \"inventory/item.h\"",
+            "replace": "#include <gtest/gtest.h>\n\n#include <memory>\n\n#include \"inventory/item.h\""
+          },
+          {
+            "op": "replace",
+            "path": "tests/item_test.cpp",
+            "search": "    Item* original = new Perishable(\"cheese\", 4.0, 2, 1);\n    Item* copy = original->clone();",
+            "replace": "    std::unique_ptr<Item> original = std::make_unique<Perishable>(\"cheese\", 4.0, 2, 1);\n    std::unique_ptr<Item> copy = original->clone();"
+          },
+          {
+            "op": "replace",
+            "path": "tests/item_test.cpp",
+            "search": "    delete original;\n    delete copy;",
+            "replace": "    original.reset();\n    copy.reset();"
+          }
+        ],
+        "summary": "Warehouse owns its items through std::unique_ptr and Item::clone() returns std::unique_ptr<Item>; the manual deletes are gone. Warehouse::add(Item*) and release() keep their raw-pointer signatures, because tests outside this unit call them.",
+        "review_notes": [
+          "Public API: Item::clone() and Perishable::clone() now return std::unique_ptr<Item>; every caller (warehouse.cpp, item_test.cpp) is in this unit.",
+          "Warehouse::add(Item*) still takes ownership of a raw pointer and release() still returns one: order_test.cpp and warehouse_test.cpp call them and belong to other units.",
+          "item_test.cpp's CloneKeepsTheDynamicType releases its items with reset() where it deleted them, so the live-count check after them is unchanged."
+        ]
+      }
+    ],
+    "U-0004": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "#include <string>\n#include <vector>\n\n#include \"inventory/item.h\"",
+            "replace": "#include <memory>\n#include <string>\n#include <vector>\n\n#include \"inventory/item.h\""
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "Item* createItem(const std::string& spec);",
+            "replace": "std::unique_ptr<Item> createItem(const std::string& spec);"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "std::vector<Item*> createItems(const std::vector<std::string>& specs);",
+            "replace": "std::vector<std::unique_ptr<Item>> createItems(const std::vector<std::string>& specs);"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "void destroyItems(std::vector<Item*>& items);",
+            "replace": "void destroyItems(std::vector<std::unique_ptr<Item>>& items);"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "// A text report built on the heap; the caller deletes it.",
+            "replace": "// A text report built on the heap; the caller owns it."
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/factory.h",
+            "search": "Report* makeReport(const std::string& title, const std::vector<Item*>& items);",
+            "replace": "std::unique_ptr<Report> makeReport(const std::string& title,\n                                   const std::vector<std::unique_ptr<Item>>& items);"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "#include <cstdlib>\n#include <sstream>",
+            "replace": "#include <cstdlib>\n#include <sstream>\n#include <utility>"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "Item* createItem(const std::string& spec) {\n    std::vector<std::string> parts = split(spec, ':');\n    if (parts.size() < 4) {\n        return NULL;\n    }",
+            "replace": "std::unique_ptr<Item> createItem(const std::string& spec) {\n    std::vector<std::string> parts = split(spec, ':');\n    if (parts.size() < 4) {\n        return nullptr;\n    }"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "    if (parts[1].empty() || !toNumber(parts[2], &price) || !toNumber(parts[3], &quantity)) {\n        return NULL;\n    }\n    if (parts[0] == \"item\" && parts.size() == 4) {\n        return new Item(parts[1], price, static_cast<int>(quantity));\n    }",
+            "replace": "    if (parts[1].empty() || !toNumber(parts[2], &price) || !toNumber(parts[3], &quantity)) {\n        return nullptr;\n    }\n    if (parts[0] == \"item\" && parts.size() == 4) {\n        return std::make_unique<Item>(parts[1], price, static_cast<int>(quantity));\n    }"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "        return new Perishable(parts[1], price, static_cast<int>(quantity), static_cast<int>(days));\n    }\n    return NULL;\n}",
+            "replace": "        return std::make_unique<Perishable>(parts[1], price, static_cast<int>(quantity),\n                                            static_cast<int>(days));\n    }\n    return nullptr;\n}"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "std::vector<Item*> createItems(const std::vector<std::string>& specs) {\n    std::vector<Item*> items;\n    for (size_t i = 0; i < specs.size(); ++i) {\n        Item* item = createItem(specs[i]);\n        if (item != NULL) {\n            items.push_back(item);\n        }",
+            "replace": "std::vector<std::unique_ptr<Item>> createItems(const std::vector<std::string>& specs) {\n    std::vector<std::unique_ptr<Item>> items;\n    for (size_t i = 0; i < specs.size(); ++i) {\n        std::unique_ptr<Item> item = createItem(specs[i]);\n        if (item != nullptr) {\n            items.push_back(std::move(item));\n        }"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "void destroyItems(std::vector<Item*>& items) {\n    for (size_t i = 0; i < items.size(); ++i) {\n        delete items[i];\n    }\n    items.clear();\n}",
+            "replace": "void destroyItems(std::vector<std::unique_ptr<Item>>& items) { items.clear(); }"
+          },
+          {
+            "op": "replace",
+            "path": "src/factory.cpp",
+            "search": "Report* makeReport(const std::string& title, const std::vector<Item*>& items) {\n    Report* report = new Report;",
+            "replace": "std::unique_ptr<Report> makeReport(const std::string& title,\n                                   const std::vector<std::unique_ptr<Item>>& items) {\n    std::unique_ptr<Report> report = std::make_unique<Report>();"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "#include <gtest/gtest.h>\n\n#include \"inventory/factory.h\"",
+            "replace": "#include <gtest/gtest.h>\n\n#include <memory>\n\n#include \"inventory/factory.h\""
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    Item* item = inventory::createItem(\"item:nut:0.5:10\");",
+            "replace": "    std::unique_ptr<Item> item = inventory::createItem(\"item:nut:0.5:10\");"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    delete item;\n\n    Item* milk = inventory::createItem(\"perishable:milk:1:4:2\");",
+            "replace": "    item.reset();\n\n    std::unique_ptr<Item> milk = inventory::createItem(\"perishable:milk:1:4:2\");"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    delete milk;",
+            "replace": "    milk.reset();"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    specs.push_back(\"item:b:2:2\");\n    std::vector<Item*> items = inventory::createItems(specs);\n    EXPECT_EQ(2u, items.size());",
+            "replace": "    specs.push_back(\"item:b:2:2\");\n    std::vector<std::unique_ptr<Item>> items = inventory::createItems(specs);\n    EXPECT_EQ(2u, items.size());"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    std::vector<Item*> items = inventory::createItems(specs);\n    Report* report = inventory::makeReport(\"stock\", items);",
+            "replace": "    std::vector<std::unique_ptr<Item>> items = inventory::createItems(specs);\n    std::unique_ptr<Report> report = inventory::makeReport(\"stock\", items);"
+          },
+          {
+            "op": "replace",
+            "path": "tests/factory_test.cpp",
+            "search": "    delete report;",
+            "replace": "    report.reset();"
+          }
+        ],
+        "summary": "The factory returns owning smart pointers: createItem and makeReport return std::unique_ptr, createItems a vector of them, and destroyItems clears that vector; the manual new and delete are gone.",
+        "review_notes": [
+          "Public API: createItem, createItems, destroyItems and makeReport take or return std::unique_ptr instead of raw owning pointers; every caller (factory.cpp, factory_test.cpp) is in this unit.",
+          "The tests release their objects with reset() where they deleted them, so each object still dies at the same point; their assertions are unchanged."
+        ]
+      }
+    ],
+    "U-0005": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "include/inventory/order.h",
+            "search": "#include <string>\n\nnamespace inventory {\n\nclass Warehouse;",
+            "replace": "#include <memory>\n#include <string>\n\nnamespace inventory {\n\nclass Warehouse;"
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/order.h",
+            "search": "// An order with a growable array of lines (managed by hand) and a non-owning\n// pointer to its customer.",
+            "replace": "// An order with a growable array of lines (owned through std::unique_ptr) and a\n// non-owning pointer to its customer."
+          },
+          {
+            "op": "replace",
+            "path": "include/inventory/order.h",
+            "search": "    OrderLine* lines_;",
+            "replace": "    std::unique_ptr<OrderLine[]> lines_;"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "#include \"inventory/warehouse.h\"\n",
+            "replace": "#include \"inventory/warehouse.h\"\n\n#include <utility>\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "    : customer_(customer), lines_(new OrderLine[2]), count_(0), capacity_(2) {}",
+            "replace": "    : customer_(customer), lines_(std::make_unique<OrderLine[]>(2)), count_(0), capacity_(2) {}"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "      lines_(new OrderLine[other.capacity_]),",
+            "replace": "      lines_(std::make_unique<OrderLine[]>(other.capacity_)),"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "    OrderLine* fresh = new OrderLine[other.capacity_];\n    for (int i = 0; i < other.count_; ++i) {\n        fresh[i] = other.lines_[i];\n    }\n    delete[] lines_;\n    lines_ = fresh;",
+            "replace": "    std::unique_ptr<OrderLine[]> fresh = std::make_unique<OrderLine[]>(other.capacity_);\n    for (int i = 0; i < other.count_; ++i) {\n        fresh[i] = other.lines_[i];\n    }\n    lines_ = std::move(fresh);"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "Order::~Order() { delete[] lines_; }",
+            "replace": "Order::~Order() = default;"
+          },
+          {
+            "op": "replace",
+            "path": "src/order.cpp",
+            "search": "    OrderLine* bigger = new OrderLine[capacity];\n    for (int i = 0; i < count_; ++i) {\n        bigger[i] = lines_[i];\n    }\n    delete[] lines_;\n    lines_ = bigger;",
+            "replace": "    std::unique_ptr<OrderLine[]> bigger = std::make_unique<OrderLine[]>(capacity);\n    for (int i = 0; i < count_; ++i) {\n        bigger[i] = lines_[i];\n    }\n    lines_ = std::move(bigger);"
+          }
+        ],
+        "summary": "Order owns its growable array of lines through std::unique_ptr<OrderLine[]>; the manual new[] and delete[] are gone, and the copy operations still copy the lines.",
+        "review_notes": [
+          "order_test.cpp still passes new Item(...) to Warehouse::add(Item*), which takes ownership of a raw pointer; changing add to take std::unique_ptr<Item> needs warehouse.h, warehouse_test.cpp and order_test.cpp together, so these two calls are left for that change.",
+          "std::make_unique<OrderLine[]>(n) value-initializes the array where new OrderLine[n] left the unused lines' numbers uninitialized; only the first count_ lines are ever read."
+        ]
+      }
+    ],
+    "U-0006": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "tests/warehouse_test.cpp",
+            "search": "#include <gtest/gtest.h>\n\n#include \"inventory/warehouse.h\"",
+            "replace": "#include <gtest/gtest.h>\n\n#include <memory>\n\n#include \"inventory/warehouse.h\""
+          },
+          {
+            "op": "replace",
+            "path": "tests/warehouse_test.cpp",
+            "search": "    Item* bolt = w.release(\"bolt\");",
+            "replace": "    std::unique_ptr<Item> bolt(w.release(\"bolt\"));"
+          },
+          {
+            "op": "replace",
+            "path": "tests/warehouse_test.cpp",
+            "search": "    delete bolt;",
+            "replace": "    bolt.reset();"
+          }
+        ],
+        "summary": "The test owns the item Warehouse::release() hands back through std::unique_ptr instead of deleting it by hand.",
+        "review_notes": [
+          "The w.add(new ...) calls stay: Warehouse::add(Item*) takes ownership of a raw pointer, and only this test file is in the unit. Making add take std::unique_ptr<Item> (warehouse.h, warehouse.cpp and every caller, including order_test.cpp) would remove them in one unit."
+        ]
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261103-100335-8e5a"
+}
