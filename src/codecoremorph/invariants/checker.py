@@ -13,7 +13,8 @@ import logging
 import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from contextlib import suppress
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from pydantic import Field
@@ -26,6 +27,7 @@ from codecoremorph.core.models import (
     LoadedRule,
     RuleKind,
     Symbol,
+    TestAssertions,
     TestBaseline,
     TestReport,
     WorkUnit,
@@ -36,6 +38,7 @@ from codecoremorph.invariants.checks import (
     PathTest,
     api_changes,
     check_api,
+    check_assertions,
     check_diff_size,
     check_path_scope,
     check_suppressions,
@@ -72,6 +75,17 @@ class InvariantSettings:
     max_diff_lines: int = 800
     new_warnings: str = "warn"  # off | warn | fail (guardrails.new_warnings)
     gate_api_changes: bool = False  # approvals.unit covers api_changes
+    gate_test_changes: bool = False  # approvals.unit covers test_changes (I-4)
+    test_file_edits: str = "review"  # deny | review | allow (guardrails.test_file_edits)
+    characterization_dir: str | None = None  # its tests' assertions always need approval
+
+
+@dataclass
+class _TestsSeen:
+    """What the changed files' tests looked like before the unit and now."""
+
+    markers: tuple[list[str], list[str]] = field(default_factory=lambda: ([], []))
+    assertions: tuple[list[TestAssertions], list[TestAssertions]] | None = None
 
 
 class InvariantChecker:
@@ -165,10 +179,24 @@ class InvariantChecker:
         outcome = InvariantOutcome()
         outcome.results.append(check_path_scope(changed, excluded=self.excluded))
         outcome.results.append(check_unit_scope(changed, allowed=allowed))
-        before, after = self._markers(ctx, worktree, snapshot, changed)
+        tests = self._tests(ctx, worktree, snapshot, changed)
         outcome.results.append(
-            check_tests_kept(baseline, report, markers_before=before, markers_after=after)
+            check_tests_kept(
+                baseline, report, markers_before=tests.markers[0], markers_after=tests.markers[1]
+            )
         )
+        if tests.assertions is not None:
+            protected = self.settings.characterization_dir
+            outcome.results.append(
+                check_assertions(
+                    *tests.assertions,
+                    deny_edits=self.settings.test_file_edits == "deny",
+                    gated=self.settings.gate_test_changes,
+                    protected=(lambda p: p.startswith(protected.rstrip("/") + "/"))
+                    if protected
+                    else (lambda _p: False),
+                )
+            )
         outcome.results.append(self._api(ctx, unit, rules, changed))
         allow = any(r.rule.allow_suppressions for r in rules)
         outcome.results.append(check_suppressions(patch_lines(diff.patch), allowed=allow))
@@ -188,16 +216,13 @@ class InvariantChecker:
             )
         return outcome
 
-    def _markers(
+    def _tests(
         self, ctx: AdapterContext, worktree: Worktree, snapshot: str, changed: list[str]
-    ) -> tuple[list[str], list[str]]:
-        """Disable markers in the changed files, before (from the snapshot) and now."""
+    ) -> _TestsSeen:
+        """Disable markers (I-3) and test assertions (I-4) in the changed files, before (from
+        the snapshot) and now. Either is empty when the adapter can't find them."""
         present = [p for p in changed if (worktree.path / p).is_file()]
-        try:
-            after = self.adapter.detect_disabled_tests(ctx, present)
-        except AdapterNotSupportedError:
-            return [], []
-        old = Path(tempfile.mkdtemp(prefix="codecoremorph-markers-"))
+        old = Path(tempfile.mkdtemp(prefix="codecoremorph-tests-"))
         try:
             existed: list[str] = []
             for path in changed:
@@ -208,10 +233,21 @@ class InvariantChecker:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
                 existed.append(path)
-            before = self.adapter.detect_disabled_tests(replace(ctx, worktree=old), existed)
+            old_ctx = replace(ctx, worktree=old)
+            seen = _TestsSeen()
+            with suppress(AdapterNotSupportedError):
+                seen.markers = (
+                    self.adapter.detect_disabled_tests(old_ctx, existed),
+                    self.adapter.detect_disabled_tests(ctx, present),
+                )
+            with suppress(AdapterNotSupportedError):
+                seen.assertions = (
+                    self.adapter.extract_assertions(old_ctx, existed),
+                    self.adapter.extract_assertions(ctx, present),
+                )
         finally:
             shutil.rmtree(old, ignore_errors=True)
-        return before, after
+        return seen
 
     def _api(
         self,

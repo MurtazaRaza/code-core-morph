@@ -19,8 +19,9 @@ def _blank(text: str) -> str:
     return "".join(c if c in "\r\n" else " " for c in text)
 
 
-def mask_c_family(text: str) -> str:
-    """``text`` with comments, string and character literals replaced by spaces."""
+def mask_c_family(text: str, *, strings: bool = True) -> str:
+    """``text`` with comments, string and character literals replaced by spaces; with
+    ``strings=False``, only the comments (literals are kept, so a ``//`` in one stays)."""
     out: list[str] = []
     i = 0
     n = len(text)
@@ -50,14 +51,18 @@ def mask_c_family(text: str) -> str:
             closing = ")" + match.group(1) + '"'
             end = text.find(closing, match.end())
             end = n if end < 0 else end + len(closing)
-            out.append(_blank(text[i:end]))
+            out.append(_blank(text[i:end]) if strings else text[i:end])
             i = end
         elif c in "\"'":
             j = i + 1
             while j < n and text[j] != c and text[j] != "\n":
                 j += 2 if text[j] == "\\" else 1
             end = min(j + 1, n)
-            out.append(c + _blank(text[i + 1 : end - 1]) + (text[end - 1] if end - 1 > i else ""))
+            if strings:
+                inner = _blank(text[i + 1 : end - 1])
+                out.append(c + inner + (text[end - 1] if end - 1 > i else ""))
+            else:
+                out.append(text[i:end])
             i = end
         else:
             out.append(c)

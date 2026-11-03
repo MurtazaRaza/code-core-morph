@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, Field
 from codecoremorph.core.models.adapters import CodemodResult
 from codecoremorph.core.models.attempts import Attempt
 from codecoremorph.core.models.base import CoreModel, RunId
+from codecoremorph.core.models.characterization import CharacterizationJob
 from codecoremorph.core.models.planning import WorkUnit
 from codecoremorph.core.models.rules import RuleSite
 from codecoremorph.core.models.vcs import DirtyState
@@ -67,6 +68,11 @@ class HostUnitState(CoreModel):
         default=False,
         description="A unit of a whole run (`codecoremorph run --host-agent`, D-44): `unit "
         "submit` and `unit abort` continue the run instead of ending it",
+    )
+    job: CharacterizationJob | None = Field(
+        default=None,
+        description="Set when the host writes a characterization job's tests (D-46); ``unit`` "
+        "is then the job's stand-in unit",
     )
     uncompiled: list[str] = Field(
         default_factory=list[str],

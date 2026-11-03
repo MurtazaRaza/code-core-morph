@@ -35,6 +35,7 @@ MIGRATIONS: dict[str, tuple[str, str, list[str]]] = {
     ),
     "cpp98-legacy": ("cpp98", "cpp20", ["replace_typedefs_with_using"]),
     "cpp17-legacy": ("cpp17", "cpp23", ["modernize_basics"]),
+    "untested": ("cpp11", "cpp20", ["replace_typedefs_with_using"]),
 }
 
 pytestmark = pytest.mark.usefixtures("restore_logging")

@@ -15,7 +15,10 @@ from pydantic import BaseModel, ValidationError
 
 from codecoremorph.core.models import (
     Baseline,
+    CharacterizationPlan,
+    CharacterizationSummary,
     FinalVerification,
+    JobResult,
     Plan,
     ReviewItem,
     ReviewKind,
@@ -64,6 +67,30 @@ def load_unit_result(artifacts: RunArtifacts, unit_id: str) -> UnitResult | None
 
 def load_final(artifacts: RunArtifacts) -> FinalVerification | None:
     return _load(FinalVerification, artifacts.root / FINAL_FILE)
+
+
+def characterization_summary(
+    artifacts: RunArtifacts, baseline: Baseline | None
+) -> CharacterizationSummary | None:
+    """The report's characterization section (SPEC §7.11), from the run's files."""
+    plan = _load(CharacterizationPlan, artifacts.characterization_json)
+    if plan is None:
+        return None
+    results: list[JobResult] = []
+    for job in plan.jobs:
+        result = _load(JobResult, unit_result_path(artifacts, job.id))
+        if result is not None:
+            results.append(result.model_copy(update={"records": []}))
+    return CharacterizationSummary(
+        ran=bool(plan.jobs),
+        reason=plan.reason,
+        scope=plan.scope,
+        untested_symbols=plan.untested_symbols,
+        jobs=results,
+        tests=[t for r in results for t in r.tests],
+        commit=baseline.characterization_commit if baseline else None,
+        removed=plan.removed is not None,
+    )
 
 
 def build_report(
@@ -183,6 +210,7 @@ def build_report(
         else {},
         excused_tests=sorted({*tests.failing, *tests.flaky}) if tests else [],
         plan_warnings=list(plan.warnings),
+        characterization=characterization_summary(artifacts, baseline),
         final=final,
         usage_by_role=dict(sorted(by_role.items())),
         usage_total=total,

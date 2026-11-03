@@ -317,10 +317,12 @@ CI tasks from this phase (build and publish the image, run `install-toolchain cp
 
 Landed so far: the run graph with the fake adapter (`tests/unit/orchestrator/test_run_engine.py`: commits, plan and unit gates, exclusions, parking and resume, failures, abort, Ctrl-C, the token budget, a unit committed before a crash); the CLI's lifecycle (`test_lifecycle.py`: decisions, offline aborts, status, clean); crash consistency, with the engine killed in its own process at six points (baseline build, unit verification, mid model call, the agent's verification, after a commit before its checkpoint, final verification) and resumed (`test_crash.py`); invariants and post-conditions (`tests/unit/invariants/`, `test_loop_invariants.py`, `test_postconditions.py`); whole runs with real toolchains, native and Docker (`tests/integration/test_run_e2e.py`: `typedefs` without a model, with the user's checkout byte-identical afterwards; `ownership` to C++20 with the bump and one agent unit replayed from a cassette, the other units excluded at the plan gate); host-agent runs with the fake adapter (`test_host_run.py`: parking, submit, failed and rejected attempts, `unit abort`, gates, a failed submit, a lost unit end, an offline abort) and through the CLI with real toolchains (`tests/integration/test_host_run_e2e.py`); every fixture's designed migration as a whole run, all its units included, from the edits of a host-agent run of each fixture (`test_every_unit_of_a_fixture`, cassettes `run-all-<fixture>-<sandbox>.json`, D-45). The M1 benchmark driver is `bench/run.py`: headless Claude Code with the skill runs the whole leveldb migration through `run --host-agent`.
 
+The M1 benchmark run (2026-11-03, Docker): 24 of 27 units committed, the 3 others given up with reasons; 2 h 11 min against the plan's 2 h 19 min; the final clean build passed all 258 tests (`bench/results/20261103-m1-leveldb-windows-docker-claude-code.json`, with `bench/work.py`'s plan-against-run section). It exposed a false `delete` detector match, now fixed with a regression test.
+
 ### Exit criteria (M1)
-- `codecoremorph run examples/cpp11-to-cpp20.yaml` against every fixture completes with every unit committed, or with failures explained in the report
-- A benchmark run with Claude (Claude Code with the skill) is complete; success rate and duration are recorded in `bench/results/`; provisional SPEC §13 targets are re-set from the data
-- All safety tests are green on Linux and Windows
+- `codecoremorph run examples/cpp11-to-cpp20.yaml` against every fixture completes with every unit committed, or with failures explained in the report *(done: `test_every_unit_of_a_fixture`, natively and in Docker)*
+- A benchmark run with Claude (Claude Code with the skill) is complete; success rate and duration are recorded in `bench/results/`; provisional SPEC §13 targets are re-set from the data *(done: 89% of units, 2 h 11 min; SPEC §13 and §12)*
+- All safety tests are green on Linux and Windows *(Windows: done; Linux waits for CI, D-28)*
 
 ---
 
@@ -331,23 +333,25 @@ Landed so far: the run graph with the fake adapter (`tests/unit/orchestrator/tes
 **Prerequisites:** Phase 5.
 
 ### Tasks
-- [ ] Untested-symbol detection from the symbol graph (direct reference or one call level from test files); `scope: all` option (SPEC §7.11)
-- [ ] `test_writer` prompts and a GoogleTest generation flow per unit, capped at `max_tests_per_unit`
-- [ ] Determinism lint (no time, random, filesystem, network or sleep/thread-timing APIs) (FR-7.3)
-- [ ] Acceptance: compiles, passes 3 times on the base code; one regeneration attempt; drop and report rejects
-- [ ] `adapter.register_test_files` for CMake (generated `CMakeLists.txt` include)
-- [ ] `characterize` graph node: commit before migration units; extend the baseline (FR-7.4)
-- [ ] `adapter.extract_assertions` for GoogleTest; assertion guard I-4; approval routing for `test_changes` (FR-7.5)
-- [ ] `keep: false` removal at the end of the run (FR-7.6); report section (counts, rejects, flagged edits)
-- [ ] `untested` fixture
+- [x] Untested-symbol detection from the symbol graph (direct reference or one call level from test files); `scope: all` option (SPEC §7.11)
+- [x] `test_writer` prompts and a GoogleTest generation flow per unit, capped at `max_tests_per_unit`; host-agent jobs through `unit submit|abort` (D-46)
+- [x] Determinism lint (no time, random, filesystem, network or sleep/thread-timing APIs) (FR-7.3)
+- [x] Acceptance: compiles, passes 3 times on the base code; one regeneration attempt; drop and report rejects
+- [x] `adapter.register_test_files` for CMake (generated `CMakeLists.txt` include)
+- [x] `characterize` graph node: commit before migration units; extend the baseline (FR-7.4)
+- [x] `adapter.extract_assertions` for GoogleTest; assertion guard I-4; approval routing for `test_changes` (FR-7.5); `guardrails.test_file_edits`
+- [x] `keep: false` removal at the end of the run (FR-7.6); report section (counts, rejects, flagged edits)
+- [x] `untested` fixture
 
 ### Tests
 - **Mutation sanity check:** inject behavior changes into the `untested` fixture (off-by-one, swapped branches, changed constants); generated tests catch at least the threshold agreed in this phase (start at 60%, record the actual rate)
 - Determinism lint unit tests; assertion-guard detection on edited tests
 
+Landed so far: GoogleTest parsing, the determinism lint and CMake registration (`tests/unit/adapters/cpp/test_characterization.py`); selection and jobs (`tests/unit/parity/test_selection.py`); the step in the run graph with the fake adapter, by model and by host agent: regeneration, dropped cases, nothing kept, the lint, off, `keep: false`, a job given up (`tests/unit/orchestrator/test_characterize.py`); I-4 as a check and in the unit loop, with the policy, characterization tests and `test_file_edits: deny` (`test_assertion_guard.py`, `test_loop_invariants.py`). With real toolchains: the `untested` fixture's characterization tests from a host-agent run (`tests/cassettes/cpp/edits/untested.json`) build, pass three times and catch 8 of 8 mutations (`test_cpp_fixtures.py`), and its whole run (characterization, then the bump and the typedef unit) replays from a cassette (`test_every_unit_of_a_fixture[untested]`). The other fixtures' recorded runs keep characterization off.
+
 ### Exit criteria
-- On `untested`, characterization tests are generated, accepted and committed, the migration completes, and the mutation check meets its threshold
-- Assertion edits are always flagged and gated per policy
+- [x] On `untested`, characterization tests are generated, accepted and committed, the migration completes, and the mutation check meets its threshold: 10 tests from a host-agent run (one regenerated), 8 of 8 mutations caught (threshold 60%)
+- [x] Assertion edits are always flagged and gated per policy
 
 ---
 

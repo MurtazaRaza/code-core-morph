@@ -7,6 +7,7 @@ toolchain image (``scripts/build-image cpp`` or the published one).
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -39,6 +40,7 @@ FIXTURES = {
     "multi-module": "cpp11",
     "cpp98-legacy": "cpp98",
     "cpp17-legacy": "cpp17",
+    "untested": "cpp11",
 }
 CODE_SUFFIXES = (".h", ".hpp", ".c", ".cpp")
 
@@ -136,7 +138,7 @@ def test_fixture_configures_builds_tests_and_indexes(
 
     index = adapter.index(ctx)
     assert index.problems == []
-    assert index.meta.stats["symbols"] > 100
+    assert index.meta.stats["symbols"] > (30 if fixture == "untested" else 100)  # it is small
     assert index.meta.stats["parsed"] == index.meta.stats["translation_units"]
     assert adapter.detect_disabled_tests(ctx, _code_files(ctx.worktree)) == []
 
@@ -330,3 +332,93 @@ def test_codemods_reach_headers_found_through_dot_and_keep_the_projects_style(
     source_text = (ctx.worktree / "src" / "core.cpp").read_text(encoding="utf-8")
     assert "using TablePtr = const Table*;" in source_text
     assert adapter.build(ctx).success
+
+
+# --------------------------------------------------------------------------- characterization
+
+CHARACTERIZATION_DIR = "tests/codecoremorph_characterization"
+UNTESTED_EDITS = (
+    Path(__file__).resolve().parents[2] / "cassettes" / "cpp" / "edits" / "untested.json"
+)
+# Behavior changes the untested fixture's characterization tests must notice (SPEC §7.11 step 7):
+# (file, text, mutated text, what changes). None is an equivalent mutant: `units < 100` would
+# be one, since both tiers price 100 units at 1000.
+MUTATIONS = [
+    ("src/tariff.cpp", "if (units <= 100) {", "if (units <= 101) {", "off by one: first tier"),
+    ("src/tariff.cpp", "(units - 100) * 8", "(units - 100) * 9", "constant: second tier rate"),
+    ("src/tariff.cpp", "if (years >= 5) {", "if (years > 5) {", "off by one: discount step"),
+    ("src/tariff.cpp", "        return 15;\n", "        return 10;\n", "branches: top discount"),
+    ("src/tariff.cpp", "+ 50) / 100", "+ 49) / 100", "constant: rounding"),
+    ("src/tariff.cpp", "            return cap;\n", "            return sum;\n", "branch: cap"),
+    ("src/meter.cpp", "if (value < last_) {", "if (value <= last_) {", "off by one: rollover"),
+    ("src/meter.cpp", "return last_ - start_;", "return last_ - start_ + 1;", "constant: usage"),
+]
+MUTATION_THRESHOLD = 0.6  # the Phase 6 exit criterion; the rate reached is asserted below
+
+
+def _recorded_tests() -> tuple[str, str]:
+    """The untested fixture's characterization test file as its host-agent run left it: the
+    job's create edit, then its regeneration's replace edits."""
+    data = json.loads(UNTESTED_EDITS.read_text(encoding="utf-8"))
+    path, text = "", ""
+    for batch in data["submissions"]["C-0001"]:
+        for edit in batch["edits"]:
+            if edit["op"] == "create":
+                path, text = edit["path"], edit["content"]
+            elif edit["op"] == "replace":
+                assert text.count(edit["search"]) == 1
+                text = text.replace(edit["search"], edit["replace"])
+    return path, text
+
+
+def test_characterization_tests_build_pass_and_catch_mutations(make_context: MakeContext) -> None:
+    """The mutation sanity check (Phase 6 exit): the untested fixture's characterization tests,
+    registered by the adapter, build and pass on the base code three times, pass the
+    determinism lint, and fail on each deliberate behavior change."""
+    ctx = make_context("untested")
+    adapter = CppAdapter()
+    path, text = _recorded_tests()
+    (ctx.worktree / path).parent.mkdir(parents=True, exist_ok=True)
+    (ctx.worktree / path).write_text(text, encoding="utf-8", newline="\n")
+    written = adapter.register_test_files(
+        ctx, CHARACTERIZATION_DIR, [path], ["src/meter.cpp", "src/tariff.cpp"]
+    )
+    assert written == [f"{CHARACTERIZATION_DIR}/CMakeLists.txt", "CMakeLists.txt"]
+    assert adapter.check_determinism(ctx, [path]) == []
+    cases = adapter.extract_assertions(ctx, [path])
+    ids = [c.test_id for c in cases]
+    assert len(ids) == 10
+    assert all(c.assertions for c in cases)
+    selection = adapter.characterization_tests(ids)
+
+    def failing() -> list[str]:
+        built = adapter.build(ctx)
+        assert built.success, [d.message for d in built.errors]
+        report = adapter.run_tests(ctx, selection)
+        statuses = {c.test_id: c.status for c in report.cases}
+        assert set(ids) <= set(statuses), sorted(statuses)
+        assert "gtest:Billing.FormatsWholeAmounts" not in statuses  # only the selection ran
+        return [i for i in ids if statuses[i] is not TestStatus.PASSED]
+
+    assert adapter.configure(ctx).success
+    for _ in range(3):
+        assert failing() == []
+    caught: list[str] = []
+    for file, before, after, what in MUTATIONS:
+        source = ctx.worktree / file
+        original = source.read_text(encoding="utf-8")
+        assert original.count(before) == 1, what
+        source.write_text(original.replace(before, after), encoding="utf-8", newline="\n")
+        try:
+            if failing():
+                caught.append(what)
+        finally:
+            source.write_text(original, encoding="utf-8", newline="\n")
+    rate = len(caught) / len(MUTATIONS)
+    assert rate >= MUTATION_THRESHOLD, caught
+    assert caught == [m[3] for m in MUTATIONS]  # the rate reached: 8 of 8 (docs/SPEC D-46)
+    # The registration comes out again, back to the fixture's own build file.
+    adapter.register_test_files(ctx, CHARACTERIZATION_DIR, [], [])
+    assert (ctx.worktree / "CMakeLists.txt").read_text(encoding="utf-8") == (
+        FIXTURES_DIR / "untested" / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")

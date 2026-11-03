@@ -73,6 +73,11 @@ class RunArtifacts:
     def checkpoints_db(self) -> Path:
         return self.root / "checkpoints.sqlite"
 
+    @property
+    def characterization_json(self) -> Path:
+        """The run's characterization jobs (D-46); each job's result is in its unit_dir."""
+        return self.root / "characterization.json"
+
     def unit_dir(self, unit_id: str) -> Path:
         """A unit's directory: its attempts, and what its invariants compare against."""
         return self.root / "attempts" / validate_unit_id(unit_id)

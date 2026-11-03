@@ -357,6 +357,11 @@ def unit_status(config: ConfigOpt = DEFAULT_CONFIG, as_json: JsonOpt = False) ->
         f"files: {', '.join(state.unit.files)}",
         f"attempt {state.attempt} of {state.attempts_allowed}",
     ]
+    if state.job is not None:
+        lines[1] = (
+            f"characterization job: tests for {len(state.job.symbols)} untested symbol(s) of "
+            f"{state.job.plan_unit}, at most {state.job.max_tests}"
+        )
     if state.status is HostStatus.WAITING:
         lines += [f"context: {files.context}", f"edits file: {files.edits}"]
     if state.commit:

@@ -8,9 +8,10 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 5 of the plan). CodeCoreMorph can plan a C++ migration
+> **Status:** early development (Phase 6 of the plan). CodeCoreMorph can plan a C++ migration
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
-> an API model as the agent, or migrate one work unit at a time.
+> an API model as the agent, or migrate one work unit at a time. Code that no test covers gets
+> characterization tests first.
 
 ## Developer setup
 
@@ -44,8 +45,11 @@ lists the ordered work units with their estimated cost. Your working tree is nev
 
 `codecoremorph run` then migrates the whole project, unit by unit, onto the branch
 `codecoremorph/<run-id>`. Each unit is one commit that builds and passes your tests; a unit
-that can't be made green is rolled back and reported. The run asks you to approve the plan
-first (`--yes` skips that), and writes a report at the end:
+that can't be made green is rolled back and reported. Before the plan, functions no test reaches
+get *characterization tests*, which record what they do now; they are committed first and then
+guard every unit (turn this off with `parity.characterization_tests.enabled: false`, or remove
+the tests at the end with `keep: false`). The run asks you to approve the plan first (`--yes`
+skips that), and writes a report at the end:
 
 ```sh
 uv run codecoremorph run path/to/migration_config.yaml

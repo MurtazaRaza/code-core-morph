@@ -189,17 +189,25 @@ class Worktree:
                 return sha
         return since
 
+    def trailer_commits(self, since: str, name: str) -> list[tuple[str, str]]:
+        """``(commit, value)`` for each commit since ``since`` with a ``CodeCoreMorph-<name>``
+        trailer, newest first."""
+        out = self.git.run("log", "--format=%H%x00%B%x01", f"{_check_sha(since)}..HEAD").stdout
+        found: list[tuple[str, str]] = []
+        for record in out.decode("utf-8", "replace").split("\x01"):
+            sha, _, body = record.strip().partition("\0")
+            value = parse_trailers(body).get(f"{TRAILER_PREFIX}{name}")
+            if sha and value:
+                found.append((sha, value))
+        return found
+
     def unit_commits(self, since: str) -> dict[str, str]:
         """Unit ID -> commit, for the unit commits on the branch since ``since`` (from their
         ``CodeCoreMorph-Unit`` trailers). A resumed run finds the units that committed before
         the engine stopped, even when its checkpoint didn't record them."""
-        out = self.git.run("log", "--format=%H%x00%B%x01", f"{_check_sha(since)}..HEAD").stdout
         found: dict[str, str] = {}
-        for record in out.decode("utf-8", "replace").split("\x01"):
-            sha, _, body = record.strip().partition("\0")
-            unit = parse_trailers(body).get(f"{TRAILER_PREFIX}Unit")
-            if sha and unit and unit not in found:
-                found[unit] = sha
+        for sha, unit in self.trailer_commits(since, "Unit"):
+            found.setdefault(unit, sha)
         return found
 
     def can_commit(self, author: str | None) -> bool:

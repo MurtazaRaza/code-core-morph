@@ -1,0 +1,5 @@
+- Use GoogleTest: `#include <gtest/gtest.h>`, then `TEST(Suite, Case)` or `TEST_F(Fixture, Case)` cases with `EXPECT_*` and `ASSERT_*` assertions. Don't write `main()`: the test executable links `gtest_main`. Don't use GoogleMock, parameterized or typed tests.
+- Name each suite after what it tests, ending in `Characterization` (for example `CounterCharacterization`), so the test names can't clash with the project's own tests.
+- The test executable `codecoremorph_characterization` links the library targets that build the code under test, so their headers are on the include path: include them the way the project's own tests do (see the example below).
+- The project compiles with ${source}: use no newer language features in the tests.
+- Compare floating-point results with `EXPECT_DOUBLE_EQ` or `EXPECT_NEAR`, and C strings with `EXPECT_STREQ`.

@@ -12,7 +12,8 @@ import secrets
 from datetime import UTC, datetime
 
 RUN_ID_PATTERN = r"^\d{8}-\d{6}-[0-9a-f]{4}$"
-UNIT_ID_PATTERN = r"^U-\d{4,}$"
+# U-NNNN: a work unit; C-NNNN: a characterization job, which uses a unit's records (D-46).
+UNIT_ID_PATTERN = r"^[UC]-\d{4,}$"
 
 _RUN_ID_RE = re.compile(RUN_ID_PATTERN)
 _UNIT_ID_RE = re.compile(UNIT_ID_PATTERN)
@@ -59,11 +60,22 @@ def unit_id(seq: int) -> str:
     return f"U-{seq:04d}"
 
 
+def job_id(seq: int) -> str:
+    """Return the characterization job ID for a 1-based sequence number, e.g. ``C-0003``."""
+    if seq < 1:
+        raise ValueError(f"job sequence numbers start at 1, got {seq}")
+    return f"C-{seq:04d}"
+
+
 def is_unit_id(value: str) -> bool:
     return _UNIT_ID_RE.fullmatch(value) is not None
 
 
+def is_job_id(value: str) -> bool:
+    return is_unit_id(value) and value.startswith("C-")
+
+
 def validate_unit_id(value: str) -> str:
     if not is_unit_id(value):
-        raise ValueError(f"invalid unit ID {value!r}: expected U-NNNN")
+        raise ValueError(f"invalid unit ID {value!r}: expected U-NNNN (or C-NNNN, a job)")
     return value

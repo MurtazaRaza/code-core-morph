@@ -185,13 +185,17 @@ def invariant_checker(
 ) -> InvariantChecker:
     """The safety invariants of one unit, set from the manifest (SPEC §7.10)."""
     config = session.config
-    gated = config.approvals.unit in (UnitApproval.API_CHANGES, UnitApproval.ALL)
+    policy = config.approvals.unit
+    characterization = config.parity.characterization_tests
     return InvariantChecker(
         session.adapter,
         InvariantSettings(
             max_diff_lines=config.guardrails.max_unit_diff_lines,
             new_warnings=config.guardrails.new_warnings.value,
-            gate_api_changes=gated,
+            gate_api_changes=policy in (UnitApproval.API_CHANGES, UnitApproval.ALL),
+            gate_test_changes=policy in (UnitApproval.TEST_CHANGES, UnitApproval.ALL),
+            test_file_edits=config.guardrails.test_file_edits.value,
+            characterization_dir=characterization.dir if characterization.enabled else None,
         ),
         excluded=PathMatcher(session.ctx.lang.exclude).matches,
         warnings_before=warnings_before,

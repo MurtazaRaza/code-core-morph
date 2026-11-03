@@ -1,0 +1,42 @@
+{
+  "fixture": "untested",
+  "source": "cpp11",
+  "target": "cpp20",
+  "rules": [
+    "replace_typedefs_with_using"
+  ],
+  "characterization": true,
+  "status": "completed",
+  "unit_counts": {
+    "committed": 2
+  },
+  "characterization_tests": 10,
+  "submissions": {
+    "C-0001": [
+      {
+        "edits": [
+          {
+            "op": "create",
+            "path": "tests/codecoremorph_characterization/meter_test.cpp",
+            "content": "#include <gtest/gtest.h>\n\n#include <vector>\n\n#include \"billing/meter.h\"\n#include \"billing/tariff.h\"\n\nTEST(TariffCharacterization, TieredPriceFirstTier) {\n    EXPECT_EQ(0u, billing::tieredPrice(0));\n    EXPECT_EQ(10u, billing::tieredPrice(1));\n    EXPECT_EQ(500u, billing::tieredPrice(50));\n    EXPECT_EQ(1000u, billing::tieredPrice(100));\n}\n\nTEST(TariffCharacterization, TieredPriceSecondTier) {\n    EXPECT_EQ(1008u, billing::tieredPrice(101));\n    EXPECT_EQ(2600u, billing::tieredPrice(300));\n    EXPECT_EQ(4000u, billing::tieredPrice(500));\n}\n\nTEST(TariffCharacterization, TieredPriceThirdTier) {\n    EXPECT_EQ(4205u, billing::tieredPrice(501));\n    EXPECT_EQ(6700u, billing::tieredPrice(1000));\n}\n\nTEST(TariffCharacterization, LoyaltyDiscountSteps) {\n    EXPECT_EQ(0u, billing::loyaltyDiscount(0));\n    EXPECT_EQ(0u, billing::loyaltyDiscount(1));\n    EXPECT_EQ(5u, billing::loyaltyDiscount(2));\n    EXPECT_EQ(5u, billing::loyaltyDiscount(4));\n    EXPECT_EQ(10u, billing::loyaltyDiscount(5));\n    EXPECT_EQ(10u, billing::loyaltyDiscount(9));\n    EXPECT_EQ(15u, billing::loyaltyDiscount(10));\n    EXPECT_EQ(15u, billing::loyaltyDiscount(30));\n}\n\nTEST(TariffCharacterization, ApplyDiscountRoundsHalfUp) {\n    EXPECT_EQ(1000u, billing::applyDiscount(1000, 0));\n    EXPECT_EQ(850u, billing::applyDiscount(1000, 15));\n    EXPECT_EQ(899u, billing::applyDiscount(999, 10));\n    EXPECT_EQ(3u, billing::applyDiscount(5, 50));\n    EXPECT_EQ(2u, billing::applyDiscount(3, 50));\n    EXPECT_EQ(1u, billing::applyDiscount(1, 50));\n}\n\nTEST(TariffCharacterization, ApplyDiscountOfAHundredPercentOrMore) {\n    EXPECT_EQ(0u, billing::applyDiscount(1000, 100));\n    EXPECT_EQ(0u, billing::applyDiscount(1000, 150));\n    EXPECT_EQ(0u, billing::applyDiscount(0, 20));\n}\n\nTEST(TariffCharacterization, TotalWithoutAReachedCap) {\n    billing::CentsList none;\n    EXPECT_EQ(0u, billing::total(none, 0));\n    billing::CentsList charges;\n    charges.push_back(100);\n    charges.push_back(200);\n    charges.push_back(300);\n    EXPECT_EQ(600u, billing::total(charges, 0));\n    EXPECT_EQ(600u, billing::total(charges, 1000));\n}\n\nTEST(TariffCharacterization, TotalStopsAtTheCap) {\n    billing::CentsList charges;\n    charges.push_back(100);\n    charges.push_back(200);\n    charges.push_back(300);\n    EXPECT_EQ(250u, billing::total(charges, 250));\n    EXPECT_EQ(300u, billing::total(charges, 300));\n    billing::CentsList two;\n    two.push_back(100);\n    two.push_back(200);\n    EXPECT_EQ(300u, billing::total(two, 300));\n}\n\nTEST(MeterCharacterization, StartsWithNothingRecorded) {\n    billing::Meter meter(100);\n    EXPECT_EQ(0u, meter.consumption());\n    EXPECT_EQ(0u, meter.readings());\n    EXPECT_FALSE(meter.rolledOver());\n}\n\nTEST(MeterCharacterization, RecordsReadingsAndRollover) {\n    billing::Meter meter(100);\n    meter.record(150);\n    EXPECT_EQ(50u, meter.consumption());\n    EXPECT_EQ(1u, meter.readings());\n    meter.record(150);\n    EXPECT_EQ(50u, meter.consumption());\n    EXPECT_EQ(2u, meter.readings());\n    EXPECT_FALSE(meter.rolledOver());\n    meter.record(120);\n    EXPECT_TRUE(meter.rolledOver());\n    EXPECT_EQ(50u, meter.consumption());\n    EXPECT_EQ(2u, meter.readings());\n    meter.record(200);\n    EXPECT_EQ(100u, meter.consumption());\n    EXPECT_EQ(3u, meter.readings());\n    EXPECT_TRUE(meter.rolledOver());\n}\n"
+          }
+        ],
+        "summary": "Characterization tests for the tariff functions and the meter: every tier, discount step, rounding, cap and rollover.",
+        "review_notes": []
+      },
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "tests/codecoremorph_characterization/meter_test.cpp",
+            "search": "EXPECT_EQ(4000u, billing::tieredPrice(500));",
+            "replace": "EXPECT_EQ(4200u, billing::tieredPrice(500));"
+          }
+        ],
+        "summary": "Record the price of 500 units the code computes: 4200.",
+        "review_notes": []
+      }
+    ]
+  },
+  "recorded_from": "codecoremorph run --host-agent of fixtures/cpp/untested, native, run 20261103-133337-56bb (D-46): the characterization job's two attempts as submitted (the first expects tieredPrice(500) == 4000 and fails; the regeneration records 4200). The codemods complete both units."
+}

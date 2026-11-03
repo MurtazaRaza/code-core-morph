@@ -12,6 +12,7 @@ from enum import StrEnum
 from pydantic import AwareDatetime, Field, JsonValue
 
 from codecoremorph.core.models.base import CoreModel, RunId, UnitId
+from codecoremorph.core.models.characterization import CharacterizationSummary
 from codecoremorph.core.models.planning import UnitStatus
 from codecoremorph.core.models.runs import RunStatus
 
@@ -130,6 +131,7 @@ class RunReport(CoreModel):
         default_factory=list[str],
         description="The plan's warnings, such as code this build never compiles (D-42)",
     )
+    characterization: CharacterizationSummary | None = None
     final: FinalVerification | None = None
     usage_by_role: dict[str, UsageTotals] = Field(default_factory=dict[str, UsageTotals])
     usage_total: UsageTotals = Field(default_factory=UsageTotals)

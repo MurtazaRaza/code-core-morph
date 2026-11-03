@@ -55,8 +55,18 @@ pytestmark = pytest.mark.usefixtures("restore_logging")
 
 
 def _manifest(
-    name: str, target: str, rules: str, mode: str, plan: str, source: str = "cpp11"
+    name: str,
+    target: str,
+    rules: str,
+    mode: str,
+    plan: str,
+    source: str = "cpp11",
+    *,
+    characterization: bool = False,
 ) -> str:
+    """The run's manifest. Characterization is off unless asked for: these runs replay the
+    migration's model turns (D-45), and the untested fixture's own test turns on (D-46)."""
+    characterize = "true" if characterization else "false"
     return f"""\
 version: "1.0"
 project:
@@ -67,7 +77,7 @@ project:
 migration:
   source: {{language: cpp, standard: {source}, build_system: cmake}}
   target: {{language: cpp, standard: {target}, rules: [{rules}]}}
-parity: {{baseline_runs: 1}}
+parity: {{baseline_runs: 1, characterization_tests: {{enabled: {characterize}}}}}
 sandbox: {{mode: {mode}}}
 approvals: {{plan: {plan}}}
 """
@@ -106,6 +116,8 @@ def project(tmp_path: Path, git: GitRunner) -> Setup:
         mode: str,
         plan: str = "auto",
         source: str = "cpp11",
+        *,
+        characterization: bool = False,
     ) -> Path:
         root = tmp_path / fixture
         shutil.copytree(FIXTURES / fixture, root)
@@ -113,7 +125,9 @@ def project(tmp_path: Path, git: GitRunner) -> Setup:
         git(root, "add", "--all")
         git(root, "commit", "--quiet", "-m", "legacy")
         config = root / "migration_config.yaml"
-        text = _manifest(fixture, target, rules, mode, plan, source)
+        text = _manifest(
+            fixture, target, rules, mode, plan, source, characterization=characterization
+        )
         config.write_text(text, encoding="utf-8")
         return config
 
@@ -246,10 +260,18 @@ def test_every_unit_of_a_fixture(
     fixture: str, project: Setup, sandbox: str, record_cassettes: bool, git: GitRunner
 ) -> None:
     """The fixture's designed migration, every unit included (M1): each unit is committed or
-    fails as recorded, and the final verification passes on a clean build."""
+    fails as recorded, and the final verification passes on a clean build. A fixture recorded
+    with characterization (``untested``, D-46) first gets its characterization tests: the
+    jobs' submissions come before the units'."""
     data: dict[str, Any] = json.loads((EDITS / f"{fixture}.json").read_text(encoding="utf-8"))
+    characterization = bool(data.get("characterization", False))
     config = project(
-        fixture, data["target"], ", ".join(data["rules"]), sandbox, source=data["source"]
+        fixture,
+        data["target"],
+        ", ".join(data["rules"]),
+        sandbox,
+        source=data["source"],
+        characterization=characterization,
     )
     script: list[Any] = [
         agent_reply(
@@ -291,13 +313,17 @@ def test_every_unit_of_a_fixture(
     assert report.final.clean
     if isinstance(provider, ReplayProvider):
         assert provider.unused == 0
-    # Every unit's commit is on the branch, in plan order.
+    # Every unit's commit is on the branch, in plan order, after the characterization commit.
     root = config.parent
     commits = git(root, "rev-list", "--reverse", f"main..{result.branch}").split()
-    units = [
-        parse_trailers(git(root, "log", "-1", "--format=%B", c))["CodeCoreMorph-Unit"]
-        for c in commits
-    ]
+    trailers = [parse_trailers(git(root, "log", "-1", "--format=%B", c)) for c in commits]
+    if characterization:
+        first = trailers.pop(0)
+        tests = data["characterization_tests"]
+        assert first["CodeCoreMorph-Characterize"] == f"{tests} tests"
+        assert report.characterization is not None
+        assert len(report.characterization.tests) == tests
+    units = [t["CodeCoreMorph-Unit"] for t in trailers]
     # (A committed unit that needed no changes has no commit.)
     committed = sorted(u.unit_id for u in report.units if u.commit is not None)
     assert units == committed

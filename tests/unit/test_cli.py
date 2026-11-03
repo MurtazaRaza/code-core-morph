@@ -141,7 +141,9 @@ def test_doctor_all_good() -> None:
     assert result.exit_code == 0, result.output
     assert "git" in result.output
     assert "27.0.1, linux containers" in result.output
-    assert "is valid" in result.output
+    # Rich wraps the manifest's path to the console width, so where it breaks depends on the
+    # checkout's location.
+    assert "is valid" in " ".join(result.output.split())
 
 
 @pytest.mark.usefixtures("fake_environment")

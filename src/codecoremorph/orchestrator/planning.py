@@ -44,9 +44,20 @@ def baseline_cache(session: RunSession) -> BaselineCache:
     return BaselineCache(StateDir.for_repo(session.workspace.repository.root).baselines_dir)
 
 
+def characterizes(session: RunSession) -> bool:
+    """Whether the run writes characterization tests (D-46): enabled, and the adapter can
+    add tests to the build."""
+    return (
+        session.config.parity.characterization_tests.enabled
+        and session.adapter.capabilities().register_test_files
+    )
+
+
 def reusable_baseline(session: RunSession, step: StepSink) -> Baseline:
     """The base commit's baseline: the tests are reused when a plan or an earlier unit ran
-    them on this commit, with the same standard, sandbox and build options (D-42)."""
+    them on this commit, with the same standard, sandbox and build options (D-42). A project
+    without tests is refused here unless characterization may give it some (SPEC §12); the
+    run checks again after characterization."""
     config = session.config
     cache = baseline_cache(session)
     commit = session.workspace.base_commit
@@ -57,7 +68,7 @@ def reusable_baseline(session: RunSession, step: StepSink) -> Baseline:
         session.ctx,
         base_commit=commit,
         runs=config.parity.baseline_runs,
-        require_tests=config.guardrails.require_passing_tests,
+        require_tests=config.guardrails.require_passing_tests and not characterizes(session),
         on_step=lambda name: step(f"baseline: {name}"),
         reuse=known,
     )

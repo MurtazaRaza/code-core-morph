@@ -29,6 +29,7 @@ from codecoremorph.core.models import (
     LanguageConfig,
     RuleSite,
     SymbolIndex,
+    TestAssertions,
     TestReport,
     TestSelection,
     ToolchainSpec,
@@ -119,6 +120,43 @@ class LanguageAdapter(ABC):
     def detect_disabled_tests(self, ctx: AdapterContext, files: list[str]) -> list[str]:
         """Markers that disable or skip tests, as ``path:line: marker`` strings (I-3)."""
         raise AdapterNotSupportedError(f"{self.language}: detect_disabled_tests")
+
+    # Characterization tests (SPEC §7.11). An adapter that declares ``register_test_files``
+    # implements every method in this group; ``extract_assertions`` alone serves I-4.
+
+    def characterization_test_file(self, test_dir: str, stem: str) -> str:
+        """The worktree path of a new characterization test file named after ``stem`` (a file
+        stem such as ``counter``) in ``test_dir``."""
+        raise AdapterNotSupportedError(f"{self.language}: register_test_files")
+
+    def register_test_files(
+        self, ctx: AdapterContext, test_dir: str, files: list[str], sources: list[str]
+    ) -> list[str]:
+        """Make the build compile and run the characterization tests ``files`` (worktree paths
+        in ``test_dir``), linked with whatever builds ``sources`` (the files defining the code
+        they test); with no ``files``, take them out of the build. Writes only build files
+        inside ``ctx.worktree`` and returns their worktree paths. ``characterization_tests``
+        selects them for ``run_tests``."""
+        raise AdapterNotSupportedError(f"{self.language}: register_test_files")
+
+    def characterization_tests(self, test_ids: list[str]) -> TestSelection:
+        """The selection that runs only the characterization tests ``test_ids``."""
+        raise AdapterNotSupportedError(f"{self.language}: register_test_files")
+
+    def check_determinism(self, ctx: AdapterContext, files: list[str]) -> list[str]:
+        """``path:line: reason`` for each use, in the test files ``files``, of the wall clock,
+        randomness, the filesystem, the network or thread timing (FR-7.3)."""
+        raise AdapterNotSupportedError(f"{self.language}: register_test_files")
+
+    def drop_tests(self, ctx: AdapterContext, file: str, test_ids: list[str]) -> int:
+        """Remove the test cases ``test_ids`` from ``file`` (a worktree path); returns how many
+        test cases the file has left."""
+        raise AdapterNotSupportedError(f"{self.language}: register_test_files")
+
+    def extract_assertions(self, ctx: AdapterContext, files: list[str]) -> list[TestAssertions]:
+        """Every test case in ``files`` (worktree paths; missing ones are skipped) with its
+        test ID and its assertions, normalized so that layout changes don't show (I-4)."""
+        raise AdapterNotSupportedError(f"{self.language}: extract_assertions")
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
         """Answer a rule detector query listed in ``capabilities().queries``."""

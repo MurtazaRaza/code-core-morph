@@ -9,8 +9,9 @@ import time
 import pytest
 
 from codecoremorph.adapters.base import AdapterContext
+from codecoremorph.adapters.cpp.adapter import CppAdapter
 from codecoremorph.agent.loop import AgentSettings, UnitRunner
-from codecoremorph.core.models import AttemptOutcome
+from codecoremorph.core.models import AttemptOutcome, TestAssertions
 from codecoremorph.invariants.checker import InvariantChecker, InvariantSettings
 
 from .conftest import TYPEDEFS, FakeAdapter, World, replace_edit, reply, submit, unit
@@ -90,6 +91,59 @@ def test_disabling_a_test_fails_the_attempt(world: World, git_commit: None) -> N
     assert not i3.passed
     assert "tests/geo_test.cpp: disabled test Geo.DISABLED_Area" in i3.message
     assert "TEST(Geo, Area)" in world.read("tests/geo_test.cpp")  # rolled back
+
+
+class AssertingAdapter(MarkingAdapter):
+    """With the C++ adapter's assertion extraction (I-4)."""
+
+    def extract_assertions(self, ctx: AdapterContext, files: list[str]) -> list[TestAssertions]:
+        return CppAdapter().extract_assertions(ctx, files)
+
+
+def _weaken(world: World, **settings: object) -> tuple[AttemptOutcome | None, list[str], list[str]]:
+    """A unit that also changes the test's expected value; returns the attempt's outcome, the
+    unit's approvals and its warnings."""
+    world.adapter = AssertingAdapter()
+    weaker = replace_edit("tests/geo_test.cpp", "EXPECT_EQ(4, 4)", "EXPECT_EQ(5, 5)")
+    runner, _ = world.runner(
+        [reply(submit("s1", replace_edit("include/geo.h", MACRO, FIXED), weaker))],
+        settings=AgentSettings(max_retry_budget=0, max_edit_retries=0),
+    )
+    runner.adapter = world.adapter
+    target = unit("include/geo.h", "tests/geo_test.cpp")
+    outcome = _with(runner, _checker(world, **settings)).run(target, [TYPEDEFS])
+    return outcome.attempts[0].outcome, outcome.approvals, outcome.warnings
+
+
+def test_a_changed_assertion_is_listed_for_review(world: World, git_commit: None) -> None:
+    result, approvals, warnings = _weaken(world)
+    assert result is AttemptOutcome.SUCCEEDED
+    assert approvals == []
+    assert warnings == [
+        "I-4: Test assertions changed: tests/geo_test.cpp: Geo.Area no longer checks "
+        "EXPECT_EQ(4,4)."
+    ]
+
+
+def test_a_changed_assertion_waits_for_the_gate_when_the_policy_says(
+    world: World, git_commit: None
+) -> None:
+    result, approvals, _ = _weaken(world, gate_test_changes=True)
+    assert result is AttemptOutcome.SUCCEEDED
+    assert [a.split(":")[0] for a in approvals] == ["I-4"]
+
+
+def test_a_characterization_tests_assertions_always_wait_for_the_gate(
+    world: World, git_commit: None
+) -> None:
+    result, approvals, _ = _weaken(world, characterization_dir="tests")  # SPEC §7.11 step 6
+    assert result is AttemptOutcome.SUCCEEDED
+    assert [a.split(":")[0] for a in approvals] == ["I-4"]
+
+
+def test_denied_test_edits_fail_the_attempt(world: World, git_commit: None) -> None:
+    result, _, _ = _weaken(world, test_file_edits="deny")
+    assert result is AttemptOutcome.INVARIANT_FAILED
 
 
 def test_the_agents_diff_size_is_limited(world: World) -> None:

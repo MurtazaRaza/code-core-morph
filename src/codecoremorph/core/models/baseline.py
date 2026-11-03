@@ -51,3 +51,11 @@ class Baseline(CoreModel):
         "results come from ('unit <run-id>': that unit's final verification ran them on this "
         "commit; 'baseline <run-id>': an earlier baseline of this commit)",
     )
+    characterization_tests: list[str] = Field(
+        default_factory=list[str],
+        description="Accepted characterization tests (FR-7.4): also in tests.passing, and "
+        "passing on characterization_commit",
+    )
+    characterization_commit: str | None = Field(
+        default=None, description="The run's characterization commit, which added them"
+    )

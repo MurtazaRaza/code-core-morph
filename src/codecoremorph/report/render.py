@@ -122,6 +122,39 @@ def render_markdown(report: RunReport) -> str:
             out(f"- regression: `{test_id}`")
     out("")
 
+    summary = report.characterization
+    if summary is not None:
+        out("## Characterization tests")
+        out("")
+        if not summary.ran:
+            out(f"Characterization didn't run: {summary.reason or 'nothing to do'}.")
+        else:
+            where = f" in commit `{summary.commit[:12]}`" if summary.commit else ""
+            removed = ", and removed again at the end (keep: false)" if summary.removed else ""
+            out(
+                f"{len(summary.tests)} test(s) pin down untested code before the migration"
+                f"{where}{removed}. {summary.untested_symbols} symbol(s) had no test "
+                f"(scope: {summary.scope})."
+            )
+            out("")
+            out("| Job | Unit | File | Status | Accepted | Dropped | Attempts |")
+            out("|---|---|---|---|---|---|---|")
+            for job in summary.jobs:
+                out(
+                    f"| {job.job_id} | {job.plan_unit} | `{job.test_file}` | {job.status.value} | "
+                    f"{len(job.tests)} | {len(job.rejected)} | {job.attempts} |"
+                )
+            dropped = [(job, r) for job in summary.jobs for r in job.rejected]
+            if dropped:
+                out("")
+                out("Dropped:")
+                for job, rejected in dropped[:30]:
+                    out(f"- `{rejected.test}` ({job.job_id}): {_cell(rejected.reason)}")
+            reasons = [j for j in summary.jobs if j.reason and not j.tests]
+            for job in reasons:
+                out(f"- {job.job_id} kept nothing: {_cell(job.reason or '')}")
+        out("")
+
     out("## Model usage")
     out("")
     if report.usage_total.calls:

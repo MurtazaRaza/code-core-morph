@@ -57,7 +57,7 @@ project:
 migration:
   source: {{language: cpp, standard: cpp11, build_system: cmake}}
   target: {{language: cpp, standard: cpp11, rules: [replace_typedefs_with_using]}}
-parity: {{baseline_runs: 1}}
+parity: {parity}
 approvals: {{plan: {plan}, unit: {unit}}}
 guardrails: {{max_retry_budget: 1, max_edit_retries: 1{extra}}}
 """
@@ -105,9 +105,17 @@ class EngineWorld:
     adapter: IndexingAdapter = field(default_factory=IndexingAdapter)
     asked: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
 
-    def manifest(self, *, plan: str = "auto", unit: str = "none", extra: str = "") -> Path:
+    def manifest(
+        self,
+        *,
+        plan: str = "auto",
+        unit: str = "none",
+        extra: str = "",
+        parity: str = "{baseline_runs: 1}",
+    ) -> Path:
         path = self.repo / "migration_config.yaml"
-        path.write_text(_MANIFEST.format(plan=plan, unit=unit, extra=extra), encoding="utf-8")
+        text = _MANIFEST.format(plan=plan, unit=unit, extra=extra, parity=parity)
+        path.write_text(text, encoding="utf-8")
         return path
 
     def session(

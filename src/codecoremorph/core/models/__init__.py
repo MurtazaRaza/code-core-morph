@@ -13,6 +13,16 @@ from codecoremorph.core.models.adapters import (
 from codecoremorph.core.models.attempts import Attempt, AttemptOutcome, InvariantResult
 from codecoremorph.core.models.base import CoreModel, Role, RunId, UnitId, WorktreePath
 from codecoremorph.core.models.baseline import Baseline, TestBaseline
+from codecoremorph.core.models.characterization import (
+    CharacterizationJob,
+    CharacterizationPlan,
+    CharacterizationSummary,
+    CharacterizedSymbol,
+    JobResult,
+    JobStatus,
+    RejectedTest,
+    TestAssertions,
+)
 from codecoremorph.core.models.edits import (
     ApplyResult,
     CandidateRegion,
@@ -128,6 +138,10 @@ __all__ = [
     "BuildResult",
     "CandidateRegion",
     "ChangedFile",
+    "CharacterizationJob",
+    "CharacterizationPlan",
+    "CharacterizationSummary",
+    "CharacterizedSymbol",
     "CodemodChange",
     "CodemodResult",
     "CodemodSpec",
@@ -160,6 +174,8 @@ __all__ = [
     "HostUnitState",
     "IndexMeta",
     "InvariantResult",
+    "JobResult",
+    "JobStatus",
     "LanguageConfig",
     "LineEnding",
     "LlmCallRecord",
@@ -177,6 +193,7 @@ __all__ = [
     "PostconditionType",
     "Reference",
     "ReferenceKind",
+    "RejectedTest",
     "RejectionReason",
     "ReplaceEdit",
     "ReviewItem",
@@ -200,6 +217,7 @@ __all__ = [
     "SymbolIndex",
     "SymbolKind",
     "SystemBlock",
+    "TestAssertions",
     "TestBaseline",
     "TestCaseResult",
     "TestReport",

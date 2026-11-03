@@ -12,7 +12,7 @@ import shlex
 import shutil
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
@@ -29,6 +29,7 @@ from codecoremorph.adapters.cpp.cmake import (
     lowest_standard,
     std_flag,
 )
+from codecoremorph.adapters.cpp.determinism import nondeterminism
 from codecoremorph.adapters.cpp.diagnostics import parse_cmake_output, parse_compiler_output
 from codecoremorph.adapters.cpp.fixes import (
     apply_fixes,
@@ -36,6 +37,7 @@ from codecoremorph.adapters.cpp.fixes import (
     parse_fixes,
     requested_check,
 )
+from codecoremorph.adapters.cpp.gtest import assertions, drop_tests, find_cases
 from codecoremorph.adapters.cpp.helpers.cpp_index_helper import split_windows
 from codecoremorph.adapters.cpp.indexing import (
     COMPILE_COMMANDS,
@@ -45,6 +47,12 @@ from codecoremorph.adapters.cpp.indexing import (
     run_index,
 )
 from codecoremorph.adapters.cpp.paths import PathMapper
+from codecoremorph.adapters.cpp.registration import TARGET as CHARACTERIZATION_TARGET
+from codecoremorph.adapters.cpp.registration import (
+    characterization_cmake,
+    with_block,
+    without_block,
+)
 from codecoremorph.adapters.cpp.testing import (
     ReportParseError,
     ctest_regex,
@@ -69,6 +77,7 @@ from codecoremorph.core.models import (
     SkippedReplacement,
     SymbolIndex,
     SymbolKind,
+    TestAssertions,
     TestCaseResult,
     TestReport,
     TestSelection,
@@ -111,6 +120,8 @@ class CppAdapter(LanguageAdapter):
         return AdapterCapabilities(
             parse_check=True,
             format=True,
+            register_test_files=True,
+            extract_assertions=True,
             detect_disabled_tests=True,
             codemod_tools=["clang-tidy", "cmake-standard"],
             queries=["typedef_declarations"],
@@ -302,9 +313,10 @@ class CppAdapter(LanguageAdapter):
             ctest_names = [
                 i.removeprefix("ctest:") for i in selection.test_ids if i.startswith("ctest:")
             ]
+            # Both may be given: CTest entries run, and inside them only these GoogleTest cases.
             if gtest_ids:
                 env["GTEST_FILTER"] = gtest_filter(gtest_ids)
-            elif ctest_names:
+            if ctest_names:
                 argv += ["-R", ctest_regex(ctest_names)]
         result = ctx.executor.run(
             argv,
@@ -597,11 +609,71 @@ class CppAdapter(LanguageAdapter):
     def detect_disabled_tests(self, ctx: AdapterContext, files: list[str]) -> list[str]:
         found: list[str] = []
         for path in files:
-            try:
-                text = TextFile.decode((ctx.worktree / path).read_bytes()).text
-            except (OSError, ValueError):
+            text = _read_text(ctx.worktree / path)
+            if text is not None:
+                found += find_disabled_tests(path, text)
+        return found
+
+    # ------------------------------------------------------------------ characterization
+
+    def characterization_test_file(self, test_dir: str, stem: str) -> str:
+        return f"{test_dir.rstrip('/')}/{stem}_test.cpp"
+
+    def register_test_files(
+        self, ctx: AdapterContext, test_dir: str, files: list[str], sources: list[str]
+    ) -> list[str]:
+        root_file = ctx.worktree / "CMakeLists.txt"
+        root = TextFile.decode(root_file.read_bytes())
+        directory = PurePosixPath(test_dir.rstrip("/"))
+        listing = ctx.worktree / directory / "CMakeLists.txt"
+        if files:
+            names = [PurePosixPath(f).relative_to(directory).as_posix() for f in files]
+            listing.parent.mkdir(parents=True, exist_ok=True)
+            _write_atomic(listing, characterization_cmake(names, sources).encode("utf-8"))
+            text = with_block(root.text, directory.as_posix())
+        else:
+            listing.unlink(missing_ok=True)
+            text = without_block(root.text)
+        if text != root.text:
+            _write_atomic(root_file, root.encode(text))
+        return [(directory / "CMakeLists.txt").as_posix(), "CMakeLists.txt"]
+
+    def characterization_tests(self, test_ids: list[str]) -> TestSelection:
+        return TestSelection(test_ids=[f"ctest:{CHARACTERIZATION_TARGET}", *test_ids])
+
+    def check_determinism(self, ctx: AdapterContext, files: list[str]) -> list[str]:
+        found: list[str] = []
+        for path in files:
+            text = _read_text(ctx.worktree / path)
+            if text is not None:
+                found += nondeterminism(path, text)
+        return found
+
+    def drop_tests(self, ctx: AdapterContext, file: str, test_ids: list[str]) -> int:
+        path = ctx.worktree / file
+        decoded = TextFile.decode(path.read_bytes())
+        names = {i.removeprefix("gtest:") for i in test_ids}
+        text = drop_tests(decoded.text, names)
+        if text != decoded.text:
+            _write_atomic(path, decoded.encode(text))
+        return len(find_cases(text))
+
+    def extract_assertions(self, ctx: AdapterContext, files: list[str]) -> list[TestAssertions]:
+        found: list[TestAssertions] = []
+        for path in files:
+            text = _read_text(ctx.worktree / path)
+            if text is None:
                 continue
-            found += find_disabled_tests(path, text)
+            for block in find_cases(text):
+                found.append(
+                    TestAssertions(
+                        file=path,
+                        test=block.name,
+                        test_id=f"gtest:{block.name}",
+                        line=block.line,
+                        assertions=assertions(text, block),
+                    )
+                )
         return found
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
@@ -761,3 +833,11 @@ def _failure_diagnostic(step: str, result: Any) -> Diagnostic:
 
 def _error_case(test_id: str, message: str) -> TestCaseResult:
     return TestCaseResult(test_id=test_id, status=TestStatus.ERROR, duration_s=0, message=message)
+
+
+def _read_text(path: Path) -> str | None:
+    """A source file's text, or None when it is missing or not text."""
+    try:
+        return TextFile.decode(path.read_bytes()).text
+    except (OSError, ValueError):
+        return None

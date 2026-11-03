@@ -93,7 +93,7 @@ project:
 migration:
   source: {{language: cpp, standard: cpp11, build_system: cmake}}
   target: {{language: cpp, standard: cpp20, rules: [convert_raw_pointers_to_smart_pointers]}}
-parity: {{baseline_runs: 1}}
+parity: {{baseline_runs: 1, characterization_tests: {{enabled: false}}}}
 sandbox: {{mode: {mode}}}
 approvals: {{plan: required}}
 """,

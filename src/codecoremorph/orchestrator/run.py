@@ -67,11 +67,15 @@ from codecoremorph.core.models import (
     Attempt,
     AttemptOutcome,
     Baseline,
+    CharacterizationPlan,
     EventType,
     FileRole,
     FinalVerification,
+    HostFeedbackKind,
     HostStatus,
     HostUnitState,
+    JobResult,
+    JobStatus,
     LlmCallRecord,
     LoadedRule,
     Role,
@@ -86,6 +90,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.llm.ledger import LedgerEntry, UsageLedger
 from codecoremorph.llm.service import LLMService
+from codecoremorph.orchestrator.characterize import Characterization
 from codecoremorph.orchestrator.control import StopControl, StopRequestedError
 from codecoremorph.orchestrator.graph import STOP, NodeSpec, RunGraph, RunState, wait_for_decision
 from codecoremorph.orchestrator.planning import (
@@ -170,6 +175,7 @@ class RunOptions:
 
 
 AGENT_GATE = "agent"  # the interrupt where a unit waits for its host agent's edits
+CHARACTERIZE_AGENT = "characterize_agent"  # the node where a job waits for its host (D-46)
 
 
 @dataclass(frozen=True)
@@ -217,10 +223,25 @@ def _models(attempts: list[Attempt]) -> list[str]:
     return sorted({a.model for a in attempts if a.model})
 
 
+def _job_note(result: JobResult) -> str:
+    """How a characterization job ended, for the host agent."""
+    kept = len(result.tests)
+    if result.status is JobStatus.ACCEPTED:
+        return f"Characterization job {result.job_id}: all {kept} test(s) accepted."
+    if result.status is JobStatus.PARTIAL:
+        return (
+            f"Characterization job {result.job_id}: {kept} test(s) accepted; "
+            f"{len(result.rejected)} dropped because they kept failing the checks."
+        )
+    return f"Characterization job {result.job_id} kept no test: {result.reason}."
+
+
 def agent_request(files: HostFiles, state: HostUnitState) -> dict[str, Any]:
-    """The ``agent`` interrupt's request: the unit that waits for its host agent's edits."""
-    return {
+    """The ``agent`` interrupt's request: the unit that waits for its host agent's edits, or
+    the characterization job that waits for its tests (``kind``)."""
+    request: dict[str, Any] = {
         "gate": AGENT_GATE,
+        "kind": "unit" if state.job is None else "characterize",
         "run_id": state.run_id,
         "unit": state.unit.id,
         "rules": list(state.unit.rules),
@@ -229,6 +250,9 @@ def agent_request(files: HostFiles, state: HostUnitState) -> dict[str, Any]:
         "context_file": str(files.context),
         "edits_file": str(files.edits),
     }
+    if state.job is not None:
+        request["test_file"] = state.job.test_file
+    return request
 
 
 def _host_outcome(state: HostUnitState, warnings: list[str]) -> UnitOutcome:
@@ -294,13 +318,20 @@ class RunEngine:
         self.configured_standard = ""
         self.host_files = HostFiles(session.artifacts.root)  # the waiting host unit's files
         self._agent_action: AgentAction | None = None  # the host command's, used once
+        self._characterize: Characterization | None = None
         self.notes: list[str] = []
         report = "report"
         self.graph = RunGraph(
             [
                 NodeSpec("baseline", self._node_baseline, self._unless_stop("index"),
                          ("index", report)),
-                NodeSpec("index", self._node_index, self._unless_stop("plan"), ("plan", report)),
+                NodeSpec("index", self._node_index, self._unless_stop("characterize"),
+                         ("characterize", report)),
+                NodeSpec("characterize", self._node_characterize, self._route_characterize,
+                         ("characterize", CHARACTERIZE_AGENT, "plan", report)),
+                NodeSpec(CHARACTERIZE_AGENT, self._node_characterize_agent,
+                         self._route_characterize,
+                         ("characterize", CHARACTERIZE_AGENT, "plan", report)),
                 NodeSpec("plan", self._node_plan, self._unless_stop("plan_gate"),
                          ("plan_gate", report)),
                 NodeSpec("plan_gate", self._node_plan_gate, self._unless_stop("next_unit"),
@@ -329,6 +360,14 @@ class RunEngine:
             return "report" if state.get("stop") else next_node
 
         return route
+
+    @staticmethod
+    def _route_characterize(state: RunState) -> str:
+        if state.get("stop"):
+            return "report"
+        if state.get("agent"):
+            return CHARACTERIZE_AGENT
+        return "plan" if state.get("characterized") else "characterize"
 
     @staticmethod
     def _route_next_unit(state: RunState) -> str:
@@ -479,6 +518,135 @@ class RunEngine:
         environment["tools"] = dict(self._index.meta.tool_versions)
         self.store.set_run_environment(self.run_id, environment)
         return {"status": RunStatus.INDEXING.value}
+
+    # ------------------------------------------------------------------ characterization
+
+    @property
+    def characterization(self) -> Characterization:
+        if self._characterize is None:
+            self._characterize = Characterization(
+                self.session,
+                baseline=self.baseline,
+                host_files=self.host_files,
+                step=self._step,
+                guard=self.control.check,
+            )
+        return self._characterize
+
+    def _characterized(self, stage: Characterization, plan: CharacterizationPlan) -> RunState:
+        finished = stage.finish(plan)
+        self._baseline = finished.baseline
+        self._tests = None
+        if finished.index is not None:
+            self._index = finished.index
+            self.configured_standard = self.session.ctx.lang.standard
+        if finished.commit is not None:
+            count = len(finished.baseline.characterization_tests)
+            self.notes.append(
+                f"Characterization tests: {count} test(s) in commit {finished.commit[:12]}; "
+                "they now guard every unit (FR-7.4)."
+            )
+        return self._tested()
+
+    def _tested(self) -> RunState:
+        """The baseline let a project without tests through for characterization to give it
+        some (SPEC §12): with still none, the run stops before the plan."""
+        if self.config.guardrails.require_passing_tests and not self.baseline.tests.passing:
+            return {
+                "stop": "baseline_failed",
+                "agent": False,
+                "reason": "the project has no passing tests, and characterization added none; "
+                "add tests, or set guardrails.require_passing_tests: false",
+            }
+        return {"characterized": True, "agent": False}
+
+    def _node_characterize(self, state: RunState) -> RunState:
+        """Choose the characterization jobs, then run the next one; a host-agent run waits
+        for the host's tests at ``characterize_agent`` (D-46)."""
+        if (stop := self._stop_here()) is not None:
+            return stop
+        stage = self.characterization
+        plan = stage.load()
+        if plan is None:
+            reason = stage.unavailable()
+            if reason is not None:
+                stage.skip(reason)
+                return self._tested()
+            self._status(RunStatus.CHARACTERIZING)
+            plan = stage.create(self.index)
+            self.events.emit(
+                EventType.STEP_FINISHED,
+                step="characterize",
+                jobs=len(plan.jobs),
+                untested=plan.untested_symbols,
+            )
+        if stage.committed() is not None:
+            return self._characterized(stage, plan)
+        job = stage.next_job(plan)
+        if job is None:
+            return self._characterized(stage, plan)
+        if self.options.host:
+            if stage.host_state(job) is None:
+                stage.restart(job)
+                waiting = stage.start_host(job, self.index)
+                self.events.emit(
+                    EventType.GATE_WAITING, gate=AGENT_GATE, unit_id=job.id, attempt=waiting.attempt
+                )
+                self.notes.append(
+                    f"Characterization job {job.id}: write tests for {len(job.symbols)} untested "
+                    f"symbol(s) of {job.plan_unit} in {job.test_file}."
+                )
+            return {"agent": True}
+        worktree = self.session.workspace.worktree
+        stage.restart(job)
+        try:
+            stage.run_with_model(job, plan, self.llm, self.index)
+        except StopRequestedError as stop:
+            worktree.rollback(worktree.head())
+            if not stop.abort:
+                raise
+            return self._aborted(stop)
+        except BudgetExhaustedError as exc:
+            worktree.rollback(worktree.head())
+            return {"stop": "budget_exhausted", "agent": False, "reason": exc.message}
+        return {"agent": False}
+
+    def _node_characterize_agent(self, state: RunState) -> RunState:
+        """Wait for the host's tests; then check them (``unit submit``) or drop the job
+        (``unit abort``). A failed first attempt waits again, for the regeneration."""
+        action, self._agent_action = self._agent_action, None  # used once, as in ``agent``
+        stage = self.characterization
+        plan = stage.load()
+        job = stage.next_job(plan) if plan is not None else None
+        current = stage.host_state(job) if job is not None else None
+        if plan is None or job is None or current is None:
+            return {"agent": False}  # ``characterize`` starts the job again, or ends the step
+        wait_for_decision(agent_request(self.host_files, current))
+        if action is None:
+            return {"agent": True}
+        self.events.emit(EventType.GATE_DECIDED, gate=AGENT_GATE, unit_id=job.id,
+                         decision=action.kind, source="host")  # fmt: skip
+        if action.kind == "abort":
+            result = stage.abort_host(current, action.reason)
+            self.notes.append(f"Characterization job {job.id}: {result.reason}; the run goes on.")
+            return {"agent": False}
+        waiting, result, warnings = stage.submit_host(current, plan)
+        self.notes += [f"warning: {w}" for w in warnings]
+        if result is None:
+            headline = (
+                "your submission was rejected; nothing was applied"
+                if waiting.feedback_kind is HostFeedbackKind.REJECTED
+                else f"attempt {waiting.attempt - 1} failed its checks"
+            )
+            self.notes.append(f"Characterization job {job.id}: {headline}.")
+            if waiting.feedback:
+                self.notes.append(waiting.feedback.strip())
+            self.events.emit(
+                EventType.GATE_WAITING, gate=AGENT_GATE, unit_id=job.id, attempt=waiting.attempt
+            )
+            return {"agent": True}
+        self.notes.append(_job_note(result))
+        return {"agent": False}
 
     def _node_plan(self, state: RunState) -> RunState:
         if (stop := self._stop_here()) is not None:
@@ -877,7 +1045,11 @@ class RunEngine:
             warnings=list(outcome.warnings),
             approvals=reasons,
             changed_files=changed,
-            test_files_changed=[p for p in changed if self._is_test(p)],
+            # `test_file_edits: allow` doesn't list test edits for review; I-4 still does
+            # when assertions change.
+            test_files_changed=[]
+            if self.config.guardrails.test_file_edits.value == "allow"
+            else [p for p in changed if self._is_test(p)],
             codemod_files=codemod_files,
             remaining_sites={
                 rule: len(sites) for rule, sites in runner.last_sites.items() if sites
@@ -911,9 +1083,9 @@ class RunEngine:
     def _gate_reasons(self, outcome: UnitOutcome, changed: list[str]) -> list[str]:
         """Why the unit gate must ask, under ``approvals.unit`` (FR-10.1)."""
         policy = self.config.approvals.unit
-        reasons: list[str] = []
-        if policy in (UnitApproval.API_CHANGES, UnitApproval.ALL):
-            reasons += outcome.approvals
+        # The invariants ask for approval only where the policy covers it (I-6: api_changes;
+        # I-4: test_changes) or always does (a characterization test's assertions, D-46).
+        reasons: list[str] = list(outcome.approvals)
         if policy in (UnitApproval.TEST_CHANGES, UnitApproval.ALL):
             tests = [p for p in changed if self._is_test(p)]
             if tests:
@@ -1002,6 +1174,16 @@ class RunEngine:
         if (stop := self._stop_here()) is not None:
             return stop
         session = self.session
+        characterized: set[str] = set(self.baseline.characterization_tests)
+        if characterized and not self.config.parity.characterization_tests.keep:
+            removed = self.characterization.remove()
+            if removed is not None:
+                self.notes.append(
+                    f"The characterization tests were removed in commit {removed[:12]} "
+                    "(parity.characterization_tests.keep: false)."
+                )
+        else:
+            characterized = set[str]()
         head = session.workspace.worktree.head()
         path = session.artifacts.root / FINAL_FILE
         if head == session.workspace.base_commit:
@@ -1031,7 +1213,9 @@ class RunEngine:
             report = adapter.run_tests(ctx)
             statuses = {c.test_id: c.status for c in report.cases}
             regressions = [
-                t for t in self.baseline.tests.passing if statuses.get(t) is not TestStatus.PASSED
+                t
+                for t in self.baseline.tests.passing
+                if t not in characterized and statuses.get(t) is not TestStatus.PASSED
             ]
             reason = (
                 f"{len(regressions)} baseline-passing test(s) don't pass" if regressions else None

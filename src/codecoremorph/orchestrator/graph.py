@@ -42,7 +42,8 @@ class RunState(TypedDict, total=False):
     status: str  # RunStatus value
     unit: str | None  # the unit being worked on, or None between units
     gate: bool  # the unit waits at its gate
-    agent: bool  # the unit waits for its host agent's edits (D-44)
+    agent: bool  # the unit (or characterization job) waits for its host agent's edits (D-44)
+    characterized: bool  # the characterization step is over (D-46)
     stop: str | None  # why the run stops early: aborted | budget_exhausted | rejected | failed
     reason: str | None  # one line for the report
     verified: bool | None  # the final verification passed

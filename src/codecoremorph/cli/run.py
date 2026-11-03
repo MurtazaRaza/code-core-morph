@@ -204,6 +204,16 @@ def _awaiting(place: RunPlace, result: RunResult) -> list[str]:
     waiting = result.waiting or {}
     run_id = result.run_id
     gate = waiting.get("gate")
+    if gate == AGENT_GATE and waiting.get("kind") == "characterize":
+        return [
+            f"Characterization job {waiting.get('unit')} waits for your tests in "
+            f"{waiting.get('test_file')}: attempt {waiting.get('attempt')} of "
+            f"{waiting.get('attempts_allowed')}.",
+            f"Read the context document {waiting.get('context_file')}, write the edits to "
+            f"{waiting.get('edits_file')}, then run `codecoremorph unit submit`. If no test can "
+            'reach the code, run `codecoremorph unit abort --reason "..."`; the run goes on '
+            "without the job's tests.",
+        ]
     if gate == AGENT_GATE:
         rules = ", ".join(waiting.get("rules") or [])
         return [
@@ -489,9 +499,10 @@ def status_command(
         console.print(Text(f"in progress: {view.current}"))
     if view.agent and not view.engine_alive:
         agent = view.agent
+        what = "tests" if agent.get("kind") == "characterize" else "edits"
         console.print(
             Text(
-                f"waiting for the agent's edits: {agent['unit']}, attempt {agent['attempt']} of "
+                f"waiting for the agent's {what}: {agent['unit']}, attempt {agent['attempt']} of "
                 f"{agent['attempts_allowed']} (context: {agent['context_file']}; then "
                 "`codecoremorph unit submit`)",
                 style="yellow",

@@ -4,9 +4,8 @@ Each function returns one :class:`InvariantResult`. A failed ``error`` result fa
 and its message becomes the agent's feedback; a failed ``warning`` is a review item for the
 report; ``needs_approval`` sends the unit to its gate when ``approvals.unit`` covers it.
 
-I-4 (the assertion guard) arrives with characterization tests (Phase 6). I-5 (baseline parity)
-and I-9 (rule post-conditions) are the verification's own steps; they are recorded as results
-by the caller.
+I-5 (baseline parity) and I-9 (rule post-conditions) are the verification's own steps; they
+are recorded as results by the caller.
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ from codecoremorph.core.models import (
     Severity,
     Symbol,
     SymbolKind,
+    TestAssertions,
     TestBaseline,
     TestReport,
     Visibility,
@@ -189,6 +189,63 @@ def check_tests_kept(
         message="Tests must not be removed, disabled or skipped: "
         + "; ".join(problems)
         + ". Restore them; adapt a test's calls only where the migration requires it.",
+    )
+
+
+# --------------------------------------------------------------------------- I-4
+
+MAX_ASSERTION = 120
+
+
+def _short(assertion: str) -> str:
+    return assertion if len(assertion) <= MAX_ASSERTION else assertion[: MAX_ASSERTION - 1] + "…"
+
+
+def check_assertions(
+    before: Sequence[TestAssertions],
+    after: Sequence[TestAssertions],
+    *,
+    deny_edits: bool = False,
+    gated: bool = False,
+    protected: PathTest = lambda _path: False,
+) -> InvariantResult:
+    """I-4, the assertion guard (FR-7.5): the changed test files' assertions, before the unit
+    and now. A test case that is gone, or no longer makes an assertion it made, is flagged:
+    for review, or for the unit gate when ``gated`` (``approvals.unit`` covers test changes) or
+    when the test is ``protected`` (a characterization test, SPEC §7.11 step 6). Added
+    assertions only strengthen a test. ``deny_edits`` (``guardrails.test_file_edits: deny``)
+    fails any change to a file that held tests."""
+    if deny_edits and before:
+        files = sorted({a.file for a in before})
+        return InvariantResult(
+            invariant="I-4",
+            passed=False,
+            message=f"Test files may not be edited (guardrails.test_file_edits: deny): "
+            f"{_listed(files)}. Leave them as they were.",
+        )
+    now = {(a.file, a.test): Counter(a.assertions) for a in after}
+    changes: list[str] = []
+    gate = gated
+    for case in before:
+        key = (case.file, case.test)
+        if key not in now:
+            changes.append(f"{case.file}: {case.test} is gone")
+        else:
+            lost = Counter(case.assertions) - now[key]
+            if not lost:
+                continue
+            shown = "; ".join(_short(a) for a in sorted(lost.elements())[:3])
+            more = f" and {lost.total() - 3} more" if lost.total() > 3 else ""
+            changes.append(f"{case.file}: {case.test} no longer checks {shown}{more}")
+        gate = gate or protected(case.file)
+    if not changes:
+        return _ok("I-4")
+    return InvariantResult(
+        invariant="I-4",
+        passed=False,
+        severity=Severity.WARNING,
+        needs_approval=gate,
+        message=f"Test assertions changed: {_listed(changes)}.",
     )
 
 
