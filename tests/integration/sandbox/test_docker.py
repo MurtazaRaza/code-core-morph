@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -76,6 +77,68 @@ def test_network_toggles(executor: DockerExecutor) -> None:
     online = executor.run(["sh", "-c", "ip route | grep -c default || true"], cwd="/", timeout_s=30)
     assert online.stdout.strip() == "1"
     executor.set_network(False)
+
+
+def test_the_container_is_hardened(executor: DockerExecutor) -> None:
+    """Security review (Phase 8, SPEC §10): the settings hold in a real container."""
+    status = executor.run(["cat", "/proc/self/status"], cwd="/", timeout_s=30).stdout
+    fields = dict(line.split(":", 1) for line in status.splitlines() if ":" in line)
+    assert fields["CapEff"].strip() == "0000000000000000"  # every capability dropped
+    assert fields["CapBnd"].strip() == "0000000000000000"
+    assert fields["NoNewPrivs"].strip() == "1"
+    assert fields["Uid"].split()[0] != "0"
+
+    container: Any = executor._container  # pyright: ignore[reportPrivateUsage]
+    container.reload()
+    host = container.attrs["HostConfig"]
+    assert host["Privileged"] is False
+    assert host["CapDrop"] == ["ALL"]
+    assert host["CapAdd"] in (None, [])
+    assert host["SecurityOpt"] == ["no-new-privileges"]
+    assert host["Memory"] == 256 * 1024 * 1024
+    assert host["PidsLimit"] == 64
+    assert host["NanoCpus"] == 1_000_000_000
+    assert host["PidMode"] in ("", None)  # not the host's PID namespace
+    assert host["IpcMode"] != "host"
+    assert host["NetworkMode"] != "host"
+    sources = [m["Source"].replace("\\", "/") for m in container.attrs["Mounts"]]
+    assert not any(s.endswith("docker.sock") for s in sources)  # no Docker inside
+    assert {m["Destination"] for m in container.attrs["Mounts"]} == {
+        "/workspace",
+        "/build",
+        "/cache",
+    }
+
+
+def test_host_credentials_never_reach_the_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "sk-ant-api03-" + "Z" * 24
+    monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+    monkeypatch.setenv("CODECOREMORPH_TEST_TOKEN", secret)
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    ex = DockerExecutor(
+        DockerSettings(
+            image=IMAGE,
+            run_id=new_run_id(),
+            worktree=worktree,
+            build_dir=tmp_path / "build",
+            cache_dir=tmp_path / "cache",
+            log_dir=tmp_path / "logs",
+            network=NetworkPolicy.OFF,
+            cpus=1,
+            memory="256m",
+            pids_limit=64,
+        )
+    )
+    ex.start()
+    try:
+        env = ex.run(["env"], cwd="/", timeout_s=30).stdout
+    finally:
+        ex.stop()
+    assert secret not in env
+    assert "ANTHROPIC_API_KEY" not in env
 
 
 def test_stdin(executor: DockerExecutor) -> None:
