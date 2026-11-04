@@ -2,7 +2,7 @@
 
 This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has a goal, its prerequisites, a task checklist, tests, and exit criteria. Requirement IDs (`FR-`, `NFR-`, `D-`) point back to the spec.
 
-**Order of work (D-21).** Language version upgrades come first: C++ in the MVP, then Java, then C#. Cross-language migrations follow.
+**Order of work (D-21, confirmed by D-47).** Language version upgrades come first: C++ in the MVP, then Java, then C#. Cross-language migrations follow: Java → C#, then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14).
 
 ## How to use this plan
 
@@ -22,6 +22,8 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | **M4: C# version upgrades** | 10 | C# adapter plus the C# modernization rule pack |
 | **M5: Cross-language** | 11 | Java → C# port with translated tests |
 | **M6: Rust** | 12 | A C++ module behind a C ABI replaced by Rust |
+| **M7: C++ → Rust, every module** | 13 | Every module of an old C++ project is Rust, behind its unchanged C++ interface; the original tests passed at every commit |
+| **M8: C++ → Rust, finished** | 14 | Pure Rust: tests translated and mapped one to one, C++ retired, a real project ported and measured |
 
 ## Phase overview
 
@@ -40,6 +42,8 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | 10 | C# adapter and upgrades (**M4**) | .NET image, Roslyn indexer, dotnet build and test, C# modernization pack | §11.3 |
 | 11 | Java → C# (**M5**) | Migration pairs, scaffolding, symbol map, skeleton-first strategy, test translation, multi-agent roles | §11.4 |
 | 12 | Rust / C++ FFI → Rust (**M6**) | Rust adapter, C-ABI replacement strategy, Corrosion integration | §11.5 |
+| 13 | C++ → Rust, module by module (**M7**) | Bridge, Cargo workspace scaffold, leaves-first port units behind C++ façades, `cpp_to_rust` mapping pack, `unsafe` and clippy checks | §11.6 |
+| 14 | C++ → Rust, finished (**M8**) | Test translation and test-ID map, retirement of façades and the C++ build, report, real-project benchmark | §11.6 |
 
 ---
 
@@ -463,6 +467,8 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Prerequisites:** Phases 9 and 10.
 
+**Reuse (D-47):** build the migration pairs, the symbol map, test translation and the roles language-neutral. Phases 13 and 14 reuse them for C++ → Rust.
+
 ### Tasks
 - [ ] Migration-pair support in config and orchestrator (source adapter plus target adapter); SPEC update for the relaxed green invariant (`pending_parity`)
 - [ ] `scaffold_project` for C# (solution, projects, test project) driven by the Java module structure
@@ -492,10 +498,92 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - [ ] Mixed-build integration via Corrosion; `scaffold_project` for a crate inside the CMake tree
 - [ ] `cpp_ffi_to_rust` strategy: choose a module with an `extern "C"` boundary, generate the crate, port its internals, keep the ABI identical (cbindgen header diff = empty), run the C++ tests through the ABI
 - [ ] ABI invariant (I-6 over exported C signatures)
+- [ ] Corrosion pinned in the manifest and installed under `CODECOREMORPH_HOME`, so configuring never downloads it (`FetchContent`)
+- [ ] Cargo dependencies: `Cargo.lock` committed, crates fetched in the `fetch_only` network step into a `CARGO_HOME` under `CODECOREMORPH_HOME`, builds run `--locked --offline`
+- [ ] Windows native: the Rust target that links with llvm-mingw (`x86_64-pc-windows-gnullvm`), so no Visual Studio is needed (D-32)
 - [ ] Fixture: a C++ library with an `extern "C"` API and GoogleTest tests
+
+### Tests
+- Unit: Cargo JSON diagnostics, nextest JUnit parsing, the ABI invariant (cbindgen header diff)
+- Integration (`toolchain`, `docker`): the fixture's mixed build, with its C++ tests passing before and after the module is replaced
+- End to end: the fixture's run replays from recorded host-agent edits, natively and in Docker
 
 ### Exit criteria (M6)
 - The fixture module is replaced by Rust; the original C++ tests pass unchanged; the exported ABI is identical
+
+---
+
+## Phase 13: C++ → Rust, module by module (M7)
+
+**Goal:** port every module of an old C++ project (C++98 or newer) to Rust while the project's own C++ tests keep verifying it. Modules go leaves first; each ported module keeps its C++ interface as a façade over the Rust code, so every commit builds and passes the baseline tests (SPEC §11.6, D-47).
+
+**Prerequisites:** Phases 11 (migration pairs, symbol map, roles) and 12 (Rust adapter, mixed builds, ABI invariant).
+
+### Tasks
+**Strategy**
+- [ ] SPEC §11.6 settled with a `D-xx` row: stages, bridge, manifest keys, unit kinds
+- [ ] Bridge spike on `port-legacy`: the `cxx` crate (C++ classes as opaque types, `std::string`, `std::vector`, `std::unique_ptr`, exceptions ↔ `Result`) against a plain C ABI with opaque handles and cbindgen headers (works from C++98). Pick the default and record the C++ standard it needs; an older source gets the standard bump (`bump_standard`) as the port's first unit
+- [ ] Manifest: `migration.target: {language: rust, edition: …}` and a `migration.port` section (`strategy`, `bridge`, `keep_cpp_api`, rules); `validate` checks the pair against the installed adapters
+
+**Scaffold and planning**
+- [ ] `scaffold_project` for Rust inside a C++ tree: a Cargo workspace beside the CMake project, one crate per CMake library target, built from CMake through Corrosion; the scaffold is the port's first unit after any standard bump
+- [ ] Port planning: `port_module` units from the file graph's clusters, leaves first. Each lists the C++ files it ports, the C++ callers outside it (they keep calling through the façade) and its part of the symbol map. Header-only templates and inline functions are planned with their last C++ user
+- [ ] Estimates that grow with a unit's size (the M1 run's agent time grew with lines; the planner's flat per-unit estimate doesn't model it)
+
+**Port units**
+- [ ] A unit ports one cluster: the Rust module; bridge declarations for the API that C++ outside the unit still uses (callers and tests); and the C++ façade, whose header keeps its API while its sources forward through the bridge
+- [ ] `cpp_to_rust` mapping rule pack (guidance plus checks):
+  - ownership: `unique_ptr` → `Box`, `shared_ptr` → `Rc`/`Arc`, non-owning pointers → references or `Option<&T>`
+  - strings, containers and iterators
+  - exceptions and status codes → `Result`
+  - class hierarchies → traits; templates → generics; operator overloads → `std::ops` and `std::cmp` traits; RAII → `Drop`
+  - integer semantics: unsigned wraparound → `wrapping_*`; signed overflow (undefined in C++) panics in a debug build
+  - `static` state → `OnceLock`; threads and locks → `std::sync`; macros → `const`, functions or `macro_rules!`; namespaces → modules; C strings, `printf` and iostreams
+- [ ] Symbol-map entries (C++ USR → Rust path) for every symbol of a ported cluster, kept consistent by the mapping steward (Phase 11)
+- [ ] Checks: no `unsafe` outside the bridge (error); no new `cargo clippy` warnings in ported code (as I-10); the façade headers' API unchanged (I-6); the exported C ABI unchanged (Phase 12)
+- [ ] Host-agent support: the skill and the context documents of port units show the C++ source, the Rust target, the façade and the symbol map
+- [ ] Dashboard: Phase 11's two-sided view for C++ ↔ Rust units
+
+**Fixtures and evals**
+- [ ] `port-legacy` (C++98 style, GoogleTest 1.8.1): a string utility, a value class with operators, a container template, a class hierarchy with virtual functions, exceptions, a status-code API, a small command-line program
+- [ ] `port-modern` (C++11/14): `unique_ptr` and `shared_ptr` ownership, a callback API, `static` state, a thread with a mutex
+- [ ] Live evals of port units on both fixtures (Claude Code with the skill; the built-in loop)
+
+### Tests
+- Unit: port planning (leaves first; templates move with their last C++ user), symbol-map consistency, the `unsafe` and clippy checks, the façade API check
+- Integration (`toolchain`, `docker`): each fixture's mixed CMake + Cargo build after each recorded unit
+- End to end: each fixture's port up to M7 replays from recorded host-agent edits (as in D-45), natively and in Docker
+- Safety: working tree byte-identical, crash and resume, and path traversal on a port run
+
+### Exit criteria (M7)
+- Every module of `port-legacy` and `port-modern` is Rust; every commit on the branch built and passed the original C++ tests; `unsafe` appears only in the bridge
+- Windows native and Docker (Linux waits for CI, D-28)
+
+---
+
+## Phase 14: C++ → Rust, finished (M8)
+
+**Goal:** finish the port. The tests become Rust tests mapped one to one onto the originals, the façades and the C++ build go, and what's left is a Cargo workspace. Measured on a real old C++ project.
+
+**Prerequisites:** Phase 13.
+
+### Tasks
+- [ ] Test-translation units: a C++ test file is translated once every project module it uses is Rust. GoogleTest suites become Rust tests (integration tests under `tests/` for the public API, `#[cfg(test)]` modules otherwise), fixtures become helper types, `ASSERT_*`/`EXPECT_*` become `assert!`/`assert_eq!` (noting where `EXPECT_*` continuing after a failure mattered). Both versions pass until retirement
+- [ ] Test-ID map as parity (`gtest:Suite.Case` ↔ the Rust test's path): every baseline test maps to a passing Rust test, or the report says why not. The assertion guard (I-4) compares each translation's assertions with the original's
+- [ ] Characterization tests (Phase 6) translate with the rest
+- [ ] Retirement units: a façade and its bridge declarations go once no C++ calls them, the C++ tests once translated, then the CMake build; executables become `bin` targets. `keep_cpp_api: true` keeps the public headers, a thin façade library and its C++ tests for outside C++ consumers
+- [ ] Final verification of a pure-Rust result: `cargo build` and `cargo nextest` from clean, `--locked --offline`
+- [ ] Report: the symbol map, the test map, deviations the agent recorded (behavior it couldn't keep, such as overflow or error-message text), the `unsafe` count with locations, any C++ left and why
+- [ ] Benchmark (M8): pick and pin a real old C++ project (C++98/03 or C++11, CMake, tests, 2–10k lines, permissive license); port it whole with Claude Code; record time, cost, units committed, tests mapped and `unsafe` in `bench/results/`; set SPEC §13 targets from it
+- [ ] Docs: a guide to porting C++ to Rust (modernize first with the C++ upgrade, then port)
+
+### Tests
+- Unit: test-ID mapping and the cross-language assertion comparison; retirement order (a façade goes only when no C++ calls it)
+- End to end: each fixture's whole port to pure Rust replays from recorded edits, natively and in Docker
+
+### Exit criteria (M8)
+- `port-legacy` (C++98) and `port-modern` end as pure Rust: no C++ left (or only the kept API with `keep_cpp_api`), every original test maps to a passing Rust test, and the branch was green at every commit
+- The benchmark project is ported and measured, and SPEC §13 has its targets
 
 ---
 
