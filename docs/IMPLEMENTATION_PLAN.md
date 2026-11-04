@@ -2,7 +2,7 @@
 
 This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has a goal, its prerequisites, a task checklist, tests, and exit criteria. Requirement IDs (`FR-`, `NFR-`, `D-`) point back to the spec.
 
-**Order of work (D-21, confirmed by D-47).** Language version upgrades come first: C++ in the MVP, then Java, then C#. Cross-language migrations follow: Java → C#, then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14).
+**Order of work (D-21, D-47, changed by D-55).** Language version upgrades come first: C++ in the MVP. Then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14). The v0.1.0 release (Phase 8's publishing steps) waits, and Java (9), C# (10) and Java → C# (11) follow the Rust phases. The phases keep their numbers, so the order of work is 12, 13, 14, then 9, 10, 11.
 
 ## How to use this plan
 
@@ -413,6 +413,8 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - [x] Ship `scripts/` as package data so `codecoremorph toolchain install` works for PyPI installs (FR-1.13); `--offline DIR` installs (FR-1.12, D-51, with `codecoremorph toolchain download` to prepare them); a docs page on dependency setup, including machines without internet access (`docs/dependencies.md`)
 - [ ] Register `codecoremorph` on PyPI; resolve SPEC §16 Q6, Q7 and Q8
 
+**Deferred (D-55):** registering on PyPI, publishing, images and the v0.1.0 tag wait until the C++ → Rust phases are done; Phase 12 starts now.
+
 ### Exit criteria (M2)
 - [ ] On clean Windows, macOS and Linux machines: `uv tool install codecoremorph` → `codecoremorph init` → `codecoremorph run` on a fixture succeeds with Docker. Windows checked with the built wheel (a fresh `uv tool install` on E:, `init` on the `typedefs` fixture, its manifest unchanged, then Claude Code through the skill: 3 of 3 units, 24 tests; it found D-54). From PyPI, and on macOS and Linux, after publishing and CI
 - [x] The security review is complete with no open high-severity findings (D-52)
@@ -469,7 +471,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Prerequisites:** Phases 9 and 10.
 
-**Reuse (D-47):** build the migration pairs, the symbol map, test translation and the roles language-neutral. Phases 13 and 14 reuse them for C++ → Rust.
+**Reuse (D-47, D-55):** the migration pairs, the symbol map, test translation and the mapping steward come from Phases 13 and 14, built language-neutral for C++ → Rust; this phase adds the Java and C# sides.
 
 ### Tasks
 - [ ] Migration-pair support in config and orchestrator (source adapter plus target adapter); SPEC update for the relaxed green invariant (`pending_parity`)
@@ -519,13 +521,14 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Goal:** port every module of an old C++ project (C++98 or newer) to Rust while the project's own C++ tests keep verifying it. Modules go leaves first; each ported module keeps its C++ interface as a façade over the Rust code, so every commit builds and passes the baseline tests (SPEC §11.6, D-47).
 
-**Prerequisites:** Phases 11 (migration pairs, symbol map, roles) and 12 (Rust adapter, mixed builds, ABI invariant).
+**Prerequisites:** Phase 12 (Rust adapter, mixed builds, ABI invariant). Phase 11 comes later (D-55), so this phase builds the migration pairs, the symbol map and the mapping steward itself, language-neutral.
 
 ### Tasks
 **Strategy**
 - [ ] SPEC §11.6 settled with a `D-xx` row: stages, bridge, manifest keys, unit kinds
 - [ ] Bridge spike on `port-legacy`: the `cxx` crate (C++ classes as opaque types, `std::string`, `std::vector`, `std::unique_ptr`, exceptions ↔ `Result`) against a plain C ABI with opaque handles and cbindgen headers (works from C++98). Pick the default and record the C++ standard it needs; an older source gets the standard bump (`bump_standard`) as the port's first unit
 - [ ] Manifest: `migration.target: {language: rust, edition: …}` and a `migration.port` section (`strategy`, `bridge`, `keep_cpp_api`, rules); `validate` checks the pair against the installed adapters
+- [ ] Migration pairs in config and orchestrator, language-neutral (a source adapter and a target adapter; Phase 11 adds Java → C#, D-55): the run's worktree builds with both, and the planner, units and invariants know which side a file is on
 
 **Scaffold and planning**
 - [ ] `scaffold_project` for Rust inside a C++ tree: a Cargo workspace beside the CMake project, one crate per CMake library target, built from CMake through Corrosion; the scaffold is the port's first unit after any standard bump
@@ -541,10 +544,10 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
   - class hierarchies → traits; templates → generics; operator overloads → `std::ops` and `std::cmp` traits; RAII → `Drop`
   - integer semantics: unsigned wraparound → `wrapping_*`; signed overflow (undefined in C++) panics in a debug build
   - `static` state → `OnceLock`; threads and locks → `std::sync`; macros → `const`, functions or `macro_rules!`; namespaces → modules; C strings, `printf` and iostreams
-- [ ] Symbol-map entries (C++ USR → Rust path) for every symbol of a ported cluster, kept consistent by the mapping steward (Phase 11)
+- [ ] Symbol map store (source symbol ID → target path, language-neutral) with entries (C++ USR → Rust path) for every symbol of a ported cluster, kept consistent by a mapping steward role that this phase adds (Phase 11 reuses both, D-55)
 - [ ] Checks: no `unsafe` outside the bridge (error); no new `cargo clippy` warnings in ported code (as I-10); the façade headers' API unchanged (I-6); the exported C ABI unchanged (Phase 12)
 - [ ] Host-agent support: the skill and the context documents of port units show the C++ source, the Rust target, the façade and the symbol map
-- [ ] Dashboard: Phase 11's two-sided view for C++ ↔ Rust units
+- [ ] Dashboard: a two-sided view (C++ source ↔ Rust target) in unit detail, which Phase 11 reuses for Java ↔ C#
 
 **Fixtures and evals**
 - [ ] `port-legacy` (C++98 style, GoogleTest 1.8.1): a string utility, a value class with operators, a container template, a class hierarchy with virtual functions, exceptions, a status-code API, a small command-line program
