@@ -109,6 +109,12 @@ class Repository:
             )
         return result.text
 
+    def tracked_files(self) -> list[str]:
+        """Every file git tracks, including the files of checked-out submodules, as sorted
+        POSIX paths from the root (what a run's worktree will hold). Reads only."""
+        out = self.git.run("ls-files", "-z", "--recurse-submodules").stdout
+        return sorted({p for p in out.decode("utf-8", errors="replace").split("\0") if p})
+
     def dirty_state(self) -> DirtyState:
         """Uncommitted changes, which a run doesn't include. Doesn't touch the index."""
         out = self.git.run("status", "--porcelain=v1", "-z", "--untracked-files=normal").stdout

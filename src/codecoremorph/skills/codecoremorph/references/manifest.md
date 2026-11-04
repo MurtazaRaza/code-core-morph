@@ -1,6 +1,12 @@
 # Writing `migration_config.yaml`
 
-CodeCoreMorph reads one manifest at the repository root. A minimal C++ manifest:
+CodeCoreMorph reads one manifest at the repository root. Start with `codecoremorph init`: it
+detects the build system, the current standard, the source, test and vendored directories and
+the applicable rules, and writes a commented manifest (`--stdout` prints it instead, `--target`
+sets the target standard). Check what it says it guessed, above all a standard marked as a
+guess, and confirm the target and the rules with the user.
+
+A minimal C++ manifest, for reference:
 
 ```yaml
 version: "1.0"

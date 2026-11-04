@@ -13,6 +13,7 @@ from codecoremorph import __version__
 from codecoremorph.cli.dashboard import dashboard_command
 from codecoremorph.cli.debug import debug_app
 from codecoremorph.cli.doctor import doctor_command
+from codecoremorph.cli.init import init_command
 from codecoremorph.cli.output import print_error, stderr
 from codecoremorph.cli.plan import plan_command
 from codecoremorph.cli.plugins import adapters_app, providers_app, rules_app
@@ -69,6 +70,7 @@ def _global_options(
     configure_logging(level=logging.DEBUG if verbose else logging.INFO, json_log_path=log_file)
 
 
+app.command("init")(init_command)
 app.command("validate")(validate_command)
 app.command("schema")(schema_command)
 app.command("doctor")(doctor_command)

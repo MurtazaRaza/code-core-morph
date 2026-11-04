@@ -27,6 +27,7 @@ from codecoremorph.core.models import (
     CodemodSpec,
     Diagnostic,
     LanguageConfig,
+    ProjectDetection,
     RuleSite,
     SymbolIndex,
     TestAssertions,
@@ -96,6 +97,16 @@ class LanguageAdapter(ABC):
         """Apply deterministic fixes, changing only ``files`` (worktree-relative)."""
 
     # ------------------------------------------------------------------ optional
+
+    def detect_project(self, root: Path, files: list[str]) -> ProjectDetection | None:
+        """The settings of a starter manifest for the repository at ``root`` (FR-1.4), read
+        from ``files``: the files git tracks there, including those of checked-out
+        submodules, as POSIX paths relative to ``root``. None when the repository has no code
+        in this adapter's language outside vendored directories.
+
+        ``codecoremorph init`` calls it on the user's own checkout, so it only reads files:
+        it runs no command and writes nothing."""
+        return None
 
     def project_standard(self, ctx: AdapterContext) -> str | None:
         """The standard the project's own build files set in ``ctx.worktree`` (the oldest, when

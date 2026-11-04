@@ -66,6 +66,40 @@ class LanguageConfig(CoreModel):
     test_timeout_s: float = 1800
 
 
+class ConfigureArg(CoreModel):
+    """A build-configure argument a starter manifest suggests, with the reason."""
+
+    arg: str = Field(min_length=1, description='e.g. "-DPROJECT_BUILD_TESTS=ON"')
+    reason: str
+
+
+class ProjectDetection(CoreModel):
+    """What a language adapter reads from a project for ``codecoremorph init`` (FR-1.4).
+
+    Paths and globs are relative to the repository root, in ``project.*`` form."""
+
+    language: str
+    build_system: str | None = Field(
+        description="None when the adapter found its language but no build system it supports"
+    )
+    name: str | None = Field(default=None, description="The project's own name, if it has one")
+    standard: str = Field(description='The current standard, e.g. "cpp11"')
+    standard_note: str = Field(description="Where the standard comes from, for a comment")
+    standard_guessed: bool = Field(
+        default=False, description="True when no build file sets it and it came from the code"
+    )
+    target_standard: str = Field(description="The target the adapter suggests")
+    source_dirs: list[str] = Field(default_factory=list[str])
+    test_dirs: list[str] = Field(default_factory=list[str])
+    public_api: list[str] = Field(default_factory=list[str])
+    exclude: list[str] = Field(default_factory=list[str])
+    configure_args: list[ConfigureArg] = Field(default_factory=list[ConfigureArg])
+    notes: list[str] = Field(
+        default_factory=list[str], description="Things the user should check before a run"
+    )
+    code_files: int = Field(ge=0, description="Files of the language outside vendored code")
+
+
 class TestSelection(CoreModel):
     __test__: ClassVar[bool] = False  # not a pytest test class
 

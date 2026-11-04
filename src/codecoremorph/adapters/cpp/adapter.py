@@ -29,6 +29,7 @@ from codecoremorph.adapters.cpp.cmake import (
     lowest_standard,
     std_flag,
 )
+from codecoremorph.adapters.cpp.detect import detect as detect_project
 from codecoremorph.adapters.cpp.determinism import nondeterminism
 from codecoremorph.adapters.cpp.diagnostics import parse_cmake_output, parse_compiler_output
 from codecoremorph.adapters.cpp.fixes import (
@@ -72,6 +73,7 @@ from codecoremorph.core.models import (
     Diagnostic,
     DiagnosticOrigin,
     LanguageConfig,
+    ProjectDetection,
     RuleSite,
     Severity,
     SkippedReplacement,
@@ -353,6 +355,11 @@ class CppAdapter(LanguageAdapter):
         )
 
     # ------------------------------------------------------------------ index
+
+    def detect_project(self, root: Path, files: list[str]) -> ProjectDetection | None:
+        """CMake, the standard the CMake files set (or one guessed from the code), the layout
+        and the configure arguments a run needs (FR-1.4)."""
+        return detect_project(root, files)
 
     def project_standard(self, ctx: AdapterContext) -> str | None:
         """The oldest standard the project's own CMake files set (excluded paths don't count)."""
