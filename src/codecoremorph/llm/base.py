@@ -20,11 +20,12 @@ from codecoremorph.core.models import (
     HealthStatus,
     ModelCapabilities,
 )
+from codecoremorph.core.plugins import PROVIDER_API
 
 log = logging.getLogger(__name__)
 
 ENTRY_POINT_GROUP = "codecoremorph.providers"
-PROVIDER_API_VERSION = "1"
+PROVIDER_API_VERSION = PROVIDER_API.version
 
 # Universal sampling knobs are not part of the contract (SPEC §7.7, D-18). Anthropic rejects
 # them outright; a provider that takes them reads them from its own provider_options.
@@ -81,6 +82,8 @@ class ProviderInfo:
 class ProviderRegistry:
     providers: dict[str, ProviderInfo] = field(default_factory=dict[str, ProviderInfo])
     problems: list[str] = field(default_factory=list[str])
+    # Providers found but not loaded, by entry-point name, with the reason (an API mismatch).
+    rejected: dict[str, str] = field(default_factory=dict[str, str])
 
     @classmethod
     def discover(cls, eps: list[EntryPoint] | None = None) -> ProviderRegistry:
@@ -101,12 +104,10 @@ class ProviderRegistry:
         if not isinstance(loaded, type) or not callable(getattr(loaded, "from_config", None)):
             self.problems.append(f"{where}: is not a provider class with from_config()")
             return
-        api = getattr(loaded, "api_version", None)
-        if api != PROVIDER_API_VERSION:
-            self.problems.append(
-                f"{where}: implements provider API {api}, but this CodeCoreMorph supports "
-                f"API {PROVIDER_API_VERSION}"
-            )
+        problem = PROVIDER_API.problem(getattr(loaded, "api_version", None), where)
+        if problem is not None:
+            self.problems.append(problem)
+            self.rejected.setdefault(ep.name, problem)
             return
         name = getattr(loaded, "name", None)
         if name != ep.name:
@@ -118,6 +119,12 @@ class ProviderRegistry:
 
     def info(self, name: str) -> ProviderInfo:
         found = self.providers.get(name)
+        if found is None and name in self.rejected:
+            raise UsageError(
+                f"the {name} provider can't be used",
+                reason=self.rejected[name],
+                hint="`codecoremorph providers list` shows the providers that loaded.",
+            )
         if found is None:
             available = ", ".join(sorted(self.providers)) or "none"
             raise UsageError(

@@ -1,0 +1,6 @@
+# A rule pack: this file, one YAML file per rule, and the rules' guidance.
+name: example                 # rule packs' names are unique; so are rule IDs, across packs
+language: cpp                 # every rule in the pack is for this language
+api_version: "1"              # the rule pack API (the rule format) the pack is written for
+version: "0.1.0"              # the pack's own version
+description: An example rule pack.

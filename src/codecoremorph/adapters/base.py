@@ -35,9 +35,10 @@ from codecoremorph.core.models import (
     TestSelection,
     ToolchainSpec,
 )
+from codecoremorph.core.plugins import ADAPTER_API
 from codecoremorph.sandbox.executor import Executor
 
-ADAPTER_API_VERSION = "1"
+ADAPTER_API_VERSION = ADAPTER_API.version
 
 
 @dataclass(frozen=True)
@@ -61,9 +62,10 @@ class AdapterNotSupportedError(NotImplementedError):
 
 
 class LanguageAdapter(ABC):
-    """Base class of every language adapter. Subclasses set ``language``."""
+    """Base class of every language adapter. Subclasses set ``language`` and declare the
+    adapter API version they implement, ``api_version = "1"`` (FR-15.3)."""
 
-    api_version: ClassVar[str] = ADAPTER_API_VERSION
+    api_version: ClassVar[str]
     language: ClassVar[str]
     version: ClassVar[str] = "0"
 

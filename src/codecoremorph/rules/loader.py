@@ -2,7 +2,7 @@
 
 Layout of a pack directory::
 
-    pack.yaml                      name, language, version, minimum tool versions
+    pack.yaml                      name, language, api_version, version, minimum tool versions
     <rule_id>.yaml                 one rule per file; the file name is the rule ID
     guidance/<rule_id>.md          LLM guidance, referenced from the rule
     examples/<rule_id>/            before/after examples, referenced from the rule
@@ -20,6 +20,7 @@ from pydantic import Field, ValidationError
 from codecoremorph.config import ConfigValidationError, load_yaml12
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.models import CoreModel, LoadedRule, Rule
+from codecoremorph.core.plugins import RULE_PACK_API
 
 PACK_FILE = "pack.yaml"
 
@@ -27,6 +28,10 @@ PACK_FILE = "pack.yaml"
 class RulePack(CoreModel):
     name: str = Field(pattern=r"^[a-z][a-z0-9_.:/-]*$")
     language: str
+    api_version: str | None = Field(
+        default=None,
+        description='The rule pack API (the rule format) the pack is written for: "1" (FR-15.3)',
+    )
     version: str = "0"
     description: str = ""
     min_tool_versions: dict[str, str] = Field(
@@ -87,8 +92,12 @@ def load_rule(path: Path, pack: str) -> LoadedRule:
     return loaded
 
 
-def load_pack(directory: Path) -> tuple[RulePack, list[LoadedRule]]:
-    """Load a pack directory (or a directory of loose rules)."""
+def load_pack(directory: Path, *, plugin: bool = False) -> tuple[RulePack, list[LoadedRule]]:
+    """Load a pack directory (or a directory of loose rules).
+
+    A ``plugin`` pack (from an entry point) must have a ``pack.yaml`` that declares the rule
+    pack API version it is written for; a project's own directory may leave it out, but a
+    version it does declare must be the supported one (FR-15.3)."""
     if not directory.is_dir():
         raise RuleLoadError(
             f"rule directory {directory} doesn't exist",
@@ -102,6 +111,15 @@ def load_pack(directory: Path) -> tuple[RulePack, list[LoadedRule]]:
             raise RuleLoadError(
                 f"invalid rule pack {pack_file}", reason=_validation_reason(exc)
             ) from None
+        if plugin or pack.api_version is not None:
+            problem = RULE_PACK_API.problem(pack.api_version, f"rule pack {pack.name}")
+            if problem is not None:
+                raise RuleLoadError(problem)
+    elif plugin:
+        raise RuleLoadError(
+            f"{directory} has no {PACK_FILE}",
+            reason="A plugin's rule pack declares its name, language and api_version there.",
+        )
     else:
         pack = RulePack(name=f"project:{directory.name.lower()}", language="any")
     rules = [

@@ -189,3 +189,63 @@ def test_entry_point_packs() -> None:
     )
     assert broken.rules == {}
     assert len(broken.problems) == 2
+
+
+PACK_YAML = "name: {name}\nlanguage: cpp\n{api}"
+
+
+def _plugin_pack(root: Path, name: str, api: str) -> Path:
+    directory = root / name
+    _write_rule(directory, f"{name}_rule")
+    (directory / "pack.yaml").write_text(PACK_YAML.format(name=name, api=api), encoding="utf-8")
+    return directory
+
+
+def test_plugin_packs_declare_the_rule_pack_api(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    import types
+
+    module = types.ModuleType("ccm_test_rule_plugins")
+    module.good = _plugin_pack(tmp_path, "good", 'api_version: "1"\n')  # type: ignore[attr-defined]
+    module.old = _plugin_pack(tmp_path, "old", 'api_version: "2"\n')  # type: ignore[attr-defined]
+    module.silent = _plugin_pack(tmp_path, "silent", "")  # type: ignore[attr-defined]
+    loose = tmp_path / "loose"
+    _write_rule(loose, "loose_rule")
+    module.loose = loose  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ccm_test_rule_plugins", module)
+
+    group = "codecoremorph.rules"
+    registry = RuleRegistry.discover(
+        eps=[
+            EntryPoint(n, f"ccm_test_rule_plugins:{n}", group)
+            for n in ("good", "old", "silent", "loose")
+        ]
+    )
+    assert sorted(registry.packs) == ["good"]
+    problems = "\n".join(registry.problems)
+    assert "rule pack old: implements rule pack API 2, but this CodeCoreMorph supports" in problems
+    assert "rule pack silent: doesn't declare the rule pack API version" in problems
+    assert "has no pack.yaml" in problems
+
+    # A rule from a pack that didn't load says why it is unknown.
+    with pytest.raises(ConfigError) as caught:
+        registry.get("old_rule")
+    reason = caught.value.reason or ""
+    assert "rule packs that didn't load: " in reason
+    assert "old = ccm_test_rule_plugins:old: rule pack old: implements rule pack API 2" in reason
+
+
+def test_project_rule_directories_may_skip_the_api_version(tmp_path: Path) -> None:
+    project = _plugin_pack(tmp_path, "mine", "")
+    assert RuleRegistry.discover([project], eps=[]).get("mine_rule").pack == "mine"
+
+    newer = _plugin_pack(tmp_path, "newer", 'api_version: "2"\n')
+    with pytest.raises(RuleLoadError, match="implements rule pack API 2"):
+        RuleRegistry.discover([newer], eps=[])
+
+
+def test_the_builtin_pack_declares_its_api() -> None:
+    pack, _ = load_pack(PACK_DIR, plugin=True)
+    assert pack.api_version == "1"

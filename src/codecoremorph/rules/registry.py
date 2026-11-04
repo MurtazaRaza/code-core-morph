@@ -54,7 +54,7 @@ class RuleRegistry:
                 if directory is None:
                     registry.problems.append(f"{where}: doesn't name a pack directory")
                     continue
-                registry.add_pack(directory)
+                registry.add_pack(directory, plugin=True)
             except RuleLoadError as exc:
                 registry.problems.append(f"{where}: {exc}")
             except Exception as exc:  # noqa: BLE001 - a broken plugin must not break the CLI
@@ -63,8 +63,8 @@ class RuleRegistry:
             registry.add_pack(directory)
         return registry
 
-    def add_pack(self, directory: Path) -> RulePack:
-        pack, rules = load_pack(directory)
+    def add_pack(self, directory: Path, *, plugin: bool = False) -> RulePack:
+        pack, rules = load_pack(directory, plugin=plugin)
         if pack.name in self.packs:
             raise RuleLoadError(f"rule pack {pack.name!r} is registered twice ({directory})")
         for loaded in rules:
@@ -84,9 +84,12 @@ class RuleRegistry:
     def get(self, rule_id: str) -> LoadedRule:
         loaded = self.rules.get(rule_id)
         if loaded is None:
+            reason = f"known rules: {', '.join(sorted(self.rules)) or 'none'}"
+            if self.problems:
+                reason += "; rule packs that didn't load: " + "; ".join(self.problems)
             raise ConfigError(
                 f"unknown rule {rule_id!r}",
-                reason=f"known rules: {', '.join(sorted(self.rules)) or 'none'}",
+                reason=reason,
                 hint="Check migration.target.rules, or add the rule's directory to "
                 "migration.rules_paths.",
             )

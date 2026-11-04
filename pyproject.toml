@@ -130,6 +130,7 @@ ignore = [
 "scripts/**" = ["T20", "S310"]             # maintainer CLIs; S310: URLs come from the manifest
 "bench/**" = ["T20"]                       # maintainer CLIs
 "tests/**" = ["S101", "S105", "S106", "S108"]
+"templates/plugin/tests/**" = ["S101"]
 # Runs inside the sandbox with only the standard library and clang.cindex: untyped by design,
 # and it reports per-cursor libclang failures instead of crashing.
 "src/codecoremorph/adapters/cpp/helpers/*" = ["BLE001", "S603", "PTH", "SLF001", "T20"]

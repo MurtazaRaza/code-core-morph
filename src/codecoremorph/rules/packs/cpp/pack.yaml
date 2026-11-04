@@ -1,6 +1,7 @@
 # The built-in C++ rule pack (SPEC §11.1).
 name: cpp
 language: cpp
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
 version: "1"
 description: C++ standard upgrades from C++98/03 up to C++23, and modernization.
 min_tool_versions:

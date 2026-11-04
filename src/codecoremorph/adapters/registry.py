@@ -10,8 +10,9 @@ import logging
 from dataclasses import dataclass, field
 from importlib.metadata import EntryPoint, entry_points
 
-from codecoremorph.adapters.base import ADAPTER_API_VERSION, LanguageAdapter
+from codecoremorph.adapters.base import LanguageAdapter
 from codecoremorph.core.errors import UsageError
+from codecoremorph.core.plugins import ADAPTER_API
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class AdapterInfo:
 class AdapterRegistry:
     adapters: dict[str, AdapterInfo] = field(default_factory=dict[str, AdapterInfo])
     problems: list[str] = field(default_factory=list[str])
+    # Languages whose adapter was found but not loaded, with the reason (an API mismatch).
+    rejected: dict[str, str] = field(default_factory=dict[str, str])
 
     @classmethod
     def discover(cls, eps: list[EntryPoint] | None = None) -> AdapterRegistry:
@@ -50,13 +53,13 @@ class AdapterRegistry:
         if not (isinstance(loaded, type) and issubclass(loaded, LanguageAdapter)):
             self.problems.append(f"{where}: is not a LanguageAdapter subclass")
             return
-        if loaded.api_version != ADAPTER_API_VERSION:
-            self.problems.append(
-                f"{where}: implements adapter API {loaded.api_version}, but this CodeCoreMorph "
-                f"supports API {ADAPTER_API_VERSION}"
-            )
-            return
         language = getattr(loaded, "language", None)
+        problem = ADAPTER_API.problem(getattr(loaded, "api_version", None), where)
+        if problem is not None:
+            self.problems.append(problem)
+            if isinstance(language, str) and language:
+                self.rejected.setdefault(language, problem)
+            return
         if not isinstance(language, str) or not language:
             self.problems.append(f"{where}: doesn't set `language`")
             return
@@ -72,6 +75,12 @@ class AdapterRegistry:
     def get(self, language: str) -> LanguageAdapter:
         info = self.adapters.get(language)
         if info is None:
+            if language in self.rejected:
+                raise UsageError(
+                    f"the {language} adapter can't be used",
+                    reason=self.rejected[language],
+                    hint="`codecoremorph adapters list` shows the adapters that loaded.",
+                )
             available = ", ".join(sorted(self.adapters)) or "none"
             raise UsageError(
                 f"no adapter is installed for language {language!r}",

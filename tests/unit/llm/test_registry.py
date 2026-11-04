@@ -74,6 +74,30 @@ def test_broken_plugins_are_reported_not_raised() -> None:
     ]
 
 
+class FutureOllama(FakeOllama):
+    api_version: ClassVar[str] = "2"
+
+
+def test_providers_declare_the_api_they_implement(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    import types
+
+    module = types.ModuleType("ccm_test_provider_plugins")
+    module.FutureOllama = FutureOllama  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ccm_test_provider_plugins", module)
+    eps = [
+        EntryPoint("ollama", "ccm_test_provider_plugins:FutureOllama", "codecoremorph.providers")
+    ]
+    registry = ProviderRegistry.discover(eps)
+    assert registry.providers == {}
+    assert (
+        "implements provider API 2, but this CodeCoreMorph supports provider API 1"
+        in (registry.problems[0])
+    )
+    with pytest.raises(UsageError, match="the ollama provider can't be used"):
+        registry.info("ollama")
+
+
 MANIFEST = """\
 version: "1.0"
 project: {name: demo}

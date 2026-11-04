@@ -1,0 +1,30 @@
+[project]
+name = "codecoremorph-example"
+version = "0.1.0"
+description = "An example CodeCoreMorph plugin: a rule pack, and skeletons of an adapter and a provider."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+# Plugin API versions change only in a major CodeCoreMorph release, so the bound is the next
+# major. A CodeCoreMorph that doesn't support a plugin's api_version says so and skips it.
+dependencies = ["codecoremorph>=0.1,<1"]
+
+# Each entry point names one plugin. Keep the kinds you write and delete the others.
+[project.entry-points."codecoremorph.rules"]
+example = "codecoremorph_example.rules:PACK_DIR"
+
+[project.entry-points."codecoremorph.adapters"]
+example = "codecoremorph_example.adapter:ExampleAdapter"
+
+[project.entry-points."codecoremorph.providers"]
+example = "codecoremorph_example.provider:ExampleProvider"
+
+[dependency-groups]
+dev = ["pytest>=8.4"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codecoremorph_example"]

@@ -1,0 +1,18 @@
+# One rule. The file name is the rule's ID; a manifest lists it in migration.target.rules.
+id: example_bounded_sprintf
+language: cpp
+kind: api_preserving                  # api_preserving | api_changing | project
+description: >-
+  Replace sprintf with snprintf and the size of the destination buffer, so that a long value
+  can't overflow it.
+applies_to: {min_target_standard: cpp11}  # std::snprintf is C++11
+detector:                             # finds the sites; files without any are skipped
+  type: pattern
+  patterns:
+    - '\bsprintf\s*\('                # matched on code, never in comments or strings
+llm:                                  # what the agent is told; a rule may also run codemods
+  guidance: guidance/example_bounded_sprintf.md
+postconditions:
+  - {type: detector_empty, severity: error}   # no sprintf left in the unit's files
+skip:
+  - c_compatible                      # leave headers that C code includes alone

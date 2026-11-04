@@ -113,6 +113,7 @@ def _write_atomic(path: Path, data: bytes) -> None:
 class CppAdapter(LanguageAdapter):
     """C and C++ projects built with CMake."""
 
+    api_version = "1"
     language = "cpp"
     version = "1"
 
