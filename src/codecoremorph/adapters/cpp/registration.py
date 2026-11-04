@@ -18,8 +18,10 @@ TARGET = "codecoremorph_characterization"
 BEGIN = "# >>> CodeCoreMorph characterization tests (SPEC §7.11)"
 END = "# <<< CodeCoreMorph characterization tests"
 
-_LINK_SCAN = """\
-# The library targets that compile the characterized code.
+_LINK_SCAN = r"""
+# The library targets that compile the characterized code: those that list one of its files
+# in their sources, and those whose include directories hold one (a header, which targets
+# rarely list, or a header-only library).
 set(_ccm_links "")
 set(_ccm_dirs "${CMAKE_SOURCE_DIR}")
 while(_ccm_dirs)
@@ -31,16 +33,47 @@ while(_ccm_dirs)
   foreach(_ccm_target IN LISTS _ccm_targets)
     get_target_property(_ccm_type "${_ccm_target}" TYPE)
     if(_ccm_type MATCHES "^(STATIC|SHARED|OBJECT|INTERFACE)_LIBRARY$")
-      get_target_property(_ccm_target_sources "${_ccm_target}" SOURCES)
       get_target_property(_ccm_source_dir "${_ccm_target}" SOURCE_DIR)
+      set(_ccm_found FALSE)
+      get_target_property(_ccm_target_sources "${_ccm_target}" SOURCES)
       if(_ccm_target_sources)
         foreach(_ccm_source IN LISTS _ccm_target_sources)
           get_filename_component(_ccm_path "${_ccm_source}" ABSOLUTE BASE_DIR "${_ccm_source_dir}")
           if(_ccm_path IN_LIST _ccm_sources)
-            list(APPEND _ccm_links "${_ccm_target}")
+            set(_ccm_found TRUE)
             break()
           endif()
         endforeach()
+      endif()
+      if(NOT _ccm_found)
+        set(_ccm_includes "")
+        foreach(_ccm_property INCLUDE_DIRECTORIES INTERFACE_INCLUDE_DIRECTORIES)
+          get_target_property(_ccm_value "${_ccm_target}" ${_ccm_property})
+          if(_ccm_value)
+            list(APPEND _ccm_includes ${_ccm_value})
+          endif()
+        endforeach()
+        foreach(_ccm_include IN LISTS _ccm_includes)
+          string(REGEX REPLACE "^\\$<BUILD_INTERFACE:(.*)>$" "\\1" _ccm_include "${_ccm_include}")
+          if(_ccm_include STREQUAL "" OR _ccm_include MATCHES "^\\$<")
+            continue()  # another generator expression: not a build-tree directory
+          endif()
+          get_filename_component(_ccm_include "${_ccm_include}" ABSOLUTE
+                                 BASE_DIR "${_ccm_source_dir}")
+          foreach(_ccm_source IN LISTS _ccm_sources)
+            string(FIND "${_ccm_source}" "${_ccm_include}/" _ccm_at)
+            if(_ccm_at EQUAL 0)
+              set(_ccm_found TRUE)
+              break()
+            endif()
+          endforeach()
+          if(_ccm_found)
+            break()
+          endif()
+        endforeach()
+      endif()
+      if(_ccm_found)
+        list(APPEND _ccm_links "${_ccm_target}")
       endif()
     endif()
   endforeach()

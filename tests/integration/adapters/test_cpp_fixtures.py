@@ -371,6 +371,40 @@ def _recorded_tests() -> tuple[str, str]:
     return path, text
 
 
+HEADER_TEST = """\
+#include <gtest/gtest.h>
+
+#include "geo/types.h"
+
+TEST(CodeCoreMorphCharacterization, AscendingOrdersScalars) {
+    EXPECT_TRUE(geo::ascending(1.0, 2.0));
+    EXPECT_FALSE(geo::descending(1.0, 2.0));
+}
+"""
+
+
+def test_characterization_tests_of_header_code_link_its_library(make_context: MakeContext) -> None:
+    """Regression (Phase 8 release check): tests of functions defined in a header linked no
+    library, since the library lists only its .cpp files, and failed to find the header. A
+    file under a library's include directories now links that library."""
+    ctx = make_context("typedefs")
+    adapter = CppAdapter()
+    path = f"{CHARACTERIZATION_DIR}/types_test.cpp"
+    (ctx.worktree / path).parent.mkdir(parents=True, exist_ok=True)
+    (ctx.worktree / path).write_text(HEADER_TEST, encoding="utf-8", newline="\n")
+    adapter.register_test_files(ctx, CHARACTERIZATION_DIR, [path], ["include/geo/types.h"])
+    assert adapter.configure(ctx).success
+    built = adapter.build(ctx)
+    assert built.success, [d.message for d in built.errors]
+    report = adapter.run_tests(ctx, adapter.characterization_tests(
+        ["gtest:CodeCoreMorphCharacterization.AscendingOrdersScalars"]
+    ))  # fmt: skip
+    statuses = {c.test_id: c.status for c in report.cases}
+    assert statuses["gtest:CodeCoreMorphCharacterization.AscendingOrdersScalars"] is (
+        TestStatus.PASSED
+    )
+
+
 def test_characterization_tests_build_pass_and_catch_mutations(make_context: MakeContext) -> None:
     """The mutation sanity check (Phase 6 exit): the untested fixture's characterization tests,
     registered by the adapter, build and pass on the base code three times, pass the
