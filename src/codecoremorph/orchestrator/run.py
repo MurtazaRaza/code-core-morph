@@ -88,6 +88,7 @@ from codecoremorph.core.models import (
     Usage,
     WorkUnit,
 )
+from codecoremorph.core.resources import MIB, peak_rss_bytes
 from codecoremorph.llm.ledger import LedgerEntry, UsageLedger
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.characterize import Characterization
@@ -1324,6 +1325,7 @@ class RunEngine:
 
     def _parked(self, waiting: dict[str, Any] | None, *, awaiting: bool) -> RunResult:
         worktree = self.session.workspace.worktree
+        record_peak_memory(self.store, self.run_id)
         record = self.store.get_run(self.run_id)
         return RunResult(
             run_id=self.run_id,
@@ -1435,6 +1437,24 @@ def reject_unit(
     )
 
 
+PEAK_MEMORY_KEY = "engine_peak_rss_mb"
+
+
+def record_peak_memory(store: Store, run_id: str) -> None:
+    """Keep the most resident memory any of the run's engine processes used, in MiB, in the
+    run's environment, so the report shows it (NFR-1.2). A run that parks and resumes runs in
+    several processes; the largest counts."""
+    peak = peak_rss_bytes()
+    if peak is None:
+        return
+    environment = store.run_environment(run_id)
+    known = environment.get(PEAK_MEMORY_KEY)
+    mib = round(peak / MIB)
+    if isinstance(known, int | float) and not isinstance(known, bool) and known >= mib:
+        return
+    store.set_run_environment(run_id, {**environment, PEAK_MEMORY_KEY: mib})
+
+
 def finish_report(
     store: Store,
     artifacts: RunArtifacts,
@@ -1447,6 +1467,7 @@ def finish_report(
     reason: str | None,
     finished: datetime | None,
 ) -> tuple[Path, Path]:
+    record_peak_memory(store, run_id)
     report = build_report(
         store,
         artifacts,

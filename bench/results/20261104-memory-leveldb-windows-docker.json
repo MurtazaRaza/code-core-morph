@@ -1,0 +1,310 @@
+{
+  "date": "2026-11-04T14:36:32+00:00",
+  "project": "leveldb 1.23 (99b3c03b3284)",
+  "migration": "cpp11 -> cpp20",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "seconds": 2527.4,
+  "run_id": "20261104-135425-c8fc",
+  "engine_peak_rss_mib": 133,
+  "process_peak_rss_mib_at_exit": 133,
+  "limit_mib": 4096,
+  "within_limit": true,
+  "model_calls": 168,
+  "run": {
+    "status": "completed_with_failures",
+    "reason": null,
+    "unit_counts": {
+      "committed": 4,
+      "failed": 22,
+      "skipped": 1
+    },
+    "success_rate": 0.154,
+    "agent_units": 22,
+    "attempts_per_agent_unit": 3.82,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "1f04e17d90ccb76c63ba190ffbf834e37011ec7f",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 258,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 99.6
+    },
+    "rules": [
+      {
+        "id": "bump_standard",
+        "units": 1,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "replace_typedefs_with_using",
+        "units": 5,
+        "committed": 4,
+        "planned_sites": 25,
+        "converted_sites": 9
+      },
+      {
+        "id": "convert_raw_pointers_to_smart_pointers",
+        "units": 21,
+        "committed": 0,
+        "planned_sites": 356,
+        "converted_sites": 0
+      },
+      {
+        "id": "use_concepts_for_templates",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      }
+    ],
+    "review_items": 26,
+    "duration_s": 2521.2,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 166.6,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 132.3,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 85.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 83.8,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 86.9,
+        "changed_files": 1,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 144.0,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0008",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 130.2,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0009",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 107.0,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0010",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 78.3,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0011",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 84.1,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0012",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 80.5,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0013",
+        "status": "failed",
+        "attempts": 0,
+        "agent_skipped": false,
+        "duration_s": 0.1,
+        "changed_files": 0,
+        "reason": "the unit can't run: convert_raw_pointers_to_smart_pointers doesn't apply to headers shared with C, and these files are: include/leveldb/c.h"
+      },
+      {
+        "id": "U-0014",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 113.7,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0015",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 90.1,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0016",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 79.5,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0017",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 77.6,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0018",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 94.0,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0019",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 91.9,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0020",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 80.6,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0021",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 83.0,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0022",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 78.6,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0023",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 79.8,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0024",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 79.0,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0025",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 78.2,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0026",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 78.1,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      },
+      {
+        "id": "U-0027",
+        "status": "failed",
+        "attempts": 4,
+        "agent_skipped": false,
+        "duration_s": 79.1,
+        "changed_files": 0,
+        "reason": "the retry budget (3) ran out; the last attempt ended with no_submission"
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\leveldb\\.codecoremorph\\runs\\20261104-135425-c8fc\\report.md"
+  }
+}
