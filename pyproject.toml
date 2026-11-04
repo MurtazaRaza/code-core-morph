@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "anthropic>=2.3",   # Claude provider; only inside codecoremorph.llm (SPEC §7.7)
     "docker>=7.1",      # Docker SDK: doctor checks now, DockerExecutor in Phase 1
+    "fastapi>=0.162",   # dashboard API (SPEC §7.13)
     "langgraph>=1.0",
     "langgraph-checkpoint-sqlite>=3.0",
     "libclang==18.1.1", # C++ indexer; the same major version as the pinned LLVM (D-33)
@@ -30,6 +31,7 @@ dependencies = [
     "pyyaml>=6.0.2",    # manifest loading with source positions
     "rich>=14.0",       # CLI presentation and console logging
     "typer>=0.16",      # CLI
+    "uvicorn>=0.54",    # serves the dashboard; no [standard] extras (pure Python, every OS)
 ]
 
 [project.scripts]
@@ -50,6 +52,7 @@ ollama = "codecoremorph.llm.ollama:OllamaProvider"
 dev = [
     "hypothesis>=6.130",
     "jsonschema>=4.24",     # checks the exported manifest schema against the example
+    "playwright>=1.64",     # the dashboard's browser smoke test (`browser` marker)
     "pre-commit>=4.2",
     "pyright[nodejs]>=1.1.400",
     "pytest>=8.4",
@@ -69,6 +72,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/codecoremorph"]
+
+# Puts the built dashboard UI (dashboard-ui/dist) into the wheel; see hatch_build.py.
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
 
 # The dependency scripts and image definitions ship inside the package, so users who install
 # from PyPI can run `codecoremorph toolchain install` (FR-1.13).
@@ -160,13 +167,15 @@ addopts = [
     "--import-mode=importlib",
     "--strict-markers",
     "--strict-config",
-    # The default run needs no Docker, toolchain or LLM. A later `-m` on the command line wins.
-    "-m", "not docker and not toolchain and not live_llm",
+    # The default run needs no Docker, toolchain, LLM or browser. A later `-m` on the command
+    # line wins.
+    "-m", "not docker and not toolchain and not live_llm and not browser",
 ]
 markers = [
     "docker: needs a reachable Docker daemon",
     "toolchain: needs native compilers and build tools",
     "live_llm: calls a real LLM provider (costs money; opt-in only)",
+    "browser: drives a Chromium-based browser through Playwright, with the built dashboard UI",
     "slow: takes more than a few seconds",
 ]
 xfail_strict = true

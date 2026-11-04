@@ -103,6 +103,10 @@ class RunNotActiveError(UsageError):
     """A command continues a run that isn't active: it finished, was aborted, or never ran."""
 
 
+class NotFoundError(UsageError):
+    """A run, unit, attempt or file that was asked for doesn't exist (yet)."""
+
+
 class SafetyViolationError(VcsError):
     """A guard against touching anything but the run worktree tripped (I-11). Always a bug."""
 

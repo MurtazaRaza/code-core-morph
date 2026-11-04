@@ -94,6 +94,25 @@ def test_symbols_at_sites_and_their_fan_in(fake_project: FakeProject) -> None:
     assert project.symbols_at([outside]) == []
 
 
+def test_the_dependency_graph_for_the_dashboard(fake_project: FakeProject) -> None:
+    project = _geo(fake_project)
+    graph = project.dependency_graph()
+    assert [f.path for f in graph.files] == sorted(project.files)
+    clusters = {f.path: f.cluster for f in graph.files}
+    assert clusters["src/vector.cpp"] == clusters["include/geo/vector.h"]  # a pair, one cluster
+    assert clusters["src/shape.cpp"] > clusters["src/vector.cpp"]  # leaves first
+    assert ("src/shape.cpp", "include/geo/shape.h") in graph.edges
+    assert ("src/shape.cpp", "src/vector.cpp") in graph.edges  # a reference edge
+    assert graph.edges == sorted(graph.edges)
+    again = ProjectModel.load(
+        fake_project.index_path,
+        fake_project.worktree,
+        source_dirs=["src", "include"],
+        test_dirs=["tests"],
+    )
+    assert again.dependency_graph().model_dump_json() == graph.model_dump_json()  # deterministic
+
+
 def test_boundaries(fake_project: FakeProject) -> None:
     project = _geo(fake_project)
     assert project.boundaries == {"src/shape.cpp": {Boundary.C_ABI}}

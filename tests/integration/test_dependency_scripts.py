@@ -342,6 +342,9 @@ def test_bootstrap_dry_run_changes_nothing(flavor: Flavor, tmp_path: Path) -> No
     assert result.returncode == 0, result.stderr
     for step in ("uv python install 3.12", "uv sync", "uv run codecoremorph --version"):
         assert f"would run: {step}" in result.stdout
+    # Node.js for the dashboard's web UI: a recent one from PATH, or the pinned download.
+    assert "using Node.js" in result.stdout or "would install node " in result.stdout
+    assert "Node.js was installed" not in result.stdout
     assert not prefix.exists()
 
 

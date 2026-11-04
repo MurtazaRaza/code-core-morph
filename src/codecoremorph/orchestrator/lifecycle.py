@@ -70,6 +70,20 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+# A plan decision is taken in these statuses: the plan can be approved while it is being made.
+BEFORE_PLAN_GATE = frozenset(
+    {
+        RunStatus.CREATED,
+        RunStatus.PROVISIONING,
+        RunStatus.BASELINING,
+        RunStatus.INDEXING,
+        RunStatus.CHARACTERIZING,
+        RunStatus.PLANNING,
+        RunStatus.AWAITING_PLAN_APPROVAL,
+    }
+)
+
+
 @dataclass(frozen=True)
 class RunPlace:
     """Where a repository's runs live, found from its manifest."""
@@ -240,15 +254,7 @@ def record_decision(
         if record.status.is_terminal:
             raise RunNotActiveError(f"run {record.id} has already ended: {record.status}")
         waiting = [u for u in store.units(record.id) if u.status is UnitStatus.AWAITING_APPROVAL]
-        before_plan_gate = record.status in (
-            RunStatus.CREATED,
-            RunStatus.PROVISIONING,
-            RunStatus.BASELINING,
-            RunStatus.INDEXING,
-            RunStatus.PLANNING,
-            RunStatus.AWAITING_PLAN_APPROVAL,
-        )
-        if unit_id is None and not before_plan_gate:
+        if unit_id is None and record.status not in BEFORE_PLAN_GATE:
             if len(waiting) != 1:
                 raise UsageError(
                     f"run {record.id} has no plan waiting for approval"
@@ -290,10 +296,12 @@ class AbortOutcome:
     notes: list[str] = field(default_factory=list[str])
 
 
-def abort_run(config_path: Path, run_id: str | None, *, reason: str | None) -> AbortOutcome:
-    """``codecoremorph abort``. A running engine stops at its next safe point; a parked or
-    crashed run is ended here, without starting a sandbox: a unit waiting for approval is
-    taken off the branch, the report is written and the worktree removed."""
+def abort_run(
+    config_path: Path, run_id: str | None, *, reason: str | None, source: str = "cli"
+) -> AbortOutcome:
+    """``codecoremorph abort`` (and the dashboard's). A running engine stops at its next safe
+    point; a parked or crashed run is ended here, without starting a sandbox: a unit waiting
+    for approval is taken off the branch, the report is written and the worktree removed."""
     place = RunPlace.for_config(config_path)
     with place.store() as store:
         record = place.record(store, run_id)
@@ -305,7 +313,7 @@ def abort_run(config_path: Path, run_id: str | None, *, reason: str | None) -> A
                 gate=ApprovalGate.RUN,
                 decision=ApprovalDecision.ABORT,
                 reason=reason,
-                source="cli",
+                source=source,
                 created_at=_now(),
             )
         )
@@ -544,6 +552,7 @@ def _branch_ids(repository: Repository) -> list[str]:
 
 
 __all__ = [
+    "BEFORE_PLAN_GATE",
     "AbortOutcome",
     "CleanOutcome",
     "Decision",

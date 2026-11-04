@@ -55,6 +55,20 @@ def test_approve_a_parked_plan_then_resume(engine_world: EngineWorld) -> None:
     assert resumed.status is RunStatus.COMPLETED
 
 
+def test_the_plan_can_be_approved_while_characterization_tests_are_written(
+    engine_world: EngineWorld,
+) -> None:
+    """Regression: ``characterizing`` (Phase 6) comes before the plan gate too."""
+    from datetime import UTC, datetime
+
+    run_id = _parked_at_plan(engine_world)
+    config = engine_world.repo / "migration_config.yaml"
+    with engine_world.store() as store:
+        store.set_run_status(run_id, RunStatus.CHARACTERIZING, datetime.now(UTC))
+    decision = record_decision(config, None, decision=ApprovalDecision.APPROVE)
+    assert decision.approval.gate is ApprovalGate.PLAN
+
+
 def test_a_unit_decision_needs_a_waiting_unit(engine_world: EngineWorld) -> None:
     run_id = _parked_at_plan(engine_world)
     config = engine_world.repo / "migration_config.yaml"

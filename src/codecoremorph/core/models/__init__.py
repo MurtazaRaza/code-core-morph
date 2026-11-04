@@ -70,6 +70,8 @@ from codecoremorph.core.models.llm import (
     Usage,
 )
 from codecoremorph.core.models.planning import (
+    DependencyGraph,
+    GraphFile,
     Plan,
     PlanEstimate,
     PlanGraph,
@@ -151,6 +153,7 @@ __all__ = [
     "CoreModel",
     "CreateEdit",
     "DeleteEdit",
+    "DependencyGraph",
     "DependencyKind",
     "Detector",
     "DetectorType",
@@ -168,6 +171,7 @@ __all__ = [
     "FileEntry",
     "FileRole",
     "FinalVerification",
+    "GraphFile",
     "HealthStatus",
     "HostFeedbackKind",
     "HostStatus",

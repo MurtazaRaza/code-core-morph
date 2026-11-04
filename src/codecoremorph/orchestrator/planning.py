@@ -145,7 +145,7 @@ def plan_from(
     step: StepSink,
     timings: dict[str, float] | None = None,
 ) -> tuple[Plan, Path]:
-    """Graph, rule scans and planner over an index; writes ``plan.json``."""
+    """Graph, rule scans and planner over an index; writes ``plan.json`` and ``graph.json``."""
     config = session.config
     migration = config.migration
     ctx = session.ctx
@@ -207,6 +207,7 @@ def plan_from(
     timings["plan_s"] = time.monotonic() - started
     plan_path = session.artifacts.plan_json
     _write_json(plan_path, plan.model_dump_json(indent=2))
+    _write_json(session.artifacts.graph_json, project.dependency_graph().model_dump_json(indent=2))
     return plan, plan_path
 
 

@@ -16,6 +16,8 @@ htmlcov/
 # Node (dashboard-ui, Phase 7)
 node_modules/
 dashboard-ui/dist/
+# Chrome's crash-reporter log, written to the working directory by the `browser` test
+/debug.log
 
 # CodeCoreMorph state directory (when CodeCoreMorph runs against this repo)
 .codecoremorph/

@@ -42,7 +42,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import JsonValue
 
@@ -129,7 +129,13 @@ log = logging.getLogger(__name__)
 
 StepSink = Callable[[str], None]
 LlmFactory = Callable[[UsageLedger], LLMService]
-Asker = Callable[[dict[str, Any]], ApprovalRecord | None]
+# An asker answers a gate on the terminal. It gets the gate's request and a check that turns
+# true when the gate was answered elsewhere (the dashboard, another terminal) or Ctrl-C was
+# pressed; it returns its decision, ANSWERED_ELSEWHERE, or None for "later" (the run parks).
+ANSWERED_ELSEWHERE: Final = "answered elsewhere"
+Asker = Callable[
+    [dict[str, Any], Callable[[], bool]], ApprovalRecord | Literal["answered elsewhere"] | None
+]
 
 _STOP_STATUS = {
     "aborted": RunStatus.ABORTED,
@@ -390,6 +396,8 @@ class RunEngine:
         return self.session.config
 
     def _step(self, message: str) -> None:
+        # Recorded as well as shown: the dashboard's "current activity" (FR-12.1).
+        self.events.emit(EventType.STEP_STARTED, message=message)
         self.options.on_step(message)
 
     def _status(self, status: RunStatus) -> None:
@@ -1339,10 +1347,15 @@ class RunEngine:
                 raise _Park(request)
             return AGENT_GATE  # ignored: the node takes the agent's action from the engine
         gate = ApprovalGate(str(request["gate"]))
-        unit_id = request.get("unit")
+        requested = request.get("unit")
+        unit = requested if isinstance(requested, str) else None
+
+        def answered() -> bool:  # the prompt gives way to this (D-48)
+            return self.control.interrupted or self._answer(gate, unit) is not None
+
         asked = False
         while True:
-            found = self._answer(gate, unit_id if isinstance(unit_id, str) else None)
+            found = self._answer(gate, unit)
             if found is not None:
                 return found
             if gate is ApprovalGate.PLAN and self.options.yes:  # `resume --yes` at the gate
@@ -1361,7 +1374,9 @@ class RunEngine:
                 raise _Park(request)
             if self.options.ask is not None and not asked:
                 asked = True
-                answer = self.options.ask(request)
+                answer = self.options.ask(request, answered)
+                if isinstance(answer, str):  # ANSWERED_ELSEWHERE: the loop finds it, or stops
+                    continue
                 if answer is None:
                     raise StopRequestedError("stopped at the gate", abort=False)
                 stored = self.store.add_approval(answer)

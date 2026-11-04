@@ -165,6 +165,45 @@ def test_event_cursor_and_limit(store: Store) -> None:
     assert len(store.list_events(RUN, limit=2)) == 2
 
 
+def test_recent_events_and_the_last_id(store: Store) -> None:
+    writer = EventWriter(store, RUN, clock=lambda: T0)
+    assert store.last_event_id(RUN) == 0
+    assert store.recent_events(RUN, limit=3) == []
+    for i in range(5):
+        writer.emit(EventType.LOG, message=f"m{i}")
+        writer.emit(EventType.STEP_STARTED, message=f"s{i}")
+    recent = store.recent_events(RUN, limit=3)
+    assert [e.data["message"] for e in recent] == ["s3", "m4", "s4"]  # oldest first
+    steps = store.recent_events(RUN, limit=2, types=[EventType.STEP_STARTED])
+    assert [e.data["message"] for e in steps] == ["s3", "s4"]
+    assert store.last_event_id(RUN) == recent[-1].id
+
+
+def test_a_read_only_store_reads_and_never_writes(store: Store, db_path: Path) -> None:
+    EventWriter(store, RUN, clock=lambda: T0).emit(EventType.LOG, message="hello")
+    with Store.open_readonly(db_path) as reader:
+        assert reader.get_run(RUN) is not None
+        assert [e.data["message"] for e in reader.list_events(RUN)] == ["hello"]
+        with pytest.raises(sqlite3.OperationalError):
+            reader.append_event(Event.now(RUN, EventType.LOG))
+        # The engine keeps writing while the reader is open.
+        EventWriter(store, RUN, clock=lambda: T0).emit(EventType.LOG, message="again")
+        assert len(reader.list_events(RUN)) == 2
+
+
+def test_a_read_only_store_needs_a_current_database(tmp_path: Path, db_path: Path) -> None:
+    with pytest.raises(StoreError, match="no state database"):
+        Store.open_readonly(tmp_path / "missing.db")
+    junk = tmp_path / "junk.db"
+    junk.write_bytes(b"not a database at all" * 100)
+    with pytest.raises(StoreError, match="not a usable"):
+        Store.open_readonly(junk)
+    with Store.open(db_path) as s, s.transaction() as conn:
+        conn.execute("DELETE FROM schema_version WHERE version = ?", (LATEST_VERSION,))
+    with pytest.raises(StoreError, match="schema version"):
+        Store.open_readonly(db_path)
+
+
 def test_wal_reader_sees_committed_state_while_writer_holds_a_transaction(
     store: Store, db_path: Path
 ) -> None:

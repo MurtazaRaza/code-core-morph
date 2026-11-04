@@ -113,6 +113,22 @@ class PlanGraph(CoreModel):
     largest_cluster: int = Field(ge=0, description="Files in the largest cluster")
 
 
+class GraphFile(CoreModel):
+    path: WorktreePath
+    cluster: int = Field(ge=0, description="Position of the file's cluster, leaves first")
+
+
+class DependencyGraph(CoreModel):
+    """The file graph a plan was ordered by (FR-2.1), kept as ``graph.json`` beside the plan
+    for the dashboard's graph view (FR-12.3). Deterministic like the plan."""
+
+    files: list[GraphFile] = Field(default_factory=list[GraphFile])
+    edges: list[tuple[WorktreePath, WorktreePath]] = Field(
+        default_factory=list[tuple[str, str]],
+        description="(file, a file it depends on): includes, header/source pairs, references",
+    )
+
+
 class PlanEstimate(CoreModel):
     model: str = Field(description='The editor model, "<provider>/<model>"')
     context_window: int | None = Field(default=None, description="None when unknown")

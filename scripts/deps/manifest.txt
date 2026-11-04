@@ -13,6 +13,13 @@ dev|uv|0.12.24|linux-x64|https://github.com/astral-sh/uv/releases/download/0.12.
 dev|uv|0.12.24|linux-arm64|https://github.com/astral-sh/uv/releases/download/0.12.24/uv-aarch64-unknown-linux-musl.tar.gz|7f9ab4726d743b6a92e310477a7840c8a8a7b3938cb3c4657d541342fca75011|tar.gz|uv-aarch64-unknown-linux-musl
 dev|uv|0.12.24|macos-arm64|https://github.com/astral-sh/uv/releases/download/0.12.24/uv-aarch64-apple-darwin.tar.gz|0c4346de7abdb49495b393b9ec809fe387aa43e586be20fecb972216c1e71732|tar.gz|uv-aarch64-apple-darwin
 dev|uv|0.12.24|macos-x64|https://github.com/astral-sh/uv/releases/download/0.12.24/uv-x86_64-apple-darwin.tar.gz|4fa82e37cb94767661f532b001e470b67a186c7260e305bd84ddb78fd545c0b6|tar.gz|uv-x86_64-apple-darwin
+# Node.js LTS builds the dashboard's web UI (dashboard-ui/, Phase 7); the wheel ships the built
+# assets, so users never need it (NFR-4.3). Hashes from nodejs.org's SHASUMS256.txt.
+dev|node|24.22.2|windows-x64|https://nodejs.org/dist/v24.22.2/node-v24.22.2-win-x64.zip|ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2|zip|node-v24.22.2-win-x64
+dev|node|24.22.2|linux-x64|https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz|48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75|tar.xz|node-v24.22.2-linux-x64/bin
+dev|node|24.22.2|linux-arm64|https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.xz|eb187837a2230d4047161ac0be008584e16b46f726e9c9490ee35dc6b17d9ba8|tar.xz|node-v24.22.2-linux-arm64/bin
+dev|node|24.22.2|macos-arm64|https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-arm64.tar.gz|aa9549349e47dffaa42dcf95d6e06ade8c4bdafc980979883b88767670df385a|tar.gz|node-v24.22.2-darwin-arm64/bin
+dev|node|24.22.2|macos-x64|https://nodejs.org/dist/v24.22.2/node-v24.22.2-darwin-x64.tar.gz|d5e336d588c45be0c37dbd52cc29895593009ca4997a77a1fd02815131ed0e52|tar.gz|node-v24.22.2-darwin-x64/bin
 
 # cpp: the native C++ toolchain installed by scripts/install-toolchain (SPEC §7.15, §11.1).
 # LLVM is pinned to 18.x, the major version of the libclang wheel the indexer uses (D-33):

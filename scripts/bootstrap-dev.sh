@@ -9,6 +9,7 @@ CCM_SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd)
 CCM_REPO=$(cd "$CCM_SCRIPTS_DIR/.." && pwd)
 
 UV_MIN_VERSION=0.12.0
+NODE_MIN_VERSION=24.15.0 # dashboard-ui's test tools (jsdom) need it
 GIT_MIN_VERSION=2.30.0
 PYTHON_VERSION=3.12
 
@@ -17,8 +18,9 @@ usage() {
 Usage: bootstrap-dev [--prefix DIR] [--force] [--dry-run] [--help]
 
 Sets up a CodeCoreMorph development environment: uv (from PATH, or a pinned,
-checksum-verified download), Python 3.12, the project's dependencies and the
-pre-commit hooks. Then it checks git and Docker. No admin rights needed.
+checksum-verified download), Python 3.12, the project's dependencies, the
+pre-commit hooks and Node.js for the dashboard's web UI (from PATH, or a pinned
+download). Then it checks git and Docker. No admin rights needed.
 
 Options:
   --prefix DIR  where downloaded tools go (default: CODECOREMORPH_HOME)
@@ -91,7 +93,26 @@ else
 fi
 run_step "uv run codecoremorph --version" "$uv" run codecoremorph --version
 
-# 7. Docker is optional: without it, CodeCoreMorph runs toolchains natively.
+# 7. Node.js builds the dashboard's web UI (dashboard-ui/): the one on PATH if it's recent
+#    enough, else the pinned download.
+node=""
+if ccm_have node; then
+    node_version=$(node --version 2>/dev/null) || node_version=v0
+    node_version=${node_version#v}
+    if ccm_version_ge "$node_version" "$NODE_MIN_VERSION"; then
+        node=node
+        ccm_log "using Node.js $node_version from PATH"
+    else
+        ccm_log "Node.js $node_version on PATH is older than $NODE_MIN_VERSION; using the" \
+            "pinned version"
+    fi
+fi
+if [ -z "$node" ]; then
+    ccm_install_tool dev node
+    node="$CCM_TOOL_BIN_DIR/node"
+fi
+
+# 8. Docker is optional: without it, CodeCoreMorph runs toolchains natively.
 if ! ccm_have docker; then
     ccm_warn "Docker was not found; CodeCoreMorph will use native mode. Install Docker to run" \
         "toolchains in the sandbox."
@@ -105,4 +126,8 @@ if [ "$uv" = uv ]; then
     ccm_log "done. Try: uv run codecoremorph --help"
 else
     ccm_log "done. uv was installed at $uv and not added to PATH. Add its directory to PATH"         "so the pre-commit hooks can run it. Then try: uv run codecoremorph --help"
+fi
+if [ "$node" != node ] && [ "$CCM_DRY_RUN" != 1 ]; then
+    ccm_log "Node.js was installed at $node and not added to PATH. Add its directory to PATH" \
+        "to build the dashboard: cd dashboard-ui; npm ci; npm run build"
 fi

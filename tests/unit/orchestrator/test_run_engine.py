@@ -69,6 +69,32 @@ def test_a_run_commits_its_units_verifies_and_reports(engine_world: EngineWorld)
     assert engine_world.git(engine_world.repo, "branch", "--list", result.branch)
 
 
+def test_a_gate_answered_elsewhere_while_the_terminal_asks(engine_world: EngineWorld) -> None:
+    """FR-11.4: the dashboard (or another terminal) answers while the prompt waits."""
+    from collections.abc import Callable
+    from typing import Literal
+
+    from codecoremorph.orchestrator.run import ANSWERED_ELSEWHERE
+
+    config = engine_world.manifest(plan="required")
+    seen: list[bool] = []
+
+    def ask(request: dict[str, Any], answered: Callable[[], bool]) -> Literal["answered elsewhere"]:
+        seen.append(answered())
+        dashboard = engine_world.approval(request["run_id"], ApprovalDecision.APPROVE)
+        with engine_world.store() as store:
+            store.add_approval(dashboard.model_copy(update={"source": "dashboard"}))
+        seen.append(answered())
+        return ANSWERED_ELSEWHERE
+
+    result, _, _ = engine_world.run(config, [fix_macro()], options=RunOptions(ask=ask, poll_s=0.01))
+    assert seen == [False, True]
+    assert result.status is RunStatus.COMPLETED
+    with engine_world.store() as store:
+        decided = [e for e in store.list_events(result.run_id) if e.type.value == "gate.decided"]
+    assert decided[0].data["source"] == "dashboard"
+
+
 def test_a_rejected_plan_ends_the_run(engine_world: EngineWorld) -> None:
     config = engine_world.manifest(plan="required")
 

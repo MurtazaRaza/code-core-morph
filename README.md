@@ -8,10 +8,10 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 6 of the plan). CodeCoreMorph can plan a C++ migration
+> **Status:** early development (Phase 7 of the plan). CodeCoreMorph can plan a C++ migration
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
 > an API model as the agent, or migrate one work unit at a time. Code that no test covers gets
-> characterization tests first.
+> characterization tests first. A local web dashboard follows runs live and answers their gates.
 
 ## Developer setup
 
@@ -24,7 +24,8 @@ scripts\bootstrap-dev.bat        # Windows (cmd.exe or PowerShell)
 
 The bootstrap script uses `uv` from your PATH if it's recent enough, or downloads a pinned,
 checksum-verified copy into `CODECOREMORPH_HOME`. It then installs Python 3.12 with uv,
-syncs the dependencies and installs the pre-commit hooks.
+syncs the dependencies and installs the pre-commit hooks. It does the same for Node.js, which
+builds the dashboard's web UI (`dashboard-ui/`); the bootstrap prints where it put it.
 
 ```sh
 uv run codecoremorph --version
@@ -60,7 +61,25 @@ uv run codecoremorph report            # the report of the latest run
 ```
 
 The agent of a plain `run` is a model API (Anthropic or a local Ollama model, set in the
-manifest's `llm` section). With `--host-agent`, Claude Code is the agent instead (next section).
+manifest's `llm` section). With `--host-agent`, Claude Code is the agent instead (see
+[Migrating with Claude Code](#migrating-with-claude-code)).
+
+### The dashboard
+
+```sh
+uv run codecoremorph dashboard -c path/to/migration_config.yaml
+```
+
+This opens a local page in your browser: it listens on 127.0.0.1 only, and its link holds a
+token that is new at every launch. There you can follow runs live, review the plan and approve
+it (leaving units out if you like) or reject it, read each unit's diff side by side with its
+compiler messages, tests, safety checks and the agent's transcript, keep or roll back a unit
+waiting at its gate, and read or download the report. A gate that `codecoremorph run` is asking
+about in a terminal can be answered from the dashboard as well; whichever answer comes first
+wins.
+
+Installed packages include the web UI. In a source checkout, build it once:
+`cd dashboard-ui; npm ci; npm run build` (with the Node.js `bootstrap-dev` installed).
 
 ## Migrating with Claude Code
 

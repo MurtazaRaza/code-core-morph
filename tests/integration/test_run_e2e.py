@@ -196,8 +196,9 @@ def test_ownership_bump_and_one_unit_with_the_agent(
         provider = ReplayProvider(Cassette.load(path), "anthropic")
     asked: list[dict[str, Any]] = []
 
-    def approve_two(request: dict[str, Any]) -> ApprovalRecord:
+    def approve_two(request: dict[str, Any], answered: Callable[[], bool]) -> ApprovalRecord:
         asked.append(request)
+        assert not answered()  # nothing else answered the gate
         return ApprovalRecord(
             run_id=str(request["run_id"]),
             gate=ApprovalGate.PLAN,

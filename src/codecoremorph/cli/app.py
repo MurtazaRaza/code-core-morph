@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 
 from codecoremorph import __version__
+from codecoremorph.cli.dashboard import dashboard_command
 from codecoremorph.cli.debug import debug_app
 from codecoremorph.cli.doctor import doctor_command
 from codecoremorph.cli.output import print_error, stderr
@@ -80,6 +81,7 @@ app.command("resume")(resume_command)
 app.command("abort")(abort_command)
 app.command("report")(report_command)
 app.command("clean")(clean_command)
+app.command("dashboard")(dashboard_command)
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(rules_app, name="rules")
 app.add_typer(providers_app, name="providers")

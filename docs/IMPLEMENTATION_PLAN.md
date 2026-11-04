@@ -367,30 +367,32 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 ### Tasks
 **Backend (`codecoremorph.dashboard`)**
-- [ ] FastAPI app with the endpoints in SPEC §7.13; read-only access to run data; approvals and aborts written through the store
-- [ ] SSE event stream tailing the `events` table (≤ 2 s latency, NFR-1.5)
-- [ ] Security: bind to 127.0.0.1, per-launch token (query param exchanged for a cookie), Host allowlist, no CORS, `--host` warning (FR-12.7)
-- [ ] `codecoremorph dashboard [--port]` opens the browser
+- [x] FastAPI app with the endpoints in SPEC §7.13; read-only access to run data; approvals and aborts written through the store
+- [x] SSE event stream tailing the `events` table (≤ 2 s latency, NFR-1.5)
+- [x] Security: bind to 127.0.0.1, per-launch token (query param exchanged for a cookie), Host allowlist, no CORS, `--host` warning (FR-12.7)
+- [x] `codecoremorph dashboard [--port]` opens the browser
+- [x] The planner keeps the file graph (`graph.json`) and the engine records its steps as events (D-48)
+- [x] An interactive gate prompt gives way to a decision made in the dashboard (FR-11.4, D-48)
 
 **Frontend (`dashboard-ui/`)**
-- [ ] Vite + React + TypeScript scaffold, routing, TanStack Query, SSE hook, light and dark themes
-- [ ] Runs list; run overview (status, step, progress, budget meters, current activity) (FR-12.1)
-- [ ] Plan review: units table with rules, flags and estimates; approve, reject, exclude (FR-12.2)
-- [ ] Dependency graph: Cytoscape.js, colored by unit status, search and filter (FR-12.3)
-- [ ] Unit detail: attempt timeline, Monaco side-by-side diff, diagnostics, test results, invariant results, transcript viewer; unit gate actions (FR-12.4)
-- [ ] Report view and download (FR-12.5)
+- [x] Vite + React + TypeScript scaffold, routing, TanStack Query, SSE hook, light and dark themes
+- [x] Runs list; run overview (status, step, progress, budget meters, current activity) (FR-12.1)
+- [x] Plan review: units table with rules, flags and estimates; approve, reject, exclude (FR-12.2)
+- [x] Dependency graph: Cytoscape.js, colored by unit status, search and filter (FR-12.3)
+- [x] Unit detail: attempt timeline, Monaco side-by-side diff, diagnostics, test results, invariant results, transcript viewer; unit gate actions (FR-12.4)
+- [x] Report view and download (FR-12.5)
 
 **Packaging**
-- [ ] CI builds the SPA; a hatch build hook copies the assets into `src/codecoremorph/dashboard/static/`; the dev-mode Vite proxy works
-- [ ] `bootstrap-dev` installs a pinned portable Node LTS (`dev` group in the manifest)
+- [x] A hatch build hook puts the built UI into the wheel (`codecoremorph/dashboard/static`); the dev-mode Vite proxy works (`codecoremorph dashboard --dev`). Building the UI in CI waits for CI (D-28)
+- [x] `bootstrap-dev` installs a pinned portable Node LTS (`dev` group in the manifest)
 
 ### Tests
-- API tests (pytest + httpx): auth, Host check, endpoints, SSE
-- Frontend: Vitest component tests; one Playwright smoke test (start run → approve plan in the UI → see a unit commit)
+- API tests (pytest + FastAPI's test client): auth, Host check, endpoints, SSE, and a live run answered over HTTP with its events within 2 s (`tests/unit/dashboard/`)
+- Frontend: Vitest tests (diff parsing, routing, events, pages); one Playwright smoke test (start a run → approve the plan and the unit in the UI → see the run finish, `-m browser`)
 
 ### Exit criteria
-- On a live fixture run, the plan gate and a unit gate can be approved from the dashboard, and progress updates live
-- An installed wheel serves the dashboard without Node present
+- [x] On a live fixture run, the plan gate and a unit gate can be approved from the dashboard, and progress updates live (`tests/unit/dashboard/test_browser.py`, in Chrome on Windows)
+- [x] An installed wheel serves the dashboard without Node present (checked on Windows: a fresh venv with the wheel, no Node on PATH, served the UI and the API)
 
 ---
 
@@ -594,6 +596,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
   - shellcheck (POSIX mode) on every `.sh`, the manifest format check, and a check that `.sh` scripts are executable in git
   - `bootstrap-dev` on clean Windows, Linux and macOS runners
   - the `docker`-marked tests, and the Linux parts of every phase's exit criteria
+  - `dashboard-ui`: `npm ci`, type check, Vitest and build before the wheel (`CODECOREMORPH_REQUIRE_DASHBOARD_UI=1`), then the `browser` test with Playwright's Chromium
   - build the toolchain images and publish them to the registry (GHCR assumed, §16 Q8), writing each digest to `images/<lang>/image.lock`
   - `install-toolchain cpp` on Windows, Linux and macOS when scripts or the manifest change, and nightly, then build and test one fixture natively
 - Parallel unit execution across independent DAG branches (separate worktrees)

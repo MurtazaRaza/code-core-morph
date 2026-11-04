@@ -22,7 +22,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from codecoremorph.core.globs import PathMatcher
-from codecoremorph.core.models import Boundary, FileEntry, FileRole, RuleSite, Symbol, SymbolKind
+from codecoremorph.core.models import (
+    Boundary,
+    DependencyGraph,
+    FileEntry,
+    FileRole,
+    GraphFile,
+    RuleSite,
+    Symbol,
+    SymbolKind,
+)
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.graph import ClusterGraph, condense
 from codecoremorph.store.index import IndexStore
@@ -130,6 +139,13 @@ class ProjectModel:
     @property
     def edge_count(self) -> int:
         return sum(len(targets) for targets in self.edges.values())
+
+    def dependency_graph(self) -> DependencyGraph:
+        """The file graph with each file's cluster, for ``graph.json`` (FR-12.3)."""
+        return DependencyGraph(
+            files=[GraphFile(path=p, cluster=self.graph.cluster_of(p)) for p in sorted(self.files)],
+            edges=sorted((source, target) for source, ts in self.edges.items() for target in ts),
+        )
 
     def chars(self, path: str) -> int:
         """The file's length in characters, for token estimates."""

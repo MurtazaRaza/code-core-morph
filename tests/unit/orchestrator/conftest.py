@@ -163,7 +163,7 @@ class EngineWorld:
     def options(
         self, *, decide: Callable[[dict[str, Any]], ApprovalRecord | None] | None = None, **kw: Any
     ) -> RunOptions:
-        def ask(request: dict[str, Any]) -> ApprovalRecord | None:
+        def ask(request: dict[str, Any], _answered: Callable[[], bool]) -> ApprovalRecord | None:
             self.asked.append(request)
             return decide(request) if decide else None
 
@@ -243,6 +243,11 @@ class EngineWorld:
 
 @pytest.fixture
 def engine_world(tmp_path: Path, git: GitRunner) -> EngineWorld:
+    return make_engine_world(tmp_path, git)
+
+
+def make_engine_world(tmp_path: Path, git: GitRunner) -> EngineWorld:
+    """The legacy ``geo`` repository with one commit, for the engine and the dashboard."""
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     (repo / "include").mkdir()

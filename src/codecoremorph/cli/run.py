@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -25,6 +26,7 @@ from rich.table import Table
 from rich.text import Text
 
 from codecoremorph.cli.output import handle_errors, status_label, stderr, stdout
+from codecoremorph.cli.prompt import ask_line
 from codecoremorph.config import DEFAULT_CONFIG_NAME
 from codecoremorph.config.models import SandboxMode
 from codecoremorph.core.errors import UsageError
@@ -46,7 +48,12 @@ from codecoremorph.orchestrator.lifecycle import (
     resume_run,
     start_run,
 )
-from codecoremorph.orchestrator.run import AGENT_GATE, RunOptions, RunResult
+from codecoremorph.orchestrator.run import (
+    AGENT_GATE,
+    ANSWERED_ELSEWHERE,
+    RunOptions,
+    RunResult,
+)
 from codecoremorph.report.build import load_unit_result
 from codecoremorph.report.render import render_markdown
 
@@ -86,9 +93,10 @@ def _interactive() -> bool:
 
 
 def _ask(place: RunPlace) -> Any:
-    """The interactive gate prompt; None means "later": the run parks at the gate."""
+    """The interactive gate prompt; None means "later": the run parks at the gate. It gives
+    way to a decision from the dashboard or another terminal (FR-11.4)."""
 
-    def ask(request: dict[str, Any]) -> ApprovalRecord | None:
+    def ask(request: dict[str, Any], answered: Callable[[], bool]) -> ApprovalRecord | str | None:
         run_id = str(request["run_id"])
         gate = ApprovalGate(str(request["gate"]))
         console = stdout()
@@ -109,8 +117,17 @@ def _ask(place: RunPlace) -> Any:
                     Text(f"  commit {str(commit)[:12]} (see `git show {str(commit)[:12]}`)")
                 )
             question = "Keep the unit? [y]es, [n]o (roll it back), [l]ater"
+        console.print(
+            Text(
+                "(`codecoremorph dashboard` or `codecoremorph approve` can answer too)", style="dim"
+            )
+        )
         while True:
-            answer = typer.prompt(question, default="l").strip().lower()
+            typed = ask_line(question, default="l", answered=answered)
+            if typed is None:
+                stderr().print(Text("Answered elsewhere; the run goes on.", style="dim"))
+                return ANSWERED_ELSEWHERE
+            answer = typed.lower()
             exclude: list[str] = []
             if answer.startswith("e") and gate is ApprovalGate.PLAN:
                 exclude = (

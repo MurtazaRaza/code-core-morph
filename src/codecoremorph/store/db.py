@@ -95,6 +95,39 @@ class Store:
             raise
         return store
 
+    @classmethod
+    def open_readonly(cls, path: Path, *, busy_timeout_s: float = _BUSY_TIMEOUT_S) -> Store:
+        """Open an existing database for reading only: the dashboard's reads, which run while
+        the engine writes. It never migrates; a database at another schema version than this
+        CodeCoreMorph's is refused (``open`` migrates an older one)."""
+        if not path.is_file():
+            raise StoreError(
+                f"there is no state database at {path}",
+                hint="Runs create it: start one with `codecoremorph run`.",
+            )
+        try:
+            uri = path.resolve().as_uri() + "?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, timeout=busy_timeout_s, isolation_level=None)
+        except (OSError, sqlite3.Error) as exc:
+            raise StoreError(f"can't open the state database {path}", reason=str(exc)) from exc
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            store = cls(conn, path)
+            version = store.schema_version
+        except sqlite3.DatabaseError as exc:
+            conn.close()
+            raise StoreError(
+                f"{path} is not a usable CodeCoreMorph database", reason=str(exc)
+            ) from exc
+        if version != LATEST_VERSION:
+            conn.close()
+            raise StoreError(
+                f"{path} has schema version {version}; this CodeCoreMorph reads {LATEST_VERSION}",
+                hint="Open it once with a command that writes (such as `codecoremorph status`) "
+                "to migrate it, or upgrade CodeCoreMorph if it is newer.",
+            )
+        return store
+
     def close(self) -> None:
         self._conn.close()
 
@@ -438,15 +471,34 @@ class Store:
         if limit is not None:
             sql += " LIMIT ?"
             params = (*params, limit)
-        return [
-            Event(
-                id=row[0],
-                run_id=row[1],
-                ts=datetime.fromisoformat(row[2]),
-                type=EventType(row[3]),
-                unit_id=row[4],
-                attempt=row[5],
-                data=cast(dict[str, JsonValue], json.loads(row[6])),
-            )
-            for row in self._conn.execute(sql, params)
-        ]
+        return [_event(row) for row in self._conn.execute(sql, params)]
+
+    def recent_events(
+        self, run_id: str, *, limit: int, types: Sequence[EventType] = ()
+    ) -> list[Event]:
+        """A run's last ``limit`` events (of ``types``, when given), in write order."""
+        sql = "SELECT id, run_id, ts, type, unit_id, attempt, data FROM events WHERE run_id = ?"
+        params: list[object] = [validate_run_id(run_id)]
+        if types:
+            sql += f" AND type IN ({', '.join('?' for _ in types)})"
+            params += [t.value for t in types]
+        rows = self._conn.execute(sql + " ORDER BY id DESC LIMIT ?", (*params, limit)).fetchall()
+        return [_event(row) for row in reversed(rows)]
+
+    def last_event_id(self, run_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT MAX(id) FROM events WHERE run_id = ?", (validate_run_id(run_id),)
+        ).fetchone()
+        return int(row[0] or 0)
+
+
+def _event(row: Sequence[object]) -> Event:
+    return Event(
+        id=cast(int, row[0]),
+        run_id=cast(str, row[1]),
+        ts=datetime.fromisoformat(cast(str, row[2])),
+        type=EventType(row[3]),
+        unit_id=cast(str | None, row[4]),
+        attempt=cast(int | None, row[5]),
+        data=cast(dict[str, JsonValue], json.loads(cast(str, row[6]))),
+    )

@@ -4,7 +4,7 @@
 .codecoremorph/
   codecoremorph.db  lock
   runs/<run-id>/
-    plan.json  report.md  report.json  checkpoints.sqlite
+    plan.json  graph.json  report.md  report.json  checkpoints.sqlite
     attempts/<unit-id>/<n>/
       diff.patch  build.log  test.log  transcript.jsonl  feedback.md
 ```
@@ -60,6 +60,11 @@ class RunArtifacts:
     @property
     def plan_json(self) -> Path:
         return self.root / "plan.json"
+
+    @property
+    def graph_json(self) -> Path:
+        """The file graph the plan was ordered by, for the dashboard (FR-12.3)."""
+        return self.root / "graph.json"
 
     @property
     def report_md(self) -> Path:

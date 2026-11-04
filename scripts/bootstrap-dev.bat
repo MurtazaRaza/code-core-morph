@@ -6,6 +6,8 @@ setlocal
 set "CCM_LIB=%~dp0lib\common.bat"
 for %%I in ("%~dp0..") do set "CCM_REPO=%%~fI"
 set "UV_MIN_VERSION=0.12.0"
+rem dashboard-ui's test tools (jsdom) need it.
+set "NODE_MIN_VERSION=24.15.0"
 set "GIT_MIN_VERSION=2.30.0"
 set "PYTHON_VERSION=3.12"
 
@@ -63,7 +65,28 @@ call :run_step "uv run codecoremorph --version" run codecoremorph --version
 if errorlevel 1 goto step_failed
 popd
 
-rem 7. Docker is optional: without it, CodeCoreMorph runs toolchains natively.
+rem 7. Node.js builds the dashboard's web UI (dashboard-ui\): the one on PATH if it's recent
+rem    enough, else the pinned download.
+set "NODE="
+where node >nul 2>&1
+if errorlevel 1 goto node_download
+set "NODE_VERSION=v0"
+for /f "delims=" %%v in ('node --version') do set "NODE_VERSION=%%v"
+set "NODE_VERSION=%NODE_VERSION:v=%"
+call "%CCM_LIB%" :version_ge "%NODE_VERSION%" "%NODE_MIN_VERSION%"
+if errorlevel 1 goto node_too_old
+set "NODE=node"
+call "%CCM_LIB%" :log "using Node.js %NODE_VERSION% from PATH"
+goto node_ready
+:node_too_old
+call "%CCM_LIB%" :log "Node.js %NODE_VERSION% on PATH is older than %NODE_MIN_VERSION%; using the pinned version"
+:node_download
+call "%CCM_LIB%" :install_tool dev node
+if errorlevel 1 exit /b %errorlevel%
+set "NODE=%CCM_TOOL_BIN_DIR%\node.exe"
+:node_ready
+
+rem 8. Docker is optional: without it, CodeCoreMorph runs toolchains natively.
 where docker >nul 2>&1
 if errorlevel 1 goto docker_missing
 docker info >nul 2>&1
@@ -79,6 +102,9 @@ call "%CCM_LIB%" :warn "Docker is installed but its daemon isn't reachable; star
 :done
 if "%UV%"=="uv" call "%CCM_LIB%" :log "done. Try: uv run codecoremorph --help"
 if not "%UV%"=="uv" call "%CCM_LIB%" :log "done. uv was installed at %UV% and not added to PATH. Add its directory to PATH so the pre-commit hooks can run it. Then try: uv run codecoremorph --help"
+if "%NODE%"=="node" exit /b 0
+if "%CCM_DRY_RUN%"=="1" exit /b 0
+call "%CCM_LIB%" :log "Node.js was installed at %NODE% and not added to PATH. Add its directory to PATH to build the dashboard: cd dashboard-ui; npm ci; npm run build"
 exit /b 0
 
 
@@ -111,8 +137,9 @@ exit /b 2
 echo Usage: bootstrap-dev [--prefix DIR] [--force] [--dry-run] [--help]
 echo.
 echo Sets up a CodeCoreMorph development environment: uv (from PATH, or a pinned,
-echo checksum-verified download), Python 3.12, the project's dependencies and the
-echo pre-commit hooks. Then it checks git and Docker. No admin rights needed.
+echo checksum-verified download), Python 3.12, the project's dependencies, the
+echo pre-commit hooks and Node.js for the dashboard's web UI (from PATH, or a pinned
+echo download). Then it checks git and Docker. No admin rights needed.
 echo.
 echo Options:
 echo   --prefix DIR  where downloaded tools go (default: CODECOREMORPH_HOME)
