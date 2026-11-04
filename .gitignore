@@ -19,6 +19,9 @@ dashboard-ui/dist/
 # Chrome's crash-reporter log, written to the working directory by the `browser` test
 /debug.log
 
+# The docs site built by `mkdocs build`
+/site/
+
 # CodeCoreMorph state directory (when CodeCoreMorph runs against this repo)
 .codecoremorph/
 
