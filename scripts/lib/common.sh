@@ -45,10 +45,11 @@ ccm_require_cmd() {
     ccm_have "$_ccm_name" || ccm_die "$CCM_EXIT_PREREQ" "required tool '$_ccm_name' was not found. $*"
 }
 
-# ccm_parse_args ARGS...: parse the common flags.
-# Sets CCM_PREFIX, CCM_FORCE, CCM_DRY_RUN, CCM_HELP and CCM_POSITIONAL (space-separated).
+# ccm_parse_args ARGS...: parse the common flags. Sets CCM_PREFIX, CCM_OFFLINE, CCM_FORCE,
+# CCM_DRY_RUN, CCM_HELP and CCM_POSITIONAL (space-separated).
 ccm_parse_args() {
     CCM_PREFIX=""
+    CCM_OFFLINE=""
     CCM_FORCE=0
     CCM_DRY_RUN=0
     CCM_HELP=0
@@ -63,6 +64,16 @@ ccm_parse_args() {
             --prefix=*)
                 CCM_PREFIX=${1#--prefix=}
                 [ -n "$CCM_PREFIX" ] || ccm_die "$CCM_EXIT_USAGE" "--prefix needs a directory"
+                shift
+                ;;
+            --offline)
+                [ $# -ge 2 ] && [ -n "$2" ] || ccm_die "$CCM_EXIT_USAGE" "--offline needs a directory"
+                CCM_OFFLINE=$2
+                shift 2
+                ;;
+            --offline=*)
+                CCM_OFFLINE=${1#--offline=}
+                [ -n "$CCM_OFFLINE" ] || ccm_die "$CCM_EXIT_USAGE" "--offline needs a directory"
                 shift
                 ;;
             --force)
@@ -86,6 +97,11 @@ ccm_parse_args() {
                 ;;
         esac
     done
+}
+
+# ccm_no_offline REASON...: exit 2 if --offline was given to a script that needs the network.
+ccm_no_offline() {
+    [ -z "${CCM_OFFLINE:-}" ] || ccm_die "$CCM_EXIT_USAGE" "--offline doesn't apply here: $*"
 }
 
 # ccm_to_posix PATH: print PATH, converting a Windows path (C:\x or C:/x) under Git Bash.
@@ -150,10 +166,20 @@ ccm_resolve_home() {
     CCM_HOME=${_ccm_home%/}
 }
 
-# Sets CCM_PLATFORM, CCM_HOME and CCM_MANIFEST. Call after ccm_parse_args.
+# Sets CCM_PLATFORM, CCM_HOME and CCM_MANIFEST, and makes CCM_OFFLINE absolute. Call after
+# ccm_parse_args.
 ccm_setup() {
     ccm_detect_platform
     ccm_resolve_home
+    if [ -n "${CCM_OFFLINE:-}" ]; then
+        _ccm_off=$(ccm_to_posix "$CCM_OFFLINE")
+        case $_ccm_off in
+            /*) ;;
+            *) _ccm_off="$(pwd)/$_ccm_off" ;;
+        esac
+        [ -d "$_ccm_off" ] || ccm_die "$CCM_EXIT_USAGE" "--offline: $CCM_OFFLINE is not a directory"
+        CCM_OFFLINE=${_ccm_off%/}
+    fi
     if [ -n "${CODECOREMORPH_MANIFEST:-}" ]; then
         CCM_MANIFEST=$(ccm_to_posix "$CODECOREMORPH_MANIFEST")
     else
@@ -182,9 +208,9 @@ ccm_manifest_row() {
         "the manifest has no pinned download of $2 for $CCM_PLATFORM; install $2 yourself"
 }
 
-# Exit 3 unless a downloader, a SHA-256 tool and tar are available.
+# Exit 3 unless a downloader (not needed with --offline), a SHA-256 tool and tar are available.
 ccm_require_download_tools() {
-    if ! ccm_have curl && ! ccm_have wget; then
+    if [ -z "${CCM_OFFLINE:-}" ] && ! ccm_have curl && ! ccm_have wget; then
         ccm_die "$CCM_EXIT_PREREQ" "neither curl nor wget was found. Install curl with your" \
             "package manager (for example: sudo apt install curl)."
     fi
@@ -227,6 +253,19 @@ ccm_download() {
         _ccm_try=$((_ccm_try + 1))
         sleep 2
     done
+}
+
+# ccm_offline_file EXT: print the current manifest row's archive in CCM_OFFLINE, under its
+# cache name (SHA256.EXT, as in a CODECOREMORPH_HOME's downloads directory) or its download
+# name (the URL's last part). Fails when neither is there.
+ccm_offline_file() {
+    for _ccm_cand in "$CCM_OFFLINE/$CCM_ROW_SHA256.$1" "$CCM_OFFLINE/${CCM_ROW_URL##*/}"; do
+        if [ -f "$_ccm_cand" ]; then
+            printf '%s\n' "$_ccm_cand"
+            return 0
+        fi
+    done
+    return 1
 }
 
 # ccm_extract ARCHIVE TYPE DEST_DIR URL [PATTERN...]: extract everything, or only the
@@ -319,8 +358,17 @@ ccm_install_tool() {
     _ccm_ext=$CCM_ROW_ARCHIVE
     [ "$_ccm_ext" != file ] || _ccm_ext=bin
     _ccm_archive="$CCM_HOME/downloads/$CCM_ROW_SHA256.$_ccm_ext"
+    _ccm_missing="$2 $CCM_ROW_VERSION is not in ${CCM_OFFLINE:-}: put ${CCM_ROW_URL##*/} there"
+    _ccm_missing="$_ccm_missing (from $CCM_ROW_URL), or $CCM_ROW_SHA256.$_ccm_ext from the"
+    _ccm_missing="$_ccm_missing downloads directory of a CODECOREMORPH_HOME on $CCM_PLATFORM"
     if [ "$CCM_DRY_RUN" = 1 ]; then
-        ccm_log "would download $CCM_ROW_URL"
+        if [ -z "${CCM_OFFLINE:-}" ]; then
+            ccm_log "would download $CCM_ROW_URL"
+        elif _ccm_src=$(ccm_offline_file "$_ccm_ext"); then
+            ccm_log "would use $_ccm_src"
+        else
+            ccm_warn "$_ccm_missing"
+        fi
         ccm_log "would install $2 $CCM_ROW_VERSION into $CCM_TOOL_DIR"
         return 0
     fi
@@ -334,14 +382,24 @@ ccm_install_tool() {
     else
         rm -f "$_ccm_archive"
         _ccm_part="$_ccm_archive.part"
-        ccm_log "downloading $2 $CCM_ROW_VERSION from $CCM_ROW_URL"
-        ccm_download "$CCM_ROW_URL" "$_ccm_part" ||
-            ccm_die "$CCM_EXIT_DOWNLOAD" "download failed: $CCM_ROW_URL"
+        if [ -n "${CCM_OFFLINE:-}" ]; then
+            _ccm_src=$(ccm_offline_file "$_ccm_ext") || ccm_die "$CCM_EXIT_DOWNLOAD" "$_ccm_missing"
+            ccm_log "copying $2 $CCM_ROW_VERSION from $_ccm_src"
+            cp "$_ccm_src" "$_ccm_part" || ccm_die "$CCM_EXIT_DOWNLOAD" "could not copy $_ccm_src"
+            _ccm_what=$_ccm_src
+            _ccm_fate="It is not the pinned file; replace it."
+        else
+            ccm_log "downloading $2 $CCM_ROW_VERSION from $CCM_ROW_URL"
+            ccm_download "$CCM_ROW_URL" "$_ccm_part" ||
+                ccm_die "$CCM_EXIT_DOWNLOAD" "download failed: $CCM_ROW_URL"
+            _ccm_what=$CCM_ROW_URL
+            _ccm_fate="The file was deleted."
+        fi
         _ccm_actual=$(ccm_sha256 "$_ccm_part")
         if [ "$_ccm_actual" != "$CCM_ROW_SHA256" ]; then
             rm -f "$_ccm_part"
-            ccm_die "$CCM_EXIT_DOWNLOAD" "checksum mismatch for $CCM_ROW_URL: expected" \
-                "$CCM_ROW_SHA256, got $_ccm_actual. The file was deleted."
+            ccm_die "$CCM_EXIT_DOWNLOAD" "checksum mismatch for $_ccm_what: expected" \
+                "$CCM_ROW_SHA256, got $_ccm_actual. $_ccm_fate"
         fi
         mv -f "$_ccm_part" "$_ccm_archive"
     fi

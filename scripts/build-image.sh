@@ -30,6 +30,7 @@ if [ "$CCM_HELP" = 1 ]; then
     usage
     exit 0
 fi
+ccm_no_offline "the build downloads the pinned tools inside Docker"
 # shellcheck disable=SC2086 # split the positional arguments into words
 set -- $CCM_POSITIONAL
 [ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language, for example: build-image cpp"

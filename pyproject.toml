@@ -89,6 +89,7 @@ path = "hatch_build.py"
 "scripts/lib" = "codecoremorph/_scripts/lib"
 "scripts/deps/manifest.txt" = "codecoremorph/_scripts/deps/manifest.txt"
 "scripts/deps/manifest.py" = "codecoremorph/_scripts/deps/manifest.py"
+"scripts/deps/fetch-offline.py" = "codecoremorph/_scripts/deps/fetch-offline.py"
 "images/cpp/image.lock" = "codecoremorph/_images/cpp/image.lock"
 
 [tool.uv]

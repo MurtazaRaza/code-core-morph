@@ -9,6 +9,8 @@ set "CCM_LIB=%~dp0lib\common.bat"
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
 if "%CCM_HELP%"=="1" goto usage
+call "%CCM_LIB%" :no_offline "ollama pull downloads the models itself"
+if errorlevel 1 exit /b %errorlevel%
 if not defined CCM_POSITIONAL goto no_tags
 if "%CCM_DRY_RUN%"=="1" goto pull_all
 call "%CCM_LIB%" :require_cmd ollama "Install Ollama from https://ollama.com/download, then open a new terminal."

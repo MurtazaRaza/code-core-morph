@@ -10,6 +10,8 @@ if exist "%~dp0..\_images" for %%I in ("%~dp0..\_images") do set "CCM_IMAGES=%%~
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
 if "%CCM_HELP%"=="1" goto usage
+call "%CCM_LIB%" :no_offline "Docker pulls the images itself. Without internet access, use a native toolchain: install-toolchain --offline DIR"
+if errorlevel 1 exit /b %errorlevel%
 if "%CCM_DRY_RUN%"=="1" goto languages
 call "%CCM_LIB%" :require_cmd docker "Install Docker (Docker Desktop on Windows and macOS), then open a new terminal."
 if errorlevel 1 exit /b %errorlevel%

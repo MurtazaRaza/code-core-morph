@@ -309,6 +309,129 @@ def test_missing_manifest_is_a_usage_error(
     assert "dependency manifest not found" in result.stderr
 
 
+# --------------------------------------------------------------------------- --offline (FR-1.12)
+
+# A host that never resolves (RFC 2606): an install that tried the network would fail.
+UNREACHABLE = "https://downloads.invalid/fake/fake-1.0"
+
+
+@dataclass(frozen=True)
+class OfflineTool:
+    tool: FakeTool
+    name: str  # the archive's download name
+    offline: Path  # the directory given to --offline
+
+    def args(self, *extra: str) -> list[str]:
+        return ["--prefix", str(self.tool.prefix), "--offline", str(self.offline), *extra]
+
+
+@pytest.fixture
+def offline_tool(fake_tool: FakeTool, tmp_path: Path) -> OfflineTool:
+    kind = "zip" if fake_tool.archive.suffix == ".zip" else "tar.gz"
+    plat = current_platform()
+    fake_tool.manifest.write_text(
+        f"test|fake|1.0|{plat}|{UNREACHABLE}.{kind}|{fake_tool.sha256}|{kind}|fake-1.0/bin\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    offline = tmp_path / "offline"
+    offline.mkdir()
+    return OfflineTool(fake_tool, f"fake-1.0.{kind}", offline)
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+@pytest.mark.parametrize("layout", ["download name", "downloads directory"])
+def test_offline_installs_from_the_directory(
+    flavor: Flavor, offline_tool: OfflineTool, tmp_path: Path, layout: str
+) -> None:
+    tool = offline_tool.tool
+    name = offline_tool.name
+    if layout == "downloads directory":  # copied from another CODECOREMORPH_HOME
+        name = f"{tool.sha256}.{'zip' if name.endswith('.zip') else 'tar.gz'}"
+    shutil.copyfile(tool.archive, offline_tool.offline / name)
+    result = flavor.install(offline_tool.args("test", "fake"), tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "copying fake 1.0 from" in result.stdout
+    assert "downloading" not in result.stdout
+    assert (tool.install_dir / "fake-1.0" / "bin" / "fake.txt").is_file()
+    assert (tool.install_dir / ".installed").read_text().splitlines()[0] == tool.sha256
+    assert (offline_tool.offline / name).is_file()  # the user's copy stays
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_offline_without_the_archive_says_what_to_put_there(
+    flavor: Flavor, offline_tool: OfflineTool, tmp_path: Path
+) -> None:
+    result = flavor.install(offline_tool.args("test", "fake"), tmp_path)
+    assert result.returncode == 1
+    assert "fake 1.0 is not in" in result.stderr
+    assert f"put {offline_tool.name} there (from {UNREACHABLE}." in result.stderr
+    assert not offline_tool.tool.install_dir.exists()
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_offline_checksum_mismatch_keeps_the_users_file(
+    flavor: Flavor, offline_tool: OfflineTool, tmp_path: Path
+) -> None:
+    wrong = offline_tool.offline / offline_tool.name
+    wrong.write_bytes(b"not the pinned archive")
+    result = flavor.install(offline_tool.args("test", "fake"), tmp_path)
+    assert result.returncode == 1
+    assert "checksum mismatch for" in result.stderr
+    assert "It is not the pinned file; replace it." in result.stderr
+    assert wrong.read_bytes() == b"not the pinned archive"
+    assert list(offline_tool.tool.downloads.iterdir()) == []
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_offline_dry_run(flavor: Flavor, offline_tool: OfflineTool, tmp_path: Path) -> None:
+    missing = flavor.install([*offline_tool.args("test", "fake"), "--dry-run"], tmp_path)
+    assert missing.returncode == 0, missing.stderr
+    assert "fake 1.0 is not in" in missing.stderr  # a warning: the dry run checks the bundle
+    shutil.copyfile(offline_tool.tool.archive, offline_tool.offline / offline_tool.name)
+    found = flavor.install([*offline_tool.args("test", "fake"), "--dry-run"], tmp_path)
+    assert found.returncode == 0, found.stderr
+    assert "would use" in found.stdout
+    assert offline_tool.name in found.stdout
+    assert not offline_tool.tool.prefix.exists()
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_offline_needs_a_directory(flavor: Flavor, fake_tool: FakeTool, tmp_path: Path) -> None:
+    result = flavor.install(["--offline", str(tmp_path / "nowhere"), "test", "fake"], tmp_path)
+    assert result.returncode == 2
+    assert "is not a directory" in result.stderr
+    bare = flavor.install(["test", "fake", "--offline"], tmp_path)
+    assert bare.returncode == 2
+    assert "--offline needs a directory" in bare.stderr
+
+
+def _script(flavor: Flavor, name: str, args: list[str]) -> subprocess.CompletedProcess[str]:
+    if flavor.name == "sh":
+        assert SH is not None
+        argv = [SH, (SCRIPTS / f"{name}.sh").as_posix(), *args]
+    else:
+        argv = ["cmd", "/d", "/c", str(SCRIPTS / f"{name}.bat"), *args]
+    return subprocess.run(argv, capture_output=True, text=True, timeout=TIMEOUT_S, check=False)
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+@pytest.mark.parametrize(
+    ("script", "args", "why"),
+    [
+        ("pull-images", ["cpp"], "Docker pulls the images itself"),
+        ("pull-models", ["qwen3:4b"], "ollama pull downloads the models itself"),
+        ("build-image", ["cpp"], "the build downloads the pinned tools inside Docker"),
+    ],
+)
+def test_scripts_that_need_the_network_refuse_offline(
+    flavor: Flavor, tmp_path: Path, script: str, args: list[str], why: str
+) -> None:
+    result = _script(flavor, script, ["--offline", str(tmp_path), *args])
+    assert result.returncode == 2
+    assert f"--offline doesn't apply here: {why}" in result.stderr
+
+
 # --------------------------------------------------------------------------- bootstrap-dev
 
 

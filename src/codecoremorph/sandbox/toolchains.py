@@ -41,9 +41,15 @@ def current_platform() -> str:
 
 
 def install_command(
-    language: str, *, force: bool = False, dry_run: bool = False, prefix: Path | None = None
+    language: str,
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+    prefix: Path | None = None,
+    offline: Path | None = None,
 ) -> list[str]:
-    """The command line that runs ``install-toolchain`` for this platform."""
+    """The command line that runs ``install-toolchain`` for this platform. ``offline`` is a
+    directory of pre-downloaded archives to install from instead of the network (FR-1.12)."""
     if language not in (*LANGUAGES, "all"):
         raise SandboxError(f"no native toolchain for {language!r}; available: cpp")
     directory = scripts_dir()
@@ -54,9 +60,26 @@ def install_command(
         args.append("--dry-run")
     if prefix is not None:
         args += ["--prefix", str(prefix)]
+    if offline is not None:
+        args += ["--offline", str(offline)]
     if sys.platform == "win32":
         return ["cmd.exe", "/d", "/c", str(directory / "install-toolchain.bat"), *args]
     return ["sh", str(directory / "install-toolchain.sh"), *args]
+
+
+def download_command(language: str, directory: Path, *, platform: str | None = None) -> list[str]:
+    """The command line that downloads a toolchain's pinned archives into ``directory``, for an
+    offline install on a machine of ``platform`` (default: this one, FR-1.12). It runs
+    ``scripts/deps/fetch-offline.py`` with this Python."""
+    if language not in (*LANGUAGES, "all"):
+        raise SandboxError(f"no native toolchain for {language!r}; available: cpp")
+    script = scripts_dir() / "deps" / "fetch-offline.py"
+    argv = [sys.executable, str(script), str(directory)]
+    for group in LANGUAGES if language == "all" else (language,):
+        argv += ["--group", group]
+    if platform is not None:
+        argv += ["--platform", platform]
+    return argv
 
 
 def run_install(command: list[str]) -> int:

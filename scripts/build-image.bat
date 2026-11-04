@@ -9,6 +9,8 @@ for %%I in ("%~dp0..") do set "CCM_REPO=%%~fI"
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
 if "%CCM_HELP%"=="1" goto usage
+call "%CCM_LIB%" :no_offline "the build downloads the pinned tools inside Docker"
+if errorlevel 1 exit /b %errorlevel%
 set "LANGUAGE="
 set "LANGUAGE_COUNT=0"
 for %%a in (%CCM_POSITIONAL%) do call :count_language %%a

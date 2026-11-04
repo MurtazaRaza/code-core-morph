@@ -15,7 +15,7 @@ PYTHON_VERSION=3.12
 
 usage() {
     cat <<'EOF'
-Usage: bootstrap-dev [--prefix DIR] [--force] [--dry-run] [--help]
+Usage: bootstrap-dev [--prefix DIR] [--offline DIR] [--force] [--dry-run] [--help]
 
 Sets up a CodeCoreMorph development environment: uv (from PATH, or a pinned,
 checksum-verified download), Python 3.12, the project's dependencies, the
@@ -23,10 +23,12 @@ pre-commit hooks and Node.js for the dashboard's web UI (from PATH, or a pinned
 download). Then it checks git and Docker. No admin rights needed.
 
 Options:
-  --prefix DIR  where downloaded tools go (default: CODECOREMORPH_HOME)
-  --force       reinstall downloaded tools
-  --dry-run     print what would be downloaded and run; change nothing
-  --help        show this help
+  --prefix DIR   where downloaded tools go (default: CODECOREMORPH_HOME)
+  --offline DIR  take uv and Node.js from the archives in DIR, and let uv use
+                 only its cache (UV_OFFLINE=1); see install-toolchain --help
+  --force        reinstall downloaded tools
+  --dry-run      print what would be downloaded and run; change nothing
+  --help         show this help
 
 Exit codes: 0 success, 1 download or checksum failure, 2 usage error,
             3 missing system prerequisite
@@ -52,6 +54,12 @@ if [ "$CCM_HELP" = 1 ]; then
 fi
 [ -z "$CCM_POSITIONAL" ] || ccm_die "$CCM_EXIT_USAGE" "unexpected argument:$CCM_POSITIONAL"
 ccm_setup
+if [ -n "$CCM_OFFLINE" ]; then
+    # uv installs Python and the dependencies itself: offline, from its cache only.
+    UV_OFFLINE=1
+    export UV_OFFLINE
+    ccm_log "offline: uv uses only its cache (UV_OFFLINE=1)"
+fi
 
 # 1. git is a system prerequisite: detect it, never install it.
 ccm_require_cmd git "Install git >= $GIT_MIN_VERSION with your package manager (for example:" \
@@ -125,7 +133,8 @@ fi
 if [ "$uv" = uv ]; then
     ccm_log "done. Try: uv run codecoremorph --help"
 else
-    ccm_log "done. uv was installed at $uv and not added to PATH. Add its directory to PATH"         "so the pre-commit hooks can run it. Then try: uv run codecoremorph --help"
+    ccm_log "done. uv was installed at $uv and not added to PATH. Add its directory to PATH" \
+        "so the pre-commit hooks can run it. Then try: uv run codecoremorph --help"
 fi
 if [ "$node" != node ] && [ "$CCM_DRY_RUN" != 1 ]; then
     ccm_log "Node.js was installed at $node and not added to PATH. Add its directory to PATH" \

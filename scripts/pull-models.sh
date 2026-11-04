@@ -29,6 +29,7 @@ if [ "$CCM_HELP" = 1 ]; then
     usage
     exit 0
 fi
+ccm_no_offline "ollama pull downloads the models itself"
 [ -n "$CCM_POSITIONAL" ] ||
     ccm_die "$CCM_EXIT_USAGE" "name at least one model tag, for example: pull-models qwen3:4b"
 if [ "$CCM_DRY_RUN" != 1 ]; then

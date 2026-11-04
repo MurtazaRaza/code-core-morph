@@ -51,10 +51,11 @@ call :die 3 "%~2 was not found at %~1. These scripts need Windows 10 version 180
 exit /b 3
 
 
-rem :parse_args ARGS...  -- parse the common flags.
-rem Sets CCM_PREFIX, CCM_FORCE, CCM_DRY_RUN, CCM_HELP and CCM_POSITIONAL (space-separated).
+rem :parse_args ARGS...  -- parse the common flags. Sets CCM_PREFIX, CCM_OFFLINE, CCM_FORCE,
+rem CCM_DRY_RUN, CCM_HELP and CCM_POSITIONAL (space-separated).
 :parse_args
 set "CCM_PREFIX="
+set "CCM_OFFLINE="
 set "CCM_FORCE=0"
 set "CCM_DRY_RUN=0"
 set "CCM_HELP=0"
@@ -63,6 +64,7 @@ set "CCM_POSITIONAL="
 if "%~1"=="" exit /b 0
 set "_ccm_arg=%~1"
 if /i "%_ccm_arg%"=="--prefix" goto parse_args_prefix
+if /i "%_ccm_arg%"=="--offline" goto parse_args_offline
 if /i "%_ccm_arg%"=="--force" set "CCM_FORCE=1" & goto parse_args_shift
 if /i "%_ccm_arg%"=="--dry-run" set "CCM_DRY_RUN=1" & goto parse_args_shift
 if /i "%_ccm_arg%"=="--help" set "CCM_HELP=1" & goto parse_args_shift
@@ -82,8 +84,25 @@ goto parse_args_next
 :parse_args_prefix_missing
 call :die 2 "--prefix needs a directory"
 exit /b 2
+:parse_args_offline
+rem "--offline=DIR" arrives as "--offline" "DIR" too.
+if "%~2"=="" goto parse_args_offline_missing
+set "CCM_OFFLINE=%~2"
+shift
+shift
+goto parse_args_next
+:parse_args_offline_missing
+call :die 2 "--offline needs a directory"
+exit /b 2
 :parse_args_unknown
 call :die 2 "unknown option '%_ccm_arg%' (see --help)"
+exit /b 2
+
+
+rem :no_offline REASON  -- exit 2 if --offline was given to a script that needs the network.
+:no_offline
+if not defined CCM_OFFLINE exit /b 0
+call :die 2 "--offline doesn't apply here: %~1"
 exit /b 2
 
 
@@ -111,12 +130,20 @@ if "%CCM_HOME:~-1%"=="\" set "CCM_HOME=%CCM_HOME:~0,-1%"
 exit /b 0
 
 
-rem :setup  -- sets CCM_PLATFORM, CCM_HOME, CCM_MANIFEST and the paths of the built-in tools.
-rem Call after :parse_args.
+rem :setup  -- sets CCM_PLATFORM, CCM_HOME, CCM_MANIFEST and the paths of the built-in tools,
+rem and makes CCM_OFFLINE absolute. Call after :parse_args.
 :setup
 call :detect_platform
 if errorlevel 1 exit /b %errorlevel%
 call :resolve_home
+if not defined CCM_OFFLINE goto setup_tools
+set "_ccm_off_given=%CCM_OFFLINE%"
+for %%I in ("%CCM_OFFLINE%") do set "CCM_OFFLINE=%%~fI"
+if "%CCM_OFFLINE:~-1%"=="\" set "CCM_OFFLINE=%CCM_OFFLINE:~0,-1%"
+pushd "%CCM_OFFLINE%" 2>nul
+if errorlevel 1 goto setup_offline_missing
+popd
+:setup_tools
 set "CCM_CURL=%SystemRoot%\System32\curl.exe"
 set "CCM_TAR=%SystemRoot%\System32\tar.exe"
 set "CCM_CERTUTIL=%SystemRoot%\System32\certutil.exe"
@@ -124,6 +151,9 @@ set "CCM_MANIFEST=%CCM_SCRIPTS_DIR%\deps\manifest.txt"
 if defined CODECOREMORPH_MANIFEST set "CCM_MANIFEST=%CODECOREMORPH_MANIFEST%"
 if exist "%CCM_MANIFEST%" exit /b 0
 call :die 2 "dependency manifest not found: %CCM_MANIFEST%"
+exit /b 2
+:setup_offline_missing
+call :die 2 "--offline: %_ccm_off_given% is not a directory"
 exit /b 2
 
 
@@ -152,10 +182,13 @@ call :die 3 "the manifest has no pinned download of %~2 for %CCM_PLATFORM%; inst
 exit /b 3
 
 
-rem :require_download_tools  -- exit 3 unless curl.exe, tar.exe and certutil.exe exist.
+rem :require_download_tools  -- exit 3 unless curl.exe (not needed with --offline), tar.exe and
+rem certutil.exe exist.
 :require_download_tools
+if defined CCM_OFFLINE goto require_download_tools_local
 call :require_system_tool "%CCM_CURL%" curl.exe
 if errorlevel 1 exit /b %errorlevel%
+:require_download_tools_local
 call :require_system_tool "%CCM_TAR%" tar.exe
 if errorlevel 1 exit /b %errorlevel%
 call :require_system_tool "%CCM_CERTUTIL%" certutil.exe
@@ -191,6 +224,19 @@ set /a _ccm_try+=1
 rem Sleep 2 seconds. timeout.exe refuses to run without a console, so ping instead.
 ping -n 3 127.0.0.1 >nul
 goto download_try
+
+
+rem :offline_file EXT  -- sets CCM_OFFLINE_FILE to the current manifest row's archive in
+rem CCM_OFFLINE, under its cache name (SHA256.EXT, as in a CODECOREMORPH_HOME's downloads
+rem directory) or its download name (the URL's last part); empty when neither is there. Also
+rem sets CCM_OFFLINE_NAME to the download name.
+:offline_file
+set "CCM_OFFLINE_FILE="
+set "CCM_OFFLINE_NAME=%CCM_ROW_URL%"
+for %%F in ("%CCM_ROW_URL:/=\%") do set "CCM_OFFLINE_NAME=%%~nxF"
+if exist "%CCM_OFFLINE%\%CCM_ROW_SHA256%.%~1" set "CCM_OFFLINE_FILE=%CCM_OFFLINE%\%CCM_ROW_SHA256%.%~1" & exit /b 0
+if exist "%CCM_OFFLINE%\%CCM_OFFLINE_NAME%" set "CCM_OFFLINE_FILE=%CCM_OFFLINE%\%CCM_OFFLINE_NAME%"
+exit /b 0
 
 
 rem :extract ARCHIVE TYPE DEST_DIR URL [PATTERN...]  -- extract everything, or only the
@@ -255,8 +301,12 @@ exit /b 0
 set "_ccm_ext=%CCM_ROW_ARCHIVE%"
 if "%_ccm_ext%"=="file" set "_ccm_ext=bin"
 set "_ccm_archive=%CCM_HOME%\downloads\%CCM_ROW_SHA256%.%_ccm_ext%"
+if defined CCM_OFFLINE call :offline_file %_ccm_ext%
+set "_ccm_missing=%~2 %CCM_ROW_VERSION% is not in %CCM_OFFLINE%: put %CCM_OFFLINE_NAME% there (from %CCM_ROW_URL%), or %CCM_ROW_SHA256%.%_ccm_ext% from the downloads directory of a CODECOREMORPH_HOME on %CCM_PLATFORM%"
 if not "%CCM_DRY_RUN%"=="1" goto install_tool_real
-call :log "would download %CCM_ROW_URL%"
+if not defined CCM_OFFLINE call :log "would download %CCM_ROW_URL%"
+if defined CCM_OFFLINE if defined CCM_OFFLINE_FILE call :log "would use %CCM_OFFLINE_FILE%"
+if defined CCM_OFFLINE if not defined CCM_OFFLINE_FILE call :warn "%_ccm_missing%"
 call :log "would install %~2 %CCM_ROW_VERSION% into %CCM_TOOL_DIR%"
 exit /b 0
 
@@ -267,7 +317,7 @@ if not exist "%CCM_HOME%\downloads" mkdir "%CCM_HOME%\downloads"
 if not exist "%_ccm_root%" mkdir "%_ccm_root%"
 if not exist "%_ccm_root%" goto install_tool_mkdir_failed
 
-if not exist "%_ccm_archive%" goto install_tool_download
+if not exist "%_ccm_archive%" goto install_tool_get
 call :sha256 "%_ccm_archive%"
 if /i not "%CCM_SHA256%"=="%CCM_ROW_SHA256%" goto install_tool_stale_cache
 call :log "using cached %_ccm_archive%"
@@ -275,11 +325,23 @@ goto install_tool_extract
 :install_tool_stale_cache
 del /f /q "%_ccm_archive%"
 
-:install_tool_download
+:install_tool_get
 set "_ccm_part=%_ccm_archive%.part"
+if defined CCM_OFFLINE goto install_tool_copy
 call :log "downloading %~2 %CCM_ROW_VERSION% from %CCM_ROW_URL%"
 call :download "%CCM_ROW_URL%" "%_ccm_part%"
 if errorlevel 1 goto install_tool_download_failed
+set "_ccm_what=%CCM_ROW_URL%"
+set "_ccm_fate=The file was deleted."
+goto install_tool_verify
+:install_tool_copy
+if not defined CCM_OFFLINE_FILE goto install_tool_offline_missing
+call :log "copying %~2 %CCM_ROW_VERSION% from %CCM_OFFLINE_FILE%"
+copy /y "%CCM_OFFLINE_FILE%" "%_ccm_part%" >nul
+if errorlevel 1 goto install_tool_copy_failed
+set "_ccm_what=%CCM_OFFLINE_FILE%"
+set "_ccm_fate=It is not the pinned file; replace it."
+:install_tool_verify
 call :sha256 "%_ccm_part%"
 if /i not "%CCM_SHA256%"=="%CCM_ROW_SHA256%" goto install_tool_checksum_mismatch
 move /y "%_ccm_part%" "%_ccm_archive%" >nul
@@ -306,9 +368,16 @@ exit /b 1
 :install_tool_download_failed
 call :die 1 "download failed: %CCM_ROW_URL%"
 exit /b 1
+:install_tool_offline_missing
+call :die 1 "%_ccm_missing%"
+exit /b 1
+:install_tool_copy_failed
+if exist "%_ccm_part%" del /f /q "%_ccm_part%"
+call :die 1 "could not copy %CCM_OFFLINE_FILE%"
+exit /b 1
 :install_tool_checksum_mismatch
 if exist "%_ccm_part%" del /f /q "%_ccm_part%"
-call :die 1 "checksum mismatch for %CCM_ROW_URL%: expected %CCM_ROW_SHA256%, got %CCM_SHA256%. The file was deleted."
+call :die 1 "checksum mismatch for %_ccm_what%: expected %CCM_ROW_SHA256%, got %CCM_SHA256%. %_ccm_fate%"
 exit /b 1
 :install_tool_extract_failed
 if exist "%_ccm_tmp%" rmdir /s /q "%_ccm_tmp%"

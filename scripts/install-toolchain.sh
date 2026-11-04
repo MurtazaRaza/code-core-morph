@@ -9,7 +9,7 @@ CCM_SCRIPTS_DIR=$(cd "$(dirname "$0")" && pwd)
 
 usage() {
     cat <<'EOF'
-Usage: install-toolchain [--prefix DIR] [--force] [--dry-run] [--help] LANGUAGE
+Usage: install-toolchain [--prefix DIR] [--offline DIR] [--force] [--dry-run] [--help] LANGUAGE
 
 Installs the pinned native toolchain for LANGUAGE under CODECOREMORPH_HOME, so
 CodeCoreMorph can build and test projects without Docker. Every download is
@@ -22,10 +22,13 @@ Languages:
   all   every available language (currently cpp)
 
 Options:
-  --prefix DIR  install under DIR (default: CODECOREMORPH_HOME)
-  --force       reinstall even if the pinned version is already installed
-  --dry-run     print what would be downloaded and built; change nothing
-  --help        show this help
+  --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)
+  --offline DIR  install from the archives in DIR, without the network: files
+                 named as in the manifest's URLs, or a downloads directory
+                 copied from a CODECOREMORPH_HOME on the same platform
+  --force        reinstall even if the pinned version is already installed
+  --dry-run      print what would be downloaded and built; change nothing
+  --help         show this help
 
 CodeCoreMorph finds the tools through toolchains/LANGUAGE.env. To use them in
 your own shell, run toolchains/activate-LANGUAGE (.bat or .sh).

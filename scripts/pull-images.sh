@@ -55,6 +55,8 @@ if [ "$CCM_HELP" = 1 ]; then
     usage
     exit 0
 fi
+ccm_no_offline "Docker pulls the images itself. Without internet access, use a native" \
+    "toolchain: install-toolchain --offline DIR"
 if [ "$CCM_DRY_RUN" != 1 ]; then
     ccm_require_cmd docker "Install Docker (Docker Desktop on Windows and macOS), then open a" \
         "new terminal."

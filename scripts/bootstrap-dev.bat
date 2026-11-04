@@ -17,6 +17,9 @@ if "%CCM_HELP%"=="1" goto usage
 if defined CCM_POSITIONAL goto unexpected_argument
 call "%CCM_LIB%" :setup
 if errorlevel 1 exit /b %errorlevel%
+rem uv installs Python and the dependencies itself: offline, from its cache only.
+if defined CCM_OFFLINE set "UV_OFFLINE=1"
+if defined CCM_OFFLINE call "%CCM_LIB%" :log "offline: uv uses only its cache (UV_OFFLINE=1)"
 
 rem 1. git is a system prerequisite: detect it, never install it.
 call "%CCM_LIB%" :require_cmd git "Install Git for Windows (https://git-scm.com/download/win), then open a new terminal."
@@ -134,7 +137,7 @@ call "%CCM_LIB%" :die 2 "unexpected argument:%CCM_POSITIONAL%"
 exit /b 2
 
 :usage
-echo Usage: bootstrap-dev [--prefix DIR] [--force] [--dry-run] [--help]
+echo Usage: bootstrap-dev [--prefix DIR] [--offline DIR] [--force] [--dry-run] [--help]
 echo.
 echo Sets up a CodeCoreMorph development environment: uv (from PATH, or a pinned,
 echo checksum-verified download), Python 3.12, the project's dependencies, the
@@ -142,10 +145,12 @@ echo pre-commit hooks and Node.js for the dashboard's web UI (from PATH, or a pi
 echo download). Then it checks git and Docker. No admin rights needed.
 echo.
 echo Options:
-echo   --prefix DIR  where downloaded tools go (default: CODECOREMORPH_HOME)
-echo   --force       reinstall downloaded tools
-echo   --dry-run     print what would be downloaded and run; change nothing
-echo   --help        show this help
+echo   --prefix DIR   where downloaded tools go (default: CODECOREMORPH_HOME)
+echo   --offline DIR  take uv and Node.js from the archives in DIR, and let uv use
+echo                  only its cache (UV_OFFLINE=1); see install-toolchain --help
+echo   --force        reinstall downloaded tools
+echo   --dry-run      print what would be downloaded and run; change nothing
+echo   --help         show this help
 echo.
 echo Exit codes: 0 success, 1 download or checksum failure, 2 usage error,
 echo             3 missing system prerequisite

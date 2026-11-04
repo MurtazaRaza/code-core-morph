@@ -13,6 +13,7 @@ from codecoremorph.cli.output import handle_errors, status_label, stdout
 from codecoremorph.core.paths import HomeLayout
 from codecoremorph.sandbox.toolchains import (
     LANGUAGES,
+    download_command,
     install_command,
     installed_tools,
     run_install,
@@ -34,10 +35,41 @@ def toolchain_install(
     prefix: Annotated[
         Path | None, typer.Option("--prefix", help="Install here instead of CODECOREMORPH_HOME.")
     ] = None,
+    offline: Annotated[
+        Path | None,
+        typer.Option(
+            "--offline",
+            help="Install from the pre-downloaded archives in this directory, without the "
+            "network (fill it with `codecoremorph toolchain download` elsewhere).",
+        ),
+    ] = None,
 ) -> None:
     """Download, verify and install a pinned native toolchain (no admin rights needed)."""
-    command = install_command(language, force=force, dry_run=dry_run, prefix=prefix)
+    command = install_command(
+        language, force=force, dry_run=dry_run, prefix=prefix, offline=offline
+    )
     code = run_install(command)
+    if code != 0:
+        raise typer.Exit(code)
+
+
+@toolchain_app.command("download")
+@handle_errors
+def toolchain_download(
+    language: Annotated[str, typer.Argument(help="cpp, or all.")],
+    directory: Annotated[Path, typer.Argument(help="Where to put the archives.")],
+    platform: Annotated[
+        str | None,
+        typer.Option(
+            "--platform",
+            help="The other machine's platform: windows-x64, linux-x64, linux-arm64, "
+            "macos-arm64 or macos-x64 (default: this machine's).",
+        ),
+    ] = None,
+) -> None:
+    """Download and verify a toolchain's pinned archives, for `toolchain install --offline` on
+    a machine without internet access (FR-1.12)."""
+    code = run_install(download_command(language, directory, platform=platform))
     if code != 0:
         raise typer.Exit(code)
 

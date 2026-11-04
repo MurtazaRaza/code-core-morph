@@ -192,7 +192,7 @@ call "%CCM_LIB%" :die 2 "expected one language: cpp or all (see --help)"
 exit /b 2
 
 :usage
-echo Usage: install-toolchain [--prefix DIR] [--force] [--dry-run] [--help] LANGUAGE
+echo Usage: install-toolchain [--prefix DIR] [--offline DIR] [--force] [--dry-run] [--help] LANGUAGE
 echo.
 echo Installs the pinned native toolchain for LANGUAGE under CODECOREMORPH_HOME, so
 echo CodeCoreMorph can build and test projects without Docker. Every download is
@@ -205,10 +205,13 @@ echo         for projects that build as C++98/03)
 echo   all   every available language (currently cpp)
 echo.
 echo Options:
-echo   --prefix DIR  install under DIR (default: CODECOREMORPH_HOME)
-echo   --force       reinstall even if the pinned version is already installed
-echo   --dry-run     print what would be downloaded and built; change nothing
-echo   --help        show this help
+echo   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)
+echo   --offline DIR  install from the archives in DIR, without the network: files
+echo                  named as in the manifest's URLs, or a downloads directory
+echo                  copied from a CODECOREMORPH_HOME on the same platform
+echo   --force        reinstall even if the pinned version is already installed
+echo   --dry-run      print what would be downloaded and built; change nothing
+echo   --help         show this help
 echo.
 echo CodeCoreMorph finds the tools through toolchains/LANGUAGE.env. To use them in
 echo your own shell, run toolchains/activate-LANGUAGE (.bat or .sh).
