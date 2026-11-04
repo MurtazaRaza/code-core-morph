@@ -163,17 +163,27 @@ def _project_schema_extra(schema: dict[str, Any]) -> None:
 
 
 class ProjectConfig(ConfigModel):
+    """The project: where it is, and which of its files are code, tests, vendored or API."""
+
     model_config = ConfigDict(json_schema_extra=_project_schema_extra)
 
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, description="A name for the project, used in reports")
     root: str = Field(
         default=".",
         min_length=1,
         validation_alias=AliasChoices("root", "root_path"),
         description="Git repository root, relative to this file; other paths are relative to it",
     )
-    source_dirs: list[RelPath] = Field(default_factory=lambda: ["."])
-    test_dirs: list[RelPath] = Field(default_factory=list[str])
+    source_dirs: list[RelPath] = Field(
+        default_factory=lambda: ["."],
+        description="Directories (or globs) with the code to migrate; `.` means everything",
+        json_schema_extra={"default": ["."]},
+    )
+    test_dirs: list[RelPath] = Field(
+        default_factory=list[str],
+        description="Directories or file globs with the project's tests, such as `tests` or "
+        "`*_test.cc`",
+    )
     exclude: list[RelPath] = Field(
         default_factory=list[str], description="Globs never edited (third-party, generated)"
     )
@@ -191,16 +201,26 @@ class ProjectConfig(ConfigModel):
 
 
 class SourceSpec(ConfigModel):
-    language: Identifier
-    standard: LanguageStandard
-    build_system: Identifier | None = None
+    """What the project is now."""
+
+    language: Identifier = Field(description="The language adapter, e.g. `cpp`")
+    standard: LanguageStandard = Field(
+        description="The current standard, e.g. `cpp11` (`cpp98` to `cpp20` for C++)"
+    )
+    build_system: Identifier | None = Field(default=None, description="e.g. `cmake`")
 
 
 class TargetSpec(ConfigModel):
-    language: Identifier
-    standard: LanguageStandard
+    """What the migration makes of it."""
+
+    language: Identifier = Field(description="The same as the source, for a version upgrade")
+    standard: LanguageStandard = Field(
+        description="The source standard or a newer one, e.g. `cpp20` (up to `cpp23` for C++)"
+    )
     rules: list[Identifier] = Field(
-        default_factory=list[str], description="Applied in this order, after the standard bump"
+        default_factory=list[str],
+        description="Applied in this order, after the standard bump (which needs no listing); "
+        "`codecoremorph rules list` shows them",
     )
 
     @field_validator("rules")
@@ -213,6 +233,8 @@ class TargetSpec(ConfigModel):
 
 
 class MigrationSection(ConfigModel):
+    """The migration: from which commit and standard, to which, with which rules."""
+
     base: GitRevision = Field(default="HEAD", description="Commit to start from")
     source: SourceSpec
     target: TargetSpec
@@ -222,23 +244,36 @@ class MigrationSection(ConfigModel):
 
 
 class BuildToolOptions(ConfigModel):
-    configure_args: list[str] = Field(default_factory=list[str])
+    configure_args: list[str] = Field(
+        default_factory=list[str],
+        description="Extra arguments for the configure step, e.g. `-DBUILD_TESTING=ON`",
+    )
     build_targets: list[str] = Field(default_factory=list[str], description="Empty means all")
 
 
 class ModelPrice(ConfigModel):
-    input_usd_per_mtok: NonNegativeFloat
-    output_usd_per_mtok: NonNegativeFloat
-    cache_read_usd_per_mtok: NonNegativeFloat | None = None
-    cache_write_usd_per_mtok: NonNegativeFloat | None = None
+    input_usd_per_mtok: NonNegativeFloat = Field(description="USD per million input tokens")
+    output_usd_per_mtok: NonNegativeFloat = Field(description="USD per million output tokens")
+    cache_read_usd_per_mtok: NonNegativeFloat | None = Field(
+        default=None, description="USD per million tokens read from the prompt cache"
+    )
+    cache_write_usd_per_mtok: NonNegativeFloat | None = Field(
+        default=None, description="USD per million tokens written to the prompt cache"
+    )
 
 
 class ProviderConfig(ConfigModel):
     """Connection settings for one provider. Credentials never go here (FR-1.6)."""
 
-    base_url: str | None = Field(default=None, pattern=r"^https?://\S+$")
-    max_retries: NonNegativeInt | None = None
-    timeout_s: PositiveFloat | None = None
+    base_url: str | None = Field(
+        default=None,
+        pattern=r"^https?://\S+$",
+        description="The service's URL, e.g. `http://localhost:11434` for Ollama",
+    )
+    max_retries: NonNegativeInt | None = Field(
+        default=None, description="Retries of a failed call; default: the provider's own"
+    )
+    timeout_s: PositiveFloat | None = Field(default=None, description="Seconds per call")
     prices: dict[str, ModelPrice] = Field(
         default_factory=dict[str, ModelPrice], description="Per-model price overrides"
     )
@@ -247,8 +282,8 @@ class ProviderConfig(ConfigModel):
 class RoleModelConfig(ConfigModel):
     """Which model serves a role. There is deliberately no universal temperature setting."""
 
-    provider: ProviderName
-    model: str = Field(min_length=1)
+    provider: ProviderName = Field(description="e.g. `anthropic` or `ollama`")
+    model: str = Field(min_length=1, description="The provider's model name or tag")
     effort: str | None = Field(
         default=None, pattern=r"^[a-z]+$", description="Anthropic: reasoning effort"
     )
@@ -270,17 +305,39 @@ def _default_roles() -> dict[Role, RoleModelConfig]:
 
 
 class EscalationConfig(ConfigModel):
-    after_failed_attempts: PositiveInt
-    to: RoleModelConfig
+    after_failed_attempts: PositiveInt = Field(
+        description="Failed attempts of a unit after which the fixer uses `to`"
+    )
+    to: RoleModelConfig = Field(description="The stronger model")
 
 
 class LlmConfig(ConfigModel):
-    providers: dict[ProviderName, ProviderConfig] = Field(default_factory=dict[str, ProviderConfig])
-    roles: dict[Role, RoleModelConfig] = Field(
-        default_factory=_default_roles, description="Unset roles fall back to `editor`"
+    """The models of CodeCoreMorph's own agent loop. A run with a host agent (Claude Code
+    through the skill, `run --host-agent`) calls no model itself."""
+
+    providers: dict[ProviderName, ProviderConfig] = Field(
+        default_factory=dict[str, ProviderConfig],
+        description="Connection settings per provider; never credentials",
     )
-    escalation: EscalationConfig | None = None
-    anthropic_refusal_fallback: bool = True
+    roles: dict[Role, RoleModelConfig] = Field(
+        default_factory=_default_roles,
+        description="The model of each role; unset roles fall back to `editor`",
+        json_schema_extra={
+            "default": {
+                "editor": {
+                    "provider": DEFAULT_PROVIDER,
+                    "model": DEFAULT_MODEL,
+                    "effort": DEFAULT_EFFORT,
+                }
+            }
+        },
+    )
+    escalation: EscalationConfig | None = Field(
+        default=None, description="Move a unit's fixer to a stronger model after failures"
+    )
+    anthropic_refusal_fallback: bool = Field(
+        default=True, description="Retry a call Claude refused with the fallback model"
+    )
 
     @field_validator("roles")
     @classmethod
@@ -294,20 +351,47 @@ class LlmConfig(ConfigModel):
 
 
 class GuardrailsConfig(ConfigModel):
-    max_retry_budget: NonNegativeInt = Field(default=3, description="Retries after the first")
-    max_edit_retries: NonNegativeInt = 2
+    """Budgets, timeouts and how strict the checks are."""
+
+    max_retry_budget: NonNegativeInt = Field(
+        default=3, description="Retries after a unit's first attempt"
+    )
+    max_edit_retries: NonNegativeInt = Field(
+        default=2, description="Extra tries within an attempt when its edits don't apply"
+    )
     max_run_cost_usd: PositiveFloat | None = Field(
         default=50.0, description="Paid providers only; null means no cap"
     )
-    max_run_tokens: PositiveInt | None = None
-    max_unit_minutes: PositiveInt = 30
-    max_unit_diff_lines: PositiveInt = 800
-    build_timeout_s: PositiveInt = 900
-    test_timeout_s: PositiveInt = 1800
-    require_passing_tests: bool = True
-    rollback_on_failure: bool = Field(default=True, json_schema_extra={"const": True})
-    new_warnings: NewWarningsPolicy = NewWarningsPolicy.WARN
-    test_file_edits: TestFileEditsPolicy = TestFileEditsPolicy.REVIEW
+    max_run_tokens: PositiveInt | None = Field(
+        default=None, description="Tokens for the whole run; null means no cap"
+    )
+    max_unit_minutes: PositiveInt = Field(
+        default=30, description="Model time per unit (not used by host agents)"
+    )
+    max_unit_diff_lines: PositiveInt = Field(
+        default=800, description="Lines the agent may change in a unit (I-8)"
+    )
+    build_timeout_s: PositiveInt = Field(default=900, description="Seconds per build")
+    test_timeout_s: PositiveInt = Field(default=1800, description="Seconds per test run")
+    require_passing_tests: bool = Field(
+        default=True,
+        description="Refuse to run when the project has no passing tests and characterization "
+        "tests can't give it some",
+    )
+    rollback_on_failure: bool = Field(
+        default=True,
+        description="A failed unit is always rolled back; must be true",
+        json_schema_extra={"const": True},
+    )
+    new_warnings: NewWarningsPolicy = Field(
+        default=NewWarningsPolicy.WARN,
+        description="New compiler warnings in a unit's files (I-10): ignore, flag, or fail",
+    )
+    test_file_edits: TestFileEditsPolicy = Field(
+        default=TestFileEditsPolicy.REVIEW,
+        description="Edits to existing test files: fail the attempt, list them for review, or "
+        "allow those that keep their assertions (I-4)",
+    )
     docker_sandbox: bool | None = Field(
         default=None,
         description="Deprecated alias: true means sandbox.mode docker, false means native",
@@ -326,38 +410,70 @@ class GuardrailsConfig(ConfigModel):
 
 
 class SandboxConfig(ConfigModel):
-    mode: SandboxMode = SandboxMode.AUTO
+    """Where builds and tests run."""
+
+    mode: SandboxMode = Field(
+        default=SandboxMode.AUTO,
+        description="`auto` uses Docker when it is running, otherwise native with a warning",
+    )
     image: Annotated[str, AfterValidator(_pinned_image)] | None = Field(
         default=None, description="Image override; must be pinned by digest"
     )
-    network: NetworkPolicy = NetworkPolicy.FETCH_ONLY
-    cpus: PositiveFloat = 4
-    memory: Annotated[str, AfterValidator(_memory_size)] = "8g"
+    network: NetworkPolicy = Field(
+        default=NetworkPolicy.FETCH_ONLY,
+        description="`fetch_only`: the network is on only while dependencies are fetched",
+    )
+    cpus: PositiveFloat = Field(default=4, description="CPUs the container may use")
+    memory: Annotated[str, AfterValidator(_memory_size)] = Field(
+        default="8g", description="Memory the container may use, as Docker writes it"
+    )
     pids_limit: PositiveInt = Field(default=4096, description="Max processes in the container")
 
 
 class ApprovalsConfig(ConfigModel):
-    plan: PlanApproval = PlanApproval.REQUIRED
-    unit: UnitApproval = UnitApproval.NONE
+    """Where a run stops for your decision."""
+
+    plan: PlanApproval = Field(
+        default=PlanApproval.REQUIRED, description="Approve the plan before any unit runs"
+    )
+    unit: UnitApproval = Field(
+        default=UnitApproval.NONE,
+        description="Units that stop at their gate: those that change API, tests, or all",
+    )
 
 
 class CharacterizationTestsConfig(ConfigModel):
-    enabled: bool = True
-    scope: CharacterizationScope = CharacterizationScope.UNTESTED_ONLY
-    dir: RelPath = "tests/codecoremorph_characterization"
-    max_tests_per_unit: PositiveInt = 10
-    keep: bool = True
+    """Tests written before the plan for code no test reaches (FR-7)."""
+
+    enabled: bool = Field(default=True, description="Write characterization tests")
+    scope: CharacterizationScope = Field(
+        default=CharacterizationScope.UNTESTED_ONLY,
+        description="Only untested code, or every unit's code",
+    )
+    dir: RelPath = Field(
+        default="tests/codecoremorph_characterization", description="Where the tests go"
+    )
+    max_tests_per_unit: PositiveInt = Field(default=10, description="Test cases per unit")
+    keep: bool = Field(default=True, description="Keep the tests on the branch at the end")
 
 
 class ParityConfig(ConfigModel):
-    baseline_runs: PositiveInt = 2
+    """How the run tells that behavior stayed the same."""
+
+    baseline_runs: PositiveInt = Field(
+        default=2, description="Test runs of the base commit; a test that flips is flaky"
+    )
     characterization_tests: CharacterizationTestsConfig = Field(
         default_factory=CharacterizationTestsConfig
     )
 
 
 class ReportingConfig(ConfigModel):
-    store_transcripts: bool = True
+    """What the run keeps for its report."""
+
+    store_transcripts: bool = Field(
+        default=True, description="Keep the agent's conversations (redacted) with each attempt"
+    )
 
 
 def _git_author(value: str) -> str:
@@ -367,6 +483,8 @@ def _git_author(value: str) -> str:
 
 
 class GitConfig(ConfigModel):
+    """The commits a run makes."""
+
     author: Annotated[str, AfterValidator(_git_author)] | None = Field(
         default=None,
         description="Author of unit commits, 'Name <email>'; default: your git identity",
@@ -378,7 +496,9 @@ class MigrationConfig(ConfigModel):
 
     model_config = ConfigDict(title="CodeCoreMorph migration manifest")
 
-    version: str = Field(json_schema_extra={"enum": [SCHEMA_VERSION]})
+    version: str = Field(
+        description="The manifest format version", json_schema_extra={"enum": [SCHEMA_VERSION]}
+    )
     project: ProjectConfig
     migration: MigrationSection
     build: dict[Identifier, BuildToolOptions] = Field(

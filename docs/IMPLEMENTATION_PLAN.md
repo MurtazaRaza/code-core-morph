@@ -8,7 +8,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 
 - Phases run in order. Tasks inside a phase can be reordered.
 - Tick a checkbox when its task has landed **with tests**.
-- A phase is done when every exit criterion is met and the checks (ruff, pyright, pytest, shellcheck) pass. CI comes later (Backlog, D-28). Then update "Current status" in [CLAUDE.md](../CLAUDE.md).
+- A phase is done when every exit criterion is met and the checks (ruff, pyright, pytest, shellcheck) pass. CI comes later (Backlog, D-28). Then update "Current status" in [CLAUDE.md](https://github.com/MurtazaRaza/code-core-morph/blob/master/CLAUDE.md).
 - If a task shows the spec is wrong or incomplete, update SPEC.md (and add a `D-xx` row) in the same change.
 - Items in **Backlog** at the end are deliberately unscheduled.
 

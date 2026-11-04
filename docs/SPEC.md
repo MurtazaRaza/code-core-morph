@@ -7,7 +7,7 @@ Called "PAME" (Polyglot Autonomous Migration Engine) in the original PRD.
 | Version | 0.1 (draft) |
 | Date | 2026-11-02 |
 | Status | Draft for review |
-| Source PRD | [HighLevelRequirements.md](../HighLevelRequirements.md). Where the two disagree, this spec wins. §17 maps every PRD item to its section here. |
+| Source PRD | [HighLevelRequirements.md](https://github.com/MurtazaRaza/code-core-morph/blob/master/HighLevelRequirements.md). Where the two disagree, this spec wins. §17 maps every PRD item to its section here. |
 | Build order | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) |
 
 **Conventions.** Requirement IDs are stable. Never renumber them; add new ones at the end of a group. `FR-x.y` = functional, `NFR-x.y` = non-functional, `D-xx` = decision. Priority: **M** = must, **S** = should, **C** = could. "Phase" refers to the implementation plan.
