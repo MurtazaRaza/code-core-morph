@@ -77,6 +77,18 @@ def check_edit_path(root: Path, rel: str, exclude: PathMatcher) -> SafePath | Pa
         return PathProblem(
             RejectionReason.UNSAFE_PATH, "the path resolves outside the worktree (through a link)"
         )
-    if any(p.lower() == ".git" for p in resolved.relative_to(root).parts):
+    inside = resolved.relative_to(root)
+    if any(p.lower() == ".git" for p in inside.parts):
         return PathProblem(RejectionReason.UNSAFE_PATH, "the path resolves into a .git directory")
+    # On a case-insensitive filesystem (Windows, macOS) THIRD_PARTY/x.h is third_party/x.h, and
+    # Windows short names (THIRD_~1) name long ones; exclude patterns match case-sensitively,
+    # like git's, so they are checked again against the path as it is on disk.
+    real = inside.as_posix()
+    pattern = exclude.first_match(real) if real != rel else None
+    if pattern is not None:
+        return PathProblem(
+            RejectionReason.EXCLUDED,
+            f"the path is {real} on disk, which project.exclude excludes ({pattern}); it is "
+            "never edited",
+        )
     return SafePath(rel, target)

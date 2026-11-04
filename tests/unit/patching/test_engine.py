@@ -225,6 +225,39 @@ def test_unsafe_paths_are_rejected(tree: Path, path: str, fragment: str) -> None
     assert fragment in result.rejections[0].message
 
 
+def test_another_casing_of_an_excluded_directory_is_excluded(tree: Path) -> None:
+    """Security review (Phase 8): on Windows and macOS, THIRD_PARTY/ is third_party/, which the
+    case-sensitive exclude pattern didn't match, so edits went into vendored code."""
+    if not (tree / "THIRD_PARTY").exists():
+        pytest.skip("the filesystem is case-sensitive")
+    result = engine(tree).apply(
+        batch(
+            {"op": "create", "path": "THIRD_PARTY/new.h", "content": "x"},
+            replace("Third_Party/lib.h", "lib", "pwned"),
+        )
+    )
+    assert not result.applied
+    assert [r.reason for r in result.rejections] == [RejectionReason.EXCLUDED] * 2
+    assert "third_party/new.h on disk" in result.rejections[0].message
+    assert (tree / "third_party" / "lib.h").read_bytes() == b"int lib;\n"
+    assert not (tree / "third_party" / "new.h").exists()
+
+
+def test_a_windows_short_name_of_an_excluded_directory_is_excluded(tree: Path) -> None:
+    short = None
+    if sys.platform == "win32":
+        import ctypes
+
+        buffer = ctypes.create_unicode_buffer(260)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(tree / "third_party"), buffer, 260):
+            short = Path(buffer.value).name
+    if not short or short.lower() == "third_party":
+        pytest.skip("no 8.3 short names on this volume")
+    result = engine(tree).apply(batch({"op": "create", "path": f"{short}/new.h", "content": "x"}))
+    assert not result.applied
+    assert result.rejections[0].reason is RejectionReason.EXCLUDED
+
+
 def _symlink(link: Path, target: Path, *, directory: bool) -> None:
     try:
         link.symlink_to(target, target_is_directory=directory)
