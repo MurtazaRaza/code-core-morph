@@ -111,3 +111,16 @@ def test_redaction_is_idempotent(text: str) -> None:
 def test_embedded_key_never_survives(prefix: str, suffix: str) -> None:
     redacted = Redactor().redact(f"{prefix} {ANTHROPIC_KEY} {suffix}")
     assert ANTHROPIC_KEY not in redacted
+
+
+def test_json_keeps_its_shape_and_numbers() -> None:
+    data = {
+        "reason": f"the build said {ANTHROPIC_KEY}",
+        "usage": {"input_tokens": 4096, "cost_usd": 1.25, "cached": True},
+        "lines": [f"token={GITHUB_TOKEN}", None, 3],
+    }
+    assert Redactor().redact_json(data) == {
+        "reason": f"the build said {REDACTED}",
+        "usage": {"input_tokens": 4096, "cost_usd": 1.25, "cached": True},
+        "lines": [f"token={REDACTED}", None, 3],
+    }

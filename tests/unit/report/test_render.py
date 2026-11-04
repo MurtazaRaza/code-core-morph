@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
 
 from codecoremorph.core.models import RunReport, RunStatus
+from codecoremorph.report.build import write_report
 from codecoremorph.report.render import render_markdown
+from codecoremorph.store.layout import StateDir
 
 
 def _report(**fields: object) -> RunReport:
@@ -45,3 +50,21 @@ def test_a_clean_report_needs_no_review() -> None:
     assert "Nothing needs review." in markdown
     assert "Not checked" not in markdown
     assert "Plan warnings" not in markdown
+
+
+def test_the_written_report_is_redacted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Security review (Phase 8): failure reasons quote tool output, and reports get shared."""
+    key = "sk-ant-api03-" + "R" * 24
+    monkeypatch.setenv("CODECOREMORPH_TEST_TOKEN", "a-literal-token-value")
+    report = _report(
+        reason=f"the build printed {key}",
+        plan_warnings=["a warning that quotes a-literal-token-value"],
+    )
+    artifacts = StateDir(tmp_path).run(report.run_id)
+    markdown, data = write_report(report, artifacts)
+    for path in (markdown, data):
+        text = path.read_text(encoding="utf-8")
+        assert key not in text
+        assert "a-literal-token-value" not in text
+        assert "[REDACTED]" in text
+    assert RunReport.model_validate_json(data.read_bytes()).project == "geo"

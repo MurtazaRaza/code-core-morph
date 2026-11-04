@@ -64,7 +64,7 @@ from codecoremorph.orchestrator.lifecycle import (
     record_decision,
     waiting_agent,
 )
-from codecoremorph.report.build import build_report, load_unit_result
+from codecoremorph.report.build import build_report, load_unit_result, redacted
 from codecoremorph.report.render import render_markdown
 from codecoremorph.store.db import Store
 from codecoremorph.store.layout import AttemptArtifacts, RunArtifacts
@@ -501,7 +501,7 @@ def report(ctx: DashboardContext, run_id: str) -> RunReport:
         return written
     with _reader(ctx) as store:
         record = _record(store, run_id)
-        return build_report(
+        built = build_report(
             store,
             artifacts,
             run_id,
@@ -512,6 +512,7 @@ def report(ctx: DashboardContext, run_id: str) -> RunReport:
             reason=None if record.status.is_terminal else "in progress",
             finished_at=None,
         )
+    return redacted(built, ctx.redactor)
 
 
 def report_markdown(ctx: DashboardContext, run_id: str) -> str:

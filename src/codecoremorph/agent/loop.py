@@ -32,6 +32,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from pydantic import ValidationError
 
@@ -74,6 +75,7 @@ from codecoremorph.core.models import (
     WorkUnit,
     owned_files,
 )
+from codecoremorph.core.secrets import Json, Redactor
 from codecoremorph.invariants.checker import InvariantChecker
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
@@ -899,8 +901,11 @@ class UnitRunner:
         if usage is not None:
             record["usage"] = usage
             record["model"] = model
+        # The transcript quotes the project's files and tool output; credentials in them stay
+        # out of the stored copy (NFR-5.3). The conversation sent to the model is unchanged.
+        clean = Redactor.from_environment().redact_json(cast(Json, record))
         with store.transcript_jsonl.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            handle.write(json.dumps(clean, ensure_ascii=False) + "\n")
 
     def save_logs(self, store: AttemptArtifacts) -> None:
         for name, target in (("build.log", store.build_log), ("test.log", store.test_log)):

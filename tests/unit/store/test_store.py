@@ -165,6 +165,22 @@ def test_event_cursor_and_limit(store: Store) -> None:
     assert len(store.list_events(RUN, limit=2)) == 2
 
 
+def test_events_are_stored_redacted(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Security review (Phase 8): the dashboard streams events as stored."""
+    monkeypatch.setenv("CODECOREMORPH_TEST_API_KEY", "literal-key-value-1234")
+    writer = EventWriter(store, RUN, clock=lambda: T0)
+    writer.emit(
+        EventType.LOG,
+        message="cmake: using literal-key-value-1234",
+        details={"lines": ["password=hunter2hunter2", 7]},
+    )
+    (event,) = store.list_events(RUN)
+    assert event.data == {
+        "message": "cmake: using [REDACTED]",
+        "details": {"lines": ["password=[REDACTED]", 7]},
+    }
+
+
 def test_recent_events_and_the_last_id(store: Store) -> None:
     writer = EventWriter(store, RUN, clock=lambda: T0)
     assert store.last_event_id(RUN) == 0

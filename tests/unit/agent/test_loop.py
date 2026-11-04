@@ -74,6 +74,28 @@ def test_the_agent_reads_then_submits(world: World) -> None:
     assert roles == ["user", "assistant", "user", "assistant"]
 
 
+def test_the_stored_transcript_is_redacted(world: World) -> None:
+    """Security review (Phase 8): the transcript on disk quoted the project's credentials."""
+    key = "sk-ant-api03-" + "Q" * 24
+    geo = world.worktree.path / "src" / "geo.cpp"
+    geo.write_text(geo.read_text(encoding="utf-8") + f'const char* kKey = "{key}";\n', "utf-8")
+    world.worktree.commit("a hard-coded key")
+    runner, scripted = world.runner(
+        [
+            reply(call("read_file", "t1", path="src/geo.cpp", start_line=None, end_line=None)),
+            reply(submit("s1", replace_edit("include/geo.h", MACRO, FIXED))),
+        ]
+    )
+    assert runner.run(unit("include/geo.h"), [TYPEDEFS]).succeeded
+    # The model saw the file as it is; the stored copy doesn't keep the key.
+    assert key in str(scripted.requests[1].messages[-1].content[0])
+    transcript = StateDir(world.tmp / "state").run(RUN_ID).attempt("U-0001", 1).transcript_jsonl
+    text = transcript.read_text(encoding="utf-8")
+    assert key not in text
+    assert "[REDACTED]" in text
+    assert all(json.loads(line) for line in text.splitlines())
+
+
 def test_a_build_failure_is_fed_back_and_fixed(world: World) -> None:
     runner, scripted = world.runner(
         [

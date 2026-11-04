@@ -10,6 +10,7 @@ import logging
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from pydantic import BaseModel, ValidationError
 
@@ -29,6 +30,7 @@ from codecoremorph.core.models import (
     UnitStatus,
     UsageTotals,
 )
+from codecoremorph.core.secrets import Json, Redactor
 from codecoremorph.report.render import render_markdown
 from codecoremorph.store.db import Store
 from codecoremorph.store.layout import RunArtifacts
@@ -220,8 +222,17 @@ def build_report(
     )
 
 
+def redacted(report: RunReport, redactor: Redactor | None = None) -> RunReport:
+    """``report`` with credentials redacted from all its text (NFR-5.3): failure messages and
+    diagnostics quote tool output, and reports get pasted into pull requests."""
+    redactor = redactor or Redactor.from_environment()
+    data = cast(Json, report.model_dump(mode="json"))
+    return RunReport.model_validate(redactor.redact_json(data))
+
+
 def write_report(report: RunReport, artifacts: RunArtifacts) -> tuple[Path, Path]:
-    """``report.json`` and ``report.md`` in the run's directory."""
+    """``report.json`` and ``report.md`` in the run's directory, redacted."""
+    report = redacted(report)
     write_json(artifacts.report_json, report)
     temporary = artifacts.report_md.with_name(artifacts.report_md.name + ".tmp")
     temporary.write_text(render_markdown(report), encoding="utf-8")

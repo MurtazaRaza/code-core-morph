@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 REDACTED = "[REDACTED]"
 
+type Json = str | int | float | bool | list[Json] | dict[str, Json] | None
+
 # Values that are credentials no matter where they appear.
 TOKEN_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}"),  # Anthropic API and admin keys
@@ -102,3 +104,14 @@ class Redactor:
         for pattern in _CONTEXT_PATTERNS:
             text = pattern.sub(lambda m: m.group(1) + REDACTED, text)
         return _ASSIGNMENT.sub(_redact_assignment, text)
+
+    def redact_json(self, value: Json) -> Json:
+        """``value`` (parsed JSON) with every string redacted; keys, numbers and the shape stay,
+        so the result is still valid for the model it came from."""
+        if isinstance(value, str):
+            return self.redact(value)
+        if isinstance(value, list):
+            return [self.redact_json(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self.redact_json(item) for key, item in value.items()}
+        return value
