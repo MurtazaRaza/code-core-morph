@@ -8,7 +8,7 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 7 of the plan). CodeCoreMorph can plan a C++ migration
+> **Status:** early development (Phase 8 of the plan, toward v0.1.0). CodeCoreMorph can plan a C++ migration
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
 > an API model as the agent, or migrate one work unit at a time. Code that no test covers gets
 > characterization tests first. A local web dashboard follows runs live and answers their gates.
@@ -34,12 +34,17 @@ uv run pytest
 ```
 
 To plan a migration of your own CMake project, install the C++ toolchain (or build the Docker
-image with `scripts/build-image cpp`), write a manifest like the example, and run:
+image with `scripts/build-image cpp`), write a manifest, and run:
 
 ```sh
 uv run codecoremorph toolchain install cpp      # native toolchain, no admin rights
-uv run codecoremorph plan path/to/migration_config.yaml
+uv run codecoremorph init path/to/project       # writes path/to/project/migration_config.yaml
+uv run codecoremorph plan path/to/project/migration_config.yaml
 ```
+
+`init` detects the C++ standard, the source, test and vendored directories and the rules that
+apply, and writes them with comments; read it through before the first run, above all a
+standard it marks as a guess.
 
 The plan builds and tests your project's base commit in a separate worktree, indexes it, and
 lists the ordered work units with their estimated cost. Your working tree is never touched.
@@ -114,8 +119,15 @@ sources), because neither was checked.
 
 ## Documentation
 
+The documentation site is built from `docs/` (`uv run mkdocs serve` to read it locally):
+getting started, concepts, guides to Claude Code, the dashboard and dependencies,
+troubleshooting, the configuration and CLI references, and how to write rules, adapters and
+providers (`templates/plugin/` is a plugin to copy).
+
 - [docs/SPEC.md](docs/SPEC.md): product and technical specification
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md): phased implementation plan
+- [SECURITY.md](SECURITY.md): the security model, and how to report a vulnerability
+- [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 

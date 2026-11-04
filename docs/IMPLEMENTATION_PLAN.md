@@ -403,20 +403,20 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 **Prerequisites:** Phases 6 and 7.
 
 ### Tasks
-- [ ] `codecoremorph init`: detect CMake, C++ standard, source, test and include dirs; write a commented manifest (FR-1.4)
-- [ ] Docs site (MkDocs Material): getting started, concepts, config reference generated from the JSON Schema, rule authoring, adapter authoring, provider authoring, security model, troubleshooting (Docker on Windows/WSL2), FAQ
-- [ ] Security review against SPEC §10: path traversal fuzzing, a new `injection` fixture (adversarial comments) run end to end (the agent must not follow embedded instructions, and no out-of-scope edits), secret redaction audit, container hardening check, dashboard auth tests; write `SECURITY.md`
-- [ ] Performance: NFR-1.1 and NFR-1.2 checks in a nightly CI job on the benchmark; memory profiling of a full benchmark run
-- [ ] Plugin API versioning (`api_version` checks with clear errors) and a template repo for third-party plugins (FR-15.3)
-- [ ] Optional image signing (cosign)
-- [ ] Release engineering: semantic versioning, CHANGELOG, PyPI trusted publishing, image publishing with digests baked into the release, CONTRIBUTING, CODE_OF_CONDUCT, issue and PR templates
-- [ ] Ship `scripts/` as package data so `codecoremorph toolchain install` works for PyPI installs (FR-1.13); `--offline DIR` installs (FR-1.12); a docs page on dependency setup, including machines without internet access
+- [x] `codecoremorph init`: detect CMake, C++ standard, source, test and include dirs; write a commented manifest (FR-1.4, D-49)
+- [x] Docs site (MkDocs Material): getting started, concepts, config reference generated from the JSON Schema, rule authoring, adapter authoring, provider authoring, security model, troubleshooting (Docker on Windows/WSL2), FAQ (`mkdocs.yml`, `docs/`, D-53); the configuration and CLI references are generated at build time, and `tests/unit/test_docs.py` builds the site strictly. Publishing it waits for the release
+- [x] Security review against SPEC §10: path traversal fuzzing, a new `injection` fixture (adversarial comments) run end to end (the agent must not follow embedded instructions, and no out-of-scope edits), secret redaction audit, container hardening check, dashboard auth tests; write `SECURITY.md` (D-52: four findings fixed, among them invariant I-12)
+- [x] Performance: memory profiling of a full benchmark run (`bench/memory.py`; the engine records its peak resident memory in the run's environment). NFR-1.1 and NFR-1.2 checks in a nightly CI job wait for CI (D-28)
+- [x] Plugin API versioning (`api_version` checks with clear errors) and a template repo for third-party plugins (FR-15.3, D-50): `templates/plugin/`, which becomes its own template repository when the project is published
+- [ ] Optional image signing (cosign): with image publishing, which waits for CI (D-28) and the registry (Q8)
+- [ ] Release engineering: semantic versioning, CHANGELOG, PyPI trusted publishing, image publishing with digests baked into the release, CONTRIBUTING, CODE_OF_CONDUCT, issue and PR templates. Landed so far: `CHANGELOG.md`, `CONTRIBUTING.md` (with the release steps), `CODE_OF_CONDUCT.md`, the issue and PR templates, and `.github/workflows/release.yml` (UI, wheel and PyPI trusted publishing on a `v*` tag). Open: PyPI's trusted-publisher setup, and image publishing
+- [x] Ship `scripts/` as package data so `codecoremorph toolchain install` works for PyPI installs (FR-1.13); `--offline DIR` installs (FR-1.12, D-51, with `codecoremorph toolchain download` to prepare them); a docs page on dependency setup, including machines without internet access (`docs/dependencies.md`)
 - [ ] Register `codecoremorph` on PyPI; resolve SPEC §16 Q6, Q7 and Q8
 
 ### Exit criteria (M2)
-- On clean Windows, macOS and Linux machines: `uv tool install codecoremorph` → `codecoremorph init` → `codecoremorph run` on a fixture succeeds with Docker
-- The security review is complete with no open high-severity findings
-- v0.1.0 is tagged, published and documented
+- [ ] On clean Windows, macOS and Linux machines: `uv tool install codecoremorph` → `codecoremorph init` → `codecoremorph run` on a fixture succeeds with Docker. Windows checked with the built wheel (a fresh `uv tool install` on E:, `init` on the `typedefs` fixture, its manifest unchanged, then Claude Code through the skill: 3 of 3 units, 24 tests; it found D-54). From PyPI, and on macOS and Linux, after publishing and CI
+- [x] The security review is complete with no open high-severity findings (D-52)
+- [ ] v0.1.0 is tagged, published and documented
 
 ---
 
