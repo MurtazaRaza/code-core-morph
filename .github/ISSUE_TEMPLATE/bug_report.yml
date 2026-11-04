@@ -1,0 +1,52 @@
+name: Bug report
+description: Something CodeCoreMorph did wrong, or an error it shouldn't have given.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Security problems go through private reporting (the Security tab), not here.
+        Please remove anything confidential from logs and manifests before you paste them.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command's output, and for a run the relevant part of its report (`codecoremorph report`).
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`codecoremorph --version`"
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Sandbox
+      options: [Docker, native, not relevant]
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options: [Claude Code with the skill, Anthropic API, Ollama, none (plan only), not relevant]
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Manifest
+      description: Your `migration_config.yaml`, or the parts that matter.
+      render: yaml

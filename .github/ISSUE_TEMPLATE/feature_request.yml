@@ -1,0 +1,21 @@
+name: Feature request
+description: A migration, rule, language or option you'd like.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you're trying to migrate or do, and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you'd like it to work. Examples of code before and after help a lot for new rules.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried
+      description: Workarounds or other tools you looked at.
