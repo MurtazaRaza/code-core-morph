@@ -83,7 +83,8 @@ def migration_rules(session: RunSession, order: StandardOrder) -> list[tuple[Loa
     migration = session.config.migration
     source, target = migration.source.standard, migration.target.standard
     chosen: list[tuple[LoadedRule, bool]] = []
-    bumps = standard_bump_rules(session.rules, migration.source.language)
+    port = migration.target.language != migration.source.language
+    bumps = [] if port else standard_bump_rules(session.rules, migration.source.language)
     for rule_id in bumps:
         loaded = session.rules.get(rule_id)
         if rule_excludes(order, loaded.rule, source, target) is None:
@@ -165,6 +166,7 @@ def plan_from(
     started = time.monotonic()
     order = StandardOrder(migration.source.language, tuple(adapter.capabilities().standards))
     source, target = migration.source.standard, migration.target.standard
+    port = migration.target.language != migration.source.language
 
     def query(name: str, files: list[str]) -> list[RuleSite]:
         return adapter.query(ctx, name, files)
@@ -201,6 +203,7 @@ def plan_from(
         language=migration.source.language,
         source=source,
         target=target,
+        target_language=migration.target.language if port else None,
         base_commit=session.workspace.base_commit,
         warnings=warnings,
     )

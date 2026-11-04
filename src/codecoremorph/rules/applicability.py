@@ -14,7 +14,7 @@ from typing import Literal
 
 from codecoremorph.config.models import MigrationConfig
 from codecoremorph.core.errors import ConfigError
-from codecoremorph.core.models import CodemodSpec, Detector, Rule, StandardRange
+from codecoremorph.core.models import CodemodSpec, Detector, Rule, RuleKind, StandardRange
 from codecoremorph.rules.registry import RuleRegistry
 
 Severity = Literal["error", "warning"]
@@ -59,10 +59,37 @@ def range_excludes(
     return None
 
 
-def rule_excludes(order: StandardOrder, rule: Rule, source: str, target: str) -> str | None:
-    """Why ``rule`` doesn't apply to ``source`` → ``target``, or None when it applies."""
+def rule_excludes(
+    order: StandardOrder,
+    rule: Rule,
+    source: str,
+    target: str,
+    *,
+    target_language: str | None = None,
+) -> str | None:
+    """Why ``rule`` doesn't apply to ``source`` → ``target``, or None when it applies.
+
+    ``target_language`` is the migration's target language when it differs from the source
+    (a port, D-56): then only port rules to that language apply, and ``target`` is a standard
+    of the target language, which the source's ``order`` doesn't rank."""
     if rule.language != order.language:
         return f"is a {rule.language} rule, not a {order.language} one"
+    porting = target_language is not None and target_language != order.language
+    if rule.kind is RuleKind.PORT:
+        if not porting or rule.target_language != target_language:
+            return (
+                f"ports {rule.language} to {rule.target_language}, so it applies only when "
+                f"migration.target.language is {rule.target_language}"
+            )
+        maximum = rule.applies_to.max_source_standard
+        if maximum is not None and order.newer(source, maximum):
+            return f"only applies to sources up to {maximum}"
+        return None
+    if porting:
+        return (
+            f"is a {rule.kind.value} rule; a migration from {order.language} to "
+            f"{target_language} takes port rules"
+        )
     if rule.applies_to.standard_bump and not order.newer(target, source):
         return "only applies when the target standard is newer than the source"
     return range_excludes(order, rule.applies_to, source, target)
@@ -114,13 +141,20 @@ class MigrationProblem:
 
 
 def check_migration(
-    config: MigrationConfig, standards: Sequence[str] | None, registry: RuleRegistry
+    config: MigrationConfig,
+    standards: Sequence[str] | None,
+    registry: RuleRegistry,
+    target_standards: Sequence[str] | None = None,
 ) -> list[MigrationProblem]:
     """Check the manifest's standards and rules against the adapter and the rule packs.
 
     ``standards`` is the source language adapter's list, or None when no adapter for the
-    language is installed (then only the rule IDs are checked).
+    language is installed (then only the rule IDs are checked). A port (the target language
+    differs, D-56) checks the target standard against ``target_standards``, the target
+    language adapter's list.
     """
+    if config.migration.target.language != config.migration.source.language:
+        return _check_port(config, standards, registry, target_standards)
     migration = config.migration
     source, target = migration.source, migration.target
     problems: list[MigrationProblem] = []
@@ -232,5 +266,101 @@ def check_migration(
                     "so there is nothing to migrate",
                     "warning",
                 )
+            )
+    return problems
+
+
+def _standard_problem(
+    side: str, language: str, standard: str, standards: Sequence[str] | None
+) -> MigrationProblem | None:
+    loc = ("migration", side, "standard")
+    if standards is None:
+        return MigrationProblem(
+            ("migration", side, "language"),
+            f"no {language} adapter is installed, so the {side} standard wasn't checked (see "
+            "`codecoremorph adapters list`)",
+            "warning",
+        )
+    if standards and standard not in standards:
+        return MigrationProblem(
+            loc,
+            f"{standard!r} is not a standard the {language} adapter supports; {language} "
+            f"standards, oldest first: {', '.join(standards)}",
+        )
+    return None
+
+
+def _check_port(
+    config: MigrationConfig,
+    standards: Sequence[str] | None,
+    registry: RuleRegistry,
+    target_standards: Sequence[str] | None,
+) -> list[MigrationProblem]:
+    """A port (D-56): each side's standard against its own adapter, and port rules only."""
+    source, target = config.migration.source, config.migration.target
+    problems = [
+        p
+        for p in (
+            _standard_problem("source", source.language, source.standard, standards),
+            _standard_problem("target", target.language, target.standard, target_standards),
+        )
+        if p is not None
+    ]
+    order = (
+        StandardOrder(source.language, tuple(standards))
+        if standards and not any(p.loc[1] == "source" and p.severity == "error" for p in problems)
+        else None
+    )
+    ports = sorted(
+        r.rule.id
+        for r in registry.rules.values()
+        if r.rule.kind is RuleKind.PORT
+        and r.rule.language == source.language
+        and r.rule.target_language == target.language
+    )
+    if not target.rules:
+        problems.append(
+            MigrationProblem(
+                ("migration", "target", "rules"),
+                f"a migration from {source.language} to {target.language} needs a port rule; "
+                f"installed: {', '.join(ports) or 'none'}",
+            )
+        )
+    for index, rule_id in enumerate(target.rules):
+        loc = ("migration", "target", "rules", index)
+        loaded = registry.rules.get(rule_id)
+        if loaded is None:
+            problems.append(
+                MigrationProblem(
+                    loc,
+                    f"unknown rule {rule_id!r}; {source.language} to {target.language} port "
+                    f"rules: {', '.join(ports) or 'none'}",
+                )
+            )
+            continue
+        rule = loaded.rule
+        if rule.kind is not RuleKind.PORT or rule.target_language != target.language:
+            problems.append(
+                MigrationProblem(
+                    loc,
+                    f"{rule_id} isn't a port rule to {target.language}; a migration from "
+                    f"{source.language} to {target.language} takes those only: "
+                    f"{', '.join(ports) or 'none'}",
+                )
+            )
+            continue
+        if order is None:
+            continue
+        unknown = unknown_standards(order, rule)
+        reason = (
+            f"names standards the {source.language} adapter doesn't know: {', '.join(unknown)}"
+            if unknown
+            else rule_excludes(
+                order, rule, source.standard, target.standard, target_language=target.language
+            )
+        )
+        if reason is not None:
+            problems.append(
+                MigrationProblem(loc, f"{rule_id} doesn't apply to this migration: it {reason}")
             )
     return problems

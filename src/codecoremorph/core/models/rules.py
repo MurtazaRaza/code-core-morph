@@ -19,6 +19,9 @@ class RuleKind(StrEnum):
     API_PRESERVING = "api_preserving"
     API_CHANGING = "api_changing"  # the planner expands units by fan-in (FR-5.3)
     PROJECT = "project"  # build-configuration changes such as the standard bump
+    # Replaces code with code in the target language behind the same interface (D-56): one
+    # unit per interface, with the build files, and the new code's files (``extra_scope``).
+    PORT = "port"
 
 
 class StandardRange(CoreModel):
@@ -111,6 +114,9 @@ class PostconditionType(StrEnum):
     BUILDS_CLEANLY = "builds_cleanly"  # the unit builds with no errors under the target standard
     CODEMOD_CLEAN = "codemod_clean"  # the codemod checks report no remaining sites
     HOOK = "hook"
+    # A port unit's new code exports the C API its kept headers declare, with the same
+    # signatures (D-56); port rules always check it.
+    C_ABI_KEPT = "c_abi_kept"
 
 
 class Postcondition(CoreModel):
@@ -139,6 +145,43 @@ class Rule(CoreModel):
     allow_suppressions: bool = Field(
         default=False, description="Whether the rule may add NOLINT and similar (I-7)"
     )
+    target_language: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="For kind: port, the language the code is ported to (migration.target)",
+    )
+    extra_scope: list[str] = Field(
+        default_factory=list[str],
+        description="For kind: port, globs of files a unit may also create or edit, e.g. "
+        "rust/** for the crates",
+    )
+
+    @model_validator(mode="after")
+    def _port_fields(self) -> Rule:
+        if self.kind is RuleKind.PORT and self.target_language is None:
+            raise ValueError("a port rule needs `target_language`")
+        if self.kind is not RuleKind.PORT and (self.target_language or self.extra_scope):
+            raise ValueError("`target_language` and `extra_scope` are for port rules only")
+        if self.target_language is not None and self.target_language == self.language:
+            raise ValueError("a port rule's target_language differs from its language")
+        if self.kind is RuleKind.PORT and (
+            self.applies_to.standard_bump or self.applies_to.min_target_standard is not None
+        ):
+            raise ValueError(
+                "a port rule's applies_to names source standards only (max_source_standard)"
+            )
+        if self.kind is RuleKind.PORT and (
+            any(c.standard is not None for c in self.codemods)
+            or any(
+                s.min_target_standard is not None
+                for s in (self.detector.pattern_specs() if self.detector else [])
+            )
+        ):
+            raise ValueError("a port rule's codemods and patterns name no target standard")
+        for glob in self.extra_scope:
+            if glob.startswith("/") or ".." in glob.split("/"):
+                raise ValueError(f"extra_scope {glob!r} must stay inside the project")
+        return self
 
     @property
     def natural_language_only(self) -> bool:

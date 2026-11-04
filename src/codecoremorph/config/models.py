@@ -213,14 +213,19 @@ class SourceSpec(ConfigModel):
 class TargetSpec(ConfigModel):
     """What the migration makes of it."""
 
-    language: Identifier = Field(description="The same as the source, for a version upgrade")
+    language: Identifier = Field(
+        description="The same as the source, for a version upgrade; another language (`rust`) "
+        "for a port"
+    )
     standard: LanguageStandard = Field(
-        description="The source standard or a newer one, e.g. `cpp20` (up to `cpp23` for C++)"
+        description="The source standard or a newer one, e.g. `cpp20` (up to `cpp23` for C++); "
+        "for a port, a standard of the target language (`rust2021`)"
     )
     rules: list[Identifier] = Field(
         default_factory=list[str],
         description="Applied in this order, after the standard bump (which needs no listing); "
-        "`codecoremorph rules list` shows them",
+        "a port lists its port rules (`port_c_abi_module`); `codecoremorph rules list` shows "
+        "them",
     )
 
     @field_validator("rules")

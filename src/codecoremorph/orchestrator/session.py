@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
-from codecoremorph.adapters.config import language_config
+from codecoremorph.adapters.config import is_port, language_config, target_language_config
 from codecoremorph.adapters.registry import AdapterRegistry
 from codecoremorph.config import (
     ConfigIssue,
@@ -28,6 +28,7 @@ from codecoremorph.config import (
 )
 from codecoremorph.config.models import Loc, MigrationConfig, SandboxMode
 from codecoremorph.core.ids import new_run_id
+from codecoremorph.core.models import ToolchainSpec
 from codecoremorph.core.paths import HomeLayout
 from codecoremorph.rules.applicability import StandardOrder, check_migration
 from codecoremorph.rules.registry import RuleRegistry
@@ -57,16 +58,38 @@ def migration_issues(
         root = project_root(path, cfg)
         rules = RuleRegistry.discover([root / p for p in cfg.migration.rules_paths])
     adapters = adapters or AdapterRegistry.discover()
-    info = adapters.adapters.get(cfg.migration.source.language)
-    standards = info.adapter().capabilities().standards if info is not None else None
+
+    def standards_of(language: str) -> list[str] | None:
+        info = adapters.adapters.get(language)
+        return info.adapter().capabilities().standards if info is not None else None
+
+    migration = cfg.migration
+    target_standards = standards_of(migration.target.language) if is_port(cfg) else None
     found: list[tuple[Loc, str, IssueSeverity]] = [
         (p.loc, p.message, IssueSeverity(p.severity))
-        for p in check_migration(cfg, standards, rules)
+        for p in check_migration(
+            cfg, standards_of(migration.source.language), rules, target_standards
+        )
     ]
     found += [((), f"plugin: {p}", IssueSeverity.WARNING) for p in adapters.problems]
     found += [((), f"rule pack: {p}", IssueSeverity.WARNING) for p in rules.problems]
     text = path.read_bytes().decode("utf-8-sig")
     return locate_issues(text, found)
+
+
+def toolchain_spec(
+    config: MigrationConfig, adapter: LanguageAdapter, target: LanguageAdapter | None = None
+) -> ToolchainSpec:
+    """The toolchain a run needs. A port's is the target language's (its image and native
+    toolchain hold the source's too, for the mixed build), with both adapters' tools (D-56)."""
+    spec = adapter.toolchain_requirements(language_config(config))
+    if target is None:
+        return spec
+    other = target.toolchain_requirements(target_language_config(config))
+    names = {t.name for t in other.tools}
+    return other.model_copy(
+        update={"tools": [*[t for t in spec.tools if t.name not in names], *other.tools]}
+    )
 
 
 def start_executor(
@@ -76,13 +99,14 @@ def start_executor(
     workspace: RunWorkspace,
     log_dir: Path,
     on_warning: WarningSink,
+    target: LanguageAdapter | None = None,
 ) -> Executor:
-    """Choose, provision and start the executor (FR-1.2, FR-1.3)."""
+    """Choose, provision and start the executor (FR-1.2, FR-1.3). A port (``target``) runs
+    with the target language's toolchain."""
     from codecoremorph.sandbox.native import NativeExecutor
     from codecoremorph.sandbox.toolchains import require_tools
 
-    lang = language_config(config)
-    spec = adapter.toolchain_requirements(lang)
+    spec = toolchain_spec(config, adapter, target)
     choice = choose_executor(mode)
     if choice.kind == "native" and mode is not SandboxMode.NATIVE:
         # The native executor itself warns about reduced isolation when it starts.
@@ -90,7 +114,7 @@ def start_executor(
     if choice.kind == "native":
         native = NativeExecutor(
             log_dir=log_dir / "exec",
-            toolchain_env=HomeLayout.resolve().toolchain_env(lang.language),
+            toolchain_env=HomeLayout.resolve().toolchain_env(spec.language),
         )
         native.start()
         try:
@@ -116,7 +140,7 @@ def start_executor(
             cpus=sandbox.cpus,
             memory=sandbox.memory,
             pids_limit=sandbox.pids_limit,
-            toolchain_env=f"/opt/codecoremorph/toolchains/{lang.language}.env",
+            toolchain_env=f"/opt/codecoremorph/toolchains/{spec.language}.env",
         )
     )
     docker.start()
@@ -173,6 +197,9 @@ class RunSession:
     park: bool = False
     delete_branch: bool = True
     keep_build: bool = False
+    # A port's target adapter, on the same worktree and executor, with its own cache (D-56).
+    target_adapter: LanguageAdapter | None = None
+    target_ctx: AdapterContext | None = None
 
     @property
     def config(self) -> MigrationConfig:
@@ -217,6 +244,7 @@ def open_session(
         for issue in issues:
             warn(issue.render(loaded.source))
     adapter = adapters.get(config.migration.source.language)
+    target = adapters.get(config.migration.target.language) if is_port(config) else None
     if resume is None:
         run_id = new_run_id()
         workspace = RunWorkspace.create(root, run_id, base=base or config.migration.base)
@@ -230,7 +258,7 @@ def open_session(
         log_dir = artifacts.root / log_subdir
         log_dir.mkdir(parents=True, exist_ok=True)
         executor = start_executor(
-            config, mode or config.sandbox.mode, adapter, workspace, log_dir, warn
+            config, mode or config.sandbox.mode, adapter, workspace, log_dir, warn, target
         )
         ctx = AdapterContext(
             worktree=workspace.worktree.path,
@@ -243,6 +271,16 @@ def open_session(
         standard = build_standard(adapter, ctx, config)
         if standard != ctx.lang.standard:
             ctx = replace(ctx, lang=language_config(config, standard=standard))
+        target_ctx = (
+            None
+            if target is None
+            else replace(
+                ctx,
+                cache_dir=workspace.cache_dir / target.language,
+                log_dir=log_dir / target.language,
+                lang=target_language_config(config),
+            )
+        )
         session = RunSession(
             config_path=config_path,
             loaded=loaded,
@@ -256,6 +294,8 @@ def open_session(
             park=resume is not None,
             delete_branch=delete_branch,
             keep_build=keep_build,
+            target_adapter=target,
+            target_ctx=target_ctx,
         )
         yield session
     finally:

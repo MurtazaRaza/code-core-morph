@@ -68,8 +68,8 @@ def render_plan(outcome: PlanOutcome, run_id: str, project: str) -> None:
     console = stdout()
     console.print(
         Text(
-            f"Plan for {project}: {plan.language} {plan.source_standard} -> "
-            f"{plan.target_standard} at {(plan.base_commit or '?')[:12]} (run {run_id})",
+            f"Plan for {project}: {plan.migration} at {(plan.base_commit or '?')[:12]} "
+            f"(run {run_id})",
             style="bold",
         )
     )

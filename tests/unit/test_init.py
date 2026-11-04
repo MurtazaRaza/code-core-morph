@@ -47,6 +47,7 @@ FIXTURE_STANDARDS = {
     "cpp17-legacy": "cpp17",
     "untested": "cpp11",
     "injection": "cpp11",
+    "ffi-module": "cpp17",
 }
 
 

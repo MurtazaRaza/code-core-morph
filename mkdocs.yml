@@ -57,6 +57,7 @@ nav:
   - Concepts: concepts.md
   - Guides:
       - Migrating with Claude Code: claude-code.md
+      - Porting C++ to Rust: porting-to-rust.md
       - The dashboard: dashboard.md
       - Installing dependencies: dependencies.md
       - Troubleshooting: troubleshooting.md

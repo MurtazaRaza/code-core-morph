@@ -1,0 +1,21 @@
+id: port_c_abi_module
+language: cpp
+target_language: rust
+kind: port
+description: >-
+  Replace the C++ code behind a C header (functions with C linkage) with a Rust crate that
+  exports the same C interface; the header and the C++ tests stay as they are.
+detector:
+  type: adapter_query
+  query: c_abi_definitions        # definitions of functions a project header declares extern "C"
+codemods:
+  - tool: rust-crate              # the crate and its Corrosion wiring in CMakeLists.txt
+extra_scope: ['rust/**']          # the crates live here
+llm:
+  guidance: guidance/port_c_abi_module.md
+postconditions:
+  - {type: detector_empty, severity: error}   # no C++ definition of the interface is left
+  - {type: c_abi_kept, severity: error}       # the crate exports the header's functions
+skip:
+  - test                          # test code stays C++: it judges the port
+allow_suppressions: true          # #[allow(non_camel_case_types)] keeps the C type names

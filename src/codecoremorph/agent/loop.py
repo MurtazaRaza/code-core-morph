@@ -36,7 +36,7 @@ from typing import cast
 
 from pydantic import ValidationError
 
-from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
+from codecoremorph.adapters.base import AdapterContext, AdapterNotSupportedError, LanguageAdapter
 from codecoremorph.agent.context import UnitContext, build_context, read_text
 from codecoremorph.agent.feedback import compiler_feedback, regression_feedback, sites_feedback
 from codecoremorph.agent.tools import ToolBox
@@ -47,14 +47,16 @@ from codecoremorph.agent.unverified import (
     unverified_warnings,
 )
 from codecoremorph.config.models import GuardrailsConfig
-from codecoremorph.core.errors import ContextOverflowError, LLMError
+from codecoremorph.core.errors import ContextOverflowError, LLMError, SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     Attempt,
     AttemptOutcome,
     Baseline,
     BuildResult,
+    CodemodChange,
     CodemodResult,
+    CodemodSpec,
     CompletionRequest,
     ContentBlock,
     DetectorType,
@@ -63,10 +65,12 @@ from codecoremorph.core.models import (
     InvariantResult,
     LoadedRule,
     Message,
+    Postcondition,
     PostconditionType,
     Role,
     RuleKind,
     RuleSite,
+    Severity,
     StopReason,
     TestReport,
     TestStatus,
@@ -76,6 +80,7 @@ from codecoremorph.core.models import (
     owned_files,
 )
 from codecoremorph.core.secrets import Json, Redactor
+from codecoremorph.invariants.abi import c_abi_differences, c_abi_feedback
 from codecoremorph.invariants.checker import InvariantChecker
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
@@ -131,6 +136,24 @@ class Verification:
     # Failed rule checks the unit's context doesn't list as sites: a codemod_clean diff, a
     # hook's sites.
     untold: str = ""
+
+
+def merge_codemod_results(results: Sequence[CodemodResult]) -> CodemodResult:
+    """Several adapters' codemod results as one: replacements add up per file."""
+    if len(results) == 1:
+        return results[0]
+    totals: dict[str, int] = {}
+    for result in results:
+        for change in result.changes:
+            totals[change.file] = totals.get(change.file, 0) + change.replacements
+    return CodemodResult(
+        changes=[CodemodChange(file=f, replacements=n) for f, n in sorted(totals.items())],
+        skipped=[s for r in results for s in r.skipped],
+        remaining=[d for r in results for d in r.remaining],
+        diagnostics=[d for r in results for d in r.diagnostics],
+        duration_s=sum(r.duration_s for r in results),
+        log_paths=[p for r in results for p in r.log_paths],
+    )
 
 
 def first_build(check: Verification) -> str | None:
@@ -219,6 +242,8 @@ class UnitRunner:
         invariants: InvariantChecker | None = None,
         guard: Guard | None = None,
         deadline: float | None = None,
+        target_adapter: LanguageAdapter | None = None,
+        target_ctx: AdapterContext | None = None,
     ):
         """``project_files`` are the project's editable code files: a project-wide rule (the
         standard bump) runs its codemods on all of them, not only on the unit's files.
@@ -227,9 +252,19 @@ class UnitRunner:
         ``llm`` may be None when a host agent makes the edits (``run`` needs it).
         ``invariants`` checks green attempts (FR-4.4); ``guard`` raises to stop the run (an
         abort) and is called before every attempt and model call; ``deadline`` is a
-        ``time.monotonic()`` value after which the unit ends as timed out."""
+        ``time.monotonic()`` value after which the unit ends as timed out.
+
+        A port (D-56) also has the ``target_adapter``, on the same worktree and executor
+        (``target_ctx``): codemods go to the adapter that lists their tool, a failed build adds
+        its diagnostics, and it reads the C interface the new code exports (``c_abi_kept``)."""
         self.adapter = adapter
         self.ctx = ctx
+        self.target_adapter = target_adapter
+        self.target_ctx = target_ctx
+        # How prompts name the target: a port's is another language.
+        self.target_label = (
+            f"{target_ctx.lang.language} ({target})" if target_ctx is not None else target
+        )
         self.worktree = worktree
         self.baseline = baseline
         self.llm = llm
@@ -346,7 +381,31 @@ class UnitRunner:
         files = owned_files(unit)
         if any(r.rule.kind is RuleKind.PROJECT for r in rules):
             files += [f for f in self.project_files if f not in unit.files]
-        return self.adapter.run_codemods(self.ctx, specs, files)
+        return self.run_codemods(specs, files)
+
+    def run_codemods(self, specs: Sequence[CodemodSpec], files: list[str]) -> CodemodResult:
+        """Each run of consecutive passes goes to the adapter that lists their tool: a port's
+        target adapter for its own tools (``rust-crate``), the source adapter otherwise."""
+        target_tools = (
+            set(self.target_adapter.capabilities().codemod_tools)
+            if self.target_adapter is not None
+            else set[str]()
+        )
+        results: list[CodemodResult] = []
+        batch: list[CodemodSpec] = []
+        batch_target = False
+        for spec in [*specs, None]:
+            is_target = spec is not None and spec.tool in target_tools
+            if batch and (spec is None or is_target != batch_target):
+                if batch_target and self.target_adapter is not None and self.target_ctx:
+                    results.append(self.target_adapter.run_codemods(self.target_ctx, batch, files))
+                else:
+                    results.append(self.adapter.run_codemods(self.ctx, batch, files))
+                batch = []
+            if spec is not None:
+                batch.append(spec)
+                batch_target = is_target
+        return merge_codemod_results(results)
 
     # ------------------------------------------------------------------ verification
 
@@ -354,7 +413,16 @@ class UnitRunner:
         self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
     ) -> Verification:
         changed = {f.path for f in self.worktree.diff(self.worktree.head()).files}
-        if ctx.lang.standard != self.configured_standard or changed & self.build_files:
+        port = self.target_adapter is not None and self.target_ctx is not None
+        if self.target_adapter is not None and self.target_ctx is not None:
+            # The target's dependency fetch (the only step with the network, fetch_only)
+            # comes first: the source build compiles the target's code offline.
+            fetched = self.target_adapter.configure(self.target_ctx)
+            if not fetched.success:
+                return self._build_failure(fetched, unit, "configure", changed, {})
+        # A port reconfigures every time: the source build system reads the new code's
+        # manifests when it configures (Corrosion runs `cargo metadata`).
+        if port or ctx.lang.standard != self.configured_standard or changed & self.build_files:
             configured = self.adapter.configure(ctx)
             if not configured.success:
                 return self._build_failure(configured, unit, "configure", changed, {})
@@ -463,10 +531,18 @@ class UnitRunner:
         untold: list[str] = []
         for loaded in rules:
             rule_id = loaded.rule.id
-            for post in loaded.rule.postconditions:
+            posts = list(loaded.rule.postconditions)
+            if loaded.rule.kind is RuleKind.PORT and not any(
+                p.type is PostconditionType.C_ABI_KEPT for p in posts
+            ):
+                posts.append(Postcondition(type=PostconditionType.C_ABI_KEPT))
+            for post in posts:
                 if post.type is PostconditionType.DETECTOR_EMPTY:
                     found = sites.get(rule_id, [])
                     text = sites_feedback(rule_id, found) if found else ""
+                elif post.type is PostconditionType.C_ABI_KEPT:
+                    text = self._c_abi(unit, loaded)
+                    found = [RuleSite(file="-", line=1)] if text else []
                 elif post.type is PostconditionType.CODEMOD_CLEAN:
                     text = self._codemod_leftovers(unit, loaded)
                     found = [RuleSite(file="-", line=1)] if text else []
@@ -487,6 +563,42 @@ class UnitRunner:
                     warnings.append(f"{rule_id}: {len(found)} site(s) left (a warning)")
         return problems, warnings, untold
 
+    def _c_abi(self, unit: WorkUnit, loaded: LoadedRule) -> str:
+        """``c_abi_kept``: the unit's new code (its changed files under the rule's
+        ``extra_scope``) exports every function its kept headers (the reference files)
+        declare, with the same signature. Both sides are read by the source adapter."""
+        rule_id = loaded.rule.id
+        headers = list(unit.reference_files)
+        if not headers:
+            return ""
+        if self.target_adapter is None or self.target_ctx is None:
+            return (
+                f"{rule_id}: c_abi_kept compares the C interface with the code a port writes, "
+                "and this migration isn't a port (migration.target.language is the source's)"
+            )
+        scope = PathMatcher(loaded.rule.extra_scope)
+        new_code = sorted(
+            f.path
+            for f in self.worktree.diff(self.worktree.head()).files
+            if scope.matches(f.path) and (self.worktree.path / f.path).is_file()
+        )
+        try:
+            expected: dict[str, str] = {}
+            for header in headers:
+                expected.update(self.adapter.c_declarations(self.ctx, self.worktree.path / header))
+            exported: dict[str, str] = {}
+            if new_code:
+                for path in self.target_adapter.exported_c_headers(self.target_ctx, new_code):
+                    exported.update(self.adapter.c_declarations(self.ctx, path))
+        except AdapterNotSupportedError as exc:
+            return f"{rule_id}: the adapters can't compare C interfaces ({exc})"
+        except SandboxError as exc:
+            # A crate cbindgen can't read, or a generated header C can't parse: the attempt's
+            # problem, so it is feedback.
+            reason = f": {exc.reason}" if exc.reason else ""
+            return f"{rule_id}: the C interface couldn't be compared. {exc.message}{reason}"
+        return c_abi_feedback(rule_id, headers, c_abi_differences(expected, exported))
+
     def _codemod_leftovers(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         specs = [
             spec for spec in loaded.rule.codemods if codemod_applies(self.order, spec, self.target)
@@ -495,7 +607,7 @@ class UnitRunner:
             return ""
         files = owned_files(unit)
         before = self.worktree.write_tree()
-        result = self.adapter.run_codemods(self.ctx, specs, files)
+        result = self.run_codemods(specs, files)
         diff = self.worktree.diff(before)
         if diff.files:
             self.worktree.restore_tree(before)
@@ -548,9 +660,20 @@ class UnitRunner:
         changed: set[str],
         sites: dict[str, list[RuleSite]],
     ) -> Verification:
+        diagnostics = list(result.diagnostics)
+        unit_files = list(unit.files)
+        if self.target_adapter is not None and self.target_ctx is not None:
+            # The new code's files are the unit's too.
+            unit_files += sorted(changed - set(unit.files))
+            if step == "build":
+                # The source build runs the target's compiler too (Corrosion runs Cargo), but
+                # only the target adapter reads its diagnostics: Cargo's JSON messages.
+                own = self.target_adapter.build(self.target_ctx)
+                diagnostics += [d for d in own.diagnostics if d.severity is Severity.ERROR]
+                result = result.model_copy(update={"diagnostics": diagnostics})
         feedback = compiler_feedback(
-            result.diagnostics,
-            unit_files=unit.files,
+            diagnostics,
+            unit_files=unit_files,
             worktree=self.worktree.path,
             changed_files=sorted(changed),
             step=step,
@@ -600,6 +723,14 @@ class UnitRunner:
     # ------------------------------------------------------------------ the agent
 
     def allowed(self, path: str, unit: WorkUnit, rules: Sequence[LoadedRule]) -> bool:
+        ports = [r.rule for r in rules if r.rule.kind is RuleKind.PORT]
+        if ports:
+            # A port keeps its headers as they are, and may create its new code's files.
+            if path in unit.reference_files:
+                return False
+            if path in unit.files:
+                return True
+            return PathMatcher([g for r in ports for g in r.extra_scope]).matches(path)
         if path in unit.files:
             return True
         project_rule = any(r.rule.kind is RuleKind.PROJECT for r in rules)
@@ -629,7 +760,7 @@ class UnitRunner:
                 index_path=self.index_path,
                 language=ctx.lang.language,
                 source=self.source,
-                target=self.target,
+                target=self.target_label,
                 codemods=outcome.codemods,
                 remaining=check.sites,
                 build=first_build(check),
@@ -874,6 +1005,16 @@ class UnitRunner:
         """Apply a batch through PatchEngine; None on success, else the rejection feedback."""
         outside = [p for p in batch.paths if not self.allowed(p, unit, rules)]
         if outside:
+            ports = [r.rule for r in rules if r.rule.kind is RuleKind.PORT]
+            if ports:
+                editable = [f for f in unit.files if f not in unit.reference_files]
+                scope = ", ".join(g for r in ports for g in r.extra_scope)
+                kept = ", ".join(unit.reference_files) or "none"
+                return (
+                    f"Rejected: you may not edit {', '.join(outside)}. A port keeps its headers "
+                    f"as they are ({kept}); change the unit's other files "
+                    f"({', '.join(editable)}) and files under {scope or '(nothing else)'}."
+                )
             return (
                 "Rejected: these paths are outside the unit, which you may not edit: "
                 + ", ".join(outside)

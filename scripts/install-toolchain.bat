@@ -4,6 +4,10 @@ rem POSIX twin: scripts/install-toolchain.sh (same flags, messages and exit code
 setlocal
 
 set "CCM_LIB=%~dp0lib\common.bat"
+rem The Rust release rustup installs, and the cbindgen release cargo builds (D-56). rustup and
+rem cargo verify what they download themselves (SPEC 7.15 rule 1).
+set "RUST_VERSION=1.99.1"
+set "CBINDGEN_VERSION=0.29.4"
 
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
@@ -13,18 +17,25 @@ set "LANGUAGE_COUNT=0"
 for %%a in (%CCM_POSITIONAL%) do call :count_language %%a
 if not "%LANGUAGE_COUNT%"=="1" goto expected_one_language
 if "%LANGUAGE%"=="cpp" goto language_ok
+if "%LANGUAGE%"=="rust" goto language_ok
 if "%LANGUAGE%"=="all" goto language_ok
 if "%LANGUAGE%"=="java" goto language_later
 if "%LANGUAGE%"=="csharp" goto language_later
-if "%LANGUAGE%"=="rust" goto language_later
-call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, all"
+call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, rust, all"
 exit /b 2
 
 :language_ok
 call "%CCM_LIB%" :setup
 if errorlevel 1 exit /b %errorlevel%
+if "%LANGUAGE%"=="cpp" goto language_cpp
+rem rust and all: the Rust toolchain includes the C++ one.
+call :install_rust
+if errorlevel 1 exit /b %errorlevel%
+goto language_done
+:language_cpp
 call :install_cpp
 if errorlevel 1 exit /b %errorlevel%
+:language_done
 call "%CCM_LIB%" :log "done"
 exit /b 0
 
@@ -183,12 +194,200 @@ call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
 exit /b 1
 
 
+rem :install_rust  -- the C++ toolchain, then Rust through rustup, cargo-nextest, cbindgen and
+rem Corrosion, and rust.env (a superset of cpp.env: every Rust run here is a mixed build).
+:install_rust
+if defined CCM_OFFLINE goto install_rust_offline
+call :install_cpp
+if errorlevel 1 exit /b %errorlevel%
+set "RUSTUP_HOME_DIR=%CCM_HOME%\toolchains\rust\rustup"
+set "CARGO_HOME_DIR=%CCM_HOME%\toolchains\rust\cargo"
+call "%CCM_LIB%" :install_tool rust rustup
+if errorlevel 1 exit /b %errorlevel%
+set "RUSTUP_VERSION=%CCM_ROW_VERSION%"
+set "RUST_INIT=%CCM_TOOL_DIR%\rustup-init.exe"
+call :rust_toolchain
+if errorlevel 1 exit /b %errorlevel%
+call "%CCM_LIB%" :install_tool rust cargo-nextest
+if errorlevel 1 exit /b %errorlevel%
+set "NEXTEST_VERSION=%CCM_ROW_VERSION%"
+set "NEXTEST_BIN=%CCM_TOOL_BIN_DIR%"
+call :rust_cbindgen
+if errorlevel 1 exit /b %errorlevel%
+call :rust_corrosion
+if errorlevel 1 exit /b %errorlevel%
+call :rust_write_env
+exit /b %errorlevel%
+:install_rust_offline
+call "%CCM_LIB%" :die 2 "--offline doesn't apply to rust: rustup downloads the Rust release and cargo builds cbindgen themselves"
+exit /b 2
+
+
+:rust_toolchain
+set "RUSTC=%CARGO_HOME_DIR%\bin\rustc.exe"
+if "%CCM_FORCE%"=="1" goto rust_toolchain_needed
+if not exist "%RUSTC%" goto rust_toolchain_needed
+set "RUST_HAVE="
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN=%RUST_VERSION%"
+for /f "tokens=2" %%v in ('""%RUSTC%" --version" 2^>nul') do set "RUST_HAVE=%%v"
+set "RUSTUP_TOOLCHAIN="
+if not "%RUST_HAVE%"=="%RUST_VERSION%" goto rust_toolchain_needed
+call "%CCM_LIB%" :log "Rust %RUST_VERSION% is already installed in %CCM_HOME%\toolchains\rust"
+exit /b 0
+:rust_toolchain_needed
+if not "%CCM_DRY_RUN%"=="1" goto rust_toolchain_real
+call "%CCM_LIB%" :log "would install Rust %RUST_VERSION% with rustup %RUSTUP_VERSION% into %CCM_HOME%\toolchains\rust"
+exit /b 0
+:rust_toolchain_real
+call "%CCM_LIB%" :log "installing Rust %RUST_VERSION% with rustup %RUSTUP_VERSION% (rustup downloads and verifies it)"
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN="
+rem The gnullvm host links with llvm-mingw, so no Visual Studio is needed (D-32).
+"%RUST_INIT%" -y --no-modify-path --profile minimal --default-toolchain %RUST_VERSION% -c clippy -c rustfmt --default-host x86_64-pc-windows-gnullvm
+if errorlevel 1 goto rust_toolchain_failed
+exit /b 0
+:rust_toolchain_failed
+call "%CCM_LIB%" :die 1 "rustup-init failed to install Rust %RUST_VERSION%"
+exit /b 1
+
+
+rem :rust_cbindgen  -- build the pinned cbindgen with cargo, unless it is there. Sets CBINDGEN_BIN.
+:rust_cbindgen
+set "CBINDGEN_ROOT=%CCM_HOME%\toolchains\cbindgen\%CBINDGEN_VERSION%"
+set "CBINDGEN_BIN=%CBINDGEN_ROOT%\bin"
+if "%CCM_FORCE%"=="1" goto rust_cbindgen_needed
+if not exist "%CBINDGEN_BIN%\cbindgen.exe" goto rust_cbindgen_needed
+call "%CCM_LIB%" :log "cbindgen %CBINDGEN_VERSION% is already installed in %CBINDGEN_ROOT%"
+exit /b 0
+:rust_cbindgen_needed
+if not "%CCM_DRY_RUN%"=="1" goto rust_cbindgen_real
+call "%CCM_LIB%" :log "would build cbindgen %CBINDGEN_VERSION% with cargo install --locked into %CBINDGEN_ROOT%"
+exit /b 0
+:rust_cbindgen_real
+call "%CCM_LIB%" :log "building cbindgen %CBINDGEN_VERSION% (cargo install --locked)"
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN=%RUST_VERSION%"
+set "PATH=%LLVM_BIN%;%PATH%"
+"%CARGO_HOME_DIR%\bin\cargo.exe" install cbindgen --version %CBINDGEN_VERSION% --locked --root "%CBINDGEN_ROOT%"
+if errorlevel 1 goto rust_cbindgen_failed
+exit /b 0
+:rust_cbindgen_failed
+call "%CCM_LIB%" :die 1 "building cbindgen %CBINDGEN_VERSION% failed"
+exit /b 1
+
+
+rem :rust_corrosion  -- install Corrosion from its source with the pinned CMake. Sets
+rem CORROSION_PREFIX.
+:rust_corrosion
+call "%CCM_LIB%" :install_tool rust corrosion
+if errorlevel 1 exit /b %errorlevel%
+set "CORROSION_VERSION=%CCM_ROW_VERSION%"
+set "CO_SRC=%CCM_TOOL_BIN_DIR%"
+set "CO_ROOT=%CCM_HOME%\toolchains\corrosion\%CORROSION_VERSION%"
+set "CORROSION_PREFIX=%CO_ROOT%\install"
+if "%CCM_FORCE%"=="1" goto rust_corrosion_needed
+if not exist "%CORROSION_PREFIX%\.built" goto rust_corrosion_needed
+call "%CCM_LIB%" :log "Corrosion %CORROSION_VERSION% is already installed in %CORROSION_PREFIX%"
+exit /b 0
+:rust_corrosion_needed
+if not "%CCM_DRY_RUN%"=="1" goto rust_corrosion_real
+call "%CCM_LIB%" :log "would install Corrosion %CORROSION_VERSION% into %CORROSION_PREFIX%"
+exit /b 0
+:rust_corrosion_real
+set "CO_BUILD=%CO_ROOT%\.build-%RANDOM%"
+set "CO_TMP=%CO_ROOT%\.install-%RANDOM%"
+set "CO_LOG=%CO_ROOT%\build.log"
+if exist "%CO_BUILD%" rmdir /s /q "%CO_BUILD%"
+if exist "%CO_TMP%" rmdir /s /q "%CO_TMP%"
+call "%CCM_LIB%" :log "installing Corrosion %CORROSION_VERSION% (log: %CO_LOG%)"
+rem Corrosion's configure looks for rustc on PATH.
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN=%RUST_VERSION%"
+set "PATH=%CARGO_HOME_DIR%\bin;%PATH%"
+"%CMAKE%" -S "%CO_SRC:\=/%" -B "%CO_BUILD:\=/%" -G Ninja "-DCMAKE_MAKE_PROGRAM=%NINJA:\=/%" "-DCMAKE_C_COMPILER=%CC_PATH:\=/%" "-DCMAKE_CXX_COMPILER=%CXX_PATH:\=/%" -DCORROSION_BUILD_TESTS=OFF "-DCMAKE_INSTALL_PREFIX=%CO_TMP:\=/%" >"%CO_LOG%" 2>&1
+if errorlevel 1 goto rust_corrosion_failed
+"%CMAKE%" --build "%CO_BUILD:\=/%" >>"%CO_LOG%" 2>&1
+if errorlevel 1 goto rust_corrosion_failed
+"%CMAKE%" --install "%CO_BUILD:\=/%" >>"%CO_LOG%" 2>&1
+if errorlevel 1 goto rust_corrosion_failed
+>"%CO_TMP%\.built" echo(%CCM_ROW_SHA256%
+if exist "%CORROSION_PREFIX%" rmdir /s /q "%CORROSION_PREFIX%"
+rmdir /s /q "%CO_BUILD%"
+move "%CO_TMP%" "%CORROSION_PREFIX%" >nul
+if errorlevel 1 goto rust_corrosion_move_failed
+call "%CCM_LIB%" :log "installed Corrosion %CORROSION_VERSION% into %CORROSION_PREFIX%"
+exit /b 0
+:rust_corrosion_failed
+if exist "%CO_BUILD%" rmdir /s /q "%CO_BUILD%"
+if exist "%CO_TMP%" rmdir /s /q "%CO_TMP%"
+call "%CCM_LIB%" :die 1 "installing Corrosion failed; the full log is %CO_LOG%"
+exit /b 1
+:rust_corrosion_move_failed
+call "%CCM_LIB%" :die 1 "could not move Corrosion into %CORROSION_PREFIX%"
+exit /b 1
+
+
+:rust_write_env
+set "ENV_FILE=%CCM_HOME%\toolchains\rust.env"
+set "ACTIVATE=%CCM_HOME%\toolchains\activate-rust.bat"
+if not "%CCM_DRY_RUN%"=="1" goto rust_write_env_real
+call "%CCM_LIB%" :log "would write %ENV_FILE% and %ACTIVATE%"
+exit /b 0
+:rust_write_env_real
+set "RUST_PREPEND=%CARGO_HOME_DIR%\bin;%NEXTEST_BIN%;%CBINDGEN_BIN%;%LLVM_BIN%;%CMAKE_BIN%;%NINJA_BIN%;%EXTRA_BIN%"
+set "RUST_PREFIXES=%GTEST_PREFIX%;%CORROSION_PREFIX%"
+>"%ENV_FILE%.tmp" echo(# CodeCoreMorph Rust toolchain (with the C++ one), written by install-toolchain.
+if errorlevel 1 goto rust_write_env_failed
+>>"%ENV_FILE%.tmp" echo(# Do not edit. rust %RUST_VERSION% (rustup %RUSTUP_VERSION%), cargo-nextest %NEXTEST_VERSION%, cbindgen %CBINDGEN_VERSION%,
+>>"%ENV_FILE%.tmp" echo(# corrosion %CORROSION_VERSION%, %LLVM_ID%, cmake %CMAKE_VERSION%, ninja %NINJA_VERSION%, googletest %GTEST_VERSION% and %GTEST98_VERSION%
+>>"%ENV_FILE%.tmp" echo(PATH_PREPEND=%RUST_PREPEND%
+>>"%ENV_FILE%.tmp" echo(CC=%CC_PATH%
+>>"%ENV_FILE%.tmp" echo(CXX=%CXX_PATH%
+>>"%ENV_FILE%.tmp" echo(CMAKE_GENERATOR=Ninja
+>>"%ENV_FILE%.tmp" echo(CMAKE_PREFIX_PATH=%RUST_PREFIXES%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_CXX98_PREFIX_PATH=%GTEST98_PREFIX%
+>>"%ENV_FILE%.tmp" echo(RUSTUP_HOME=%RUSTUP_HOME_DIR%
+>>"%ENV_FILE%.tmp" echo(CARGO_HOME=%CARGO_HOME_DIR%
+>>"%ENV_FILE%.tmp" echo(RUSTUP_TOOLCHAIN=%RUST_VERSION%
+rem Builds never reach the network; crates come from the fetch step (SPEC 11.5).
+>>"%ENV_FILE%.tmp" echo(CARGO_NET_OFFLINE=true
+move /y "%ENV_FILE%.tmp" "%ENV_FILE%" >nul
+if errorlevel 1 goto rust_write_env_failed
+>"%ACTIVATE%.tmp" echo(@echo off
+if errorlevel 1 goto rust_write_activate_failed
+>>"%ACTIVATE%.tmp" echo(rem Use the CodeCoreMorph Rust and C++ toolchain in this cmd.exe window:  call "%ACTIVATE%"
+>>"%ACTIVATE%.tmp" echo(set "PATH=%RUST_PREPEND%;%%PATH%%"
+>>"%ACTIVATE%.tmp" echo(set "CC=%CC_PATH%"
+>>"%ACTIVATE%.tmp" echo(set "CXX=%CXX_PATH%"
+>>"%ACTIVATE%.tmp" echo(set "CMAKE_GENERATOR=Ninja"
+>>"%ACTIVATE%.tmp" echo(set "CMAKE_PREFIX_PATH=%RUST_PREFIXES%"
+>>"%ACTIVATE%.tmp" echo(set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+>>"%ACTIVATE%.tmp" echo(set "CARGO_HOME=%CARGO_HOME_DIR%"
+>>"%ACTIVATE%.tmp" echo(set "RUSTUP_TOOLCHAIN=%RUST_VERSION%"
+move /y "%ACTIVATE%.tmp" "%ACTIVATE%" >nul
+if errorlevel 1 goto rust_write_activate_failed
+call "%CCM_LIB%" :log "wrote %ENV_FILE%"
+echo(codecoremorph: to use the toolchain in your own shell, run: call "%ACTIVATE%"
+exit /b 0
+:rust_write_env_failed
+call "%CCM_LIB%" :die 1 "could not write %ENV_FILE%"
+exit /b 1
+:rust_write_activate_failed
+call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
+exit /b 1
+
+
 :language_later
-call "%CCM_LIB%" :die 2 "the %LANGUAGE% toolchain is not available yet; available: cpp"
+call "%CCM_LIB%" :die 2 "the %LANGUAGE% toolchain is not available yet; available: cpp, rust"
 exit /b 2
 
 :expected_one_language
-call "%CCM_LIB%" :die 2 "expected one language: cpp or all (see --help)"
+call "%CCM_LIB%" :die 2 "expected one language: cpp, rust or all (see --help)"
 exit /b 2
 
 :usage
@@ -202,7 +401,11 @@ echo Languages:
 echo   cpp   LLVM (clang, clang-tidy, clang-format; llvm-mingw on Windows), CMake,
 echo         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
 echo         for projects that build as C++98/03)
-echo   all   every available language (currently cpp)
+echo   rust  the cpp toolchain, plus Rust (through rustup, with clippy and
+echo         rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
+echo         ports; rustup and cargo download Rust and cbindgen themselves, so
+echo         --offline doesn't apply
+echo   all   every available language (cpp and rust)
 echo.
 echo Options:
 echo   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)

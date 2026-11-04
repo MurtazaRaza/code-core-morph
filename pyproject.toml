@@ -40,9 +40,11 @@ codecoremorph = "codecoremorph.cli:main"
 # Built-in plugins register like third-party ones (FR-15.1).
 [project.entry-points."codecoremorph.adapters"]
 cpp = "codecoremorph.adapters.cpp:CppAdapter"
+rust = "codecoremorph.adapters.rust:RustAdapter"
 
 [project.entry-points."codecoremorph.rules"]
 cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
+cpp_to_rust = "codecoremorph.rules.packs.cpp_to_rust:PACK_DIR"
 
 [project.entry-points."codecoremorph.providers"]
 anthropic = "codecoremorph.llm.anthropic:AnthropicProvider"
@@ -91,6 +93,7 @@ path = "hatch_build.py"
 "scripts/deps/manifest.py" = "codecoremorph/_scripts/deps/manifest.py"
 "scripts/deps/fetch-offline.py" = "codecoremorph/_scripts/deps/fetch-offline.py"
 "images/cpp/image.lock" = "codecoremorph/_images/cpp/image.lock"
+"images/rust/image.lock" = "codecoremorph/_images/rust/image.lock"
 
 [tool.uv]
 required-version = ">=0.12.0"

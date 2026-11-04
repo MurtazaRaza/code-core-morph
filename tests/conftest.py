@@ -110,6 +110,16 @@ def cpp_toolchain_env() -> Path:
     return env
 
 
+@pytest.fixture
+def rust_toolchain_env() -> Path:
+    """The installed native Rust toolchain's environment file (it holds the C++ toolchain
+    too, D-56); skips when there is none."""
+    env = REAL_HOME / "toolchains" / "rust.env"
+    if not env.is_file():
+        pytest.skip(f"no native Rust toolchain at {env}; run: codecoremorph toolchain install rust")
+    return env
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--record-cassettes",

@@ -63,6 +63,14 @@ BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
         r"\bFetchContent_(?:Declare|MakeAvailable|Populate)\s*\(", re.IGNORECASE
     ),
 }
+# The same in a Cargo manifest (D-56): build scripts and procedural macros run while the crate
+# builds, and build dependencies are their code. Cargo also runs a build.rs at a package's root
+# without being told, so a new one counts (check_build_commands).
+CARGO_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
+    "a build script (build =)": re.compile(r"^\s*build\s*=\s*[\"']"),
+    "[build-dependencies]": re.compile(r"^\s*\[\s*(?:target\.[^\]]*\.)?build-dependencies\s*\]"),
+    "a procedural macro crate": re.compile(r"^\s*proc-macro\s*=\s*true\b"),
+}
 
 # Symbols whose signature is an interface others depend on (I-6). Macros have no signature in
 # the index, and a typedef rewritten as an alias declaration keeps its signature.
@@ -479,10 +487,16 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
 
     added: list[str] = []
     for path in sorted(set(lines.added) | set(lines.removed)):
-        for name, pattern in BUILD_COMMANDS.items():
+        file_name = path.rsplit("/", 1)[-1]
+        patterns = dict(BUILD_COMMANDS)
+        if file_name == "Cargo.toml":
+            patterns.update(CARGO_BUILD_COMMANDS)
+        for name, pattern in patterns.items():
             plus = count(pattern, lines.added.get(path, []))
             if plus > count(pattern, lines.removed.get(path, [])):
                 added.append(f"{name} in {path}")
+        if file_name == "build.rs" and lines.added.get(path) and not lines.removed.get(path):
+            added.append(f"a new Cargo build script {path}")
     if not added:
         return _ok("I-12")
     return InvariantResult(

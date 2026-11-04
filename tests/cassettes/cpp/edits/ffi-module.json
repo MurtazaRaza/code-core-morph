@@ -1,0 +1,41 @@
+{
+ "fixture": "ffi-module",
+ "source": "cpp17",
+ "target": "rust2021",
+ "target_language": "rust",
+ "rules": [
+  "port_c_abi_module"
+ ],
+ "status": "completed",
+ "unit_counts": {
+  "committed": 1
+ },
+ "submissions": {
+  "U-0001": [
+   {
+    "summary": "Port src/ring.cpp to the textkit_ring crate behind include/textkit/ring.h.",
+    "review_notes": [
+     "tk_ring keeps its C name, so the crate allows non_camel_case_types."
+    ],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "rust/textkit_ring/src/lib.rs",
+      "search": "//! The Rust port of src/ring.cpp (CodeCoreMorph, D-56).\n",
+      "replace": "//! The Rust port of src/ring.cpp (CodeCoreMorph, D-56): textkit's ring buffer and\n//! checksum, behind the C API of include/textkit/ring.h.\n\nuse std::os::raw::c_int;\n\n/// A fixed-capacity ring buffer; C code sees it only through a pointer. It keeps the C\n/// API's name, so the generated header matches include/textkit/ring.h.\n#[allow(non_camel_case_types)]\npub struct tk_ring {\n    slots: Vec<i32>,\n    head: usize,\n    count: usize,\n}\n\n/// A new, empty ring that holds up to `capacity` values; NULL when capacity is 0.\n#[no_mangle]\npub extern \"C\" fn tk_ring_new(capacity: usize) -> *mut tk_ring {\n    if capacity == 0 {\n        return std::ptr::null_mut();\n    }\n    Box::into_raw(Box::new(tk_ring { slots: vec![0; capacity], head: 0, count: 0 }))\n}\n\n/// Frees a ring; NULL is allowed.\n///\n/// # Safety\n/// `ring` is NULL or a pointer from `tk_ring_new` that hasn't been freed.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_free(ring: *mut tk_ring) {\n    if !ring.is_null() {\n        drop(Box::from_raw(ring));\n    }\n}\n\n/// Appends a value: 1 if it was stored, 0 if the ring is full.\n///\n/// # Safety\n/// `ring` is a live pointer from `tk_ring_new`.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_push(ring: *mut tk_ring, value: i32) -> c_int {\n    let ring = &mut *ring;\n    if ring.count == ring.slots.len() {\n        return 0;\n    }\n    let tail = (ring.head + ring.count) % ring.slots.len();\n    ring.slots[tail] = value;\n    ring.count += 1;\n    1\n}\n\n/// Takes the oldest value into `*out`: 1 if there was one, 0 if the ring is empty.\n///\n/// # Safety\n/// `ring` is a live pointer from `tk_ring_new`; `out` points to writable memory.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_pop(ring: *mut tk_ring, out: *mut i32) -> c_int {\n    let ring = &mut *ring;\n    if ring.count == 0 {\n        return 0;\n    }\n    *out = ring.slots[ring.head];\n    ring.head = (ring.head + 1) % ring.slots.len();\n    ring.count -= 1;\n    1\n}\n\n/// # Safety\n/// `ring` is a live pointer from `tk_ring_new`.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_len(ring: *const tk_ring) -> usize {\n    (*ring).count\n}\n\n/// # Safety\n/// `ring` is a live pointer from `tk_ring_new`.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_capacity(ring: *const tk_ring) -> usize {\n    (*ring).slots.len()\n}\n\n/// The sum of the values in the ring.\n///\n/// # Safety\n/// `ring` is a live pointer from `tk_ring_new`.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_ring_sum(ring: *const tk_ring) -> i64 {\n    let ring = &*ring;\n    (0..ring.count).map(|i| i64::from(ring.slots[(ring.head + i) % ring.slots.len()])).sum()\n}\n\n/// The Adler-32 checksum of `len` bytes.\n///\n/// # Safety\n/// `data` points to `len` readable bytes, or `len` is 0.\n#[no_mangle]\npub unsafe extern \"C\" fn tk_checksum(data: *const u8, len: usize) -> u32 {\n    const MOD: u32 = 65521;\n    let bytes = if len == 0 { &[][..] } else { std::slice::from_raw_parts(data, len) };\n    let (mut a, mut b) = (1u32, 0u32);\n    for &byte in bytes {\n        a = (a + u32::from(byte)) % MOD;\n        b = (b + a) % MOD;\n    }\n    (b << 16) | a\n}\n"
+     },
+     {
+      "op": "replace",
+      "path": "CMakeLists.txt",
+      "search": "add_library(textkit\n    src/ring.cpp\n    src/report.cpp\n)",
+      "replace": "add_library(textkit\n    src/report.cpp\n)"
+     },
+     {
+      "op": "delete",
+      "path": "src/ring.cpp"
+     }
+    ]
+   }
+  ]
+ }
+}

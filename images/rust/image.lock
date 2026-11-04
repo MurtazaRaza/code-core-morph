@@ -1,0 +1,7 @@
+# CodeCoreMorph Rust toolchain image, with the C++ toolchain (SPEC §7.8, §11.5). KEY=VALUE
+# lines, read by codecoremorph.sandbox.provisioning and scripts/pull-images.
+#
+# digest is written when the image is published by CI (deferred, D-28). While it is empty,
+# runs use a local build: scripts/build-image rust (tagged codecoremorph-rust:local).
+image=ghcr.io/codecoremorph/codecoremorph-rust
+digest=

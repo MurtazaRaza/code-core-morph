@@ -63,9 +63,11 @@ def _manifest(
     source: str = "cpp11",
     *,
     characterization: bool = False,
+    target_language: str = "cpp",
 ) -> str:
     """The run's manifest. Characterization is off unless asked for: these runs replay the
-    migration's model turns (D-45), and the untested fixture's own test turns on (D-46)."""
+    migration's model turns (D-45), and the untested fixture's own test turns on (D-46). A
+    ``target_language`` other than ``cpp`` makes it a port (D-56)."""
     characterize = "true" if characterization else "false"
     return f"""\
 version: "1.0"
@@ -76,7 +78,7 @@ project:
   public_api: ["include/**"]
 migration:
   source: {{language: cpp, standard: {source}, build_system: cmake}}
-  target: {{language: cpp, standard: {target}, rules: [{rules}]}}
+  target: {{language: {target_language}, standard: {target}, rules: [{rules}]}}
 parity: {{baseline_runs: 1, characterization_tests: {{enabled: {characterize}}}}}
 sandbox: {{mode: {mode}}}
 approvals: {{plan: {plan}}}
@@ -118,6 +120,7 @@ def project(tmp_path: Path, git: GitRunner) -> Setup:
         source: str = "cpp11",
         *,
         characterization: bool = False,
+        target_language: str = "cpp",
     ) -> Path:
         root = tmp_path / fixture
         shutil.copytree(FIXTURES / fixture, root)
@@ -126,7 +129,14 @@ def project(tmp_path: Path, git: GitRunner) -> Setup:
         git(root, "commit", "--quiet", "-m", "legacy")
         config = root / "migration_config.yaml"
         text = _manifest(
-            fixture, target, rules, mode, plan, source, characterization=characterization
+            fixture,
+            target,
+            rules,
+            mode,
+            plan,
+            source,
+            characterization=characterization,
+            target_language=target_language,
         )
         config.write_text(text, encoding="utf-8")
         return config
@@ -375,14 +385,25 @@ def _edits_files() -> list[str]:
 @pytest.mark.slow
 @pytest.mark.parametrize("fixture", _edits_files())
 def test_every_unit_of_a_fixture(
-    fixture: str, project: Setup, sandbox: str, record_cassettes: bool, git: GitRunner
+    fixture: str,
+    project: Setup,
+    sandbox: str,
+    record_cassettes: bool,
+    git: GitRunner,
+    request: pytest.FixtureRequest,
+    isolated_home: Path,
 ) -> None:
     """The fixture's designed migration, every unit included (M1): each unit is committed or
     fails as recorded, and the final verification passes on a clean build. A fixture recorded
     with characterization (``untested``, D-46) first gets its characterization tests: the
-    jobs' submissions come before the units'."""
+    jobs' submissions come before the units'. A port (``ffi-module`` to Rust, D-56) runs with
+    the target language's toolchain."""
     data: dict[str, Any] = json.loads((EDITS / f"{fixture}.json").read_text(encoding="utf-8"))
     characterization = bool(data.get("characterization", False))
+    target_language = str(data.get("target_language", "cpp"))
+    if target_language != "cpp" and sandbox == "native":
+        env: Path = request.getfixturevalue(f"{target_language}_toolchain_env")
+        shutil.copyfile(env, isolated_home / "toolchains" / env.name)
     config = project(
         fixture,
         data["target"],
@@ -390,6 +411,7 @@ def test_every_unit_of_a_fixture(
         sandbox,
         source=data["source"],
         characterization=characterization,
+        target_language=target_language,
     )
     script: list[Any] = [
         agent_reply(

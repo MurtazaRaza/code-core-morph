@@ -110,6 +110,9 @@ class RunReport(CoreModel):
     language: str
     source_standard: str
     target_standard: str
+    target_language: str | None = Field(
+        default=None, description="A port's target language (D-56); None for a version upgrade"
+    )
     base_commit: str
     branch: str
     head: str | None = Field(default=None, description="The branch's last commit")

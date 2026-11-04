@@ -66,7 +66,8 @@ class WorkUnit(CoreModel):
         default_factory=list[WorktreePath],
         description="Files in the unit only for their references to the symbols it changes "
         "(an api_changing rule's fan-in): editable, but their own rule sites belong to another "
-        "unit, so the unit's codemods, site counts and postconditions leave them out",
+        "unit, so the unit's codemods, site counts and postconditions leave them out. In a port "
+        "unit, the headers whose interface the port keeps: read-only (D-56)",
     )
     rule_sites: dict[str, int] = Field(default_factory=dict[str, int])
     flags: list[UnitFlag] = Field(default_factory=list[UnitFlag])
@@ -144,6 +145,9 @@ class Plan(CoreModel):
     language: str | None = None
     source_standard: str | None = None
     target_standard: str | None = None
+    target_language: str | None = Field(
+        default=None, description="A port's target language (D-56); None for a version upgrade"
+    )
     base_commit: str | None = None
     rules: list[PlanRule] = Field(default_factory=list[PlanRule])
     graph: PlanGraph | None = None
@@ -160,6 +164,12 @@ class Plan(CoreModel):
         if seqs != sorted(seqs) or len(set(seqs)) != len(seqs):
             raise ValueError("units must be listed in strictly increasing seq order")
         return self
+
+    @property
+    def migration(self) -> str:
+        """``cpp cpp11 -> cpp20``, or for a port ``cpp cpp17 -> rust rust2021``."""
+        target = f"{self.target_language} " if self.target_language else ""
+        return f"{self.language} {self.source_standard} -> {target}{self.target_standard}"
 
     def unit(self, unit_id: str) -> WorkUnit:
         for u in self.units:

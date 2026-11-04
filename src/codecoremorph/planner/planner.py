@@ -238,6 +238,44 @@ class _Former:
         )
         return drafts + self.preserving_units(scan, files, fallout_note)
 
+    def port_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """One unit per interface (D-56): the files with sites that define what a set of
+        headers declares, with those headers as read-only reference files and the build
+        files. Files that share a header, or define what two headers declare, share a unit."""
+        sites = [s for f in files for s in scan.sites.get(f, [])]
+        headers = self.project.headers_declaring(sites)
+        parent: dict[str, str] = {}
+
+        def find(path: str) -> str:
+            while parent.setdefault(path, path) != path:
+                path = parent[path]
+            return path
+
+        for source in files:
+            for header in headers.get(source, []):
+                parent[find(header)] = find(source)
+        groups: dict[str, list[str]] = {}
+        for source in files:
+            groups.setdefault(find(source), []).append(source)
+        drafts: list[_Draft] = []
+        for members in sorted(groups.values(), key=lambda m: (self.project.cluster_index(m[0]), m)):
+            kept = sorted({h for s in members for h in headers.get(s, [])})
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({*members, *kept, *self.project.build_files}),
+                sites=self.site_counts(scan, members),
+                references=kept,
+            )
+            if kept:
+                draft.note = f"ports {', '.join(sorted(members))} to {target} behind " + ", ".join(
+                    kept
+                )
+            else:
+                draft.status = UnitStatus.SKIPPED
+                draft.note = "skipped: no project header declares what these files define"
+            drafts.append(draft)
+        return drafts
+
     def rule_units(
         self, scan: RuleScan, target: str
     ) -> tuple[list[_Draft], list[str], dict[SkipCondition, list[str]]]:
@@ -253,6 +291,8 @@ class _Former:
                 skipped.setdefault(condition, []).append(path)
         if rule.kind is RuleKind.PROJECT:
             drafts = self.project_units(scan, files, target)
+        elif rule.kind is RuleKind.PORT:
+            drafts = self.port_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.API_CHANGING:
             skipped_files = {f for paths in skipped.values() for f in paths}
             editable = {f for f in scan.eligible if f not in skipped_files}
@@ -309,6 +349,7 @@ def build_plan(
     language: str,
     source: str,
     target: str,
+    target_language: str | None = None,
     base_commit: str | None = None,
     warnings: Sequence[str] = (),
 ) -> Plan:
@@ -378,6 +419,7 @@ def build_plan(
         language=language,
         source_standard=source,
         target_standard=target,
+        target_language=target_language,
         base_commit=base_commit,
         rules=plan_rules,
         graph=PlanGraph(

@@ -1,0 +1,6 @@
+# The built-in C++ to Rust port pack (SPEC §11.5, D-56).
+name: cpp_to_rust
+language: cpp
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
+version: "1"
+description: Port C++ code to Rust, one module behind a C interface at a time.

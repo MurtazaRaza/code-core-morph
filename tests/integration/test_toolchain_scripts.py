@@ -151,8 +151,8 @@ def test_bat_and_sh_print_the_same_help(name: str) -> None:
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        ([], "expected one language: cpp or all"),
-        (["cpp", "all"], "expected one language: cpp or all"),
+        ([], "expected one language: cpp, rust or all"),
+        (["cpp", "all"], "expected one language: cpp, rust or all"),
         (["java"], "the java toolchain is not available yet"),
         (["cobol"], "unknown language 'cobol'"),
     ],
@@ -199,4 +199,43 @@ def test_build_image_dry_run_and_usage(flavor: Flavor) -> None:
     assert "would run: docker build -f " in result.stdout
     assert "-t codecoremorph-cpp:local" in result.stdout
     assert _script(flavor, "build-image", []).returncode == 2
-    assert _script(flavor, "build-image", ["rust"]).returncode == 2
+    rust = _script(flavor, "build-image", ["--dry-run", "rust"])  # the port image (D-57)
+    assert rust.returncode == 0, rust.stderr
+    assert "-t codecoremorph-rust:local" in rust.stdout
+    missing = _script(flavor, "build-image", ["cobol"])
+    assert missing.returncode == 2
+    assert "there is no image definition for 'cobol'" in missing.stderr
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_install_toolchain_rust_dry_run(flavor: Flavor, tmp_path: Path) -> None:
+    """The Rust toolchain (D-56): the C++ one, then rustup and its pinned Rust release,
+    cargo-nextest, cbindgen built by cargo, Corrosion, and rust.env."""
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "CODECOREMORPH_MANIFEST"}
+    prefix = tmp_path / "home"
+    result = _script(
+        flavor, "install-toolchain", ["--dry-run", "--prefix", str(prefix), "rust"], env
+    )
+    if result.returncode == 3:
+        pytest.skip(f"a system prerequisite is missing here: {result.stderr.strip()}")
+    assert result.returncode == 0, result.stderr
+    for line in (
+        "would install cmake ",
+        "would install rustup 1.29.0",
+        "would install Rust 1.99.1 with rustup 1.29.0",
+        "would install cargo-nextest 0.9.151",
+        "would build cbindgen 0.29.4 with cargo install --locked",
+        "would install Corrosion 0.6.1",
+    ):
+        assert line in result.stdout
+    assert "rust.env" in result.stdout
+    assert not prefix.exists()
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_install_toolchain_rust_refuses_offline(flavor: Flavor, tmp_path: Path) -> None:
+    result = _script(flavor, "install-toolchain", ["--offline", str(tmp_path), "rust"])
+    assert result.returncode == 2
+    assert "--offline doesn't apply to rust: rustup downloads the Rust release" in result.stderr

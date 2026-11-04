@@ -174,3 +174,20 @@ class LanguageAdapter(ABC):
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
         """Answer a rule detector query listed in ``capabilities().queries``."""
         raise AdapterNotSupportedError(f"{self.language}: query {name}")
+
+    # Ports behind a C interface (D-56). The source adapter reads C headers; the target
+    # adapter says which headers its new code exports.
+
+    def c_declarations(self, ctx: AdapterContext, header: Path) -> dict[str, str]:
+        """The functions the C header ``header`` declares (a host path in ``ctx.worktree`` or
+        a cache directory, which the sandbox sees), by name, each with its canonical C
+        signature (typedefs resolved, parameter names left out), e.g.
+        ``{"tk_ring_len": "unsigned long long (const struct tk_ring *)"}``. Functions the
+        header defines (``static inline``) are not part of the interface and are left out.
+        Runs commands through ``ctx.executor`` only."""
+        raise AdapterNotSupportedError(f"{self.language}: c_declarations")
+
+    def exported_c_headers(self, ctx: AdapterContext, files: list[str]) -> list[Path]:
+        """C headers for what the code holding ``files`` (worktree paths) exports through a C
+        interface, generated under ``ctx.cache_dir``, one per package (a Rust crate)."""
+        raise AdapterNotSupportedError(f"{self.language}: exported_c_headers")

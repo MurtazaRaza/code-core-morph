@@ -179,7 +179,14 @@ def test_entry_point_packs() -> None:
     assert "cpp" in registry.packs
     assert registry.get("modernize_basics").pack == "cpp"
     assert [r.rule.id for r in registry.resolve(["bump_standard"])] == ["bump_standard"]
-    assert len(registry.for_language("cpp")) == 5
+    by_pack = {
+        pack: sorted(r.rule.id for r in registry.for_language("cpp") if r.pack == pack)
+        for pack in ("cpp", "cpp_to_rust")
+    }
+    assert len(by_pack["cpp"]) == 5
+    assert by_pack["cpp_to_rust"] == ["port_c_abi_module"]
+    port = registry.get("port_c_abi_module").rule
+    assert (port.kind, port.target_language, port.extra_scope) == ("port", "rust", ["rust/**"])
 
     broken = RuleRegistry.discover(
         eps=[

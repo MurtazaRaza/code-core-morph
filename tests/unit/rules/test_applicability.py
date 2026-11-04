@@ -191,3 +191,96 @@ def test_missing_adapter_or_bump_rule(tmp_path: Path) -> None:
     [no_bump] = check_migration(config, SUPPORTED_STANDARDS, RuleRegistry())
     assert no_bump.severity == "warning"
     assert "no installed cpp rule raises the standard" in no_bump.message
+
+
+# --------------------------------------------------------------------------- ports (D-56)
+
+RUST_EDITIONS = ["rust2015", "rust2018", "rust2021", "rust2024"]
+
+
+def _port_registry() -> RuleRegistry:
+    from codecoremorph.rules.packs.cpp_to_rust import PACK_DIR as PORT_PACK
+
+    registry = _registry()
+    registry.add_pack(PORT_PACK)
+    return registry
+
+
+def _port_problems(
+    rules: list[str], *, target: str = "rust2021", source: str = "cpp17"
+) -> list[MigrationProblem]:
+    config = parse_config(
+        'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+        f"  source: {{language: cpp, standard: {source}}}\n"
+        f"  target: {{language: rust, standard: {target}, rules: [{', '.join(rules)}]}}\n"
+    ).config
+    return check_migration(config, SUPPORTED_STANDARDS, _port_registry(), RUST_EDITIONS)
+
+
+def test_port_rule_fields() -> None:
+    port = _rule(kind="port", target_language="rust", extra_scope=["rust/**"])
+    assert port.extra_scope == ["rust/**"]
+    with pytest.raises(ValidationError, match="needs `target_language`"):
+        _rule(kind="port")
+    with pytest.raises(ValidationError, match="for port rules only"):
+        _rule(extra_scope=["rust/**"])
+    with pytest.raises(ValidationError, match="differs from its language"):
+        _rule(kind="port", target_language="cpp")
+    with pytest.raises(ValidationError, match="must stay inside the project"):
+        _rule(kind="port", target_language="rust", extra_scope=["../elsewhere/**"])
+    with pytest.raises(ValidationError, match="source standards only"):
+        _rule(kind="port", target_language="rust", applies_to={"min_target_standard": "cpp20"})
+    with pytest.raises(ValidationError, match="name no target standard"):
+        _rule(kind="port", target_language="rust", codemods=[{"tool": "x", "standard": "cpp20"}])
+
+
+def test_port_rules_apply_only_to_ports() -> None:
+    port = _rule(kind="port", target_language="rust")
+    assert rule_excludes(CPP, port, "cpp17", "rust2021", target_language="rust") is None
+    same = rule_excludes(CPP, port, "cpp17", "cpp20") or ""
+    assert "only when migration.target.language is rust" in same
+    other = rule_excludes(CPP, _rule(), "cpp17", "rust2021", target_language="rust") or ""
+    assert "takes port rules" in other
+    capped = _rule(kind="port", target_language="rust", applies_to={"max_source_standard": "cpp14"})
+    reason = rule_excludes(CPP, capped, "cpp17", "rust2021", target_language="rust")
+    assert reason == "only applies to sources up to cpp14"
+
+
+def test_a_port_validates() -> None:
+    assert _port_problems(["port_c_abi_module"]) == []
+
+
+def test_port_problems() -> None:
+    [no_rules] = _port_problems([])
+    assert "needs a port rule; installed: port_c_abi_module" in no_rules.message
+    [not_port] = _port_problems(["modernize_basics"])
+    assert "isn't a port rule to rust" in not_port.message
+    [unknown] = _port_problems(["port_everything"])
+    assert "unknown rule 'port_everything'" in unknown.message
+    [edition] = _port_problems(["port_c_abi_module"], target="rust2099")
+    assert edition.loc == ("migration", "target", "standard")
+    assert "rust standards, oldest first: rust2015" in edition.message
+    [standard] = _port_problems(["port_c_abi_module"], source="cpp42")
+    assert standard.loc == ("migration", "source", "standard")
+
+
+def test_a_port_without_a_target_adapter_warns() -> None:
+    config = parse_config(
+        'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+        "  source: {language: cpp, standard: cpp17}\n"
+        "  target: {language: rust, standard: rust2021, rules: [port_c_abi_module]}\n"
+    ).config
+    [warning] = check_migration(config, SUPPORTED_STANDARDS, _port_registry(), None)
+    assert warning.severity == "warning"
+    assert "no rust adapter is installed" in warning.message
+
+
+def test_a_same_language_migration_refuses_a_port_rule() -> None:
+    config = parse_config(
+        'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+        "  source: {language: cpp, standard: cpp17}\n"
+        "  target: {language: cpp, standard: cpp17, rules: [port_c_abi_module]}\n"
+    ).config
+    [problem] = check_migration(config, SUPPORTED_STANDARDS, _port_registry())
+    assert problem.severity == "error"
+    assert "only when migration.target.language is rust" in problem.message

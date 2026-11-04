@@ -47,3 +47,22 @@ cpp|googletest|1.12.1|any|https://github.com/google/googletest/archive/refs/tags
 # GoogleTest 1.8.1 is the last release that supports C++98/03; builds under those standards use
 # it, built as C++98 (D-38).
 cpp|googletest-cxx98|1.8.1|any|https://github.com/google/googletest/archive/refs/tags/release-1.8.1.tar.gz|9bf1fe5182a604b4135edc1a425ae356c9ad15e9b23f9f12a02e80184c3a249c|tar.gz|googletest-release-1.8.1
+
+# rust: the native Rust toolchain installed by scripts/install-toolchain rust (SPEC 11.5, D-56),
+# together with the cpp rows above: every Rust run here is a mixed CMake + Cargo build.
+# rustup-init installs the Rust release pinned in install-toolchain (RUST_VERSION) and checks
+# what it downloads itself; so does `cargo install --locked` for cbindgen (CBINDGEN_VERSION).
+# Windows uses the -gnu installer with the gnullvm host, which links with llvm-mingw (D-32).
+rust|rustup|1.29.0|windows-x64|https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-pc-windows-gnu/rustup-init.exe|03dbaae1d33a4d220bd0d202e5092955dae859c119074192ca513f8c4713fff7|file|.
+rust|rustup|1.29.0|linux-x64|https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init|4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10|file|.
+rust|rustup|1.29.0|linux-arm64|https://static.rust-lang.org/rustup/archive/1.29.0/aarch64-unknown-linux-gnu/rustup-init|9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792|file|.
+rust|rustup|1.29.0|macos-arm64|https://static.rust-lang.org/rustup/archive/1.29.0/aarch64-apple-darwin/rustup-init|aeb4105778ca1bd3c6b0e75768f581c656633cd51368fa61289b6a71696ac7e1|file|.
+rust|rustup|1.29.0|macos-x64|https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-apple-darwin/rustup-init|33cf85df9142bc6d29cbc62fa5ca1d4c29622cddb55213a4c1a43c457fb9b2d7|file|.
+rust|cargo-nextest|0.9.151|windows-x64|https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.151/cargo-nextest-0.9.151-x86_64-pc-windows-msvc.zip|ba35ee0ce14ace65cd8c7aaa9613adb7d2644b0fe3866e85131eb4c269786efb|zip|.
+rust|cargo-nextest|0.9.151|linux-x64|https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.151/cargo-nextest-0.9.151-x86_64-unknown-linux-gnu.tar.gz|1d4ce302b820c41f4b89c5fb9bce45f0f0c94882c1cf08fc360caf08be6e7df4|tar.gz|.
+rust|cargo-nextest|0.9.151|linux-arm64|https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.151/cargo-nextest-0.9.151-aarch64-unknown-linux-gnu.tar.gz|3e35e8f6913af92558ba09d7155f74e35dd1f0024ef3cd891637433ae4eacbdd|tar.gz|.
+rust|cargo-nextest|0.9.151|macos-arm64|https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.151/cargo-nextest-0.9.151-universal-apple-darwin.tar.gz|d1d7d025d4bfc9fb154cd76aea3949bd78534829a0589abefa6e5dd4edb135dd|tar.gz|.
+rust|cargo-nextest|0.9.151|macos-x64|https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.151/cargo-nextest-0.9.151-universal-apple-darwin.tar.gz|d1d7d025d4bfc9fb154cd76aea3949bd78534829a0589abefa6e5dd4edb135dd|tar.gz|.
+# Corrosion builds the crates from CMake; installed with the pinned CMake, so configuring a
+# project never downloads it. bin_dir is the source directory.
+rust|corrosion|0.6.1|any|https://github.com/corrosion-rs/corrosion/archive/refs/tags/v0.6.1.tar.gz|e9e95b1ee2bad52681f347993fb1a5af5cce458c5ce8a2636c9e476e4babf8e3|tar.gz|corrosion-0.6.1

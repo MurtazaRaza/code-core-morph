@@ -40,6 +40,12 @@ Visual Studio is needed), CMake, Ninja, and GoogleTest built with that compiler:
 tools through `toolchains/cpp.env`, and `toolchains/activate-cpp.sh` (or `.bat`) puts them on
 the PATH of your own shell if you want them there.
 
+`codecoremorph toolchain install rust`, for [ports to Rust](porting-to-rust.md), installs the
+C++ toolchain and then Rust through rustup (with clippy and rustfmt; on Windows the
+`x86_64-pc-windows-gnullvm` target, which links with llvm-mingw), cargo-nextest, cbindgen (built
+from crates.io with `--locked`) and Corrosion. It writes `toolchains/rust.env`. rustup and Cargo
+live in `toolchains/rust/`, apart from any Rust you have installed yourself.
+
 Re-running is cheap: a tool whose pinned version is installed is skipped, unless you pass
 `--force`. `--dry-run` shows what would be downloaded.
 

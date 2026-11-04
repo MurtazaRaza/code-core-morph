@@ -25,6 +25,7 @@ How to fill it in:
 - **Standards:** `cpp98`, `cpp03`, `cpp11`, `cpp14`, `cpp17`, `cpp20`, `cpp23`. Find the source standard in the build files (`CMAKE_CXX_STANDARD`, `set_property(... CXX_STANDARD ...)`, `-std=` flags). Confirm the target with the user.
 - **Directories:** look at the repository layout. Leave out vendored code with `project.exclude: ["third_party/**"]`.
 - **Rules:** `target.rules` lists the rules a full run applies, in order (`codecoremorph rules list`); the standard bump runs first automatically. A unit started with `unit start --rule` doesn't need its rule listed here.
+- **A port to Rust:** `target: {language: rust, standard: rust2021, rules: [port_c_abi_module]}` (editions `rust2015` to `rust2024`). It ports the C++ code behind the project's C headers (functions declared `extern "C"`) to crates under `rust/`; the rest of the project stays C++. It needs the Rust toolchain: `codecoremorph toolchain install rust`, or the Rust image (`scripts/build-image rust`).
 - **Build:** only CMake is supported. `build.cmake.configure_args` passes extra configure flags, e.g. `["-DBUILD_TESTING=ON"]` when tests are off by default.
 - **Sandbox:** `sandbox.mode: auto` uses Docker when it is available, otherwise native.
 - **Retries:** `guardrails.max_retry_budget` (default 3) is the number of retries after a unit's first attempt; `guardrails.max_edit_retries` (default 2) is the number of extra tries for rejected edits within an attempt.

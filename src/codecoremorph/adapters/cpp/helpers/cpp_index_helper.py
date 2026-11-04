@@ -3,6 +3,7 @@
 """CodeCoreMorph C++ index helper (SPEC §7.1, §7.2, §11.1). Runs inside the sandbox.
 
 Usage: python -I cpp_index_helper.py REQUEST.json
+       python -I cpp_index_helper.py --c-declarations REQUEST.json   (a C header's functions)
 
 Reads compile_commands.json, parses every translation unit with libclang in a process pool, and
 writes the index as JSON lines to the request's ``output`` file. It needs only the standard
@@ -740,5 +741,91 @@ def main(argv):
     return 0
 
 
+# --------------------------------------------------------------------------- C declarations
+
+
+_C_FLAGS = ("-I", "-isystem", "-iquote", "-idirafter", "-D", "-U", "--target=", "-target",
+            "--sysroot", "-isysroot", "-m32", "-m64")  # fmt: skip
+
+
+def c_flags(compile_commands):
+    """The compiler and the flags that find headers (include directories, macros, target)
+    over every compile command, for parsing a header as C on its own."""
+    try:
+        with open(compile_commands, encoding="utf-8") as handle:
+            entries = json.load(handle)
+    except OSError:
+        return None, [], []
+    compiler = None
+    flags = []
+    query = []
+    for entry in entries:
+        argv = entry_argv(entry)
+        if not argv:
+            continue
+        compiler = compiler or argv[0]
+        out, found_query, _ = parse_flags(argv, entry.get("directory", "."))
+        i = 0
+        while i < len(out):
+            arg = out[i]
+            group = [arg]
+            if arg in _TWO_ARG and i + 1 < len(out):
+                group.append(out[i + 1])
+            i += len(group)
+            if arg.startswith(_C_FLAGS) and not _contains(flags, group):
+                flags += group
+        for arg in found_query:
+            if not arg.startswith(("-std=", "--std=", "-stdlib=")) and arg not in query:
+                query.append(arg)
+    return compiler, flags, query
+
+
+def _contains(flags, group):
+    n = len(group)
+    return any(flags[i : i + n] == group for i in range(len(flags) - n + 1))
+
+
+def c_declarations(request):
+    """``{"functions": {name: canonical signature}, "problems": [...]}`` for the functions a C
+    header declares (not those it defines), parsed as C11 with the project's include flags."""
+    from clang import cindex
+
+    header = os.path.normpath(request["header"])
+    compiler, flags, query = c_flags(request["compile_commands"])
+    args = ["-x", "c", "-std=c11", *flags, "-I", os.path.dirname(header)]
+    if compiler:
+        args += system_include_args(compiler, "c", query)
+    tu = cindex.Index.create().parse(header, args=args)
+    problems = [
+        f"{d.location.file.name if d.location.file else header}:{d.location.line}: {d.spelling}"
+        for d in tu.diagnostics
+        if d.severity >= cindex.Diagnostic.Error
+    ][:MAX_TU_PROBLEMS]
+    key = os.path.normcase(os.path.abspath(header))
+    functions = {}
+    for cursor in tu.cursor.get_children():
+        if cursor.kind != cindex.CursorKind.FUNCTION_DECL or cursor.location.file is None:
+            continue
+        if os.path.normcase(os.path.abspath(cursor.location.file.name)) != key:
+            continue
+        if cursor.is_definition() or cursor.storage_class == cindex.StorageClass.STATIC:
+            continue
+        functions[cursor.spelling] = cursor.type.get_canonical().spelling
+    return {"functions": dict(sorted(functions.items())), "problems": problems}
+
+
+def main_c_declarations(argv):
+    with open(argv[2], encoding="utf-8") as handle:
+        request = json.load(handle)
+    result = c_declarations(request)
+    tmp = request["output"] + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as out:
+        json.dump(result, out, indent=1, sort_keys=True)
+    os.replace(tmp, request["output"])
+    return 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--c-declarations":
+        sys.exit(main_c_declarations(sys.argv))
     sys.exit(main(sys.argv))

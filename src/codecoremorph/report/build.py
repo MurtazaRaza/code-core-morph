@@ -192,6 +192,7 @@ def build_report(
         language=plan.language or "",
         source_standard=plan.source_standard or "",
         target_standard=plan.target_standard or "",
+        target_language=plan.target_language,
         base_commit=record.base_commit or "",
         branch=branch,
         head=head,

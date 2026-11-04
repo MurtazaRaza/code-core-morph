@@ -1,6 +1,6 @@
 ---
 name: codecoremorph
-description: Migrate a C++ codebase to a newer language standard (C++98/03, 11, 14, 17 or 20, up to C++23) with CodeCoreMorph, a tool that splits the work into small units, applies codemods, and builds and tests every change in an isolated git worktree while you write the edits. Use this skill whenever the user wants to upgrade, modernize or migrate C++ code or a CMake project to a newer standard ("move us to C++20", "get rid of raw new/delete", "replace typedefs with using", "remove auto_ptr / register / random_shuffle"), mentions CodeCoreMorph or a migration_config.yaml, or asks to apply a CodeCoreMorph rule to some files, even if they don't name the tool.
+description: Migrate a C++ codebase to a newer language standard (C++98/03, 11, 14, 17 or 20, up to C++23), or port C++ modules behind a C interface to Rust, with CodeCoreMorph, a tool that splits the work into small units, applies codemods, and builds and tests every change in an isolated git worktree while you write the edits. Use this skill whenever the user wants to upgrade, modernize or migrate C++ code or a CMake project to a newer standard ("move us to C++20", "get rid of raw new/delete", "replace typedefs with using", "remove auto_ptr / register / random_shuffle"), to rewrite C++ code in Rust ("port this library to Rust", "replace ring.cpp with a Rust crate"), mentions CodeCoreMorph or a migration_config.yaml, or asks to apply a CodeCoreMorph rule to some files, even if they don't name the tool.
 ---
 
 # Migrating C++ code with CodeCoreMorph
@@ -33,6 +33,7 @@ Either way, tell the user in a few lines what the plan holds before the work sta
 
 - **The standard bump** (`bump_standard`) comes first. It raises the standard in the build files and fixes what no longer compiles. The project then builds and passes its tests at the new standard, but its code is not modernized; the diff is often only a few lines.
 - **The modernization rules** change the code itself: typedefs to `using`, owning pointers to smart pointers, and so on. Give the number of units per rule, and point out units flagged `public_api` or `boundary`, which change an interface other code depends on.
+- **A port to Rust** (`migration.target.language: rust`, rule `port_c_abi_module`) has one unit per C header: the C++ code behind the header becomes a Rust crate under `rust/` that exports the same C functions, and the C++ tests judge it through the unchanged header. A codemod makes the crate and links it in CMake; you write `src/lib.rs`, delete the C++ sources and take them out of CMake. The header is read-only, and CodeCoreMorph checks that the crate exports every function it declares with the same C signature.
 
 When the user asked for the migration without limits, that means every pending unit, in order: go ahead without asking again. Ask once, up front, only when the scope is unclear, for example when a rule would change a public API the user didn't mention.
 

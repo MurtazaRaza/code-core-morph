@@ -40,7 +40,11 @@ def render_markdown(report: RunReport) -> str:
     headline = _HEADLINES.get(report.status, report.status.value)
     out(f"**Status:** {headline}" + (f" ({report.reason})" if report.reason else ""))
     out("")
-    out(f"- Migration: {report.language} {report.source_standard} -> {report.target_standard}")
+    target = f"{report.target_language} " if report.target_language else ""
+    out(
+        f"- Migration: {report.language} {report.source_standard} -> {target}"
+        f"{report.target_standard}"
+    )
     out(f"- Base commit: `{report.base_commit[:12]}`")
     head = f" (last commit `{report.head[:12]}`)" if report.head else ""
     out(f"- Branch: `{report.branch}`{head}")

@@ -496,16 +496,22 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 **Prerequisites:** Phase 5 (Phase 11 is not required).
 
 ### Tasks
-- [ ] `images/rust/`: pinned toolchain, cargo-nextest, cbindgen, plus the C++ toolchain for mixed builds
-- [ ] `rust` rows in the manifest and `install-toolchain rust` (pinned `rustup-init` and toolchain, cargo-nextest, cbindgen)
-- [ ] Rust adapter: index (syn-based or rust-analyzer-based helper), `cargo build --message-format=json` diagnostics, nextest JUnit tests
-- [ ] Mixed-build integration via Corrosion; `scaffold_project` for a crate inside the CMake tree
-- [ ] `cpp_ffi_to_rust` strategy: choose a module with an `extern "C"` boundary, generate the crate, port its internals, keep the ABI identical (cbindgen header diff = empty), run the C++ tests through the ABI
-- [ ] ABI invariant (I-6 over exported C signatures)
-- [ ] Corrosion pinned in the manifest and installed under `CODECOREMORPH_HOME`, so configuring never downloads it (`FetchContent`)
-- [ ] Cargo dependencies: `Cargo.lock` committed, crates fetched in the `fetch_only` network step into a `CARGO_HOME` under `CODECOREMORPH_HOME`, builds run `--locked --offline`
-- [ ] Windows native: the Rust target that links with llvm-mingw (`x86_64-pc-windows-gnullvm`), so no Visual Studio is needed (D-32)
-- [ ] Fixture: a C++ library with an `extern "C"` API and GoogleTest tests
+- [x] `images/rust/`: pinned toolchain, cargo-nextest, cbindgen, plus the C++ toolchain for mixed builds (D-57: the base of `images/cpp`, `install-toolchain.sh rust`, the libclang venv; `scripts/build-image rust`)
+- [x] `rust` rows in the manifest and `install-toolchain rust` (pinned `rustup-init` and toolchain, cargo-nextest, cbindgen) (D-56; Rust 1.99.1, nextest 0.9.151, cbindgen 0.29.4 built by `cargo install --locked`; installs the C++ toolchain too and writes `rust.env`)
+- [x] Rust adapter: `cargo build --message-format=json` diagnostics, nextest JUnit tests (its index lists the crates' files only; a symbol index, syn- or rust-analyzer-based, moves to Phase 13, whose port planning needs it)
+- [x] Mixed-build integration via Corrosion; `scaffold_project` for a crate inside the CMake tree (the `rust-crate` codemod: a codemod, so it runs as the port unit's deterministic first pass, D-57)
+- [x] `cpp_ffi_to_rust` strategy: choose a module with an `extern "C"` boundary, generate the crate, port its internals, keep the ABI identical (cbindgen header diff = empty), run the C++ tests through the ABI. Steps (D-56, D-57):
+  - [x] Rule model: `kind: port` (one atomic unit per cluster with sites, plus the build files) and `extra_scope` (globs a unit may also create or edit: `rust/**`); planner `port_units` (one unit per header group; the headers are read-only reference files)
+  - [x] Migration pairs: `target.language` may differ from the source (no standard bump; each side's standard checked against its own adapter); the session opens the target adapter on the same executor and worktree, with the target language's toolchain env (`rust.env`) and image; codemods go to the adapter that lists their tool; a failed build adds the target adapter's diagnostics
+  - [x] Rust adapter (`codecoremorph.adapters.rust`): crate discovery, `cargo build --message-format=json` diagnostics, clippy, nextest JUnit tests, the `rust-crate` scaffold codemod (crate files, `Cargo.lock`, a marked Corrosion block in the top-level `CMakeLists.txt`), cbindgen header
+  - [x] `cpp_to_rust` rule pack: `port_c_abi_module` (C++ adapter query `c_abi_definitions`, codemod `rust-crate`, guidance, post-condition `c_abi_kept`, `allow_suppressions` for the C names Rust keeps)
+  - [x] The `c_abi_kept` post-condition: the kept header's declarations against the crate's cbindgen header, both parsed by the C++ adapter (libclang, canonical types)
+  - [x] Host agent: the skill and the unit context for port units (the header, the C++ source, where the crate goes)
+- [x] ABI invariant (I-6 over exported C signatures) (`c_abi_kept`, which every port rule checks; I-12 also refuses Cargo build scripts, build dependencies and procedural macros)
+- [x] Corrosion pinned in the manifest and installed under `CODECOREMORPH_HOME`, so configuring never downloads it (`FetchContent`) (0.6.1, on `CMAKE_PREFIX_PATH` through `rust.env`)
+- [x] Cargo dependencies: `Cargo.lock` committed, crates fetched in the `fetch_only` network step into a `CARGO_HOME` under `CODECOREMORPH_HOME`, builds run `--locked --offline` (the Rust adapter's configure; Corrosion imports `FROZEN`. No fixture has a dependency yet, so the fetch itself is untested against a registry; Phase 13's fixtures will need one)
+- [x] Windows native: the Rust target that links with llvm-mingw (`x86_64-pc-windows-gnullvm`), so no Visual Studio is needed (D-32) (checked: Corrosion picks the target, and a C++ program links a Rust staticlib with llvm-mingw)
+- [x] Fixture: a C++ library with an `extern "C"` API and GoogleTest tests (`fixtures/cpp/ffi-module`: a ring buffer and Adler-32 behind `textkit/ring.h`, C++ outside the module that stays C++; a hand port to Rust passed its tests unchanged on Windows)
 
 ### Tests
 - Unit: Cargo JSON diagnostics, nextest JUnit parsing, the ABI invariant (cbindgen header diff)
@@ -513,7 +519,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - End to end: the fixture's run replays from recorded host-agent edits, natively and in Docker
 
 ### Exit criteria (M6)
-- The fixture module is replaced by Rust; the original C++ tests pass unchanged; the exported ABI is identical
+- The fixture module is replaced by Rust; the original C++ tests pass unchanged; the exported ABI is identical (met on Windows, natively and in Docker: `ffi-module`'s run replays from recorded host-agent edits, `test_every_unit_of_a_fixture`, and the hand port passes through the real adapters, `tests/integration/adapters/test_rust_adapter.py`; Linux and macOS wait for CI, D-28)
 
 ---
 
@@ -527,8 +533,9 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 **Strategy**
 - [ ] SPEC §11.6 settled with a `D-xx` row: stages, bridge, manifest keys, unit kinds
 - [ ] Bridge spike on `port-legacy`: the `cxx` crate (C++ classes as opaque types, `std::string`, `std::vector`, `std::unique_ptr`, exceptions ↔ `Result`) against a plain C ABI with opaque handles and cbindgen headers (works from C++98). Pick the default and record the C++ standard it needs; an older source gets the standard bump (`bump_standard`) as the port's first unit
-- [ ] Manifest: `migration.target: {language: rust, edition: …}` and a `migration.port` section (`strategy`, `bridge`, `keep_cpp_api`, rules); `validate` checks the pair against the installed adapters
-- [ ] Migration pairs in config and orchestrator, language-neutral (a source adapter and a target adapter; Phase 11 adds Java → C#, D-55): the run's worktree builds with both, and the planner, units and invariants know which side a file is on
+- [ ] Manifest: Phase 12 already ports with `migration.target: {language: rust, standard: rust2021, rules: [...]}`, `validate` checking each side against its adapter (D-57); add what this phase needs (`bridge`, `keep_cpp_api`), as port rule options or a `migration.port` section
+- [ ] Migration pairs in config and orchestrator, language-neutral (a source adapter and a target adapter; Phase 11 adds Java → C#, D-55). Phase 12 built the pair (one executor and worktree, the target's toolchain, codemods by tool, the target's diagnostics, `kind: port`, D-57); left: the planner, units and invariants knowing which side a file is on
+- [ ] Rust symbol index (a syn- or rust-analyzer-based helper in the sandbox), moved from Phase 12: port planning and the symbol map need the Rust side's symbols
 
 **Scaffold and planning**
 - [ ] `scaffold_project` for Rust inside a C++ tree: a Cargo workspace beside the CMake project, one crate per CMake library target, built from CMake through Corrosion; the scaffold is the port's first unit after any standard bump

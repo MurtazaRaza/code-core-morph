@@ -159,11 +159,20 @@ def unit_message(
     remaining: Mapping[str, Sequence[RuleSite]],
     build: str | None,
     find_symbol: str = "find_symbol",
+    port: bool = False,
 ) -> str:
-    """The unit's first message: its files in full, signatures, codemods, sites, build."""
+    """The unit's first message: its files in full, signatures, codemods, sites, build.
+
+    A ``port`` unit (D-56) also shows the files its codemods created (the new code's
+    scaffold), and its reference files are the headers it keeps as they are."""
     blocks: list[str] = []
-    for path in unit.files:
+    created = [
+        f for f in (codemods.changed_files if codemods and port else []) if f not in unit.files
+    ]
+    for path in [*unit.files, *created]:
         text = read_text(worktree, path)
+        if text is None and path in created:
+            continue  # removed again since
         blocks.append(
             fenced(path, text) if text is not None else f"### {path}\n\n(not a text file)"
         )
@@ -173,7 +182,12 @@ def unit_message(
         shown.append(f"[{len(signatures) - MAX_SIGNATURES} more; use {find_symbol}]")
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
-    if unit.reference_files:
+    if port and unit.reference_files:
+        note += (
+            f"Kept as they are: {', '.join(unit.reference_files)}. They declare the interface "
+            "the new code must export, with the same signatures; you may not edit them.\n\n"
+        )
+    elif unit.reference_files:
         note += (
             "In this unit only for their references to the symbols it changes: "
             f"{', '.join(unit.reference_files)}. Update their uses as the change needs; their "
@@ -215,6 +229,7 @@ def build_context(
         codemods=codemods,
         remaining=remaining,
         build=build,
+        port=any(r.rule.kind is RuleKind.PORT for r in rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -263,6 +278,7 @@ def host_document(
         remaining=remaining,
         build=build,
         find_symbol="`codecoremorph unit symbol`",
+        port=any(r.rule.kind is RuleKind.PORT for r in rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]

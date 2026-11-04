@@ -8,10 +8,12 @@ The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 t
 standard up to C++23. Java and C# version upgrades come next, then cross-language ports
 (Java → C#, C++ → Rust).
 
-> **Status:** early development (Phase 8 of the plan, toward v0.1.0). CodeCoreMorph can plan a C++ migration
+> **Status:** early development. CodeCoreMorph can plan a C++ migration
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
 > an API model as the agent, or migrate one work unit at a time. Code that no test covers gets
 > characterization tests first. A local web dashboard follows runs live and answers their gates.
+> It can also port C++ modules behind a C header to Rust crates, checked by the project's own
+> C++ tests and against the header's C interface (Phase 12); whole-project ports come next.
 
 ## Developer setup
 

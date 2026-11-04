@@ -4,6 +4,7 @@ codemods (SPEC §7.1, §11.1)."""
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import logging
 import os
@@ -45,6 +46,8 @@ from codecoremorph.adapters.cpp.indexing import (
     HEADER_EXTENSIONS,
     SOURCE_EXTENSIONS,
     build_files,
+    install_helper,
+    python_for,
     run_index,
 )
 from codecoremorph.adapters.cpp.paths import PathMapper
@@ -62,16 +65,18 @@ from codecoremorph.adapters.cpp.testing import (
     parse_ctest_junit,
     read_gtest_dir,
 )
-from codecoremorph.core.errors import ConfigError
+from codecoremorph.core.errors import ConfigError, SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     AdapterCapabilities,
+    Boundary,
     BuildResult,
     CodemodChange,
     CodemodResult,
     CodemodSpec,
     Diagnostic,
     DiagnosticOrigin,
+    FileRole,
     LanguageConfig,
     ProjectDetection,
     RuleSite,
@@ -126,8 +131,9 @@ class CppAdapter(LanguageAdapter):
             register_test_files=True,
             extract_assertions=True,
             detect_disabled_tests=True,
+            c_declarations=True,
             codemod_tools=["clang-tidy", "cmake-standard"],
-            queries=["typedef_declarations"],
+            queries=["typedef_declarations", "c_abi_definitions"],
             standards=list(SUPPORTED_STANDARDS),
         )
 
@@ -685,14 +691,16 @@ class CppAdapter(LanguageAdapter):
         return found
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
-        if name != "typedef_declarations":
+        if name not in ("typedef_declarations", "c_abi_definitions"):
             return super().query(ctx, name, files)
         index_path = ctx.cache_dir / INDEX_FILE_NAME
         if not index_path.is_file():
             raise ConfigError(
-                "the typedef_declarations query needs an index",
+                f"the {name} query needs an index",
                 hint="Index the project first.",
             )
+        if name == "c_abi_definitions":
+            return c_abi_definitions(index_path, files)
         wanted = set(files)
         sites: list[RuleSite] = []
         with IndexStore.open(index_path) as store:
@@ -707,6 +715,79 @@ class CppAdapter(LanguageAdapter):
                         )
                     )
         return sites
+
+    def c_declarations(self, ctx: AdapterContext, header: Path) -> dict[str, str]:
+        """libclang parses ``header`` as C11, with the include directories, macros and target
+        of the project's compile commands; signatures are canonical types."""
+        helper = install_helper(ctx.cache_dir)
+        work = ctx.cache_dir / "c-declarations"
+        work.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(str(header).encode("utf-8")).hexdigest()[:12]
+        output = work / f"{digest}.json"
+        output.unlink(missing_ok=True)
+        request = work / f"{digest}-request.json"
+        request.write_text(
+            json.dumps(
+                {
+                    "header": ctx.sandbox(header),
+                    "compile_commands": ctx.sandbox(ctx.cache_dir / COMPILE_COMMANDS),
+                    "output": ctx.sandbox(output),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        result, text = self._run(
+            ctx,
+            [python_for(ctx), "-I", ctx.sandbox(helper), "--c-declarations", ctx.sandbox(request)],
+            f"c-declarations-{digest}.log",
+            timeout_s=300,
+        )
+        if not result.ok or not output.is_file():
+            raise SandboxError(
+                f"couldn't read the C declarations of {header.name}",
+                reason="\n".join(text.strip().splitlines()[-10:]) or None,
+            )
+        data = cast(dict[str, Any], json.loads(output.read_text(encoding="utf-8")))
+        problems = cast(list[str], data.get("problems") or [])
+        if problems:
+            raise SandboxError(
+                f"{header.name} doesn't parse as C",
+                reason="; ".join(problems),
+                hint="A C interface header must compile as C on its own.",
+            )
+        return {str(k): str(v) for k, v in cast(dict[str, Any], data["functions"]).items()}
+
+
+def c_abi_definitions(index_path: Path, files: list[str]) -> list[RuleSite]:
+    """Definitions, in the source files among ``files``, of functions a project header declares
+    with C linkage: the code behind a C interface, which a port replaces (D-56). Each site
+    names the header."""
+    wanted = set(files)
+    with IndexStore.open(index_path) as store:
+        roles = {e.path: e.role for e in store.files()}
+        functions = store.symbols(kind=SymbolKind.FUNCTION)
+    declared: dict[str, str] = {}
+    for symbol in functions:
+        if (
+            symbol.boundary is Boundary.C_ABI
+            and not symbol.is_definition
+            and roles.get(symbol.file) is FileRole.HEADER
+        ):
+            declared.setdefault(symbol.id, symbol.file)
+    return [
+        RuleSite(
+            file=symbol.file,
+            line=symbol.range.start_line,
+            column=symbol.range.start_column,
+            text=f"{symbol.name}, declared in {declared[symbol.id]}",
+        )
+        for symbol in functions
+        if symbol.file in wanted
+        and symbol.is_definition
+        and symbol.id in declared
+        and roles.get(symbol.file) is not FileRole.HEADER
+    ]
 
 
 _TEST_MACRO = re.compile(

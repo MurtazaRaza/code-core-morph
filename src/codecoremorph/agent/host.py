@@ -293,7 +293,7 @@ class HostUnit:
             index_path=Path(state.index_path) if state.index_path else None,
             language=self.language,
             source=state.source,
-            target=state.target,
+            target=self.runner.target_label,
             codemods=state.codemods,
             remaining=state.sites,
             build=build,

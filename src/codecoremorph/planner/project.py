@@ -185,6 +185,24 @@ class ProjectModel:
                         found.add(innermost.id)
         return sorted(found)
 
+    def headers_declaring(self, sites: Iterable[RuleSite]) -> dict[str, list[str]]:
+        """For each site's file, the in-scope headers that declare the symbols enclosing its
+        sites: the interface a port of that file keeps (D-56)."""
+        by_file: dict[str, list[RuleSite]] = {}
+        for site in sites:
+            by_file.setdefault(site.file, []).append(site)
+        found: dict[str, list[str]] = {}
+        with IndexStore.open(self.index_path) as store:
+            for path, file_sites in sorted(by_file.items()):
+                ids = self.symbols_at(file_sites)
+                headers = {
+                    f
+                    for f in store.files_declaring(ids)
+                    if f != path and f in self.files and self.files[f].role is FileRole.HEADER
+                }
+                found[path] = sorted(headers)
+        return found
+
     def fan_in(self, symbol_ids: Iterable[str]) -> list[str]:
         """Every file that declares, defines or references one of ``symbol_ids``."""
         ids = list(symbol_ids)

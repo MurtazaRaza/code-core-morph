@@ -119,7 +119,9 @@ def prepare_unit(
     )
     rules = [session.rules.get(r) for r in rule_ids]
     for loaded in rules:
-        reason = rule_excludes(order, loaded.rule, source, target)
+        reason = rule_excludes(
+            order, loaded.rule, source, target, target_language=migration.target.language
+        )
         if reason is not None:
             raise ConfigError(
                 f"{loaded.rule.id} doesn't apply to {source} -> {target}: it {reason}",
@@ -240,6 +242,8 @@ def make_runner(
         invariants=invariant_checker(session, prepared.unit.id, before),
         guard=guard,
         deadline=deadline,
+        target_adapter=session.target_adapter,
+        target_ctx=session.target_ctx,
     )
 
 

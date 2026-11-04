@@ -19,7 +19,11 @@ Languages:
   cpp   LLVM (clang, clang-tidy, clang-format; llvm-mingw on Windows), CMake,
         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
         for projects that build as C++98/03)
-  all   every available language (currently cpp)
+  rust  the cpp toolchain, plus Rust (through rustup, with clippy and
+        rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
+        ports; rustup and cargo download Rust and cbindgen themselves, so
+        --offline doesn't apply
+  all   every available language (cpp and rust)
 
 Options:
   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)
@@ -257,6 +261,182 @@ install_cpp() {
     cpp_write_env
 }
 
+# The Rust release rustup installs, and the cbindgen release cargo builds (D-56). rustup and
+# cargo verify what they download themselves (SPEC 7.15 rule 1).
+RUST_VERSION=1.99.1
+CBINDGEN_VERSION=0.29.4
+
+# Sets RUST_HOST, RUSTUP_HOME_DIR and CARGO_HOME_DIR, and installs the pinned Rust release.
+rust_install_toolchain() {
+    case $CCM_PLATFORM in
+        windows-*) RUST_HOST=x86_64-pc-windows-gnullvm ;; # links with llvm-mingw (D-32)
+        *) RUST_HOST="" ;;
+    esac
+    RUSTUP_HOME_DIR="$CCM_HOME/toolchains/rust/rustup"
+    CARGO_HOME_DIR="$CCM_HOME/toolchains/rust/cargo"
+    ccm_install_tool rust rustup
+    RUSTUP_VERSION=$CCM_ROW_VERSION
+    _init="$CCM_TOOL_DIR/${CCM_ROW_URL##*/}"
+    _rustc="$CARGO_HOME_DIR/bin/rustc$_exe"
+    if [ "$CCM_FORCE" != 1 ] && [ -x "$_rustc" ] &&
+        RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" \
+            RUSTUP_TOOLCHAIN="$RUST_VERSION" "$_rustc" --version 2>/dev/null |
+        grep -q "^rustc $RUST_VERSION "; then
+        ccm_log "Rust $RUST_VERSION is already installed in $CCM_HOME/toolchains/rust"
+        return 0
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would install Rust $RUST_VERSION with rustup $RUSTUP_VERSION into" \
+            "$CCM_HOME/toolchains/rust"
+        return 0
+    fi
+    chmod +x "$_init" 2>/dev/null || true
+    set -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_VERSION" \
+        -c clippy -c rustfmt
+    [ -z "$RUST_HOST" ] || set -- "$@" --default-host "$RUST_HOST"
+    ccm_log "installing Rust $RUST_VERSION with rustup $RUSTUP_VERSION (rustup downloads and" \
+        "verifies it)"
+    RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" "$_init" "$@" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "rustup-init failed to install Rust $RUST_VERSION"
+}
+
+# Builds the pinned cbindgen with cargo, unless it is already there. Sets CBINDGEN_BIN.
+rust_install_cbindgen() {
+    _root="$CCM_HOME/toolchains/cbindgen/$CBINDGEN_VERSION"
+    CBINDGEN_BIN="$_root/bin"
+    if [ "$CCM_FORCE" != 1 ] && [ -x "$CBINDGEN_BIN/cbindgen$_exe" ]; then
+        ccm_log "cbindgen $CBINDGEN_VERSION is already installed in $_root"
+        return 0
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would build cbindgen $CBINDGEN_VERSION with cargo install --locked into $_root"
+        return 0
+    fi
+    ccm_log "building cbindgen $CBINDGEN_VERSION (cargo install --locked)"
+    PATH="$LLVM_BIN:$PATH" RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" \
+        RUSTUP_TOOLCHAIN="$RUST_VERSION" "$CARGO_HOME_DIR/bin/cargo$_exe" install cbindgen \
+        --version "$CBINDGEN_VERSION" --locked --root "$(ccm_native_path "$_root")" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "building cbindgen $CBINDGEN_VERSION failed"
+}
+
+# Installs Corrosion from its source with the pinned CMake. Sets CORROSION_PREFIX.
+rust_install_corrosion() {
+    ccm_install_tool rust corrosion
+    CORROSION_VERSION=$CCM_ROW_VERSION
+    _src=$CCM_TOOL_BIN_DIR
+    CORROSION_PREFIX="$CCM_HOME/toolchains/corrosion/$CORROSION_VERSION/install"
+    if [ "$CCM_FORCE" != 1 ] && [ -f "$CORROSION_PREFIX/.built" ]; then
+        ccm_log "Corrosion $CORROSION_VERSION is already installed in $CORROSION_PREFIX"
+        return 0
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would install Corrosion $CORROSION_VERSION into $CORROSION_PREFIX"
+        return 0
+    fi
+    _build="$CCM_HOME/toolchains/corrosion/$CORROSION_VERSION/.build-$$"
+    _tmp="$CCM_HOME/toolchains/corrosion/$CORROSION_VERSION/.install-$$"
+    _log="$CCM_HOME/toolchains/corrosion/$CORROSION_VERSION/build.log"
+    rm -rf "$_build" "$_tmp"
+    ccm_log "installing Corrosion $CORROSION_VERSION (log: $_log)"
+    # Corrosion's configure looks for rustc on PATH.
+    if ! (
+        PATH="$CARGO_HOME_DIR/bin:$PATH"
+        RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")"
+        CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")"
+        RUSTUP_TOOLCHAIN=$RUST_VERSION
+        export PATH RUSTUP_HOME CARGO_HOME RUSTUP_TOOLCHAIN
+        "$CMAKE" -S "$(ccm_native_path "$_src")" -B "$(ccm_native_path "$_build")" -G Ninja \
+            "-DCMAKE_MAKE_PROGRAM=$(ccm_native_path "$NINJA")" \
+            "-DCMAKE_C_COMPILER=$(ccm_native_path "$CC_PATH")" \
+            "-DCMAKE_CXX_COMPILER=$(ccm_native_path "$CXX_PATH")" -DCORROSION_BUILD_TESTS=OFF \
+            "-DCMAKE_INSTALL_PREFIX=$(ccm_native_path "$_tmp")" &&
+            "$CMAKE" --build "$(ccm_native_path "$_build")" &&
+            "$CMAKE" --install "$(ccm_native_path "$_build")"
+    ) >"$_log" 2>&1; then
+        rm -rf "$_build" "$_tmp"
+        tail -n 20 "$_log" >&2
+        ccm_die "$CCM_EXIT_DOWNLOAD" "installing Corrosion failed; the full log is $_log"
+    fi
+    printf '%s\n' "$CCM_ROW_SHA256" >"$_tmp/.built"
+    rm -rf "$CORROSION_PREFIX" "$_build"
+    mv "$_tmp" "$CORROSION_PREFIX" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not move Corrosion into $CORROSION_PREFIX"
+    ccm_log "installed Corrosion $CORROSION_VERSION into $CORROSION_PREFIX"
+}
+
+# rust.env: everything in cpp.env plus the Rust tools, since every run that builds Rust here
+# is a mixed CMake + Cargo build.
+rust_write_env() {
+    _env="$CCM_HOME/toolchains/rust.env"
+    _activate="$CCM_HOME/toolchains/activate-rust.sh"
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would write $_env and $_activate"
+        return 0
+    fi
+    _sep=:
+    case $CCM_PLATFORM in windows-*) _sep=';' ;; esac
+    _rust_prepend="$(ccm_env_path "$CARGO_HOME_DIR/bin")$_sep$(ccm_env_path "$NEXTEST_BIN")"
+    _rust_prepend="$_rust_prepend$_sep$(ccm_env_path "$CBINDGEN_BIN")"
+    _cpp_prepend="$(ccm_env_path "$LLVM_BIN")$_sep$(ccm_env_path "$CMAKE_BIN")$_sep$(ccm_env_path "$NINJA_BIN")"
+    [ -z "$EXTRA_BIN" ] || _cpp_prepend="$_cpp_prepend$_sep$(ccm_env_path "$EXTRA_BIN")"
+    _prefixes="$(ccm_env_path "$GTEST_PREFIX")$_sep$(ccm_env_path "$CORROSION_PREFIX")"
+    _sh_path="$CARGO_HOME_DIR/bin:$NEXTEST_BIN:$CBINDGEN_BIN:$LLVM_BIN:$CMAKE_BIN:$NINJA_BIN"
+    [ -z "$EXTRA_BIN" ] || _sh_path="$_sh_path:$EXTRA_BIN"
+    if ! {
+        printf '# CodeCoreMorph Rust toolchain (with the C++ one), written by install-toolchain.\n'
+        printf '# Do not edit. rust %s (rustup %s), cargo-nextest %s, cbindgen %s,\n' \
+            "$RUST_VERSION" "$RUSTUP_VERSION" "$NEXTEST_VERSION" "$CBINDGEN_VERSION"
+        printf '# corrosion %s, %s, cmake %s, ninja %s, googletest %s and %s\n' \
+            "$CORROSION_VERSION" "$LLVM_ID" "$CMAKE_VERSION" "$NINJA_VERSION" "$GTEST_VERSION" \
+            "$GTEST98_VERSION"
+        printf 'PATH_PREPEND=%s%s%s\n' "$_rust_prepend" "$_sep" "$_cpp_prepend"
+        printf 'CC=%s\n' "$(ccm_env_path "$CC_PATH")"
+        printf 'CXX=%s\n' "$(ccm_env_path "$CXX_PATH")"
+        printf 'CMAKE_GENERATOR=Ninja\n'
+        printf 'CMAKE_PREFIX_PATH=%s\n' "$_prefixes"
+        printf 'CODECOREMORPH_CXX98_PREFIX_PATH=%s\n' "$(ccm_env_path "$GTEST98_PREFIX")"
+        printf 'RUSTUP_HOME=%s\n' "$(ccm_env_path "$RUSTUP_HOME_DIR")"
+        printf 'CARGO_HOME=%s\n' "$(ccm_env_path "$CARGO_HOME_DIR")"
+        printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUST_VERSION"
+        # Builds never reach the network; crates come from the fetch step (SPEC 11.5).
+        printf 'CARGO_NET_OFFLINE=true\n'
+    } >"$_env.tmp" || ! mv -f "$_env.tmp" "$_env"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_env"
+    fi
+    if ! {
+        printf '# Use the CodeCoreMorph Rust and C++ toolchain in this shell:  . "%s"\n' \
+            "$_activate"
+        # shellcheck disable=SC2016 # $PATH expands when the activation script runs
+        printf 'PATH="%s:$PATH"\n' "$_sh_path"
+        printf 'CC="%s"\n' "$(ccm_native_path "$CC_PATH")"
+        printf 'CXX="%s"\n' "$(ccm_native_path "$CXX_PATH")"
+        printf 'CMAKE_GENERATOR=Ninja\n'
+        printf 'CMAKE_PREFIX_PATH="%s"\n' "$_prefixes"
+        printf 'RUSTUP_HOME="%s"\n' "$(ccm_native_path "$RUSTUP_HOME_DIR")"
+        printf 'CARGO_HOME="%s"\n' "$(ccm_native_path "$CARGO_HOME_DIR")"
+        printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUST_VERSION"
+        printf 'export PATH CC CXX CMAKE_GENERATOR CMAKE_PREFIX_PATH RUSTUP_HOME CARGO_HOME'
+        printf ' RUSTUP_TOOLCHAIN\n'
+    } >"$_activate.tmp" || ! mv -f "$_activate.tmp" "$_activate"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_activate"
+    fi
+    ccm_log "wrote $_env"
+    ccm_log "to use the toolchain in your own shell, run: . \"$_activate\""
+}
+
+install_rust() {
+    [ -z "$CCM_OFFLINE" ] || ccm_die "$CCM_EXIT_USAGE" "--offline doesn't apply to rust: rustup" \
+        "downloads the Rust release and cargo builds cbindgen themselves"
+    install_cpp
+    rust_install_toolchain
+    ccm_install_tool rust cargo-nextest
+    NEXTEST_VERSION=$CCM_ROW_VERSION
+    NEXTEST_BIN=$CCM_TOOL_BIN_DIR
+    rust_install_cbindgen
+    rust_install_corrosion
+    rust_write_env
+}
+
 ccm_parse_args "$@"
 if [ "$CCM_HELP" = 1 ]; then
     usage
@@ -264,14 +444,19 @@ if [ "$CCM_HELP" = 1 ]; then
 fi
 # shellcheck disable=SC2086 # split the positional arguments into words
 set -- $CCM_POSITIONAL
-[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp or all (see --help)"
-case $1 in
-    cpp | all) ;;
-    java | csharp | rust)
-        ccm_die "$CCM_EXIT_USAGE" "the $1 toolchain is not available yet; available: cpp"
+[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp, rust or all (see --help)"
+language=$1
+case $language in
+    cpp | rust | all) ;;
+    java | csharp)
+        ccm_die "$CCM_EXIT_USAGE" "the $language toolchain is not available yet; available:" \
+            "cpp, rust"
         ;;
-    *) ccm_die "$CCM_EXIT_USAGE" "unknown language '$1'; available: cpp, all" ;;
+    *) ccm_die "$CCM_EXIT_USAGE" "unknown language '$language'; available: cpp, rust, all" ;;
 esac
 ccm_setup
-install_cpp
+case $language in
+    cpp) install_cpp ;;
+    *) install_rust ;; # rust and all: the Rust toolchain includes the C++ one
+esac
 ccm_log "done"

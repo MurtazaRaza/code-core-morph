@@ -41,12 +41,15 @@ MIGRATIONS: dict[str, tuple[str, str, list[str]]] = {
         "cpp20",
         ["replace_typedefs_with_using", "convert_raw_pointers_to_smart_pointers"],
     ),
+    "ffi-module": ("cpp17", "cpp20", ["modernize_basics"]),  # Phase 12's port fixture
 }
 
 pytestmark = pytest.mark.usefixtures("restore_logging")
 
 
-def _manifest(name: str, source: str, target: str, rules: list[str], mode: str) -> str:
+def _manifest(
+    name: str, source: str, target: str, rules: list[str], mode: str, target_language: str = "cpp"
+) -> str:
     return f"""\
 version: "1.0"
 project:
@@ -56,7 +59,7 @@ project:
   public_api: ["include/**"]
 migration:
   source: {{language: cpp, standard: {source}, build_system: cmake}}
-  target: {{language: cpp, standard: {target}, rules: [{", ".join(rules)}]}}
+  target: {{language: {target_language}, standard: {target}, rules: [{", ".join(rules)}]}}
 sandbox: {{mode: {mode}}}
 """
 
@@ -76,11 +79,20 @@ def make_project(
         shutil.copyfile(env, isolated_home / "toolchains" / "cpp.env")
 
     def make(
-        fixture: str, source: str, target: str, rules: list[str], *, source_dir: Path | None = None
+        fixture: str,
+        source: str,
+        target: str,
+        rules: list[str],
+        *,
+        source_dir: Path | None = None,
+        target_language: str = "cpp",
     ) -> Path:
+        if target_language != "cpp" and mode == "native":
+            toolchain: Path = request.getfixturevalue(f"{target_language}_toolchain_env")
+            shutil.copyfile(toolchain, isolated_home / "toolchains" / toolchain.name)
         root = tmp_path / fixture
         shutil.copytree(source_dir or FIXTURES_DIR / fixture, root)
-        manifest = _manifest(fixture, source, target, rules, mode)
+        manifest = _manifest(fixture, source, target, rules, mode, target_language)
         (root / "migration_config.yaml").write_text(manifest, encoding="utf-8")
         git(root.parent, "init", "--quiet", str(root))
         git(root, "add", "--all")
@@ -132,6 +144,30 @@ def test_plan_every_fixture(make_project: MakeProject, fixture: str, git: GitRun
     # no code changed, and the run branch is gone
     assert _snapshot(root) == before
     assert git(root, "branch", "--list").split() == ["*", "main"]
+
+
+def test_a_port_plan(make_project: MakeProject) -> None:
+    """``ffi-module`` to Rust (D-56): no standard bump, and one port unit for the C header, with
+    the module's source and the build files; the header is a read-only reference file."""
+    root = make_project(
+        "ffi-module", "cpp17", "rust2021", ["port_c_abi_module"], target_language="rust"
+    )
+    code, payload, stderr = _plan(root)
+    assert code == 0, stderr
+    plan = Plan.model_validate(payload["plan"])
+    assert plan.migration == "cpp cpp17 -> rust rust2021"
+    assert [r.id for r in plan.rules] == ["port_c_abi_module"]
+    [unit] = plan.units
+    assert unit.status is UnitStatus.PENDING
+    assert unit.files == [
+        "CMakeLists.txt",
+        "include/textkit/ring.h",
+        "src/ring.cpp",
+        "tests/CMakeLists.txt",
+    ]
+    assert unit.reference_files == ["include/textkit/ring.h"]
+    assert unit.rule_sites == {"src/ring.cpp": 8}  # the eight functions of the C API
+    assert unit.note == "ports src/ring.cpp to rust behind include/textkit/ring.h"
 
 
 def test_plans_are_deterministic(make_project: MakeProject) -> None:

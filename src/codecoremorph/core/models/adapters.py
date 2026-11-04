@@ -38,6 +38,8 @@ class AdapterCapabilities(CoreModel):
     extract_assertions: bool = False
     detect_disabled_tests: bool = False
     scaffold_project: bool = False
+    c_declarations: bool = False
+    exported_c_headers: bool = False
     codemod_tools: list[str] = Field(default_factory=list[str])
     queries: list[str] = Field(default_factory=list[str], description="Detector queries")
     standards: list[str] = Field(

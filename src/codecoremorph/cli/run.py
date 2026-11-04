@@ -166,10 +166,7 @@ def _ask(place: RunPlace) -> Any:
 
 
 def _plan_lines(plan: Plan, *, cost: bool = False) -> list[str]:
-    lines = [
-        f"Plan: {plan.language} {plan.source_standard} -> {plan.target_standard}, "
-        f"{len(plan.units)} units"
-    ]
+    lines = [f"Plan: {plan.migration}, {len(plan.units)} units"]
     for unit in plan.units:
         flags = f" [{', '.join(f.value for f in unit.flags)}]" if unit.flags else ""
         status = "" if unit.status is UnitStatus.PENDING else f" ({unit.status.value})"

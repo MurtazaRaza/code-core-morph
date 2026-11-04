@@ -258,6 +258,51 @@ def test_build_commands() -> None:
     assert check_build_commands(patch_lines(PATCH)).passed
 
 
+CARGO_PATCH = """\
+diff --git a/rust/ring/Cargo.toml b/rust/ring/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/rust/ring/Cargo.toml
+@@ -0,0 +1,9 @@
++[package]
++name = "ring"
++build = "gen.rs"
++
++[lib]
++proc-macro = true
++
++[build-dependencies]
++cc = "1"
+diff --git a/rust/ring/build.rs b/rust/ring/build.rs
+new file mode 100644
+--- /dev/null
++++ b/rust/ring/build.rs
+@@ -0,0 +1 @@
++fn main() { std::process::Command::new("curl").status().unwrap(); }
+diff --git a/rust/ring/src/lib.rs b/rust/ring/src/lib.rs
+--- a/rust/ring/src/lib.rs
++++ b/rust/ring/src/lib.rs
+@@ -1 +1,2 @@
+ //! The port.
++const BUILD: &str = "x"; // build = "not a manifest"
+"""
+
+
+def test_cargo_build_commands() -> None:
+    """A port's crate (D-56): build scripts, build dependencies and procedural macros run while
+    the crate builds."""
+    result = check_build_commands(patch_lines(CARGO_PATCH))
+    assert not result.passed
+    for found in (
+        "a build script (build =) in rust/ring/Cargo.toml",
+        "[build-dependencies] in rust/ring/Cargo.toml",
+        "a procedural macro crate in rust/ring/Cargo.toml",
+        "a new Cargo build script rust/ring/build.rs",
+    ):
+        assert found in result.message
+    assert "lib.rs" not in result.message  # the manifest patterns only apply to Cargo.toml
+
+
 def test_the_w_flag_is_a_suppression_in_cmake_only() -> None:
     found = check_suppressions(patch_lines(CMAKE_PATCH), allowed=False)
     assert not found.passed
