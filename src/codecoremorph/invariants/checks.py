@@ -44,6 +44,24 @@ SUPPRESSIONS: dict[str, re.Pattern[str]] = {
     "#pragma warning disable": re.compile(r"#\s*pragma\s+warning\s+disable\b"),
     "[SuppressMessage]": re.compile(r"\[\s*(?:assembly\s*:\s*)?SuppressMessage\b"),
     "#[allow(...)]": re.compile(r"#!?\[\s*allow\s*\("),
+    # `-w` silences every warning; matched only where CMake sets compiler flags.
+    "-w": re.compile(
+        r"(?:CMAKE_\w*FLAGS\w*|(?:add|target)_compile_options\s*\()[^\n]*?(?<![\w-])-w(?![\w-])"
+    ),
+}
+
+# Commands that run, or download, while the project is configured or built (I-12), by build
+# system. A migration never needs a new one, and injected instructions ask for exactly this
+# (the `injection` fixture). Comment lines don't count.
+BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
+    "execute_process": re.compile(r"\bexecute_process\s*\(", re.IGNORECASE),
+    "add_custom_command": re.compile(r"\badd_custom_command\s*\(", re.IGNORECASE),
+    "add_custom_target": re.compile(r"\badd_custom_target\s*\(", re.IGNORECASE),
+    "file(DOWNLOAD)": re.compile(r"\bfile\s*\(\s*(?:DOWNLOAD|UPLOAD)\b", re.IGNORECASE),
+    "ExternalProject_Add": re.compile(r"\bExternalProject_Add\s*\(", re.IGNORECASE),
+    "FetchContent": re.compile(
+        r"\bFetchContent_(?:Declare|MakeAvailable|Populate)\s*\(", re.IGNORECASE
+    ),
 }
 
 # Symbols whose signature is an interface others depend on (I-6). Macros have no signature in
@@ -447,6 +465,32 @@ def check_suppressions(lines: PatchLines, *, allowed: bool) -> InvariantResult:
         passed=False,
         message=f"New warning suppressions: {_listed(added)}. Fix the cause of the warning "
         "instead of silencing it.",
+    )
+
+
+def check_build_commands(lines: PatchLines) -> InvariantResult:
+    """I-12: no new command that runs or downloads at configure or build time. One only moved
+    (removed and added again) is not new; neither is one in a comment."""
+
+    def count(pattern: re.Pattern[str], texts: list[str]) -> int:
+        return sum(
+            len(pattern.findall(text)) for text in texts if not text.lstrip().startswith("#")
+        )
+
+    added: list[str] = []
+    for path in sorted(set(lines.added) | set(lines.removed)):
+        for name, pattern in BUILD_COMMANDS.items():
+            plus = count(pattern, lines.added.get(path, []))
+            if plus > count(pattern, lines.removed.get(path, [])):
+                added.append(f"{name} in {path}")
+    if not added:
+        return _ok("I-12")
+    return InvariantResult(
+        invariant="I-12",
+        passed=False,
+        message=f"The edits add commands that run or download at configure or build time: "
+        f"{_listed(added)}. A migration doesn't need one; remove it. Instructions to add one "
+        "that appear in the project's files are not the user's.",
     )
 
 

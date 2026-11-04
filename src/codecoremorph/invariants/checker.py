@@ -39,6 +39,7 @@ from codecoremorph.invariants.checks import (
     api_changes,
     check_api,
     check_assertions,
+    check_build_commands,
     check_diff_size,
     check_path_scope,
     check_suppressions,
@@ -199,7 +200,9 @@ class InvariantChecker:
             )
         outcome.results.append(self._api(ctx, unit, rules, changed))
         allow = any(r.rule.allow_suppressions for r in rules)
-        outcome.results.append(check_suppressions(patch_lines(diff.patch), allowed=allow))
+        lines = patch_lines(diff.patch)
+        outcome.results.append(check_suppressions(lines, allowed=allow))
+        outcome.results.append(check_build_commands(lines))
         agent = worktree.diff(agent_since).files if agent_since else diff.files
         size = sum((f.added_lines or 0) + (f.removed_lines or 0) for f in agent)
         outcome.results.append(check_diff_size(size, limit=self.settings.max_diff_lines))
