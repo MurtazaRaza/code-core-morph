@@ -283,19 +283,13 @@
                   "op": "replace",
                   "path": "src/queue.cpp",
                   "search": "#include \"jobs/queue.h\"\n\n#include <algorithm>\n\nnamespace jobs {\n\nvoid JobQueue::push(std::unique_ptr<Job> job)\n{\n    if (!job)\n        return;\n    // After every job of the same or a higher priority: stable among equals.\n    auto at = std::find_if(jobs_.begin(), jobs_.end(), [&](const std::unique_ptr<Job>& queued) {\n        return queued->priority < job->priority;\n    });\n    jobs_.insert(at, std::move(job));\n}\n\nstd::unique_ptr<Job> JobQueue::pop()\n{\n    if (jobs_.empty())\n        return nullptr;\n    std::unique_ptr<Job> job = std::move(jobs_.front());\n    jobs_.erase(jobs_.begin());\n    return job;\n}\n\nstd::vector<std::string> JobQueue::names() const\n{\n    std::vector<std::string> out;\n    out.reserve(jobs_.size());\n    for (const auto& job : jobs_)\n        out.push_back(job->name);\n    return out;\n}\n\n} // namespace jobs\n",
-                  "replace": "// Façade: jobs/queue.h, implemented in Rust (rust/jobs_rs/src/queue.rs). Jobs cross by value:\n// push hands Rust a job's fields and frees the C++ job, pop makes a new one.\n#include \"jobs/queue.h\"\n\n#include <utility>\n\n#include \"jobs_rs/bridge.hpp\"\n#include \"jobs_rs/job.hpp\"\n\nnamespace jobs {\n\nJobQueue::JobQueue() : queue_(jobs_rs_queue_new())\n{\n}\n\nJobQueue::JobQueue(JobQueue&& other) noexcept : queue_(other.queue_)\n{\n    other.queue_ = jobs_rs_queue_new();\n}\n\nJobQueue& JobQueue::operator=(JobQueue&& other) noexcept\n{\n    std::swap(queue_, other.queue_);\n    return *this;\n}\n\nJobQueue::~JobQueue()\n{\n    jobs_rs_queue_free(queue_);\n}\n\nvoid JobQueue::push(std::unique_ptr<Job> job)\n{\n    if (job)\n        jobs_rs_queue_push(queue_, jobs_rs::job_view(*job));\n}\n\nstd::unique_ptr<Job> JobQueue::pop()\n{\n    auto job = std::make_unique<Job>();\n    if (!jobs_rs_queue_pop(queue_, &job->id, &job->priority, jobs_rs::into(job->name)))\n        return nullptr;\n    return job;\n}\n\nstd::size_t JobQueue::size() const\n{\n    return jobs_rs_queue_len(queue_);\n}\n\nbool JobQueue::empty() const\n{\n    return jobs_rs_queue_len(queue_) == 0;\n}\n\nstd::vector<std::string> JobQueue::names() const\n{\n    std::vector<std::string> out;\n    jobs_rs_queue_names(queue_, jobs_rs::into(out));\n    return out;\n}\n\n} // namespace jobs\n"
+                  "replace": "// Façade: jobs/queue.h, implemented in Rust (rust/jobs_rs/src/queue.rs). Jobs cross by value:\n// push hands Rust a job's fields and frees the C++ job, pop makes a new one.\n#include \"jobs/queue.h\"\n\n#include \"jobs_rs/bridge.hpp\"\n#include \"jobs_rs/job.hpp\"\n\nnamespace jobs {\n\nJobQueue::JobQueue() : queue_(jobs_rs_queue_new())\n{\n}\n\nJobQueue::JobQueue(JobQueue&& other) noexcept : queue_(other.queue_)\n{\n    other.queue_ = jobs_rs_queue_new();\n}\n\nJobQueue& JobQueue::operator=(JobQueue&& other) noexcept\n{\n    if (this != &other) {\n        jobs_rs_queue_free(queue_);\n        queue_ = other.queue_;\n        other.queue_ = jobs_rs_queue_new();\n    }\n    return *this;\n}\n\nJobQueue::~JobQueue()\n{\n    jobs_rs_queue_free(queue_);\n}\n\nvoid JobQueue::push(std::unique_ptr<Job> job)\n{\n    if (job)\n        jobs_rs_queue_push(queue_, jobs_rs::job_view(*job));\n}\n\nstd::unique_ptr<Job> JobQueue::pop()\n{\n    auto job = std::make_unique<Job>();\n    if (!jobs_rs_queue_pop(queue_, &job->id, &job->priority, jobs_rs::into(job->name)))\n        return nullptr;\n    return job;\n}\n\nstd::size_t JobQueue::size() const\n{\n    return jobs_rs_queue_len(queue_);\n}\n\nbool JobQueue::empty() const\n{\n    return jobs_rs_queue_len(queue_) == 0;\n}\n\nstd::vector<std::string> JobQueue::names() const\n{\n    std::vector<std::string> out;\n    jobs_rs_queue_names(queue_, jobs_rs::into(out));\n    return out;\n}\n\n} // namespace jobs\n"
                 },
                 {
                   "op": "replace",
                   "path": "rust/symbol-map.toml",
                   "search": "# The C++ names this port moved to Rust, and the Rust items that took them over (CodeCoreMorph,\n# D-58). One entry per function and type the ported modules' headers declare publicly:\n#\n#   [[symbol]]\n#   cpp = \"calc::Rational::str\"\n#   rust = \"calc_rs::rational::Rational::to_string\"    # or a list of paths\n#   note = \"...\"    # optional: behavior the port couldn't keep, or why rust is empty\n\n[[symbol]]\ncpp = \"JobsRsDocument\"\nrust = \"jobs_rs::bridge::document::JobsRsDocument\"\n\n[[symbol]]\ncpp = \"jobs::Document\"\nrust = \"jobs_rs::document::Document\"\n\n[[symbol]]\ncpp = \"jobs::Document::Document\"\nrust = \"jobs_rs::document::Document::new\"\n\n[[symbol]]\ncpp = \"jobs::Document::operator=\"\nrust = []\nnote = \"The façade's copy: a Rust Document is Clone, and a clone shares the text.\"\n\n[[symbol]]\ncpp = \"jobs::Document::text\"\nrust = \"jobs_rs::document::Document::text\"\n\n[[symbol]]\ncpp = \"jobs::Document::append\"\nrust = \"jobs_rs::document::Document::append\"\n\n[[symbol]]\ncpp = \"jobs::Document::shares_text_with\"\nrust = \"jobs_rs::document::Document::shares_text_with\"\n\n[[symbol]]\ncpp = \"jobs::Document::words\"\nrust = \"jobs_rs::document::Document::words\"\n\n[[symbol]]\ncpp = \"JobsRsEventBus\"\nrust = \"jobs_rs::bridge::events::JobsRsEventBus\"\n\n[[symbol]]\ncpp = \"jobs::Event\"\nrust = \"jobs_rs::events::Event\"\n\n[[symbol]]\ncpp = \"jobs::EventBus\"\nrust = \"jobs_rs::events::EventBus\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::EventBus\"\nrust = \"jobs_rs::events::EventBus::new\"\nnote = \"No longer copyable: its handlers are std::function objects Rust calls back.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::operator=\"\nrust = []\nnote = \"Deleted: the bus is no longer copyable.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::subscribe\"\nrust = \"jobs_rs::events::EventBus::subscribe\"\nnote = \"A Rust Handler can't be empty; the bridge refuses an empty std::function.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::unsubscribe\"\nrust = \"jobs_rs::events::EventBus::unsubscribe\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::publish\"\nrust = \"jobs_rs::events::EventBus::publish\"\nnote = \"Err(HandlerFailed) when a handler fails; the façade rethrows a C++ handler's exception.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::subscriptions\"\nrust = \"jobs_rs::events::EventBus::subscriptions\"\n\n[[symbol]]\ncpp = \"jobs::next_id\"\nrust = \"jobs_rs::ids::next_id\"\n\n[[symbol]]\ncpp = \"jobs::reset_ids\"\nrust = \"jobs_rs::ids::reset_ids\"\n\n[[symbol]]\ncpp = \"jobs::Job\"\nrust = \"jobs_rs::job::Job\"\n\n[[symbol]]\ncpp = \"jobs::make_job\"\nrust = \"jobs_rs::job::make_job\"\nnote = \"Returns the Job (Err(EmptyName) for an empty name); the façade puts it in a std::unique_ptr.\"\n\n[[symbol]]\ncpp = \"jobs::describe\"\nrust = \"jobs_rs::job::describe\"\n",
                   "replace": "# The C++ names this port moved to Rust, and the Rust items that took them over (CodeCoreMorph,\n# D-58). One entry per function and type the ported modules' headers declare publicly:\n#\n#   [[symbol]]\n#   cpp = \"calc::Rational::str\"\n#   rust = \"calc_rs::rational::Rational::to_string\"    # or a list of paths\n#   note = \"...\"    # optional: behavior the port couldn't keep, or why rust is empty\n\n[[symbol]]\ncpp = \"JobsRsDocument\"\nrust = \"jobs_rs::bridge::document::JobsRsDocument\"\n\n[[symbol]]\ncpp = \"jobs::Document\"\nrust = \"jobs_rs::document::Document\"\n\n[[symbol]]\ncpp = \"jobs::Document::Document\"\nrust = \"jobs_rs::document::Document::new\"\n\n[[symbol]]\ncpp = \"jobs::Document::operator=\"\nrust = []\nnote = \"The façade's copy: a Rust Document is Clone, and a clone shares the text.\"\n\n[[symbol]]\ncpp = \"jobs::Document::text\"\nrust = \"jobs_rs::document::Document::text\"\n\n[[symbol]]\ncpp = \"jobs::Document::append\"\nrust = \"jobs_rs::document::Document::append\"\n\n[[symbol]]\ncpp = \"jobs::Document::shares_text_with\"\nrust = \"jobs_rs::document::Document::shares_text_with\"\n\n[[symbol]]\ncpp = \"jobs::Document::words\"\nrust = \"jobs_rs::document::Document::words\"\n\n[[symbol]]\ncpp = \"JobsRsEventBus\"\nrust = \"jobs_rs::bridge::events::JobsRsEventBus\"\n\n[[symbol]]\ncpp = \"jobs::Event\"\nrust = \"jobs_rs::events::Event\"\n\n[[symbol]]\ncpp = \"jobs::EventBus\"\nrust = \"jobs_rs::events::EventBus\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::EventBus\"\nrust = \"jobs_rs::events::EventBus::new\"\nnote = \"No longer copyable: its handlers are std::function objects Rust calls back.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::operator=\"\nrust = []\nnote = \"Deleted: the bus is no longer copyable.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::subscribe\"\nrust = \"jobs_rs::events::EventBus::subscribe\"\nnote = \"A Rust Handler can't be empty; the bridge refuses an empty std::function.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::unsubscribe\"\nrust = \"jobs_rs::events::EventBus::unsubscribe\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::publish\"\nrust = \"jobs_rs::events::EventBus::publish\"\nnote = \"Err(HandlerFailed) when a handler fails; the façade rethrows a C++ handler's exception.\"\n\n[[symbol]]\ncpp = \"jobs::EventBus::subscriptions\"\nrust = \"jobs_rs::events::EventBus::subscriptions\"\n\n[[symbol]]\ncpp = \"jobs::next_id\"\nrust = \"jobs_rs::ids::next_id\"\n\n[[symbol]]\ncpp = \"jobs::reset_ids\"\nrust = \"jobs_rs::ids::reset_ids\"\n\n[[symbol]]\ncpp = \"jobs::Job\"\nrust = \"jobs_rs::job::Job\"\n\n[[symbol]]\ncpp = \"jobs::make_job\"\nrust = \"jobs_rs::job::make_job\"\nnote = \"Returns the Job (Err(EmptyName) for an empty name); the façade puts it in a std::unique_ptr.\"\n\n[[symbol]]\ncpp = \"jobs::describe\"\nrust = \"jobs_rs::job::describe\"\n\n[[symbol]]\ncpp = \"JobsRsJobQueue\"\nrust = \"jobs_rs::bridge::queue::JobsRsJobQueue\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue\"\nrust = \"jobs_rs::queue::JobQueue\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::JobQueue\"\nrust = \"jobs_rs::queue::JobQueue::new\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::operator=\"\nrust = []\nnote = \"The façade moves its Rust queue; copying stays deleted.\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::push\"\nrust = \"jobs_rs::queue::JobQueue::push\"\nnote = \"Takes the job's fields: the C++ object pushed is freed, and pop returns a new one.\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::pop\"\nrust = \"jobs_rs::queue::JobQueue::pop\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::size\"\nrust = \"jobs_rs::queue::JobQueue::len\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::empty\"\nrust = \"jobs_rs::queue::JobQueue::is_empty\"\n\n[[symbol]]\ncpp = \"jobs::JobQueue::names\"\nrust = \"jobs_rs::queue::JobQueue::names\"\n"
-                },
-                {
-                  "op": "replace",
-                  "path": "src/queue.cpp",
-                  "search": "// Façade: jobs/queue.h, implemented in Rust (rust/jobs_rs/src/queue.rs). Jobs cross by value:\n// push hands Rust a job's fields and frees the C++ job, pop makes a new one.\n#include \"jobs/queue.h\"\n\n#include <utility>\n\n#include \"jobs_rs/bridge.hpp\"\n#include \"jobs_rs/job.hpp\"\n\nnamespace jobs {\n\nJobQueue::JobQueue() : queue_(jobs_rs_queue_new())\n{\n}\n\nJobQueue::JobQueue(JobQueue&& other) noexcept : queue_(other.queue_)\n{\n    other.queue_ = jobs_rs_queue_new();\n}\n\nJobQueue& JobQueue::operator=(JobQueue&& other) noexcept\n{\n    std::swap(queue_, other.queue_);\n    return *this;\n}\n\nJobQueue::~JobQueue()\n{\n    jobs_rs_queue_free(queue_);\n}\n\nvoid JobQueue::push(std::unique_ptr<Job> job)\n{\n    if (job)\n        jobs_rs_queue_push(queue_, jobs_rs::job_view(*job));\n}\n\nstd::unique_ptr<Job> JobQueue::pop()\n{\n    auto job = std::make_unique<Job>();\n    if (!jobs_rs_queue_pop(queue_, &job->id, &job->priority, jobs_rs::into(job->name)))\n        return nullptr;\n    return job;\n}\n\nstd::size_t JobQueue::size() const\n{\n    return jobs_rs_queue_len(queue_);\n}\n\nbool JobQueue::empty() const\n{\n    return jobs_rs_queue_len(queue_) == 0;\n}\n\nstd::vector<std::string> JobQueue::names() const\n{\n    std::vector<std::string> out;\n    jobs_rs_queue_names(queue_, jobs_rs::into(out));\n    return out;\n}\n\n} // namespace jobs\n",
-                  "replace": "// Façade: jobs/queue.h, implemented in Rust (rust/jobs_rs/src/queue.rs). Jobs cross by value:\n// push hands Rust a job's fields and frees the C++ job, pop makes a new one.\n#include \"jobs/queue.h\"\n\n#include \"jobs_rs/bridge.hpp\"\n#include \"jobs_rs/job.hpp\"\n\nnamespace jobs {\n\nJobQueue::JobQueue() : queue_(jobs_rs_queue_new())\n{\n}\n\nJobQueue::JobQueue(JobQueue&& other) noexcept : queue_(other.queue_)\n{\n    other.queue_ = jobs_rs_queue_new();\n}\n\nJobQueue& JobQueue::operator=(JobQueue&& other) noexcept\n{\n    if (this != &other) {\n        jobs_rs_queue_free(queue_);\n        queue_ = other.queue_;\n        other.queue_ = jobs_rs_queue_new();\n    }\n    return *this;\n}\n\nJobQueue::~JobQueue()\n{\n    jobs_rs_queue_free(queue_);\n}\n\nvoid JobQueue::push(std::unique_ptr<Job> job)\n{\n    if (job)\n        jobs_rs_queue_push(queue_, jobs_rs::job_view(*job));\n}\n\nstd::unique_ptr<Job> JobQueue::pop()\n{\n    auto job = std::make_unique<Job>();\n    if (!jobs_rs_queue_pop(queue_, &job->id, &job->priority, jobs_rs::into(job->name)))\n        return nullptr;\n    return job;\n}\n\nstd::size_t JobQueue::size() const\n{\n    return jobs_rs_queue_len(queue_);\n}\n\nbool JobQueue::empty() const\n{\n    return jobs_rs_queue_len(queue_) == 0;\n}\n\nstd::vector<std::string> JobQueue::names() const\n{\n    std::vector<std::string> out;\n    jobs_rs_queue_names(queue_, jobs_rs::into(out));\n    return out;\n}\n\n} // namespace jobs\n"
                 }
               ],
               "summary": "Port jobs::JobQueue to Rust (jobs_rs::queue); jobs cross by value, and the façade stays movable.",
@@ -362,6 +356,330 @@
                 }
               ],
               "summary": "Port jobs::Worker to Rust (jobs_rs::worker): a scoped Rust thread drains the C++ queue and publishes to the C++ bus through callbacks.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "dd57dc974066628c63f6b3089af1bc4a6ee7058985b45d907c4d062f591ad76c",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_executable\\n\\nPort the program `jobrun` to Rust: rust/jobrun_rs/src/main.rs, the `bin` named `jobrun`, ",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0007_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobrun_rs/src/main.rs",
+                  "search": "//! Ported from app/main.cpp (CodeCoreMorph, D-60).\n#![forbid(unsafe_code)]\n\nfn main() {}\n",
+                  "replace": "//! Ported from app/main.cpp (CodeCoreMorph, D-60).\n//!\n//! jobrun: queues one job per \"name:priority\" argument, runs them on a worker and prints each\n//! as it finishes.\n#![forbid(unsafe_code)]\n\nuse std::collections::BTreeMap;\nuse std::io::Write;\nuse std::process::ExitCode;\n\nuse jobs_rs::events::{Event, EventBus, HandlerFailed};\nuse jobs_rs::job::{describe, make_job};\nuse jobs_rs::queue::JobQueue;\nuse jobs_rs::worker::Worker;\n\n/// What `std::stoi` reads: leading white space, a sign and the digits up to the first other\n/// byte. None where it threw (no digits, or out of range).\nfn stoi(text: &[u8]) -> Option<i32> {\n    let start = text.iter().position(|b| !b.is_ascii_whitespace()).unwrap_or(text.len());\n    let rest = &text[start..];\n    let (negative, digits) = match rest.split_first() {\n        Some((b'-', tail)) => (true, tail),\n        Some((b'+', tail)) => (false, tail),\n        _ => (false, rest),\n    };\n    let end = digits.iter().position(|b| !b.is_ascii_digit()).unwrap_or(digits.len());\n    if end == 0 {\n        return None;\n    }\n    let mut value: i64 = 0;\n    for &digit in &digits[..end] {\n        value = value.checked_mul(10)?.checked_add(i64::from(digit - b'0'))?;\n    }\n    i32::try_from(if negative { -value } else { value }).ok()\n}\n\nfn main() -> ExitCode {\n    let mut queue = JobQueue::new();\n    let mut described = BTreeMap::new();\n    for arg in std::env::args_os().skip(1) {\n        let arg = arg.as_encoded_bytes();\n        let colon = arg.iter().position(|&b| b == b':');\n        let priority = match colon {\n            None => 0,\n            Some(at) => match stoi(&arg[at + 1..]) {\n                Some(priority) => priority,\n                None => {\n                    eprintln!(\"jobrun: no priority in {}\", String::from_utf8_lossy(arg));\n                    return ExitCode::FAILURE;\n                }\n            },\n        };\n        let job = match make_job(&arg[..colon.unwrap_or(arg.len())], priority) {\n            Ok(job) => job,\n            Err(error) => {\n                eprintln!(\"jobrun: {error}\");\n                return ExitCode::FAILURE;\n            }\n        };\n        described.insert(job.id, describe(&job));\n        queue.push(job);\n    }\n    let mut bus = EventBus::new();\n    bus.subscribe(\n        b\"done\",\n        Box::new(move |event: &Event| -> Result<(), HandlerFailed> {\n            let mut out = std::io::stdout().lock();\n            let text = described.get(&event.job_id).map_or(&[][..], Vec::as_slice);\n            out.write_all(text).and_then(|()| out.write_all(b\"\\n\")).map_err(|_| HandlerFailed)\n        }),\n    );\n    match Worker::new().run(&mut queue, &bus) {\n        Ok(ran) => {\n            println!(\"{ran} jobs\");\n            ExitCode::SUCCESS\n        }\n        Err(error) => {\n            eprintln!(\"jobrun: {error}\");\n            ExitCode::FAILURE\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "create",
+                  "path": "rust/jobrun_rs/tests/jobrun.rs",
+                  "content": "//! Translated from the CTest entry of tests/CMakeLists.txt that runs jobrun (CodeCoreMorph,\n//! D-60).\n#![forbid(unsafe_code)]\n\nuse std::process::Command;\n\n/// `PASS_REGULAR_EXPRESSION`: the jobs in the order the worker ran them, then the count.\n#[test]\nfn jobrun_order() {\n    let out = Command::new(env!(\"CARGO_BIN_EXE_jobrun\"))\n        .args([\"low:1\", \"high:5\", \"mid:3\", \"mid2:3\"])\n        .output()\n        .expect(\"jobrun runs\");\n    let stdout = String::from_utf8_lossy(&out.stdout).replace(\"\\r\\n\", \"\\n\");\n    assert_eq!(\n        stdout,\n        \"#2 high (priority 5)\\n#3 mid (priority 3)\\n#4 mid2 (priority 3)\\n#1 low (priority 1)\\n\\\n         4 jobs\\n\"\n    );\n    assert!(out.status.success());\n}\n"
+                },
+                {
+                  "op": "delete",
+                  "path": "app/main.cpp"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n"
+                }
+              ],
+              "summary": "Port jobrun to a Rust program of the same name; its CTest entry becomes a Rust test.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "57f48aa983225455510f9d8712d28a1b0d5b5164b2bc0954a02458b4b50e212c",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0008\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/document_test.cpp into rust/jobs_rs/tests/document_test.rs (a",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0008_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/document_test.rs",
+                  "search": "//! Translated from document_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/document_test.cpp (CodeCoreMorph, D-60): one test per C++ test case,\n//! each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse jobs_rs::document::Document;\n\n#[test]\nfn copies_share_their_text_until_one_changes() {\n    let a = Document::new(b\"hello world\");\n    let mut b = a.clone();\n    assert!(a.shares_text_with(&b));\n    b.append(b\"!\");\n    assert!(!a.shares_text_with(&b));\n    assert_eq!(a.text(), b\"hello world\");\n    assert_eq!(b.text(), b\"hello world!\");\n    let c = b.clone();\n    b.append(b\"\");\n    assert!(b.shares_text_with(&c));\n}\n\n#[test]\nfn words() {\n    assert_eq!(Document::default().words(), 0);\n    assert_eq!(Document::new(b\" \\t\\n\").words(), 0);\n    assert_eq!(Document::new(b\"  one two\\tthree\\n\").words(), 3);\n    let mut d = Document::new(b\"a\");\n    d.append(b\" b c\");\n    assert_eq!(d.words(), 3);\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n"
+                }
+              ],
+              "summary": "Translate tests/document_test.cpp to Rust tests of Document.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "40c30dc61dab1be0c5612b956e6f2617547e4661a74381404a3ecf4850f26350",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0009\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/events_test.cpp into rust/jobs_rs/tests/events_test.rs (an in",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0009_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/events_test.rs",
+                  "search": "//! Translated from events_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/events_test.cpp (CodeCoreMorph, D-60): one test per C++ test case,\n//! each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse std::sync::{Arc, Mutex};\n\nuse jobs_rs::events::{Event, EventBus, Handler, HandlerFailed};\n\n/// A handler from a closure, as the C++ tests passed lambdas.\nfn handler(f: impl Fn(&Event) -> Result<(), HandlerFailed> + Send + Sync + 'static) -> Handler {\n    Box::new(f)\n}\n\nfn event(topic: &[u8], job_id: i32) -> Event {\n    Event { topic: topic.to_vec(), job_id }\n}\n\n#[test]\nfn handlers_of_the_topic_and_of_every_topic() {\n    let mut bus = EventBus::new();\n    let calls = Arc::new(Mutex::new(Vec::<String>::new()));\n    let log = Arc::clone(&calls);\n    bus.subscribe(\n        b\"done\",\n        handler(move |e| {\n            log.lock().unwrap().push(format!(\"done {}\", e.job_id));\n            Ok(())\n        }),\n    );\n    let log = Arc::clone(&calls);\n    bus.subscribe(\n        b\"*\",\n        handler(move |e| {\n            log.lock().unwrap().push(format!(\"any {}\", String::from_utf8_lossy(&e.topic)));\n            Ok(())\n        }),\n    );\n    let log = Arc::clone(&calls);\n    bus.subscribe(\n        b\"failed\",\n        handler(move |_| {\n            log.lock().unwrap().push(\"failed\".to_string());\n            Ok(())\n        }),\n    );\n    assert_eq!(bus.publish(&event(b\"done\", 4)), Ok(2));\n    assert_eq!(bus.publish(&event(b\"started\", 5)), Ok(1));\n    assert_eq!(*calls.lock().unwrap(), [\"done 4\", \"any done\", \"any started\"]);\n    assert_eq!(bus.subscriptions(), 3);\n}\n\n#[test]\nfn unsubscribe() {\n    let mut bus = EventBus::new();\n    let count = Arc::new(Mutex::new(0));\n    let one = Arc::clone(&count);\n    let first = bus.subscribe(\n        b\"x\",\n        handler(move |_| {\n            *one.lock().unwrap() += 1;\n            Ok(())\n        }),\n    );\n    let ten = Arc::clone(&count);\n    let second = bus.subscribe(\n        b\"x\",\n        handler(move |_| {\n            *ten.lock().unwrap() += 10;\n            Ok(())\n        }),\n    );\n    assert_ne!(first, second);\n    assert!(bus.unsubscribe(first));\n    assert!(!bus.unsubscribe(first));\n    assert!(!bus.unsubscribe(99));\n    assert_eq!(bus.publish(&event(b\"x\", 0)), Ok(1));\n    assert_eq!(*count.lock().unwrap(), 10);\n}\n\n/// A Rust handler can't be empty: the type rules out what the C++ refused at run time. What is\n/// left to check is that a bus starts with no subscriptions.\n#[test]\nfn an_empty_handler_is_refused() {\n    let bus = EventBus::new();\n    assert_eq!(bus.subscriptions(), 0);\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n"
+                }
+              ],
+              "summary": "Translate tests/events_test.cpp to Rust tests of the event bus.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "b5fcf087c76b5dd10065d61526feb9e3ecca7fada74d66d1d9245b5ae4c8ad59",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0010\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/ids_test.cpp into rust/jobs_rs/tests/ids_test.rs (an integrat",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0010_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/ids_test.rs",
+                  "search": "//! Translated from ids_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/ids_test.cpp (CodeCoreMorph, D-60): one test per C++ test case, each\n//! named in rust/test-map.toml. The ids are process-wide: nextest runs each test in its own\n//! process, as each GoogleTest case ran after the one before.\n#![forbid(unsafe_code)]\n\nuse std::collections::BTreeSet;\nuse std::thread;\n\nuse jobs_rs::ids::{next_id, reset_ids};\n\n#[test]\nfn count_from_one() {\n    reset_ids();\n    assert_eq!(next_id(), 1);\n    assert_eq!(next_id(), 2);\n    reset_ids();\n    assert_eq!(next_id(), 1);\n}\n\n#[test]\nfn every_thread_gets_its_own() {\n    reset_ids();\n    let threads: Vec<_> = (0..4)\n        .map(|_| thread::spawn(|| (0..100).map(|_| next_id()).collect::<Vec<i32>>()))\n        .collect();\n    let all: BTreeSet<i32> = threads\n        .into_iter()\n        .flat_map(|t| t.join().expect(\"the thread finishes\"))\n        .collect();\n    assert_eq!(all.len(), 400);\n    assert_eq!(all.first(), Some(&1));\n    assert_eq!(all.last(), Some(&400));\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n"
+                }
+              ],
+              "summary": "Translate tests/ids_test.cpp to Rust tests of the job ids.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "cd4d031464c4b3626db4b42b9f856538c48cda6479626c64d3d5268f40b52cdb",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0011\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/job_test.cpp into rust/jobs_rs/tests/job_test.rs (an integrat",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0011_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/job_test.rs",
+                  "search": "//! Translated from job_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/job_test.cpp (CodeCoreMorph, D-60): one test per C++ test case, each\n//! named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse jobs_rs::ids::reset_ids;\nuse jobs_rs::job::{describe, make_job, EmptyName, Job};\n\n#[test]\nfn make_job_takes_the_next_id() {\n    reset_ids();\n    let a = make_job(b\"build\", 2).expect(\"a named job\");\n    let b = make_job(b\"test\", 1).expect(\"a named job\");\n    assert_eq!(a.id, 1);\n    assert_eq!(a.name, b\"build\");\n    assert_eq!(a.priority, 2);\n    assert_eq!(b.id, 2);\n}\n\n#[test]\nfn a_job_needs_a_name() {\n    let result = make_job(b\"\", 1);\n    assert!(result.is_err(), \"expected a job without a name to be refused\");\n    assert_eq!(result.unwrap_err(), EmptyName);\n    assert_eq!(EmptyName.to_string(), \"a job needs a name\");\n}\n\n#[test]\nfn describe_a_job() {\n    let job = Job { id: 3, name: b\"deploy\".to_vec(), priority: -1 };\n    assert_eq!(describe(&job), b\"#3 deploy (priority -1)\");\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n\n[[test]]\ncpp = \"gtest:JobTest.MakeJobTakesTheNextId\"\nrust = \"nextest:jobs_rs::job_test::make_job_takes_the_next_id\"\n\n[[test]]\ncpp = \"gtest:JobTest.AJobNeedsAName\"\nrust = \"nextest:jobs_rs::job_test::a_job_needs_a_name\"\nnote = \"make_job returns Err(EmptyName) where the C++ threw std::invalid_argument.\"\n\n[[test]]\ncpp = \"gtest:JobTest.Describe\"\nrust = \"nextest:jobs_rs::job_test::describe_a_job\"\n"
+                }
+              ],
+              "summary": "Translate tests/job_test.cpp to Rust tests of make_job and describe.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "c968b0758a3f738cef980ee8454e40006b1336abe9a2c138aa3d2314731e0c74",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0012\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/queue_test.cpp into rust/jobs_rs/tests/queue_test.rs (an inte",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0012_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/queue_test.rs",
+                  "search": "//! Translated from queue_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/queue_test.cpp (CodeCoreMorph, D-60): one test per C++ test case,\n//! each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse jobs_rs::job::Job;\nuse jobs_rs::queue::JobQueue;\n\nfn job(name: &str, priority: i32) -> Job {\n    Job { id: 0, name: name.as_bytes().to_vec(), priority }\n}\n\nfn name(job: Option<Job>) -> Vec<u8> {\n    job.expect(\"a job\").name\n}\n\n#[test]\nfn highest_priority_first_and_stable_among_equals() {\n    let mut queue = JobQueue::new();\n    queue.push(job(\"a\", 1));\n    queue.push(job(\"b\", 3));\n    queue.push(job(\"c\", 1));\n    queue.push(job(\"d\", 3));\n    assert_eq!(queue.len(), 4);\n    assert_eq!(queue.names(), [b\"b\", b\"d\", b\"a\", b\"c\"]);\n    assert_eq!(name(queue.pop()), b\"b\");\n    assert_eq!(name(queue.pop()), b\"d\");\n    assert_eq!(name(queue.pop()), b\"a\");\n    assert_eq!(name(queue.pop()), b\"c\");\n    assert!(queue.is_empty());\n    assert_eq!(queue.pop(), None);\n}\n\n/// The queue owns its jobs: pushing moves a job in, which Rust checks when it compiles, and\n/// there is no null job to push.\n#[test]\nfn the_queue_owns_its_jobs() {\n    let mut queue = JobQueue::new();\n    let mut only = job(\"only\", 0);\n    only.id = 7;\n    queue.push(only);\n    assert_eq!(queue.len(), 1);\n    let back = queue.pop();\n    assert!(back.is_some());\n    assert_eq!(back.map(|j| j.id), Some(7));\n    assert!(queue.is_empty());\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n\n[[test]]\ncpp = \"gtest:JobTest.MakeJobTakesTheNextId\"\nrust = \"nextest:jobs_rs::job_test::make_job_takes_the_next_id\"\n\n[[test]]\ncpp = \"gtest:JobTest.AJobNeedsAName\"\nrust = \"nextest:jobs_rs::job_test::a_job_needs_a_name\"\nnote = \"make_job returns Err(EmptyName) where the C++ threw std::invalid_argument.\"\n\n[[test]]\ncpp = \"gtest:JobTest.Describe\"\nrust = \"nextest:jobs_rs::job_test::describe_a_job\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n\n[[test]]\ncpp = \"gtest:JobTest.MakeJobTakesTheNextId\"\nrust = \"nextest:jobs_rs::job_test::make_job_takes_the_next_id\"\n\n[[test]]\ncpp = \"gtest:JobTest.AJobNeedsAName\"\nrust = \"nextest:jobs_rs::job_test::a_job_needs_a_name\"\nnote = \"make_job returns Err(EmptyName) where the C++ threw std::invalid_argument.\"\n\n[[test]]\ncpp = \"gtest:JobTest.Describe\"\nrust = \"nextest:jobs_rs::job_test::describe_a_job\"\n\n[[test]]\ncpp = \"gtest:QueueTest.HighestPriorityFirstAndStableAmongEquals\"\nrust = \"nextest:jobs_rs::queue_test::highest_priority_first_and_stable_among_equals\"\n\n[[test]]\ncpp = \"gtest:QueueTest.TheQueueOwnsItsJobs\"\nrust = \"nextest:jobs_rs::queue_test::the_queue_owns_its_jobs\"\nnote = \"Moving a job into the queue is checked when Rust compiles, and there is no null job to push.\"\n"
+                }
+              ],
+              "summary": "Translate tests/queue_test.cpp to Rust tests of the job queue.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "62edc8a812ac0f05f3f7ee5e90abda1ef6309dc8dc4c0c6ad4b6c2b2ca1f4d78",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0013\\n\\nRules: port_tests\\n\\nTranslate the C++ tests of tests/worker_test.cpp into rust/jobs_rs/tests/worker_test.rs (an in",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0013_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "rust/jobs_rs/tests/worker_test.rs",
+                  "search": "//! Translated from worker_test (CodeCoreMorph, D-60): one test per C++ test case, each named in\n//! rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+                  "replace": "//! Translated from tests/worker_test.cpp (CodeCoreMorph, D-60): one test per C++ test case,\n//! each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse std::sync::{Arc, Mutex};\n\nuse jobs_rs::events::{Event, EventBus, Handler, HandlerFailed};\nuse jobs_rs::job::Job;\nuse jobs_rs::queue::JobQueue;\nuse jobs_rs::worker::Worker;\n\n/// A handler from a closure, as the C++ tests passed lambdas.\nfn handler(f: impl Fn(&Event) -> Result<(), HandlerFailed> + Send + Sync + 'static) -> Handler {\n    Box::new(f)\n}\n\nfn job(id: i32, priority: i32) -> Job {\n    Job { id, name: b\"job\".to_vec(), priority }\n}\n\n#[test]\nfn runs_the_queue_in_order_and_publishes_each_job() {\n    let mut bus = EventBus::new();\n    let done = Arc::new(Mutex::new(Vec::new()));\n    let seen = Arc::clone(&done);\n    bus.subscribe(\n        b\"done\",\n        handler(move |e| {\n            seen.lock().unwrap().push(e.job_id);\n            Ok(())\n        }),\n    );\n    let mut queue = JobQueue::new();\n    queue.push(job(1, 0));\n    queue.push(job(2, 5));\n    queue.push(job(3, 0));\n    let worker = Worker::new();\n    assert_eq!(worker.run(&mut queue, &bus), Ok(3));\n    assert!(queue.is_empty());\n    assert_eq!(*done.lock().unwrap(), [2, 1, 3]);\n    assert_eq!(worker.total(), 3);\n}\n\n#[test]\nfn totals_add_up() {\n    let bus = EventBus::new();\n    let worker = Worker::new();\n    let mut queue = JobQueue::new();\n    assert_eq!(worker.run(&mut queue, &bus), Ok(0));\n    queue.push(job(1, 0));\n    assert_eq!(worker.run(&mut queue, &bus), Ok(1));\n    queue.push(job(2, 0));\n    queue.push(job(3, 0));\n    assert_eq!(worker.run(&mut queue, &bus), Ok(2));\n    assert_eq!(worker.total(), 3);\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "rust/test-map.toml",
+                  "search": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n\n[[test]]\ncpp = \"gtest:JobTest.MakeJobTakesTheNextId\"\nrust = \"nextest:jobs_rs::job_test::make_job_takes_the_next_id\"\n\n[[test]]\ncpp = \"gtest:JobTest.AJobNeedsAName\"\nrust = \"nextest:jobs_rs::job_test::a_job_needs_a_name\"\nnote = \"make_job returns Err(EmptyName) where the C++ threw std::invalid_argument.\"\n\n[[test]]\ncpp = \"gtest:JobTest.Describe\"\nrust = \"nextest:jobs_rs::job_test::describe_a_job\"\n\n[[test]]\ncpp = \"gtest:QueueTest.HighestPriorityFirstAndStableAmongEquals\"\nrust = \"nextest:jobs_rs::queue_test::highest_priority_first_and_stable_among_equals\"\n\n[[test]]\ncpp = \"gtest:QueueTest.TheQueueOwnsItsJobs\"\nrust = \"nextest:jobs_rs::queue_test::the_queue_owns_its_jobs\"\nnote = \"Moving a job into the queue is checked when Rust compiles, and there is no null job to push.\"\n\n[[test]]\ncpp = \"ctest:jobs_tests\"\nnote = \"only runs a GoogleTest binary, whose cases are mapped one by one\"\n",
+                  "replace": "# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,\n# D-60). One entry per test of the baseline, by the IDs test reports use:\n#\n#   [[test]]\n#   cpp = \"gtest:Rational.AddsFractions\"     # or \"ctest:<name>\" for a CTest entry\n#   rust = \"nextest:calc_rs::rational_test::adds_fractions\"\n#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\ncpp = \"ctest:jobrun_order\"\nrust = \"nextest:jobrun_rs::jobrun::jobrun_order\"\nnote = \"CTest checked the output only; the Rust test also checks that the program succeeds.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.CopiesShareTheirTextUntilOneChanges\"\nrust = \"nextest:jobs_rs::document_test::copies_share_their_text_until_one_changes\"\nnote = \"A copy is Clone; the shared text is an Arc.\"\n\n[[test]]\ncpp = \"gtest:DocumentTest.Words\"\nrust = \"nextest:jobs_rs::document_test::words\"\n\n[[test]]\ncpp = \"gtest:EventsTest.HandlersOfTheTopicAndOfEveryTopic\"\nrust = \"nextest:jobs_rs::events_test::handlers_of_the_topic_and_of_every_topic\"\nnote = \"The handlers' captures are an Arc<Mutex<..>>: a Rust handler may run on the worker's thread.\"\n\n[[test]]\ncpp = \"gtest:EventsTest.Unsubscribe\"\nrust = \"nextest:jobs_rs::events_test::unsubscribe\"\n\n[[test]]\ncpp = \"gtest:EventsTest.AnEmptyHandlerIsRefused\"\nrust = \"nextest:jobs_rs::events_test::an_empty_handler_is_refused\"\nnote = \"A Rust Handler can't be empty, so nothing refuses one at run time: the test checks only that a new bus has no subscriptions.\"\n\n[[test]]\ncpp = \"gtest:IdsTest.CountFromOne\"\nrust = \"nextest:jobs_rs::ids_test::count_from_one\"\n\n[[test]]\ncpp = \"gtest:IdsTest.EveryThreadGetsItsOwn\"\nrust = \"nextest:jobs_rs::ids_test::every_thread_gets_its_own\"\n\n[[test]]\ncpp = \"gtest:JobTest.MakeJobTakesTheNextId\"\nrust = \"nextest:jobs_rs::job_test::make_job_takes_the_next_id\"\n\n[[test]]\ncpp = \"gtest:JobTest.AJobNeedsAName\"\nrust = \"nextest:jobs_rs::job_test::a_job_needs_a_name\"\nnote = \"make_job returns Err(EmptyName) where the C++ threw std::invalid_argument.\"\n\n[[test]]\ncpp = \"gtest:JobTest.Describe\"\nrust = \"nextest:jobs_rs::job_test::describe_a_job\"\n\n[[test]]\ncpp = \"gtest:QueueTest.HighestPriorityFirstAndStableAmongEquals\"\nrust = \"nextest:jobs_rs::queue_test::highest_priority_first_and_stable_among_equals\"\n\n[[test]]\ncpp = \"gtest:QueueTest.TheQueueOwnsItsJobs\"\nrust = \"nextest:jobs_rs::queue_test::the_queue_owns_its_jobs\"\nnote = \"Moving a job into the queue is checked when Rust compiles, and there is no null job to push.\"\n\n[[test]]\ncpp = \"ctest:jobs_tests\"\nnote = \"only runs a GoogleTest binary, whose cases are mapped one by one\"\n\n[[test]]\ncpp = \"gtest:WorkerTest.RunsTheQueueInOrderAndPublishesEachJob\"\nrust = \"nextest:jobs_rs::worker_test::runs_the_queue_in_order_and_publishes_each_job\"\n\n[[test]]\ncpp = \"gtest:WorkerTest.TotalsAddUp\"\nrust = \"nextest:jobs_rs::worker_test::totals_add_up\"\nnote = \"The worker takes the bus in run(), not in its constructor.\"\n"
+                }
+              ],
+              "summary": "Translate tests/worker_test.cpp to Rust tests of the worker.",
               "review_notes": []
             }
           }
