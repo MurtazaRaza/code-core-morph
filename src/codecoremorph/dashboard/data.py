@@ -50,6 +50,8 @@ from codecoremorph.dashboard.models import (
     GraphUnitView,
     GraphView,
     PlanView,
+    PortFile,
+    PortView,
     RunDetail,
     RunSummary,
     SessionInfo,
@@ -68,6 +70,7 @@ from codecoremorph.report.build import build_report, load_unit_result, redacted
 from codecoremorph.report.render import render_markdown
 from codecoremorph.store.db import Store
 from codecoremorph.store.layout import AttemptArtifacts, RunArtifacts
+from codecoremorph.vcs.repository import Repository
 
 log = logging.getLogger(__name__)
 
@@ -405,6 +408,61 @@ def unit_view(ctx: DashboardContext, run_id: str, unit_id: str) -> UnitView:
             commit=result.commit if result else None,
             pending=pending,
         ),
+    )
+
+
+PORT_FILE_BYTES = 256_000
+_SOURCE_SUFFIXES = (".h", ".hh", ".hpp", ".hxx", ".c", ".cc", ".cpp", ".cxx", ".c++")
+_TARGET_SUFFIXES = (".rs", ".hpp", ".toml")
+
+
+def port_view(ctx: DashboardContext, run_id: str, unit_id: str) -> PortView:
+    """The two sides of a module port's unit: its C++ files at the commit before it, and the new
+    code under the crate it committed (generated files and lockfiles left out)."""
+    view = unit_view(ctx, run_id, unit_id)
+    unit, result = view.unit, view.result
+    if unit.port is None:
+        raise NotFoundError(f"unit {unit.id} of run {run_id} isn't a module port")
+    repository = Repository(ctx.place.repository)
+    after = result.commit if result else None
+    if after is not None:
+        before: str | None = repository.resolve_commit(f"{after}^")
+    else:
+        plan = _load(Plan, ctx.artifacts(run_id).plan_json)
+        before = plan.base_commit if plan else None
+    crate_dir = f"rust/{unit.port.crate}/"
+    own = [f"{crate_dir}src/{unit.port.module}.rs", f"{crate_dir}src/bridge/{unit.port.module}.rs"]
+    changed = result.changed_files if result else []
+    targets = [f for f in own if f in changed] + sorted(
+        f
+        for f in changed
+        if f.startswith("rust/") and f.endswith(_TARGET_SUFFIXES) and f not in own
+    )
+
+    def read(commit: str | None, path: str) -> PortFile | None:
+        data = repository.show(commit, path) if commit else None
+        if data is None:
+            return None
+        text = data[:PORT_FILE_BYTES].decode("utf-8", errors="replace")
+        return PortFile(
+            path=path, text=ctx.redactor.redact(text), truncated=len(data) > PORT_FILE_BYTES
+        )
+
+    sources = [
+        found
+        for path in unit.files
+        if path.lower().endswith(_SOURCE_SUFFIXES)
+        if (found := read(before, path)) is not None
+    ]
+    return PortView(
+        unit_id=unit.id,
+        crate=unit.port.crate,
+        module=unit.port.module,
+        build_target=unit.port.build_target,
+        before=before,
+        after=after,
+        sources=sources,
+        targets=[found for path in targets if (found := read(after, path)) is not None],
     )
 
 

@@ -110,6 +110,15 @@ export interface UnitEstimate {
   cost_usd: number | null;
 }
 
+// A module port's unit (D-58): where its code goes, and the C++ that keeps using it.
+export interface PortUnit {
+  build_target: string;
+  crate: string;
+  module: string;
+  callers: string[];
+  c_headers: string[];
+}
+
 export interface WorkUnit {
   id: string;
   seq: number;
@@ -121,6 +130,25 @@ export interface WorkUnit {
   status: UnitStatus;
   estimate: UnitEstimate | null;
   note: string | null;
+  port?: PortUnit | null;
+}
+
+export interface PortFile {
+  path: string;
+  text: string;
+  truncated: boolean;
+}
+
+// The two sides of a module port's unit: its C++ before it, the code it committed.
+export interface PortView {
+  unit_id: string;
+  crate: string;
+  module: string;
+  build_target: string;
+  before: string | null;
+  after: string | null;
+  sources: PortFile[];
+  targets: PortFile[];
 }
 
 export interface PlanRule {

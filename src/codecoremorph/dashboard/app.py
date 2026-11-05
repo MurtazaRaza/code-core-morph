@@ -31,6 +31,7 @@ from codecoremorph.dashboard.models import (
     ErrorBody,
     GraphView,
     PlanView,
+    PortView,
     RunDetail,
     RunSummary,
     SessionInfo,
@@ -121,6 +122,10 @@ def api_router(ctx: DashboardContext) -> APIRouter:
     @router.get("/runs/{run_id}/units/{unit_id}")
     def unit(run_id: str, unit_id: str) -> UnitView:
         return data.unit_view(ctx, run_id, unit_id)
+
+    @router.get("/runs/{run_id}/units/{unit_id}/port")
+    def port(run_id: str, unit_id: str) -> PortView:
+        return data.port_view(ctx, run_id, unit_id)
 
     @router.get("/runs/{run_id}/units/{unit_id}/attempts/{number}")
     def attempt(run_id: str, unit_id: str, number: int) -> AttemptView:

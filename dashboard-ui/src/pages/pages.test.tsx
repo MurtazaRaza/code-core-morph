@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { attemptView, detail, planView, RUN_ID, summary, unitView } from "../test/fixtures";
+import { attemptView, detail, planView, RUN_ID, summary, unit, unitView } from "../test/fixtures";
 import { mockApi, renderWithClient } from "../test/helpers";
 import { PlanPanel } from "./PlanPanel";
 import { RunPage } from "./RunPage";
@@ -13,6 +13,13 @@ vi.mock("../components/DiffView", () => ({
   default: ({ language }: { language: string }) => <div data-testid="diff-view">{language}</div>,
 }));
 vi.mock("../components/GraphView", () => ({ default: () => <div data-testid="graph-canvas" /> }));
+vi.mock("../components/CodeView", () => ({
+  default: ({ text, language }: { text: string; language: string }) => (
+    <pre data-testid="code-view" data-language={language}>
+      {text}
+    </pre>
+  ),
+}));
 
 const RUN = `/api/runs/${RUN_ID}`;
 
@@ -144,6 +151,51 @@ describe("RunPage", () => {
 });
 
 describe("UnitPage", () => {
+  it("shows a module port's C++ and Rust side by side", async () => {
+    const port = { build_target: "calc", crate: "calc_rs", module: "rational", callers: [], c_headers: [] };
+    mockApi({
+      [`GET ${RUN}`]: detail(),
+      [`GET ${RUN}/units/U-0001`]: unitView({
+        unit: unit("U-0001", 1, { status: "committed", rules: ["port_module"], port }),
+        gate: { waiting: false, reasons: [], commit: null, pending: null },
+      }),
+      [`GET ${RUN}/units/U-0001/port`]: {
+        unit_id: "U-0001",
+        crate: "calc_rs",
+        module: "rational",
+        build_target: "calc",
+        before: "a".repeat(40),
+        after: "b".repeat(40),
+        sources: [
+          { path: "include/calc/rational.h", text: "class Rational;", truncated: false },
+          { path: "src/rational.cpp", text: "long Rational::truncate() const;", truncated: false },
+        ],
+        targets: [
+          { path: "rust/calc_rs/src/rational.rs", text: "pub struct Rational;", truncated: false },
+          { path: "rust/calc_rs/src/bridge/rational.rs", text: "#[no_mangle]", truncated: true },
+        ],
+      },
+      [`GET ${RUN}/units/U-0001/attempts/1`]: attemptView(),
+    });
+    renderWithClient(<UnitPage runId={RUN_ID} unitId="U-0001" attempt={undefined} theme="light" />);
+    expect(await screen.findByRole("heading", { name: "Port" })).toBeInTheDocument();
+    expect(screen.getByText("calc_rs::rational")).toBeInTheDocument();
+    const [before, after] = await screen.findAllByTestId("code-view");
+    expect(before).toHaveTextContent("class Rational;");
+    expect(before).toHaveAttribute("data-language", "c"); // a .h file
+    expect(after).toHaveTextContent("pub struct Rational;");
+    expect(after).toHaveAttribute("data-language", "rust");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "After (Rust)" }), [
+      "rust/calc_rs/src/bridge/rational.rs",
+    ]);
+    expect(screen.getAllByTestId("code-view")[1]).toHaveTextContent("#[no_mangle]");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Before (C++)" }), [
+      "src/rational.cpp",
+    ]);
+    expect(screen.getAllByTestId("code-view")[0]).toHaveAttribute("data-language", "cpp");
+    expect(screen.getByText("Only the start of the file is shown.")).toBeInTheDocument();
+  });
+
   it("keeps a unit waiting at its gate", async () => {
     const calls = mockApi({
       [`GET ${RUN}`]: detail({ waiting: ["U-0001"] }),

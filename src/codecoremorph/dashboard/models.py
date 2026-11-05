@@ -127,6 +127,26 @@ class TextFile(CoreModel):
     truncated: bool = Field(description="Only the end of the file is included")
 
 
+class PortFile(CoreModel):
+    path: str
+    text: str
+    truncated: bool = Field(default=False, description="Only the file's start is included")
+
+
+class PortView(CoreModel):
+    """A module port's unit (D-58) in two halves: its C++ as it was before the unit, and the
+    code in the target language the unit committed."""
+
+    unit_id: str
+    crate: str
+    module: str
+    build_target: str
+    before: str | None = Field(description="The commit the C++ comes from")
+    after: str | None = Field(description="The unit's commit; None until it has one")
+    sources: list[PortFile]
+    targets: list[PortFile]
+
+
 class AttemptView(CoreModel):
     unit_id: str
     number: int

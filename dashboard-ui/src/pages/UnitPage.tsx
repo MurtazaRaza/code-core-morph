@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo, useState } from "react";
 
-import { api, keys, useAttempt, useAttemptFile, useRun, useUnit } from "../api";
+import { api, keys, useAttempt, useAttemptFile, usePort, useRun, useUnit } from "../api";
 import { DecisionForm, DecisionNote, PendingDecision } from "../components/DecisionForm";
 import { Diagnostics, Transcript } from "../components/Transcript";
 import { Commit, ErrorBox, Loading, StatusBadge, Tabs } from "../components/ui";
@@ -10,9 +10,17 @@ import { useRunEvents } from "../events";
 import { formatClock, formatDuration, formatTime, statusLabel } from "../format";
 import { Link, navigate, paths } from "../router";
 import type { Theme } from "../theme";
-import { type Attempt, type AttemptView, TERMINAL_RUN_STATUSES, type TextFile, type UnitView } from "../types";
+import {
+  type Attempt,
+  type AttemptView,
+  type PortFile,
+  TERMINAL_RUN_STATUSES,
+  type TextFile,
+  type UnitView,
+} from "../types";
 
 const DiffView = lazy(() => import("../components/DiffView"));
+const CodeView = lazy(() => import("../components/CodeView"));
 // Units that ended without a commit: their note says why.
 const LEFT_OUT = new Set(["failed", "skipped", "too_large", "excluded"]);
 
@@ -58,6 +66,7 @@ export function UnitPage({
         <UnitGatePanel runId={runId} view={view} engineAlive={run.data?.engine_alive ?? false} />
       ) : null}
       <UnitSummary view={view} />
+      {view.unit.port ? <PortPanel runId={runId} unitId={unitId} theme={theme} /> : null}
       <div className="card">
         <h2>Attempts</h2>
         {numbers.length === 0 ? (
@@ -84,6 +93,89 @@ export function UnitPage({
         )}
       </div>
     </>
+  );
+}
+
+// A module port's unit side by side (D-58): the C++ before the unit, the code it committed.
+function PortPanel({ runId, unitId, theme }: { runId: string; unitId: string; theme: Theme }) {
+  const port = usePort(runId, unitId, true);
+  const [source, setSource] = useState<string | null>(null);
+  const [target, setTarget] = useState<string | null>(null);
+  if (port.isPending) return <Loading what="Loading the port" />;
+  if (port.isError) return <ErrorBox error={port.error} title="Can't show the port" />;
+  const view = port.data;
+  const left = view.sources.find((f) => f.path === source) ?? view.sources[0];
+  const right = view.targets.find((f) => f.path === target) ?? view.targets[0];
+  return (
+    <div className="card">
+      <h2>Port</h2>
+      <p className="muted">
+        Into <span className="mono">{`${view.crate}::${view.module}`}</span>, the crate of{" "}
+        <span className="mono">{view.build_target}</span>
+        {view.after ? null : ": nothing is committed yet"}.
+      </p>
+      <div className="port-sides">
+        <PortSide
+          label="Before (C++)"
+          files={view.sources}
+          selected={left}
+          onSelect={setSource}
+          empty="No C++ file of the unit."
+          theme={theme}
+        />
+        <PortSide
+          label="After (Rust)"
+          files={view.targets}
+          selected={right}
+          onSelect={setTarget}
+          empty="The unit has no commit with new code yet."
+          theme={theme}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PortSide({
+  label,
+  files,
+  selected,
+  onSelect,
+  empty,
+  theme,
+}: {
+  label: string;
+  files: PortFile[];
+  selected: PortFile | undefined;
+  onSelect: (path: string) => void;
+  empty: string;
+  theme: Theme;
+}) {
+  return (
+    <div className="port-side">
+      <div className="port-side-head">
+        <strong>{label}</strong>
+        {files.length ? (
+          <select aria-label={label} value={selected?.path} onChange={(e) => onSelect(e.target.value)}>
+            {files.map((f) => (
+              <option key={f.path} value={f.path}>
+                {f.path}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+      {selected ? (
+        <>
+          <Suspense fallback={<Loading what="Loading the editor" />}>
+            <CodeView text={selected.text} language={languageOf(selected.path)} theme={theme} />
+          </Suspense>
+          {selected.truncated ? <p className="muted">Only the start of the file is shown.</p> : null}
+        </>
+      ) : (
+        <p className="muted">{empty}</p>
+      )}
+    </div>
   );
 }
 

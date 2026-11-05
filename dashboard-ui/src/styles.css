@@ -582,8 +582,27 @@ th.num {
   color: var(--bad);
 }
 
-.diff-editor {
+.diff-editor,
+.code-editor {
   width: 100%;
+}
+
+/* A module port's unit: the C++ before it, the code it committed, side by side. */
+.port-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.port-side {
+  min-width: 0;
+}
+
+.port-side-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 /* ------------------------------------------------------------------ transcript */

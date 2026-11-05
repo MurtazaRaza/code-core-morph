@@ -5,6 +5,7 @@ import type {
   AttemptView,
   GraphView,
   PlanView,
+  PortView,
   RunDetail,
   RunReport,
   RunSummary,
@@ -63,6 +64,8 @@ export const api = {
   graph: (runId: string) => request<GraphView>(`/api/runs/${enc(runId)}/graph`),
   unit: (runId: string, unitId: string) =>
     request<UnitView>(`/api/runs/${enc(runId)}/units/${enc(unitId)}`),
+  port: (runId: string, unitId: string) =>
+    request<PortView>(`/api/runs/${enc(runId)}/units/${enc(unitId)}/port`),
   attempt: (runId: string, unitId: string, n: number) =>
     request<AttemptView>(`/api/runs/${enc(runId)}/units/${enc(unitId)}/attempts/${n}`),
   attemptFile: (runId: string, unitId: string, n: number, name: string) =>
@@ -88,6 +91,7 @@ export const keys = {
   plan: (runId: string) => ["plan", runId] as const,
   graph: (runId: string) => ["graph", runId] as const,
   unit: (runId: string, unitId: string) => ["unit", runId, unitId] as const,
+  port: (runId: string, unitId: string) => ["port", runId, unitId] as const,
   attempt: (runId: string, unitId: string, n: number) => ["attempt", runId, unitId, n] as const,
   report: (runId: string) => ["report", runId] as const,
 };
@@ -113,6 +117,14 @@ export const useGraph = (runId: string) =>
 
 export const useUnit = (runId: string, unitId: string) =>
   useQuery({ queryKey: keys.unit(runId, unitId), queryFn: () => api.unit(runId, unitId), retry });
+
+export const usePort = (runId: string, unitId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.port(runId, unitId),
+    queryFn: () => api.port(runId, unitId),
+    enabled,
+    retry,
+  });
 
 export const useAttempt = (runId: string, unitId: string, n: number | undefined) =>
   useQuery({
