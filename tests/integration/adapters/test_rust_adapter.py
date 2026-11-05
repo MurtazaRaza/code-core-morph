@@ -41,12 +41,12 @@ class Contexts:
         return self.cpp.worktree
 
 
-MakeContexts = Callable[[Path | None], Contexts]
+MakeContexts = Callable[..., Contexts]
 
 
-def _cpp_language() -> LanguageConfig:
+def _cpp_language(standard: str = "cpp17") -> LanguageConfig:
     return LanguageConfig(
-        language="cpp", standard="cpp17", test_dirs=["tests"], build_timeout_s=900
+        language="cpp", standard=standard, test_dirs=["tests"], build_timeout_s=900
     )
 
 
@@ -66,8 +66,9 @@ def make_contexts(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Ma
     kind: str = request.param
     executors: list[Executor] = []
 
-    def make(source: Path | None) -> Contexts:
-        """A copy of the ``ffi-module`` fixture, or an empty project when ``source`` is None."""
+    def make(source: Path | None, standard: str = "cpp17") -> Contexts:
+        """A copy of a fixture (``source``), or an empty project when it is None, with C++ built
+        at ``standard``."""
         work = tmp_path / "project"
         if source is None:
             work.mkdir()
@@ -107,7 +108,7 @@ def make_contexts(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Ma
             cache_dir=tmp_path / "cache",
             log_dir=tmp_path / "logs",
             executor=executor,
-            lang=_cpp_language(),
+            lang=_cpp_language(standard),
         )
         rust = replace(
             cpp,
@@ -249,3 +250,85 @@ def test_the_ffi_module_ported_by_hand(make_contexts: MakeContexts) -> None:
     # The mixed build left the crate as it was: Corrosion builds it FROZEN, out of the tree.
     crate = root / "rust" / "textkit_ring"
     assert sorted(p.name for p in crate.iterdir()) == ["Cargo.lock", "Cargo.toml", "src"]
+
+
+PORT_LEGACY = ROOT / "fixtures" / "cpp" / "port-legacy"
+
+
+def _module(module: str) -> CodemodSpec:
+    options = {"crate": "calc_rs", "module": module, "build_target": "calc"}
+    return CodemodSpec(tool="rust-module", options=options)
+
+
+def test_the_module_scaffold(make_contexts: MakeContexts) -> None:
+    """The ``rust-module`` codemod on ``port-legacy`` (D-58): a workspace with the library's
+    crate, the module and its bridge, the generated bridge header and the Corrosion block. The
+    C++98 build links the empty crate and passes its tests; the port's checks are quiet; a
+    second module joins the same crate; running it again changes nothing."""
+    ctx = make_contexts(PORT_LEGACY, "cpp98")
+    rust, cpp = RustAdapter(), CppAdapter()
+    unit = ["CMakeLists.txt", "include/calc/strutil.h", "src/strutil.cpp", "tests/CMakeLists.txt"]
+    result = rust.run_codemods(ctx.rust, [_module("strutil")], unit)
+    assert result.diagnostics == []
+    assert sorted(c.file for c in result.changes) == [
+        "CMakeLists.txt",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/calc_rs/Cargo.toml",
+        "rust/calc_rs/cbindgen.toml",
+        "rust/calc_rs/include/calc_rs/bridge.h",
+        "rust/calc_rs/include/calc_rs/bridge.hpp",
+        "rust/calc_rs/src/bridge/mod.rs",
+        "rust/calc_rs/src/bridge/strutil.rs",
+        "rust/calc_rs/src/lib.rs",
+        "rust/calc_rs/src/strutil.rs",
+        "rust/symbol-map.toml",
+    ]
+    root = ctx.worktree
+    header = (root / "rust/calc_rs/include/calc_rs/bridge.h").read_text(encoding="utf-8")
+    assert "typedef struct CalcRsStr {" in header
+    assert "typedef struct CalcRsSink {" in header
+    top = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)" in top
+    assert "target_include_directories(calc PUBLIC rust/calc_rs/include)" in top
+    assert "target_link_libraries(calc PUBLIC calc_rs)" in top
+    assert (root / "rust/calc_rs/src/strutil.rs").read_text(encoding="utf-8") == (
+        "//! Ported from include/calc/strutil.h, src/strutil.cpp (CodeCoreMorph, D-58).\n"
+    )
+    assert rust.run_codemods(ctx.rust, [_module("strutil")], unit).changes == []
+
+    lexer = ["CMakeLists.txt", "include/calc/lexer.h", "src/lexer.cpp"]
+    second = rust.run_codemods(ctx.rust, [_module("lexer")], lexer)
+    assert sorted(c.file for c in second.changes) == [
+        "rust/calc_rs/src/bridge/lexer.rs",
+        "rust/calc_rs/src/bridge/mod.rs",
+        "rust/calc_rs/src/lexer.rs",
+        "rust/calc_rs/src/lib.rs",
+    ]
+    lib = (root / "rust/calc_rs/src/lib.rs").read_text(encoding="utf-8")
+    assert lib.endswith("pub mod bridge;\npub mod strutil;\npub mod lexer;\n")
+
+    assert rust.configure(ctx.rust).success
+    configured = cpp.configure(ctx.cpp)
+    assert configured.success, configured.diagnostics
+    built = cpp.build(ctx.cpp)
+    assert built.success, [d.message for d in built.errors]
+    report = cpp.run_tests(ctx.cpp)
+    assert report.cases
+    assert [c.test_id for c in report.cases if c.status is not TestStatus.PASSED] == []
+
+    assert rust.unsafe_sites(ctx.rust) == []
+    assert [d.message for d in rust.lint(ctx.rust) if d.severity is not Severity.NOTE] == []
+    index = rust.index(ctx.rust)
+    from codecoremorph.store.index import IndexStore
+
+    with IndexStore.open(index.path) as store:
+        items = {s.qualified_name for s in store.symbols()}
+    assert {"calc_rs::bridge::CalcRsStr", "calc_rs::bridge::CalcRsStr::bytes"} <= items
+
+    (root / "rust/calc_rs/src/strutil.rs").write_text(
+        "#![allow(unsafe_code)]\npub fn f() {}\n", encoding="utf-8"
+    )
+    assert [(s.file, s.line) for s in rust.unsafe_sites(ctx.rust)] == [
+        ("rust/calc_rs/src/strutil.rs", 1)
+    ]

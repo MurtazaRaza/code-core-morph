@@ -12,6 +12,7 @@ re-indexing a set of files replaces exactly their rows (FR-2.4).
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import Self
 from codecoremorph.core.errors import StoreError
 from codecoremorph.core.models import (
     Boundary,
+    BuildTarget,
     DependencyKind,
     FileDependency,
     FileEntry,
@@ -203,7 +205,18 @@ class IndexStore:
                 "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value)
             )
 
+    def set_build_targets(self, targets: Sequence[BuildTarget]) -> None:
+        """The build's targets and their files (D-58), kept with the index they came with."""
+        self.set_value("build_targets", "[" + ",".join(t.model_dump_json() for t in targets) + "]")
+
     # ------------------------------------------------------------------ reading
+
+    def build_targets(self) -> list[BuildTarget]:
+        """The targets the adapter recorded, or none when it records none."""
+        text = self.value("build_targets")
+        if not text:
+            return []
+        return [BuildTarget.model_validate(t) for t in json.loads(text)]
 
     def meta(self) -> IndexMeta | None:
         row = self._conn.execute("SELECT value FROM meta WHERE key = 'index'").fetchone()

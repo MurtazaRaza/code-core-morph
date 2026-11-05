@@ -1,0 +1,25 @@
+id: port_module
+language: cpp
+target_language: rust
+kind: port
+port_units: module                # one unit per module, leaves first (D-58)
+description: >-
+  Port a C++ module (a header and its sources) to a Rust module, leaves first. The header keeps
+  its public API as a façade whose sources forward to Rust through a C bridge, so the C++ that
+  uses the module and the project's C++ tests stay as they are.
+detector:
+  type: adapter_query
+  query: unported_definitions     # functions of the module that don't forward to Rust yet
+codemods:
+  - tool: rust-module             # workspace, crate, module, bridge, symbol map, CMake block
+extra_scope: ['rust/**']          # the Cargo workspace lives here
+llm:
+  guidance: guidance/port_module.md
+postconditions:
+  - {type: detector_empty, severity: error}     # every function forwards to Rust
+  - {type: unsafe_in_bridge, severity: error}   # unsafe code only in the bridge
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new code
+  - {type: symbol_map, severity: error}         # the module's names are in rust/symbol-map.toml
+skip:
+  - test                          # tests stay C++ until Phase 14: they judge the port
+allow_suppressions: ['rust/*/src/bridge/**']   # C names in the bridge only

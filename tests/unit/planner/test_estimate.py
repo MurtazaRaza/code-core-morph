@@ -97,3 +97,28 @@ def test_duration_counts_pending_units_only() -> None:
         logs={"build": Path("build.log")},
     )
     assert estimate_duration_s(plan, baseline) == 15.0 + 1.0 * (15.0 + 100.0)
+    # A unit that knows its model time (from its lines) uses it.
+    timed = plan.units[0].model_copy(
+        update={"estimate": UnitEstimate(context_tokens=10, expected_attempts=2.0, agent_s=40.0)}
+    )
+    assert estimate_duration_s(Plan(units=[timed]), baseline) == 15.0 + 2.0 * (15.0 + 40.0)
+
+
+def test_model_time_grows_with_lines_and_more_for_a_port() -> None:
+    """The M1 fit (0.12 s per line, at least 20 s), and a port's larger output and time."""
+    estimator = Estimator(prices=None, guidance_chars={})
+    upgrade = _rule(codemods=False, llm=True)
+    assert estimator.unit(2_400, [upgrade], lines=50).agent_s == 20.0
+    assert estimator.unit(2_400, [upgrade], lines=1_000).agent_s == 120.0
+    assert estimator.unit(2_400, [upgrade]).agent_s == 100.0  # no lines: the M1 average
+    port = Rule(
+        id="p",
+        language="cpp",
+        kind=RuleKind.PORT,
+        target_language="rust",
+        description="p",
+        llm=LlmGuidance(guidance="g.md"),
+    )
+    ported = estimator.unit(2_400, [port], lines=1_000)
+    assert ported.agent_s == 360.0
+    assert ported.tokens > estimator.unit(2_400, [upgrade], lines=1_000).tokens

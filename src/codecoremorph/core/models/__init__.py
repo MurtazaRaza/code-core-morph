@@ -41,6 +41,7 @@ from codecoremorph.core.models.execution import ExecResult
 from codecoremorph.core.models.host import HostFeedbackKind, HostStatus, HostUnitState
 from codecoremorph.core.models.index import (
     Boundary,
+    BuildTarget,
     DependencyKind,
     FileDependency,
     FileEntry,
@@ -53,6 +54,7 @@ from codecoremorph.core.models.index import (
     Symbol,
     SymbolIndex,
     SymbolKind,
+    TargetKind,
     Visibility,
 )
 from codecoremorph.core.models.llm import (
@@ -78,6 +80,7 @@ from codecoremorph.core.models.planning import (
     PlanEstimate,
     PlanGraph,
     PlanRule,
+    PortUnit,
     UnitEstimate,
     UnitFlag,
     UnitStatus,
@@ -101,6 +104,7 @@ from codecoremorph.core.models.rules import (
     LlmGuidance,
     LoadedRule,
     PatternSpec,
+    PortUnits,
     Postcondition,
     PostconditionType,
     Rule,
@@ -140,6 +144,7 @@ __all__ = [
     "Baseline",
     "Boundary",
     "BuildResult",
+    "BuildTarget",
     "CandidateRegion",
     "ChangedFile",
     "CharacterizationJob",
@@ -196,6 +201,8 @@ __all__ = [
     "PlanEstimate",
     "PlanGraph",
     "PlanRule",
+    "PortUnit",
+    "PortUnits",
     "Postcondition",
     "PostconditionType",
     "ProjectDetection",
@@ -225,6 +232,7 @@ __all__ = [
     "SymbolIndex",
     "SymbolKind",
     "SystemBlock",
+    "TargetKind",
     "TestAssertions",
     "TestBaseline",
     "TestCaseResult",

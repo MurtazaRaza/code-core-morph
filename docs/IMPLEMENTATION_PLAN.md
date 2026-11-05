@@ -531,34 +531,35 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 ### Tasks
 **Strategy**
-- [ ] SPEC §11.6 settled with a `D-xx` row: stages, bridge, manifest keys, unit kinds
-- [ ] Bridge spike on `port-legacy`: the `cxx` crate (C++ classes as opaque types, `std::string`, `std::vector`, `std::unique_ptr`, exceptions ↔ `Result`) against a plain C ABI with opaque handles and cbindgen headers (works from C++98). Pick the default and record the C++ standard it needs; an older source gets the standard bump (`bump_standard`) as the port's first unit
-- [ ] Manifest: Phase 12 already ports with `migration.target: {language: rust, standard: rust2021, rules: [...]}`, `validate` checking each side against its adapter (D-57); add what this phase needs (`bridge`, `keep_cpp_api`), as port rule options or a `migration.port` section
-- [ ] Migration pairs in config and orchestrator, language-neutral (a source adapter and a target adapter; Phase 11 adds Java → C#, D-55). Phase 12 built the pair (one executor and worktree, the target's toolchain, codemods by tool, the target's diagnostics, `kind: port`, D-57); left: the planner, units and invariants knowing which side a file is on
-- [ ] Rust symbol index (a syn- or rust-analyzer-based helper in the sandbox), moved from Phase 12: port planning and the symbol map need the Rust side's symbols
+- [x] SPEC §11.6 settled with a `D-xx` row: stages, bridge, manifest keys, unit kinds (D-58)
+- [x] Bridge spike on `port-legacy`: the `cxx` crate against a plain C ABI with opaque handles and cbindgen headers. Pick the default and record the C++ standard it needs (D-58: the C ABI, from C++98, so no standard bump; `cxx` needs C++11, 15 crates with build scripts and a proc macro, and a `cxxbridge` pinned to the project's `cxx` version. Both ports of `strutil` and `Rational` passed the fixture's tests on Windows; the spike is in `E:/codecoremorph-trials/bridge-spike`)
+- [x] Manifest: Phase 12 already ports with `migration.target: {language: rust, standard: rust2021, rules: [...]}`, `validate` checking each side against its adapter (D-57); add what this phase needs (D-58: nothing; one bridge, so no `bridge` key, and `keep_cpp_api` comes with Phase 14)
+- [x] Migration pairs in config and orchestrator, language-neutral (a source adapter and a target adapter; Phase 11 adds Java → C#, D-55). Phase 12 built the pair (one executor and worktree, the target's toolchain, codemods by tool, the target's diagnostics, `kind: port`, D-57); left: the planner, units and invariants knowing which side a file is on (D-59: module units carry `WorkUnit.port`; the planner cuts by build target, the loop routes codemods and checks to the side that owns them, I-7 and I-8 know the new code's scope)
+- [x] Rust symbol index, moved from Phase 12: port planning and the symbol map need the Rust side's symbols (D-58: a scanner in Python over the crates' sources, by item path) (`adapters/rust/symbols.py`, the Rust adapter's `index`)
+- [x] CMake targets from CMake's file API (the C++ adapter, recorded with the index): which library target compiles each file, for the crate per target and to leave executables to Phase 14 (the codemodel query in the initial cache, D-59)
 
 **Scaffold and planning**
-- [ ] `scaffold_project` for Rust inside a C++ tree: a Cargo workspace beside the CMake project, one crate per CMake library target, built from CMake through Corrosion; the scaffold is the port's first unit after any standard bump
-- [ ] Port planning: `port_module` units from the file graph's clusters, leaves first. Each lists the C++ files it ports, the C++ callers outside it (they keep calling through the façade) and its part of the symbol map. Header-only templates and inline functions are planned with their last C++ user
-- [ ] Estimates that grow with a unit's size (the M1 run's agent time grew with lines; the planner's flat per-unit estimate doesn't model it)
+- [x] `scaffold_project` for Rust inside a C++ tree: a Cargo workspace beside the CMake project, one crate per CMake library target, built from CMake through Corrosion (D-58: the `rust-module` codemod, run first in each port unit, with the string helpers, `cbindgen.toml` and the symbol-map file; the Rust adapter's configure regenerates the bridge headers)
+- [x] Port planning: `port_module` units from the file graph's clusters, leaves first. Each lists the C++ files it ports, the C++ callers outside it (they keep calling through the façade) and its part of the symbol map. Header-only templates and inline functions are planned with their last C++ user (D-58: `port_units: module`, the callers as reference files, `WorkUnit.c_headers` for `c_abi_kept`; the detector `unported_definitions`)
+- [x] Estimates that grow with a unit's size (the M1 run's agent time grew with lines; the planner's flat per-unit estimate doesn't model it) (D-59: 0.12 s per line per attempt, the M1 fit; a port unit twice the output and, provisionally, three times the time)
 
 **Port units**
-- [ ] A unit ports one cluster: the Rust module; bridge declarations for the API that C++ outside the unit still uses (callers and tests); and the C++ façade, whose header keeps its API while its sources forward through the bridge
-- [ ] `cpp_to_rust` mapping rule pack (guidance plus checks):
+- [x] A unit ports one cluster: the Rust module; bridge declarations for the API that C++ outside the unit still uses (callers and tests); and the C++ façade, whose header keeps its API while its sources forward through the bridge (the context names the crate, module, bridge and callers; ports of both fixtures, D-59 (8))
+- [x] `cpp_to_rust` mapping rule pack (guidance plus checks): (`port_module.yaml` and `guidance/port_module.md`: the bridge conventions and the mapping)
   - ownership: `unique_ptr` → `Box`, `shared_ptr` → `Rc`/`Arc`, non-owning pointers → references or `Option<&T>`
   - strings, containers and iterators
   - exceptions and status codes → `Result`
   - class hierarchies → traits; templates → generics; operator overloads → `std::ops` and `std::cmp` traits; RAII → `Drop`
   - integer semantics: unsigned wraparound → `wrapping_*`; signed overflow (undefined in C++) panics in a debug build
   - `static` state → `OnceLock`; threads and locks → `std::sync`; macros → `const`, functions or `macro_rules!`; namespaces → modules; C strings, `printf` and iostreams
-- [ ] Symbol map store (source symbol ID → target path, language-neutral) with entries (C++ USR → Rust path) for every symbol of a ported cluster, kept consistent by a mapping steward role that this phase adds (Phase 11 reuses both, D-55)
-- [ ] Checks: no `unsafe` outside the bridge (error); no new `cargo clippy` warnings in ported code (as I-10); the façade headers' API unchanged (I-6); the exported C ABI unchanged (Phase 12)
-- [ ] Host-agent support: the skill and the context documents of port units show the C++ source, the Rust target, the façade and the symbol map
-- [ ] Dashboard: a two-sided view (C++ source ↔ Rust target) in unit detail, which Phase 11 reuses for Java ↔ C#
+- [x] Symbol map store (source symbol ID → target path, language-neutral) with entries (C++ USR → Rust path) for every symbol of a ported cluster, kept consistent by a mapping steward role that this phase adds (Phase 11 reuses both, D-55) (D-58: `rust/symbol-map.toml` in the project, by qualified name; the steward is the `symbol_map` post-condition) (`invariants/symbol_map.py`)
+- [x] Checks: no `unsafe` outside the bridge (error); no new `cargo clippy` warnings in ported code (as I-10); the façade headers' API unchanged (I-6); the exported C ABI unchanged (Phase 12) (D-58: `unsafe_in_bridge`, `lint_clean`, I-6, `c_abi_kept` on `c_headers`)
+- [x] Host-agent support: the skill and the context documents of port units show the C++ source, the Rust target, the façade and the symbol map (the skill and the unit context describe module ports; `unit start --plan-unit` carries the unit's port)
+- [x] Dashboard: a two-sided view (C++ source ↔ Rust target) in unit detail, which Phase 11 reuses for Java ↔ C# (`/api/runs/{run}/units/{unit}/port`, the unit page's Port card)
 
 **Fixtures and evals**
-- [ ] `port-legacy` (C++98 style, GoogleTest 1.8.1): a string utility, a value class with operators, a container template, a class hierarchy with virtual functions, exceptions, a status-code API, a small command-line program
-- [ ] `port-modern` (C++11/14): `unique_ptr` and `shared_ptr` ownership, a callback API, `static` state, a thread with a mutex
+- [x] `port-legacy` (C++98 style, GoogleTest 1.8.1): a string utility, a value class with operators, a container template, a class hierarchy with virtual functions, exceptions, a status-code API, a small command-line program (TinyCalc, an expression calculator: `strutil`, `Rational`, the `Stack<T>` template inside the library, a lexer, the `Expr` hierarchy, which a test subclasses, a parser throwing `ParseError`, a C status-code API, and `tinycalc` with CTest end-to-end tests; 34 GoogleTest cases)
+- [x] `port-modern` (C++11/14): `unique_ptr` and `shared_ptr` ownership, a callback API, `static` state, a thread with a mutex (a jobs library: ids behind a mutex, `unique_ptr` jobs in a priority queue, `std::function` handlers, a copy-on-write `shared_ptr` document, a worker thread, and `jobrun`)
 - [ ] Live evals of port units on both fixtures (Claude Code with the skill; the built-in loop)
 
 ### Tests
@@ -570,6 +571,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 ### Exit criteria (M7)
 - Every module of `port-legacy` and `port-modern` is Rust; every commit on the branch built and passed the original C++ tests; `unsafe` appears only in the bridge
 - Windows native and Docker (Linux waits for CI, D-28)
+- Met on Windows, natively and in Docker: both fixtures ported whole through `codecoremorph run --host-agent` (six units each, every commit built and passed the original tests, the final verification passed), and both replay from the recorded edits (`test_every_unit_of_a_fixture`). The executables (`tinycalc`, `jobrun`) stay C++ until Phase 14 makes them `bin` targets. Open: the live evals with a fresh Claude Code
 
 ---
 

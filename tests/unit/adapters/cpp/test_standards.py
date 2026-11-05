@@ -91,16 +91,21 @@ def test_pre_cpp11_configure_uses_the_cpp98_googletest(tmp_path: Path, standard:
     ctx = _context(tmp_path, standard)
     CppAdapter().configure(ctx)
     configure = _recorder(ctx).commands[0]
-    script = ctx.cache_dir / "cxx98-initial-cache.cmake"
+    script = ctx.cache_dir / "initial-cache.cmake"
     assert configure[1:3] == ["-C", script.as_posix()]
     assert "-DCMAKE_CXX_STANDARD=98" in configure
     assert "CODECOREMORPH_CXX98_PREFIX_PATH" in script.read_text(encoding="utf-8")
 
 
-def test_cpp11_configure_has_no_initial_cache(tmp_path: Path) -> None:
+def test_every_configure_asks_for_the_codemodel(tmp_path: Path) -> None:
+    """The file API query (D-58), from the initial cache; C++11 needs no GoogleTest prefix."""
     ctx = _context(tmp_path, "cpp11")
     CppAdapter().configure(ctx)
-    assert "-C" not in _recorder(ctx).commands[0]
+    script = ctx.cache_dir / "initial-cache.cmake"
+    assert _recorder(ctx).commands[0][1:3] == ["-C", script.as_posix()]
+    text = script.read_text(encoding="utf-8")
+    assert "query/codemodel-v2" in text
+    assert "CODECOREMORPH_CXX98_PREFIX_PATH" not in text
 
 
 @pytest.mark.parametrize(

@@ -117,6 +117,11 @@ class PostconditionType(StrEnum):
     # A port unit's new code exports the C API its kept headers declare, with the same
     # signatures (D-56); port rules always check it.
     C_ABI_KEPT = "c_abi_kept"
+    # Module ports (D-58): unsafe code only in the bridge; the target's linter quiet on the
+    # unit's new code; the symbol map whole for the unit's headers.
+    UNSAFE_IN_BRIDGE = "unsafe_in_bridge"
+    LINT_CLEAN = "lint_clean"
+    SYMBOL_MAP = "symbol_map"
 
 
 class Postcondition(CoreModel):
@@ -131,6 +136,17 @@ class SkipCondition(StrEnum):
     TEST = "test"
 
 
+class PortUnits(StrEnum):
+    """How a port rule cuts its units (D-58)."""
+
+    # One unit per C interface: the sources defining what a header declares with C linkage,
+    # the header kept as it is (Phase 12, D-57).
+    C_HEADER = "c_header"
+    # One unit per module (a cluster of the file graph a library target compiles), leaves
+    # first, its headers kept as façades over the new code (Phase 13).
+    MODULE = "module"
+
+
 class Rule(CoreModel):
     id: str = Field(pattern=RULE_ID_PATTERN)
     language: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
@@ -142,8 +158,10 @@ class Rule(CoreModel):
     llm: LlmGuidance | None = None
     postconditions: list[Postcondition] = Field(default_factory=list[Postcondition])
     skip: list[SkipCondition] = Field(default_factory=list[SkipCondition])
-    allow_suppressions: bool = Field(
-        default=False, description="Whether the rule may add NOLINT and similar (I-7)"
+    allow_suppressions: bool | list[str] = Field(
+        default=False,
+        description="Whether the rule may add NOLINT, #[allow(...)] and similar (I-7): true, "
+        "false, or globs of the files where it may (a module port: its bridge, D-58)",
     )
     target_language: str | None = Field(
         default=None,
@@ -155,13 +173,22 @@ class Rule(CoreModel):
         description="For kind: port, globs of files a unit may also create or edit, e.g. "
         "rust/** for the crates",
     )
+    port_units: PortUnits | None = Field(
+        default=None,
+        description="For kind: port, how units are cut: c_header (one per C interface, the "
+        "default) or module (one per module, behind façades)",
+    )
 
     @model_validator(mode="after")
     def _port_fields(self) -> Rule:
         if self.kind is RuleKind.PORT and self.target_language is None:
             raise ValueError("a port rule needs `target_language`")
-        if self.kind is not RuleKind.PORT and (self.target_language or self.extra_scope):
-            raise ValueError("`target_language` and `extra_scope` are for port rules only")
+        if self.kind is not RuleKind.PORT and (
+            self.target_language or self.extra_scope or self.port_units is not None
+        ):
+            raise ValueError(
+                "`target_language`, `extra_scope` and `port_units` are for port rules only"
+            )
         if self.target_language is not None and self.target_language == self.language:
             raise ValueError("a port rule's target_language differs from its language")
         if self.kind is RuleKind.PORT and (
@@ -178,10 +205,16 @@ class Rule(CoreModel):
             )
         ):
             raise ValueError("a port rule's codemods and patterns name no target standard")
-        for glob in self.extra_scope:
+        globs = self.allow_suppressions if isinstance(self.allow_suppressions, list) else []
+        for glob in [*self.extra_scope, *globs]:
             if glob.startswith("/") or ".." in glob.split("/"):
-                raise ValueError(f"extra_scope {glob!r} must stay inside the project")
+                raise ValueError(f"{glob!r} must stay inside the project")
         return self
+
+    @property
+    def module_port(self) -> bool:
+        """A port cut by module, behind façades (D-58)."""
+        return self.kind is RuleKind.PORT and self.port_units is PortUnits.MODULE
 
     @property
     def natural_language_only(self) -> bool:

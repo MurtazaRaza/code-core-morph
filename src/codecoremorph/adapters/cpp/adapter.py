@@ -18,14 +18,13 @@ from typing import Any, cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.adapters.cpp.cmake import (
-    CXX98_INITIAL_CACHE,
-    PRE_CXX11,
     STANDARD_ALIASES,
     SUPPORTED_STANDARDS,
     build_command,
     bump_cmake_standard,
     configure_command,
     cxx_standard_number,
+    initial_cache_script,
     is_cmake_file,
     lowest_standard,
     std_flag,
@@ -51,6 +50,7 @@ from codecoremorph.adapters.cpp.indexing import (
     run_index,
 )
 from codecoremorph.adapters.cpp.paths import PathMapper
+from codecoremorph.adapters.cpp.ports import unported_definitions
 from codecoremorph.adapters.cpp.registration import TARGET as CHARACTERIZATION_TARGET
 from codecoremorph.adapters.cpp.registration import (
     characterization_cmake,
@@ -133,7 +133,7 @@ class CppAdapter(LanguageAdapter):
             detect_disabled_tests=True,
             c_declarations=True,
             codemod_tools=["clang-tidy", "cmake-standard"],
-            queries=["typedef_declarations", "c_abi_definitions"],
+            queries=["typedef_declarations", "c_abi_definitions", "unported_definitions"],
             standards=list(SUPPORTED_STANDARDS),
         )
 
@@ -220,12 +220,9 @@ class CppAdapter(LanguageAdapter):
         mapper = self._mapper(ctx)
         build_options = ctx.lang.configure_args
         standard = cxx_standard_number(ctx.lang.standard)
-        initial_cache: str | None = None
-        if standard in PRE_CXX11:
-            ctx.cache_dir.mkdir(parents=True, exist_ok=True)
-            script = ctx.cache_dir / "cxx98-initial-cache.cmake"
-            script.write_text(CXX98_INITIAL_CACHE, encoding="utf-8")
-            initial_cache = ctx.sandbox(script)
+        ctx.cache_dir.mkdir(parents=True, exist_ok=True)
+        script = ctx.cache_dir / "initial-cache.cmake"
+        script.write_text(initial_cache_script(standard), encoding="utf-8")
         marker = ctx.cache_dir / "configured-standard"
         previous = marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
         argv = configure_command(
@@ -233,7 +230,7 @@ class CppAdapter(LanguageAdapter):
             ctx.sandbox(ctx.build_dir),
             standard=standard,
             extra_args=build_options,
-            initial_cache=initial_cache,
+            initial_cache=ctx.sandbox(script),
             fresh=previous is not None and previous != standard,
         )
         result, output = self._run(ctx, argv, "configure.log", timeout_s=ctx.lang.build_timeout_s)
@@ -691,7 +688,7 @@ class CppAdapter(LanguageAdapter):
         return found
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
-        if name not in ("typedef_declarations", "c_abi_definitions"):
+        if name not in ("typedef_declarations", "c_abi_definitions", "unported_definitions"):
             return super().query(ctx, name, files)
         index_path = ctx.cache_dir / INDEX_FILE_NAME
         if not index_path.is_file():
@@ -701,6 +698,15 @@ class CppAdapter(LanguageAdapter):
             )
         if name == "c_abi_definitions":
             return c_abi_definitions(index_path, files)
+        if name == "unported_definitions":
+
+            def read(path: str) -> str | None:
+                try:
+                    return TextFile.decode((ctx.worktree / path).read_bytes()).text
+                except (OSError, BinaryFileError):
+                    return None
+
+            return unported_definitions(index_path, files, read)
         wanted = set(files)
         sites: list[RuleSite] = []
         with IndexStore.open(index_path) as store:

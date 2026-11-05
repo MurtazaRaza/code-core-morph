@@ -91,6 +91,24 @@ endif()
 """
 
 
+# Every configure asks CMake's file API for the codemodel, which names each target's sources
+# (D-58). CMake reads query files when it generates, so the initial cache can write the query,
+# inside the sandbox, where the build tree lives.
+FILE_API_QUERY = """\
+# Written by CodeCoreMorph: ask CMake's file API for the codemodel (the targets' sources).
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/.cmake/api/v1/query")
+file(TOUCH "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemodel-v2")
+"""
+
+
+def initial_cache_script(standard_number: str) -> str:
+    """The ``-C`` script of a configure: the file API query, and for C++98/03 the GoogleTest
+    release that supports them."""
+    if standard_number in PRE_CXX11:
+        return FILE_API_QUERY + CXX98_INITIAL_CACHE
+    return FILE_API_QUERY
+
+
 def build_command(build_dir: str, targets: list[str]) -> list[str]:
     argv = ["cmake", "--build", build_dir]
     for target in targets:

@@ -170,6 +170,44 @@ def test_a_port_plan(make_project: MakeProject) -> None:
     assert unit.note == "ports src/ring.cpp to rust behind include/textkit/ring.h"
 
 
+def test_a_module_port_plan(make_project: MakeProject) -> None:
+    """``port-legacy`` to Rust module by module (D-58): one unit per module of the library
+    target, leaves first, each with its header (a façade now) and the build files; the
+    template header goes with its last C++ user, and the executable stays C++."""
+    root = make_project("port-legacy", "cpp98", "rust2021", ["port_module"], target_language="rust")
+    code, payload, stderr = _plan(root)
+    assert code == 0, stderr
+    plan = Plan.model_validate(payload["plan"])
+    assert plan.migration == "cpp cpp98 -> rust rust2021"
+    ported = [u for u in plan.units if u.port is not None]
+    assert [(u.port.crate, u.port.module) for u in ported if u.port] == [
+        ("calc_rs", m) for m in ("strutil", "lexer", "rational", "expr", "parser", "calc")
+    ]
+    assert all(u.status is UnitStatus.PENDING for u in ported)
+    assert ported[0].files == [
+        "CMakeLists.txt",
+        "include/calc/strutil.h",
+        "src/strutil.cpp",
+        "tests/CMakeLists.txt",
+    ]
+    assert ported[0].port is not None
+    assert ported[0].port.callers == [
+        "app/main.cpp",
+        "src/lexer.cpp",
+        "src/rational.cpp",
+        "tests/strutil_test.cpp",
+    ]
+    parser, calc = ported[4], ported[5]
+    assert parser.note is not None
+    assert "stops including src/stack.h" in parser.note
+    assert "src/stack.h" in calc.files
+    assert calc.port is not None
+    assert calc.port.c_headers == ["include/calc/calc.h"]
+    assert calc.port.callers == ["app/main.cpp", "tests/calc_test.cpp"]
+    [app] = [u for u in plan.units if u.port is None]
+    assert (app.files, app.status) == (["app/main.cpp"], UnitStatus.SKIPPED)
+
+
 def test_plans_are_deterministic(make_project: MakeProject) -> None:
     source, target, rules = MIGRATIONS["multi-module"]
     root = make_project("multi-module", source, target, rules)

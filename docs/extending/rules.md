@@ -32,8 +32,10 @@ skip:
   the `api_changes` unit gate applies. `project` rules change the build configuration and may
   edit build files. `port` rules replace code with code in another language behind the same
   interface: they name `target_language` (the manifest's `migration.target.language`) and
-  `extra_scope`, globs of the new code's files a unit may create (`rust/**`); a unit holds the
-  files with sites, the headers declaring what they define (read-only) and the build files.
+  `extra_scope`, globs of the new code's files a unit may create (`rust/**`). `port_units`
+  says how units are cut: `c_header` (the default) holds the files with sites, the headers
+  declaring what they define (read-only) and the build files; `module` makes one unit per
+  module of a library target, leaves first, its headers kept as façades.
   See [Porting C++ to Rust](../porting-to-rust.md).
 - **`applies_to`.** `min_target_standard` and `max_source_standard` limit a rule to some
   migrations; `codecoremorph validate` reports a listed rule that doesn't apply.
@@ -49,8 +51,11 @@ skip:
   natural-language rule.
 - **`postconditions`.** `detector_empty` (no sites left), `codemod_clean` (the codemods report
   nothing left), `c_abi_kept` (a port's new code exports the C interface its headers declare;
-  every port rule checks it) and others. `error` sends the agent back to work; `warning` is a
-  review item.
+  every port rule checks it), and for module ports `unsafe_in_bridge`, `lint_clean` (the target
+  language's linter is quiet about the new code) and `symbol_map` (the project's symbol map
+  covers the module's names). `error` sends the agent back to work; `warning` is a review item.
+- **`allow_suppressions`.** `true` lets the agent add `NOLINT`, `#[allow(...)]` and the like;
+  a list of globs allows them in those files only (`port_module`: the Rust bridge).
 - **`hooks`** (optional, `module:function`) add a custom detector or post-condition in Python.
   A detector hook is called as `function(worktree, files)` and returns rule sites. Hooks import
   only installed modules; the project being migrated is never on `sys.path`.

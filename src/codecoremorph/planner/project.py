@@ -24,6 +24,7 @@ from pathlib import Path
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     Boundary,
+    BuildTarget,
     DependencyGraph,
     FileEntry,
     FileRole,
@@ -89,6 +90,7 @@ class ProjectModel:
     graph: ClusterGraph
     boundaries: dict[str, set[Boundary]]
     uncompiled: list[str] = field(default_factory=list[str])  # in scope, never compiled
+    targets: list[BuildTarget] = field(default_factory=list[BuildTarget])  # the build's (D-58)
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -115,6 +117,7 @@ class ProjectModel:
             boundaries = {p: b for p, b in store.boundary_files().items() if p in files}
             meta = store.meta()
             uncompiled = sorted(p for p in (meta.uncompiled if meta else []) if in_scope.matches(p))
+            targets = store.build_targets()
         partners = pair_headers(files, edges)
         for path, others in partners.items():
             edges[path].update(others)
@@ -134,6 +137,7 @@ class ProjectModel:
             graph=condense(files, edges),
             boundaries=boundaries,
             uncompiled=uncompiled,
+            targets=targets,
         )
 
     @property
@@ -147,6 +151,15 @@ class ProjectModel:
             edges=sorted((source, target) for source, ts in self.edges.items() for target in ts),
         )
 
+    def dependents(self, paths: Iterable[str]) -> list[str]:
+        """The files outside ``paths`` that depend on one of them directly."""
+        inside = set(paths)
+        return sorted(
+            source
+            for source, targets in self.edges.items()
+            if source not in inside and targets & inside
+        )
+
     def chars(self, path: str) -> int:
         """The file's length in characters, for token estimates."""
         if path not in self._chars:
@@ -155,6 +168,11 @@ class ProjectModel:
             except (OSError, BinaryFileError):
                 self._chars[path] = 0
         return self._chars[path]
+
+    def lines(self, path: str) -> int:
+        """The file's lines, for time estimates."""
+        text = self.text(path)
+        return 0 if text is None else len(text.splitlines())
 
     def text(self, path: str) -> str | None:
         try:

@@ -19,6 +19,7 @@ from codecoremorph.core.models import (
 from codecoremorph.invariants.checks import (
     InvariantOutcome,
     api_changes,
+    api_symbols,
     check_api,
     check_build_commands,
     check_diff_size,
@@ -199,6 +200,28 @@ def test_api_changes_skip_private_members_and_macros() -> None:
     assert api_changes([private, macro], [], files=["include/api.h"]) == []
 
 
+def test_members_of_private_nested_types_are_no_api() -> None:
+    """A private ``struct Subscription``'s fields are public within it, and still no API: a
+    façade may drop them (D-58)."""
+    nested = symbol(
+        "jobs::EventBus::Subscription", None, kind=SymbolKind.STRUCT, visibility=Visibility.PRIVATE
+    )
+    field = symbol(
+        "jobs::EventBus::Subscription::id",
+        "int jobs::EventBus::Subscription::id",
+        kind=SymbolKind.FIELD,
+        visibility=Visibility.PUBLIC,
+    )
+    method = symbol(
+        "jobs::EventBus::publish", "int jobs::EventBus::publish()", kind=SymbolKind.METHOD
+    )
+    method = method.model_copy(update={"visibility": Visibility.PUBLIC})
+    assert api_symbols([nested, field, method]) == [method]
+    assert (
+        api_changes(api_symbols([nested, field, method]), [method], files=["include/api.h"]) == []
+    )
+
+
 def test_api_change_needs_every_side_or_approval() -> None:
     old = [symbol("geo::area", "double geo::area(double, double)")]
     (change,) = api_changes(old, [], files=["include/api.h"])
@@ -229,6 +252,9 @@ def test_suppressions() -> None:
     assert "#pragma diagnostic ignored in src/b.cpp" in found.message
     assert "NOLINT" not in found.message  # only edited on its line, not added
     assert check_suppressions(lines, allowed=True).passed
+    # A rule may allow them in some files only (a module port: its bridge, D-58).
+    assert check_suppressions(lines, allowed=False, allowed_in=lambda p: p == "src/b.cpp").passed
+    assert not check_suppressions(lines, allowed=False, allowed_in=lambda p: p == "x.cpp").passed
 
 
 CMAKE_PATCH = """\

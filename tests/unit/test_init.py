@@ -48,6 +48,8 @@ FIXTURE_STANDARDS = {
     "untested": "cpp11",
     "injection": "cpp11",
     "ffi-module": "cpp17",
+    "port-legacy": "cpp98",
+    "port-modern": "cpp14",
 }
 
 

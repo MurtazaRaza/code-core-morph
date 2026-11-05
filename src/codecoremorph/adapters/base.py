@@ -16,6 +16,7 @@ Rules every adapter follows:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -191,3 +192,25 @@ class LanguageAdapter(ABC):
         """C headers for what the code holding ``files`` (worktree paths) exports through a C
         interface, generated under ``ctx.cache_dir``, one per package (a Rust crate)."""
         raise AdapterNotSupportedError(f"{self.language}: exported_c_headers")
+
+    # Module ports behind façades (D-58), on the target adapter.
+
+    def port_names(self, build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+        """``(package, module)`` for a module of the source's ``build_target`` whose files have
+        the stem ``stem``: the package that takes over the target, and a module name valid in
+        this language and not in ``taken`` (the package's other modules)."""
+        raise AdapterNotSupportedError(f"{self.language}: port_names")
+
+    def symbol_map_path(self) -> str:
+        """Where the project keeps its symbol map (worktree-relative): a TOML file of
+        ``[[symbol]]`` entries naming a source symbol (under the source language's name) and
+        the target items that took it over (under this language's name)."""
+        raise AdapterNotSupportedError(f"{self.language}: symbol_map_path")
+
+    def unsafe_sites(self, ctx: AdapterContext) -> list[RuleSite]:
+        """Places where the port's packages allow unsafe code outside their bridge."""
+        raise AdapterNotSupportedError(f"{self.language}: unsafe_sites")
+
+    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """The linter's diagnostics over the port's packages (Rust: clippy)."""
+        raise AdapterNotSupportedError(f"{self.language}: lint")

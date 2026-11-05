@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from codecoremorph.core.models import BuildTarget, TargetKind
 from codecoremorph.store.index import (
     DependencyRow,
     FileRow,
@@ -27,6 +28,7 @@ class FakeProject:
     symbols: list[SymbolRow] = field(default_factory=list[SymbolRow])
     refs: list[ReferenceRow] = field(default_factory=list[ReferenceRow])
     deps: list[DependencyRow] = field(default_factory=list[DependencyRow])
+    targets: list[BuildTarget] = field(default_factory=list[BuildTarget])
 
     def file(
         self,
@@ -84,11 +86,16 @@ class FakeProject:
         self.deps.append((from_file, to_file, "include"))
         return self
 
+    def target(self, name: str, kind: str, files: list[str]) -> FakeProject:
+        self.targets.append(BuildTarget(name=name, kind=TargetKind(kind), files=files))
+        return self
+
     def build(self) -> Path:
         with IndexStore.open(self.index_path, reset=True) as store:
             store.write(
                 files=self.files, symbols=self.symbols, references=self.refs, dependencies=self.deps
             )
+            store.set_build_targets(self.targets)
         return self.index_path
 
 

@@ -13,11 +13,14 @@ always give the same plan, byte for byte (FR-5.6).
   on the sites of the fan-in files no earlier unit covers, together with their header/source
   partners; fan-in files whose sites an earlier unit covers are its ``reference_files``
   (D-42).
+- ``port`` rules: one unit per C interface (``port_units: c_header``, D-57), or one unit per
+  module, leaves first, behind façades (``port_units: module``, D-58).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 
 from codecoremorph.core.ids import unit_id
@@ -29,9 +32,11 @@ from codecoremorph.core.models import (
     PlanEstimate,
     PlanGraph,
     PlanRule,
+    PortUnit,
     RuleKind,
     RuleSite,
     SkipCondition,
+    TargetKind,
     UnitFlag,
     UnitStatus,
     WorkUnit,
@@ -57,6 +62,26 @@ SKIP_REASONS = {
 }
 
 
+# A module port's names in the target language (D-58): (build target, the module's file stem,
+# the module names its package already has) -> (package, module). The target adapter knows the
+# language's rules (``LanguageAdapter.port_names``).
+PortNamer = Callable[[str, str, Collection[str]], tuple[str, str]]
+
+
+def plain_port_names(build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+    """Lowercase identifiers, for when no target adapter names them."""
+
+    def ident(text: str) -> str:
+        name = re.sub(r"[^a-z0-9_]+", "_", text.lower()).strip("_") or "module"
+        return name if name[0].isalpha() else f"m_{name}"
+
+    module = ident(stem)
+    base, n = module, 2
+    while module in taken:
+        module, n = f"{base}_{n}", n + 1
+    return ident(build_target), module
+
+
 @dataclass(frozen=True)
 class PlannerSettings:
     token_limit: int  # a unit's context may not exceed this (context window x 0.5)
@@ -74,6 +99,7 @@ class _Draft:
     note: str | None = None
     sized: bool = True  # build-configuration units are mechanical edits, never too large
     references: list[str] = field(default_factory=list[str])  # fan-in files, sites elsewhere
+    port: PortUnit | None = None
 
 
 def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
@@ -85,10 +111,17 @@ def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
 
 
 class _Former:
-    def __init__(self, project: ProjectModel, settings: PlannerSettings, estimator: Estimator):
+    def __init__(
+        self,
+        project: ProjectModel,
+        settings: PlannerSettings,
+        estimator: Estimator,
+        names: PortNamer = plain_port_names,
+    ):
         self.project = project
         self.settings = settings
         self.estimator = estimator
+        self.names = names
 
     # ------------------------------------------------------------------ sizes
 
@@ -276,6 +309,123 @@ class _Former:
             drafts.append(draft)
         return drafts
 
+    def module_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """One unit per module (D-58): a cluster of the file graph that a library target
+        compiles and where the detector finds sites, leaves first. Its files are the cluster's
+        (headers included: they become façades), any header-only cluster whose last C++ user it
+        ports, and the build files. Executables' clusters stay C++ (Phase 14 ports them), and so
+        does a header-only cluster that a test, an executable or an unported module uses. An
+        earlier unit that uses such a header is told to stop including it."""
+        project = self.project
+        with_sites = set(files)
+        library_of: dict[str, str] = {}
+        executable: set[str] = set()
+        for build in sorted(project.targets, key=lambda t: t.name):
+            for path in build.files:
+                if build.kind is TargetKind.LIBRARY:
+                    library_of.setdefault(path, build.name)
+                elif build.kind is TargetKind.EXECUTABLE:
+                    executable.add(path)
+        compiled = {*library_of, *executable}
+        modules: list[tuple[int, list[str], str]] = []  # (cluster, files, library)
+        header_only: list[tuple[int, list[str]]] = []
+        placed: list[tuple[int, _Draft]] = []
+        for position, cluster in enumerate(project.graph.clusters):
+            members = [
+                f
+                for f in cluster
+                if f in project.files and project.files[f].role is not FileRole.TEST
+            ]
+            if not members or not any(f in with_sites for f in members):
+                continue
+            libraries = sorted({library_of[f] for f in members if f in library_of})
+            if libraries:
+                modules.append((position, members, libraries[0]))
+            elif any(f in compiled for f in members):
+                note = "skipped: an executable's code stays C++ until its tests are ported"
+                placed.append((position, self._skipped(scan, members, f"{note} (Phase 14)")))
+            else:
+                header_only.append((position, members))
+        unit_of = {f: i for i, (_, members, _) in enumerate(modules) for f in members}
+        attached: dict[int, list[str]] = {}
+        dropping: dict[int, list[str]] = {}  # earlier units: header-only files to stop using
+        for position, members in header_only:
+            users = project.dependents(members)
+            ported_users = sorted({unit_of[u] for u in users if u in unit_of})
+            kept = sorted(u for u in users if u not in unit_of)
+            if kept or not ported_users:
+                shown = ", ".join(kept[:3]) + (f" (+{len(kept) - 3})" if len(kept) > 3 else "")
+                note = (
+                    f"skipped: header-only code that C++ still uses ({shown})"
+                    if kept
+                    else "skipped: header-only code that no module uses"
+                )
+                placed.append((position, self._skipped(scan, members, note)))
+                continue
+            last = ported_users[-1]
+            attached.setdefault(last, []).extend(members)
+            for earlier in ported_users[:-1]:
+                dropping.setdefault(earlier, []).extend(members)
+        taken: dict[str, set[str]] = {}
+        units: list[tuple[int, list[str], PortUnit]] = []
+        for i, (position, members, library) in enumerate(modules):
+            unit_files = sorted({*members, *attached.get(i, [])})
+            own_headers = [f for f in members if project.files[f].role is FileRole.HEADER]
+            stem = (own_headers or members)[0].rsplit("/", 1)[-1].split(".", 1)[0]
+            package, module = self.names(library, stem, taken.setdefault(library, set()))
+            taken[library].add(module)
+            ported_files = {f for j, (_, m, _) in enumerate(modules) if j != i for f in m}
+            callers = sorted(
+                {
+                    *project.dependents(members),
+                    *(f for f in project.dependents(attached.get(i, [])) if f not in ported_files),
+                }
+                - set(unit_files)
+            )
+            headers = [f for f in unit_files if project.files[f].role is FileRole.HEADER]
+            port = PortUnit(
+                build_target=library,
+                crate=package,
+                module=module,
+                callers=callers,
+                c_headers=[
+                    f for f in headers if Boundary.C_ABI in project.boundaries.get(f, set())
+                ],
+            )
+            units.append((position, unit_files, port))
+        unit_ids = {i: f"the unit that ports {modules[i][1][0]}" for i in range(len(modules))}
+        for i, (position, unit_files, port) in enumerate(units):
+            sources = [f for f in unit_files if f in compiled]
+            note = f"ports {', '.join(sources)} to {target} ({port.crate}::{port.module})"
+            if attached.get(i):
+                note += f" with {', '.join(sorted(attached[i]))}, which only it still uses"
+            if dropping.get(i):
+                later = next(j for j, files in attached.items() if dropping[i][0] in files)
+                note += (
+                    f"; its façade stops including {', '.join(sorted(dropping[i]))} "
+                    f"({unit_ids[later]} removes it)"
+                )
+            if port.callers:
+                note += f"; {len(port.callers)} C++ files keep using it through its headers"
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({*unit_files, *self.project.build_files}),
+                sites=self.site_counts(scan, unit_files),
+                note=note,
+                port=port,
+            )
+            placed.append((position, draft))
+        return [d for _, d in sorted(placed, key=lambda pd: pd[0])]
+
+    def _skipped(self, scan: RuleScan, files: list[str], note: str) -> _Draft:
+        return _Draft(
+            rule=scan.rule_id,
+            files=files,
+            sites=self.site_counts(scan, files),
+            status=UnitStatus.SKIPPED,
+            note=note,
+        )
+
     def rule_units(
         self, scan: RuleScan, target: str
     ) -> tuple[list[_Draft], list[str], dict[SkipCondition, list[str]]]:
@@ -291,6 +441,8 @@ class _Former:
                 skipped.setdefault(condition, []).append(path)
         if rule.kind is RuleKind.PROJECT:
             drafts = self.project_units(scan, files, target)
+        elif rule.module_port:
+            drafts = self.module_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT:
             drafts = self.port_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.API_CHANGING:
@@ -352,9 +504,11 @@ def build_plan(
     target_language: str | None = None,
     base_commit: str | None = None,
     warnings: Sequence[str] = (),
+    port_names: PortNamer | None = None,
 ) -> Plan:
-    """The ordered plan for ``scans`` (the standard bump first, then the manifest's rules)."""
-    former = _Former(project, settings, estimator)
+    """The ordered plan for ``scans`` (the standard bump first, then the manifest's rules).
+    ``port_names`` names a module port's packages and modules (the target adapter's)."""
+    former = _Former(project, settings, estimator, port_names or plain_port_names)
     drafts: list[_Draft] = []
     plan_rules: list[PlanRule] = []
     notes = list(warnings)
@@ -397,7 +551,8 @@ def build_plan(
         estimate = None
         if draft.status in (UnitStatus.PENDING, UnitStatus.TOO_LARGE):
             chars = sum(project.chars(f) for f in draft.files)
-            estimate = estimator.unit(chars, [rules_by_id[draft.rule]])
+            lines = sum(project.lines(f) for f in draft.files)
+            estimate = estimator.unit(chars, [rules_by_id[draft.rule]], lines)
         units.append(
             WorkUnit(
                 id=unit_id(seq),
@@ -410,6 +565,7 @@ def build_plan(
                 status=draft.status,
                 estimate=estimate,
                 note=draft.note,
+                port=draft.port,
             )
         )
     pending = [u.estimate for u in units if u.status is UnitStatus.PENDING and u.estimate]

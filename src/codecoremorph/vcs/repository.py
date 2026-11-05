@@ -92,6 +92,14 @@ class Repository:
 
     # ------------------------------------------------------------------ reading
 
+    def show(self, commit: str, path: str) -> bytes | None:
+        """A file's bytes at ``commit`` (a full SHA), or None when it isn't there. Read-only:
+        the commit's objects are in the repository, worktree or not."""
+        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+            raise ValueError(f"not a commit SHA: {commit!r}")
+        result = self.git.run("cat-file", "blob", f"{commit}:{path}", check=False)
+        return result.stdout if result.returncode == 0 else None
+
     def resolve_commit(self, revision: str) -> str:
         """The commit SHA a revision names. ``--end-of-options`` stops option injection."""
         result = self.git.run(

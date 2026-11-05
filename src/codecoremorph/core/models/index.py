@@ -133,6 +133,22 @@ class FileDependency(CoreModel):
     kind: DependencyKind = DependencyKind.INCLUDE
 
 
+class TargetKind(StrEnum):
+    LIBRARY = "library"
+    EXECUTABLE = "executable"
+    OTHER = "other"  # custom targets and the like
+
+
+class BuildTarget(CoreModel):
+    """A target of the project's build (a CMake library or executable) and the files it
+    compiles: a port makes one crate per library target and leaves executables to the end
+    (D-58)."""
+
+    name: str = Field(min_length=1)
+    kind: TargetKind
+    files: list[WorktreePath] = Field(default_factory=list[str])
+
+
 class IndexMeta(CoreModel):
     adapter: str
     adapter_version: str

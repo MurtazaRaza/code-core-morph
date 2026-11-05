@@ -31,7 +31,7 @@ import subprocess
 import sys
 import time
 
-PROTOCOL = 1
+PROTOCOL = 2  # 2: extern "C" blocks no longer show in qualified names (D-58)
 SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx", ".c++", ".cp")
 MAX_TU_PROBLEMS = 3
 
@@ -444,7 +444,10 @@ def _qualified(cursor, cache):
             break
         if parent.kind.is_translation_unit():
             break
-        parts.append(parent)
+        # An extern "C" block is a declaration context without a name: it adds nothing to the
+        # names of what it declares.
+        if parent.kind != _STATE["linkage_spec"]:
+            parts.append(parent)
         parent = parent.semantic_parent
     for node in reversed(parts):
         name = node.spelling or "(anonymous)"
@@ -733,12 +736,60 @@ def main(argv):
                 pool.join()
         for problem in problems:
             out.write(json.dumps(["problem", problem]) + "\n")
+        if request.get("cmake_build_dir"):
+            for target in cmake_targets(request["cmake_build_dir"], workspace):
+                out.write(json.dumps(["target", *target]) + "\n")
         counts["seconds"] = round(time.monotonic() - started, 3)
         out.write(
             json.dumps(["meta", {"libclang": version, "protocol": PROTOCOL, **counts}]) + "\n"
         )
     os.replace(tmp, out_path)
     return 0
+
+
+# --------------------------------------------------------------------------- CMake targets
+
+
+def cmake_targets(build_dir, workspace):
+    """``[name, type, files]`` for each of the project's own CMake targets, from the file API
+    reply to the codemodel query the configure step writes; imported targets are left out, and
+    files are workspace-relative. Nothing when there is no reply."""
+    reply = os.path.join(build_dir, ".cmake", "api", "v1", "reply")
+    try:
+        indexes = sorted(
+            n for n in os.listdir(reply) if n.startswith("index-") and n.endswith(".json")
+        )
+    except OSError:
+        return []
+
+    def load(name):
+        with open(os.path.join(reply, name), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    try:
+        codemodel = load(load(indexes[-1])["reply"]["codemodel-v2"]["jsonFile"])
+    except (IndexError, KeyError, OSError, TypeError, ValueError):
+        return []
+    source_dir = codemodel.get("paths", {}).get("source", "")
+    found = []
+    for configuration in codemodel.get("configurations", [])[:1]:
+        for ref in configuration.get("targets", []):
+            try:
+                target = load(ref["jsonFile"])
+            except (KeyError, OSError, TypeError, ValueError):
+                continue
+            if target.get("imported"):
+                continue
+            files = []
+            for source in target.get("sources", []):
+                path = source.get("path", "")
+                rel = workspace.rel(path if os.path.isabs(path) else os.path.join(source_dir, path))
+                if rel is not None and rel not in files:
+                    files.append(rel)
+            found.append(
+                [target.get("name") or ref.get("name", ""), target.get("type", ""), sorted(files)]
+            )
+    return sorted(found)
 
 
 # --------------------------------------------------------------------------- C declarations

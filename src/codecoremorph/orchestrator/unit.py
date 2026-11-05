@@ -166,6 +166,7 @@ def prepare_unit(
         rules=rule_ids,
         files=sorted(set(files)),
         reference_files=references,
+        port=planned.port if planned else None,
     )
     return PreparedUnit(
         unit=unit,

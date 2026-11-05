@@ -25,6 +25,7 @@ from codecoremorph.core.models import (
     CodemodResult,
     LoadedRule,
     Message,
+    PortUnit,
     RuleKind,
     RuleSite,
     SystemBlock,
@@ -182,7 +183,9 @@ def unit_message(
         shown.append(f"[{len(signatures) - MAX_SIGNATURES} more; use {find_symbol}]")
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
-    if port and unit.reference_files:
+    if unit.port is not None:
+        note += module_port_note(unit.port)
+    elif port and unit.reference_files:
         note += (
             f"Kept as they are: {', '.join(unit.reference_files)}. They declare the interface "
             "the new code must export, with the same signatures; you may not edit them.\n\n"
@@ -203,6 +206,29 @@ def unit_message(
         codemods=codemod_summary(codemods),
         remaining=remaining_summary(remaining),
         build=build or "The project builds and its tests pass.",
+    )
+
+
+def module_port_note(port: PortUnit) -> str:
+    """Where a module port's code goes, and what stays (D-58)."""
+    crate, module = port.crate, port.module
+    callers = ", ".join(port.callers) or "none"
+    kept_c = (
+        f" {', '.join(port.c_headers)} declare a C interface: export those functions from Rust "
+        'with the same signatures (#[no_mangle] extern "C") instead of keeping C++ for them.'
+        if port.c_headers
+        else ""
+    )
+    return (
+        f"Port the module's logic to the Rust module `{crate}::{module}` "
+        f"(rust/{crate}/src/{module}.rs, safe Rust), with its C interface for the façade in "
+        f"rust/{crate}/src/bridge/{module}.rs, the one place unsafe code may go. The module's "
+        "headers keep their public API (private members may change), and its sources become "
+        f"a façade: they forward to Rust through {crate}/bridge.h (cbindgen writes it from the "
+        "crate before each build; don't edit it) and the helpers of "
+        f"{crate}/bridge.hpp. These files keep using the module through its headers and "
+        f"don't change: {callers}.{kept_c} Add the module's entries to rust/symbol-map.toml "
+        "(read it first: it also says where earlier modules went).\n\n"
     )
 
 

@@ -43,17 +43,46 @@ def valid_crate_name(name: str) -> bool:
     return _CRATE_NAME.match(name) is not None
 
 
-def find_crates(worktree: Path, exclude: Sequence[str] = ()) -> list[str]:
-    """Worktree-relative directories holding a ``Cargo.toml``, sorted."""
+_WORKSPACE = re.compile(r"(?m)^\s*\[workspace\]\s*$")
+_PACKAGE = re.compile(r"(?m)^\s*\[package\]\s*$")
+
+
+def _manifests(worktree: Path, exclude: Sequence[str]) -> list[tuple[str, str]]:
+    """Each ``Cargo.toml`` outside build trees and excluded paths: (directory, text)."""
     skip = PathMatcher(exclude)
-    found: list[str] = []
+    found: list[tuple[str, str]] = []
     for root, dirs, files in os.walk(worktree):
         dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS)
         if "Cargo.toml" in files:
             rel = Path(root).relative_to(worktree).as_posix()
             if not skip.matches(f"{rel}/Cargo.toml"):
-                found.append(rel)
+                try:
+                    text = (Path(root) / "Cargo.toml").read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    text = ""
+                found.append((rel, text))
     return found
+
+
+def _inside(path: str, directory: str) -> bool:
+    return directory == "." or path.startswith(f"{directory}/")
+
+
+def find_crates(worktree: Path, exclude: Sequence[str] = ()) -> list[str]:
+    """What Cargo builds, as worktree-relative directories, sorted: each workspace root, and
+    each package outside a workspace. A workspace's members build through it (D-58)."""
+    manifests = _manifests(worktree, exclude)
+    workspaces = [d for d, text in manifests if _WORKSPACE.search(text)]
+    return [
+        d
+        for d, _ in manifests
+        if d in workspaces or not any(_inside(d, w) for w in workspaces if w != d)
+    ]
+
+
+def find_packages(worktree: Path, exclude: Sequence[str] = ()) -> list[str]:
+    """Every package (a manifest with ``[package]``), workspace members included, sorted."""
+    return [d for d, text in _manifests(worktree, exclude) if _PACKAGE.search(text)]
 
 
 # --------------------------------------------------------------------------- diagnostics
@@ -252,11 +281,19 @@ def library_compiling(cmake_files: Iterable[tuple[str, str]], source: str) -> st
     return None
 
 
-def corrosion_block(manifests: Sequence[str], links: Sequence[tuple[str, str]]) -> list[str]:
-    """The lines of the marked block: import each crate, link each (target, crate) pair."""
+def corrosion_block(
+    manifests: Sequence[str],
+    links: Sequence[tuple[str, str]],
+    includes: Sequence[tuple[str, str]] = (),
+) -> list[str]:
+    """The lines of the marked block: import each crate, give each C++ target its bridge
+    headers' directory, link each (target, crate) pair."""
     # FROZEN: Cargo neither rewrites Cargo.lock in the worktree nor reaches the network.
     lines = [CORROSION_BEGIN, "find_package(Corrosion REQUIRED)"]
     lines += [f"corrosion_import_crate(MANIFEST_PATH {m} FROZEN)" for m in manifests]
+    lines += [
+        f"target_include_directories({target} PUBLIC {directory})" for target, directory in includes
+    ]
     lines += [f"target_link_libraries({target} PUBLIC {crate})" for target, crate in links]
     return [*lines, CORROSION_END]
 
@@ -278,26 +315,38 @@ def without_corrosion_block(text: str) -> tuple[str, list[str]]:
     return head + text[end:], [line.strip() for line in inner.splitlines() if line.strip()]
 
 
-def with_corrosion_block(text: str, manifest: str, link: tuple[str, str] | None) -> str:
-    """``text`` (the top-level ``CMakeLists.txt``) with ``manifest`` imported, and linked to
-    its C++ target, in the marked block at the end; earlier crates stay."""
+def with_corrosion_block(
+    text: str,
+    manifest: str,
+    link: tuple[str, str] | None,
+    include: tuple[str, str] | None = None,
+) -> str:
+    """``text`` (the top-level ``CMakeLists.txt``) with ``manifest`` imported, linked to its C++
+    target, and that target given ``include`` (target, directory), in the marked block at the
+    end; earlier crates stay."""
     newline = "\r\n" if "\r\n" in text else "\n"
     base, inner = without_corrosion_block(text)
     manifests = [
         m.split("MANIFEST_PATH", 1)[1].strip(" )").split()[0] for m in inner if "MANIFEST_PATH" in m
     ]
     links: list[tuple[str, str]] = []
+    includes: list[tuple[str, str]] = []
     for line in inner:
         found = re.match(r"target_link_libraries\((\S+) PUBLIC (\S+)\)", line)
         if found:
             links.append((found.group(1), found.group(2)))
+        found = re.match(r"target_include_directories\((\S+) PUBLIC (\S+)\)", line)
+        if found:
+            includes.append((found.group(1), found.group(2)))
     if manifest not in manifests:
         manifests.append(manifest)
     if link is not None and link not in links:
         links.append(link)
+    if include is not None and include not in includes:
+        includes.append(include)
     if base and not base.endswith(("\n", "\r\n")):
         base += newline
-    block = newline.join(corrosion_block(manifests, links))
+    block = newline.join(corrosion_block(manifests, links, includes))
     return f"{base}{newline}{block}{newline}"
 
 

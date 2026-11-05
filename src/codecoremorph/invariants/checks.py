@@ -305,6 +305,40 @@ def is_api_symbol(symbol: Symbol) -> bool:
     )
 
 
+_SCOPE_KINDS = frozenset(
+    {
+        SymbolKind.CLASS,
+        SymbolKind.STRUCT,
+        SymbolKind.UNION,
+        SymbolKind.ENUM,
+        SymbolKind.CLASS_TEMPLATE,
+    }
+)
+
+
+def private_scopes(symbols: Iterable[Symbol]) -> set[str]:
+    """The qualified names of private nested types: nothing they declare is API, whatever its
+    own access (a private ``struct Subscription``'s public fields, D-58)."""
+    return {
+        s.qualified_name
+        for s in symbols
+        if s.kind in _SCOPE_KINDS and s.visibility is Visibility.PRIVATE
+    }
+
+
+def in_private_scope(symbol: Symbol, scopes: set[str]) -> bool:
+    parts = symbol.qualified_name.split("::")
+    return any("::".join(parts[:i]) in scopes for i in range(1, len(parts)))
+
+
+def api_symbols(symbols: Iterable[Symbol]) -> list[Symbol]:
+    """The symbols other code may depend on (:func:`is_api_symbol`), less what private nested
+    types declare."""
+    listed = list(symbols)
+    scopes = private_scopes(listed)
+    return [s for s in listed if is_api_symbol(s) and not in_private_scope(s, scopes)]
+
+
 # SFINAE as the indexer spells it, in a return type or a template argument. Moving the
 # constraint to a requires-clause or a concept (use_concepts_for_templates) keeps the interface
 # but changes the spelled signature, so comparisons reduce it to the type it yields.
@@ -454,13 +488,18 @@ def check_api(
 # --------------------------------------------------------------------------- I-7, I-8
 
 
-def check_suppressions(lines: PatchLines, *, allowed: bool) -> InvariantResult:
-    """I-7: no new warning suppressions, unless one of the unit's rules allows them. A marker
-    only moved (removed and added again) is not new."""
+def check_suppressions(
+    lines: PatchLines, *, allowed: bool, allowed_in: PathTest | None = None
+) -> InvariantResult:
+    """I-7: no new warning suppressions, unless one of the unit's rules allows them, everywhere
+    (``allowed``) or in some files (``allowed_in``). A marker only moved (removed and added
+    again) is not new."""
     if allowed:
         return _ok("I-7")
     added: list[str] = []
     for path in sorted(set(lines.added) | set(lines.removed)):
+        if allowed_in is not None and allowed_in(path):
+            continue
         for name, pattern in SUPPRESSIONS.items():
             plus = sum(len(pattern.findall(text)) for text in lines.added.get(path, []))
             minus = sum(len(pattern.findall(text)) for text in lines.removed.get(path, []))

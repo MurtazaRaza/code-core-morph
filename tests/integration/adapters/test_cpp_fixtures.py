@@ -23,11 +23,13 @@ from codecoremorph.core.models import (
     CodemodSpec,
     LanguageConfig,
     Severity,
+    TargetKind,
     TestStatus,
 )
 from codecoremorph.rules.detectors import find_pattern_sites
 from codecoremorph.sandbox.executor import Executor
 from codecoremorph.sandbox.native import NativeExecutor
+from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures" / "cpp"
 # Each fixture with the standard it is written in (its migration's source).
@@ -41,6 +43,8 @@ FIXTURES = {
     "cpp98-legacy": "cpp98",
     "cpp17-legacy": "cpp17",
     "untested": "cpp11",
+    "port-legacy": "cpp98",
+    "port-modern": "cpp14",
 }
 CODE_SUFFIXES = (".h", ".hpp", ".c", ".cpp")
 
@@ -240,6 +244,28 @@ def test_fixture_breaks_under_its_target(
         as_lvalue = lines.index("    return text;") + 1
         errors = {(d.file_path, d.line) for d in built.errors}
         assert ((header, as_lvalue) in errors) == (target == "cpp23")
+
+
+def test_build_targets_from_the_file_api(make_context: MakeContext) -> None:
+    """The index records CMake's targets and their files (D-58), from the codemodel the
+    configure step asks for: a port makes a crate per library and leaves executables alone."""
+    ctx = make_context("port-legacy", "cpp98")
+    adapter = CppAdapter()
+    assert adapter.configure(ctx).success
+    adapter.index(ctx)
+    with IndexStore.open(ctx.cache_dir / INDEX_FILE_NAME) as store:
+        targets = {t.name: t for t in store.build_targets()}
+    assert {"calc", "tinycalc", "calc_tests"} <= set(targets)
+    assert targets["calc"].kind is TargetKind.LIBRARY
+    assert targets["calc"].files == [
+        f"src/{m}.cpp" for m in ("calc", "expr", "lexer", "parser", "rational", "strutil")
+    ]
+    assert (targets["tinycalc"].kind, targets["tinycalc"].files) == (
+        TargetKind.EXECUTABLE,
+        ["app/main.cpp"],
+    )
+    assert targets["calc_tests"].kind is TargetKind.EXECUTABLE
+    assert "tests/expr_test.cpp" in targets["calc_tests"].files
 
 
 def test_cpp98_build_uses_the_cpp98_googletest(make_context: MakeContext) -> None:

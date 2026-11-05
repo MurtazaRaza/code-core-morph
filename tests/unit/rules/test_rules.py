@@ -184,9 +184,19 @@ def test_entry_point_packs() -> None:
         for pack in ("cpp", "cpp_to_rust")
     }
     assert len(by_pack["cpp"]) == 5
-    assert by_pack["cpp_to_rust"] == ["port_c_abi_module"]
+    assert by_pack["cpp_to_rust"] == ["port_c_abi_module", "port_module"]
     port = registry.get("port_c_abi_module").rule
     assert (port.kind, port.target_language, port.extra_scope) == ("port", "rust", ["rust/**"])
+    assert not port.module_port
+    module = registry.get("port_module").rule
+    assert module.module_port
+    assert module.allow_suppressions == ["rust/*/src/bridge/**"]
+    assert {p.type.value for p in module.postconditions} == {
+        "detector_empty",
+        "unsafe_in_bridge",
+        "lint_clean",
+        "symbol_map",
+    }
 
     broken = RuleRegistry.discover(
         eps=[

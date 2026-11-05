@@ -53,6 +53,34 @@ class UnitEstimate(CoreModel):
     cost_usd: float | None = Field(
         default=None, ge=0, description="None for free providers or unknown prices"
     )
+    agent_s: float | None = Field(
+        default=None,
+        ge=0,
+        description="Expected model seconds per agent attempt, from the unit's lines",
+    )
+
+
+class PortUnit(CoreModel):
+    """What a module port's unit (D-58) works with besides its files: where its code goes, the
+    C++ that keeps using it, and the C interfaces it keeps."""
+
+    build_target: str = Field(min_length=1, description="The library target it belongs to")
+    crate: str = Field(pattern=r"^[a-z][a-z0-9_]*$", description="The crate for that target")
+    module: str = Field(pattern=r"^[a-z][a-z0-9_]*$", description="The module the unit adds")
+    callers: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath],
+        description="Files outside the unit that use it and stay as they are: they keep "
+        "calling through the façade",
+    )
+    c_headers: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath],
+        description="The unit's headers that declare functions with C linkage: the new code "
+        "exports them (c_abi_kept)",
+    )
+
+    def codemod_options(self) -> dict[str, str]:
+        """What the scaffold codemod needs to know about the unit."""
+        return {"crate": self.crate, "module": self.module, "build_target": self.build_target}
 
 
 class WorkUnit(CoreModel):
@@ -74,6 +102,7 @@ class WorkUnit(CoreModel):
     status: UnitStatus = UnitStatus.PENDING
     estimate: UnitEstimate | None = None
     note: str | None = None
+    port: PortUnit | None = Field(default=None, description="A module port's unit (D-58)")
 
     @field_validator("flags")
     @classmethod

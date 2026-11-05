@@ -8,6 +8,10 @@ of actual cost, measured after M1, when these constants get re-set from data.
 - An agent attempt is a few calls in one conversation: the first writes the unit's context to
   the prompt cache, later calls read it back and add tool results.
 - How likely the agent runs depends on the rule: a rule with codemods often finishes without it.
+- Model time per attempt grows with the unit's lines: over the M1 benchmark's 20 agent units it
+  was 0.12 s per line (intercept near zero), from 12 lines in 25 s to 4,693 in 663 s. A port
+  writes the module again in another language and its façade, so it expects twice the output
+  and, until a measured port run re-sets it, three times the time.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from codecoremorph.config.models import ModelPrice
-from codecoremorph.core.models import Baseline, Plan, Rule, UnitEstimate
+from codecoremorph.core.models import Baseline, Plan, Rule, RuleKind, UnitEstimate
 
 CHARS_PER_TOKEN = 3.0
 TOKEN_MARGIN = 1.25
@@ -29,6 +33,10 @@ THINKING_TOKENS_PER_ATTEMPT = 4_000
 OUTPUT_SHARE = 0.5  # edits rewrite about half of the unit's text
 ATTEMPTS_WHEN_THE_AGENT_RUNS = 1.5
 LLM_SECONDS_PER_ATTEMPT = 100.0  # the M1 benchmark: Claude Code averaged 103 s
+AGENT_SECONDS_PER_LINE = 0.12  # the M1 benchmark's fit, per attempt
+MIN_AGENT_SECONDS = 20.0  # the smallest M1 units still took about this long
+PORT_OUTPUT_SHARE = 2.0  # a port writes the module again, and its façade
+PORT_TIME_FACTOR = 3.0  # provisional (D-58)
 FALLBACK_CONTEXT_WINDOW = 32_768  # when the editor model's window is unknown
 
 
@@ -56,10 +64,19 @@ class Estimator:
         guidance = sum(self.guidance_chars.get(r, 0) for r in rules)
         return estimate_tokens(file_chars + guidance) + PROMPT_OVERHEAD_TOKENS
 
-    def unit(self, file_chars: int, rules: list[Rule]) -> UnitEstimate:
+    def unit(self, file_chars: int, rules: list[Rule], lines: int | None = None) -> UnitEstimate:
+        """``lines``: the unit's files' lines, for the model time; without them, the M1
+        average."""
         context = self.context_tokens(file_chars, [r.id for r in rules])
         attempts = round(max(agent_probability(r) for r in rules) * ATTEMPTS_WHEN_THE_AGENT_RUNS, 2)
-        output = int(estimate_tokens(file_chars) * OUTPUT_SHARE) + THINKING_TOKENS_PER_ATTEMPT
+        port = any(r.kind is RuleKind.PORT for r in rules)
+        share = PORT_OUTPUT_SHARE if port else OUTPUT_SHARE
+        output = int(estimate_tokens(file_chars) * share) + THINKING_TOKENS_PER_ATTEMPT
+        agent_s = (
+            LLM_SECONDS_PER_ATTEMPT
+            if lines is None
+            else max(MIN_AGENT_SECONDS, AGENT_SECONDS_PER_LINE * lines)
+        ) * (PORT_TIME_FACTOR if port else 1.0)
         later_calls = CALLS_PER_ATTEMPT - 1
         added = later_calls * TOKENS_ADDED_PER_CALL
         per_attempt_tokens = context * CALLS_PER_ATTEMPT + added + output
@@ -80,6 +97,7 @@ class Estimator:
             expected_attempts=attempts,
             tokens=math.ceil(per_attempt_tokens * attempts),
             cost_usd=cost,
+            agent_s=round(agent_s, 1),
         )
 
 
@@ -92,5 +110,8 @@ def estimate_duration_s(plan: Plan, baseline: Baseline) -> float:
     for unit in plan.units:
         if unit.status.is_terminal or unit.estimate is None:
             continue
-        total += verify + unit.estimate.expected_attempts * (verify + LLM_SECONDS_PER_ATTEMPT)
+        model_s = unit.estimate.agent_s
+        if model_s is None:
+            model_s = LLM_SECONDS_PER_ATTEMPT
+        total += verify + unit.estimate.expected_attempts * (verify + model_s)
     return round(total, 1)

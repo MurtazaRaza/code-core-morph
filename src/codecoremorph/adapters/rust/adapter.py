@@ -1,5 +1,6 @@
-"""The Rust adapter (SPEC §11.5, D-56): Cargo builds and clippy with JSON diagnostics, nextest
-tests, the ``rust-crate`` scaffold, rustfmt, and the C header a crate exports (cbindgen).
+"""The Rust adapter (SPEC §11.5, §11.6, D-56, D-58): Cargo builds and clippy with JSON
+diagnostics, nextest tests, the ``rust-crate`` and ``rust-module`` scaffolds, rustfmt, the C
+header a crate exports (cbindgen), the bridge headers of a module port, and a symbol index.
 
 In a port run it is the *target* adapter of a migration pair: the C++ adapter builds and
 tests the project through CMake, which builds the crates with Corrosion; this adapter adds
@@ -12,9 +13,11 @@ import hashlib
 import posixpath
 import re
 import time
+from collections.abc import Collection
 from pathlib import Path, PurePath, PurePosixPath
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
+from codecoremorph.adapters.rust import ports
 from codecoremorph.adapters.rust.cargo import (
     EDITIONS,
     NEXTEST_PROFILE,
@@ -23,6 +26,7 @@ from codecoremorph.adapters.rust.cargo import (
     edition,
     fetched_packages,
     find_crates,
+    find_packages,
     library_compiling,
     nextest_config,
     parse_cargo_messages,
@@ -30,6 +34,7 @@ from codecoremorph.adapters.rust.cargo import (
     valid_crate_name,
     with_corrosion_block,
 )
+from codecoremorph.adapters.rust.symbols import mask, scan_crate
 from codecoremorph.core.errors import ConfigError, SandboxError
 from codecoremorph.core.models import (
     AdapterCapabilities,
@@ -41,6 +46,7 @@ from codecoremorph.core.models import (
     DiagnosticOrigin,
     IndexMeta,
     LanguageConfig,
+    RuleSite,
     Severity,
     SkippedReplacement,
     SymbolIndex,
@@ -52,7 +58,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.sandbox.executor import full_output
-from codecoremorph.store.index import INDEX_FILE_NAME, FileRow, IndexStore
+from codecoremorph.store.index import INDEX_FILE_NAME, FileRow, IndexStore, SymbolRow
 
 MIN_RUST = "1.80"
 TARGET_DIR = "cargo-target"  # in ctx.cache_dir, outside the worktree
@@ -72,7 +78,7 @@ class RustAdapter(LanguageAdapter):
         return AdapterCapabilities(
             format=True,
             exported_c_headers=True,
-            codemod_tools=["rust-crate", "rustfmt"],
+            codemod_tools=["rust-crate", "rust-module", "rustfmt"],
             standards=list(EDITIONS),
         )
 
@@ -169,8 +175,9 @@ class RustAdapter(LanguageAdapter):
         only (``sandbox.network: fetch_only``). Builds then run offline. A crate without such
         packages needs nothing, and no network."""
         started = time.monotonic()
-        diagnostics: list[Diagnostic] = []
         log_path = self._note(ctx, "cargo-configure.log")
+        # A module port's bridge headers come first: the C++ build includes them (D-58).
+        diagnostics = self._bridge_headers(ctx)
         for crate in self.crates(ctx):
             lock = _text(ctx.worktree / crate / "Cargo.lock")
             if lock is None:
@@ -251,20 +258,52 @@ class RustAdapter(LanguageAdapter):
         return TestReport(cases=cases, duration_s=time.monotonic() - started, log_path=log_path)
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
-        """The crates' Rust files (Phase 12 indexes no Rust symbols)."""
+        """The packages' Rust files and their items, by path (the scanner of D-58): enough for
+        the symbol map and a unit's context."""
         ctx.cache_dir.mkdir(parents=True, exist_ok=True)
         path = ctx.cache_dir / INDEX_FILE_NAME
         rows: list[FileRow] = []
-        for crate in self.crates(ctx):
-            for file in sorted((ctx.worktree / crate).rglob("*.rs")):
+        symbols: list[SymbolRow] = []
+        seen: set[str] = set()
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            base = ctx.worktree / package
+            sources: dict[str, tuple[str, str]] = {}
+            for file in sorted(base.rglob("*.rs")):
                 rel = file.relative_to(ctx.worktree).as_posix()
-                if _skipped(PurePosixPath(rel)):
+                if rel in seen or _skipped(PurePosixPath(rel)):
                     continue
+                seen.add(rel)
                 digest = hashlib.sha256(file.read_bytes()).hexdigest()
                 rows.append((rel, "rust", digest, "source", 0, 0, "utf-8", "lf"))
-        meta = IndexMeta(adapter="rust", adapter_version=self.version, stats={"files": len(rows)})
+                text = _text(file)
+                if text is not None:
+                    sources[file.relative_to(base).as_posix()] = (rel, text)
+            name = _package_name(_text(base / "Cargo.toml") or "") or posixpath.basename(package)
+            for item in scan_crate(name.replace("-", "_"), sources):
+                symbols.append(
+                    (
+                        f"rust:{item.path}",
+                        item.path.rsplit("::", 1)[-1],
+                        item.path,
+                        item.kind.value,
+                        item.file,
+                        item.line,
+                        item.column,
+                        item.line,
+                        item.column,
+                        None,
+                        "public" if item.public else "none",
+                        1,
+                        "c_abi" if item.c_abi else "none",
+                    )
+                )
+        meta = IndexMeta(
+            adapter="rust",
+            adapter_version=self.version,
+            stats={"files": len(rows), "symbols": len(symbols)},
+        )
         with IndexStore.open(path, reset=True) as store:
-            store.write(files=rows)
+            store.write(files=rows, symbols=symbols)
             store.set_meta(meta)
         return SymbolIndex(path=path, meta=meta)
 
@@ -274,9 +313,14 @@ class RustAdapter(LanguageAdapter):
         started = time.monotonic()
         changes: list[CodemodChange] = []
         skipped: list[SkippedReplacement] = []
+        diagnostics: list[Diagnostic] = []
         for spec in codemods:
             if spec.tool == "rust-crate":
                 changes += self._scaffold(ctx, spec, files)
+            elif spec.tool == "rust-module":
+                found, problems = self._module_scaffold(ctx, spec, files)
+                changes += found
+                diagnostics += problems
             elif spec.tool == "rustfmt":
                 changes += self._rustfmt(ctx)
             else:
@@ -284,7 +328,10 @@ class RustAdapter(LanguageAdapter):
                     SkippedReplacement(file="-", check=spec.tool, reason="not a Rust codemod")
                 )
         return CodemodResult(
-            changes=changes, skipped=skipped, duration_s=time.monotonic() - started
+            changes=changes,
+            skipped=skipped,
+            diagnostics=diagnostics,
+            duration_s=time.monotonic() - started,
         )
 
     def format(self, ctx: AdapterContext, files: list[str]) -> None:
@@ -348,6 +395,198 @@ class RustAdapter(LanguageAdapter):
                 changes.append(CodemodChange(file="CMakeLists.txt", replacements=1))
         return changes
 
+    def _module_scaffold(
+        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
+    ) -> tuple[list[CodemodChange], list[Diagnostic]]:
+        """The ``rust-module`` codemod (D-58): the workspace, the crate of the unit's library
+        target, the unit's module and bridge module, the symbol map, the lockfile, the marked
+        Corrosion block and the bridge header. Idempotent: what is there stays. ``options``:
+        ``crate``, ``module`` and ``build_target``, from the unit (``PortUnit``)."""
+        crate = spec.options.get("crate", "")
+        module = spec.options.get("module", "")
+        target = spec.options.get("build_target", "")
+        if not (valid_crate_name(crate) and valid_crate_name(module) and target):
+            raise ConfigError(
+                "the rust-module codemod needs a module port's unit",
+                reason=f"crate={crate!r}, module={module!r}, build_target={target!r}",
+                hint="Use it in a port rule with `port_units: module`.",
+            )
+        try:
+            year = edition(ctx.lang.target_standard or ctx.lang.standard)
+        except ValueError as exc:
+            raise ConfigError(
+                "the rust-module codemod needs a Rust target edition",
+                reason=str(exc),
+                hint="Set migration.target to {language: rust, standard: rust2021}.",
+            ) from None
+        workspace = ports.WORKSPACE_DIR
+        package = f"{workspace}/{crate}"
+        sources = sorted(
+            f
+            for f in files
+            if not f.startswith(f"{workspace}/") and f.lower().endswith(ports.CPP_EXTENSIONS)
+        )
+        changes: list[CodemodChange] = []
+
+        def current(rel: str) -> str | None:
+            return _text(ctx.worktree / rel)
+
+        def write(rel: str, text: str) -> None:
+            path = ctx.worktree / rel
+            old = path.read_bytes() if path.is_file() else None
+            data = text.encode("utf-8") if old is None else TextFile.decode(old).encode(text)
+            if data != old:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+                changes.append(CodemodChange(file=rel, replacements=1))
+
+        manifest = current(f"{workspace}/Cargo.toml")
+        write(
+            f"{workspace}/Cargo.toml",
+            ports.workspace_manifest([crate])
+            if manifest is None
+            else ports.with_member(manifest, crate),
+        )
+        if current(f"{package}/Cargo.toml") is None:
+            write(f"{package}/Cargo.toml", ports.package_manifest(crate, year, target))
+            write(f"{package}/cbindgen.toml", ports.cbindgen_toml(crate))
+            write(f"{package}/include/{crate}/bridge.hpp", ports.bridge_hpp(crate))
+            write(f"{package}/src/lib.rs", ports.lib_rs(crate, target))
+            write(f"{package}/src/bridge/mod.rs", ports.bridge_mod_rs(crate))
+        if current(f"{package}/src/{module}.rs") is None:
+            write(f"{package}/src/{module}.rs", ports.module_rs(sources))
+        lib = current(f"{package}/src/lib.rs") or ports.lib_rs(crate, target)
+        write(f"{package}/src/lib.rs", ports.with_module(lib, module))
+        if current(f"{package}/src/bridge/{module}.rs") is None:
+            write(f"{package}/src/bridge/{module}.rs", ports.bridge_module_rs(module, sources))
+        bridge = current(f"{package}/src/bridge/mod.rs") or ports.bridge_mod_rs(crate)
+        write(f"{package}/src/bridge/mod.rs", ports.with_module(bridge, module, public=False))
+        if current(ports.SYMBOL_MAP) is None:
+            write(ports.SYMBOL_MAP, ports.SYMBOL_MAP_TEXT)
+        problems = self._lock_workspace(ctx, workspace, changes)
+        top = ctx.worktree / "CMakeLists.txt"
+        if top.is_file():
+            original = TextFile.decode(top.read_bytes())
+            updated = with_corrosion_block(
+                original.text,
+                f"{workspace}/Cargo.toml",
+                (target, crate),
+                (target, f"{package}/include"),
+            )
+            if updated != original.text:
+                top.write_bytes(original.encode(updated))
+                changes.append(CodemodChange(file="CMakeLists.txt", replacements=1))
+        header = f"{package}/{ports.bridge_header_path(crate)}"
+        before = current(header)
+        problems += self._bridge_headers(ctx)
+        if current(header) != before:
+            changes.append(CodemodChange(file=header, replacements=1))
+        once = {c.file: c for c in changes}  # a file written twice is one change
+        return list(once.values()), problems
+
+    def _lock_workspace(
+        self, ctx: AdapterContext, workspace: str, changes: list[CodemodChange]
+    ) -> list[Diagnostic]:
+        """``cargo update --workspace --offline``: the lockfile, with every member, and nothing
+        else re-resolved."""
+        lock = ctx.worktree / workspace / "Cargo.lock"
+        before = lock.read_bytes() if lock.is_file() else None
+        ok, output, _, _ = self._cargo(
+            ctx,
+            workspace,
+            ["update", "--workspace", "--offline"],
+            "cargo-update.log",
+            timeout_s=600,
+            target_dir=False,
+        )
+        if not ok:
+            tail = "\n".join(output.strip().splitlines()[-10:])
+            return [
+                Diagnostic(
+                    file_path=f"{workspace}/Cargo.lock",
+                    severity=Severity.ERROR,
+                    message=f"cargo couldn't update the workspace's lockfile:\n{tail}",
+                    origin=DiagnosticOrigin.BUILD_SYSTEM,
+                )
+            ]
+        if lock.is_file() and lock.read_bytes() != before:
+            changes.append(CodemodChange(file=f"{workspace}/Cargo.lock", replacements=1))
+        return []
+
+    def _bridge_headers(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """cbindgen writes each package's bridge header (``include/<crate>/bridge.h``) when the
+        package has a ``cbindgen.toml``: a module port's crate (D-58). Others have none."""
+        problems: list[Diagnostic] = []
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            base = ctx.worktree / package
+            config = base / "cbindgen.toml"
+            if not config.is_file():
+                continue
+            name = _package_name(_text(base / "Cargo.toml") or "") or posixpath.basename(package)
+            out = base / ports.bridge_header_path(name.replace("-", "_"))
+            out.parent.mkdir(parents=True, exist_ok=True)
+            ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            result = ctx.executor.run(
+                [
+                    "cbindgen",
+                    "--config",
+                    ctx.sandbox(config),
+                    "--output",
+                    ctx.sandbox(out),
+                    "--quiet",
+                    ctx.sandbox(base),
+                ],
+                cwd=ctx.sandbox(base),
+                timeout_s=600,
+                log_path=ctx.log_dir / f"cbindgen-bridge-{_slug(package)}.log",
+            )
+            if not result.ok:
+                stdout, stderr = full_output(result)
+                tail = "\n".join((stdout + stderr).strip().splitlines()[-10:])
+                problems.append(
+                    Diagnostic(
+                        file_path=f"{package}/src/lib.rs",
+                        severity=Severity.ERROR,
+                        message=f"cbindgen couldn't write the bridge header:\n{tail}",
+                        origin=DiagnosticOrigin.BUILD_SYSTEM,
+                    )
+                )
+        return problems
+
+    # ------------------------------------------------------------------ module ports (D-58)
+
+    def port_names(self, build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+        return ports.port_names(build_target, stem, taken)
+
+    def symbol_map_path(self) -> str:
+        return ports.SYMBOL_MAP
+
+    def unsafe_sites(self, ctx: AdapterContext) -> list[RuleSite]:
+        """In each package with a bridge: the crate root must keep ``#![deny(unsafe_code)]``,
+        and no file but the root's ``mod bridge`` declaration may allow unsafe code."""
+        sites: list[RuleSite] = []
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            src = ctx.worktree / package / "src"
+            lib = src / "lib.rs"
+            if not (src / "bridge").is_dir() and not (src / "bridge.rs").is_file():
+                continue
+            others: dict[str, str] = {}
+            for file in sorted(src.rglob("*.rs")):
+                inner = file.relative_to(src).as_posix()
+                if file == lib or inner == "bridge.rs" or inner.startswith("bridge/"):
+                    continue
+                text = _text(file)
+                if text is not None:
+                    others[file.relative_to(ctx.worktree).as_posix()] = mask(text)
+            lib_path = lib.relative_to(ctx.worktree).as_posix()
+            for file, line, what in ports.unsafe_problems(lib_path, mask(_text(lib) or ""), others):
+                sites.append(RuleSite(file=file, line=line, text=what))
+        return sites
+
+    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """clippy over every crate: compiler and clippy diagnostics, by file."""
+        return self.clippy(ctx).diagnostics
+
     def _rustfmt(self, ctx: AdapterContext) -> list[CodemodChange]:
         changes: list[CodemodChange] = []
         for crate in self.crates(ctx):
@@ -373,7 +612,9 @@ class RustAdapter(LanguageAdapter):
         """The C header of each crate holding one of ``files``, as cbindgen writes it from the
         crate's public ``extern "C"`` items (D-56)."""
         crates = [
-            c for c in self.crates(ctx) if any(c == "." or f.startswith(f"{c}/") for f in files)
+            c
+            for c in find_packages(ctx.worktree, ctx.lang.exclude)
+            if any(c == "." or f.startswith(f"{c}/") for f in files)
         ]
         config = ctx.cache_dir / "cbindgen.toml"
         config.parent.mkdir(parents=True, exist_ok=True)
@@ -432,6 +673,14 @@ def _cmake_files(worktree: Path) -> list[tuple[str, str]]:
         if text is not None:
             found.append((rel.as_posix(), text))
     return found
+
+
+_NAME = re.compile(r'(?ms)^\s*\[package\]\s*$.*?^\s*name\s*=\s*"([^"]+)"')
+
+
+def _package_name(manifest: str) -> str | None:
+    match = _NAME.search(manifest)
+    return match.group(1) if match else None
 
 
 def _project_name(worktree: Path) -> str | None:

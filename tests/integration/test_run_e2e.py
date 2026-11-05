@@ -144,6 +144,17 @@ def project(tmp_path: Path, git: GitRunner) -> Setup:
     return setup
 
 
+def _checkout(root: Path, git: GitRunner) -> tuple[dict[str, bytes], str, str]:
+    """The user's checkout: every file outside .git and the state directory, HEAD, and git's
+    view of the working tree."""
+    files = {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in root.rglob("*")
+        if p.is_file() and not {".git", ".codecoremorph"} & set(p.relative_to(root).parts)
+    }
+    return files, git(root, "rev-parse", "HEAD"), git(root, "status", "--porcelain")
+
+
 def _report(config: Path, run_id: str) -> RunReport:
     path = StateDir.for_repo(config.parent).run(run_id).report_json
     return RunReport.model_validate_json(path.read_bytes())
@@ -438,6 +449,8 @@ def test_every_unit_of_a_fixture(
         llm = load_config(config).config.llm
         return LLMService(llm, ledger=ledger, providers={"anthropic": provider})
 
+    root = config.parent
+    checkout = _checkout(root, git)
     result = start_run(
         config,
         base=None,
@@ -445,6 +458,8 @@ def test_every_unit_of_a_fixture(
         options=RunOptions(yes=True),
         llm_factory=factory,
     )
+    # The user's checkout is as it was, byte for byte: the run worked in its own worktree.
+    assert _checkout(root, git) == checkout
     report = _report(config, result.run_id)
     assert report.unit_counts == data["unit_counts"], report.review
     assert result.status.value == data["status"], result.reason
@@ -454,7 +469,6 @@ def test_every_unit_of_a_fixture(
     if isinstance(provider, ReplayProvider):
         assert provider.unused == 0
     # Every unit's commit is on the branch, in plan order, after the characterization commit.
-    root = config.parent
     commits = git(root, "rev-list", "--reverse", f"main..{result.branch}").split()
     trailers = [parse_trailers(git(root, "log", "-1", "--format=%B", c)) for c in commits]
     if characterization:

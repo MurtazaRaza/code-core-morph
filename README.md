@@ -12,8 +12,9 @@ standard up to C++23. Java and C# version upgrades come next, then cross-languag
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or
 > an API model as the agent, or migrate one work unit at a time. Code that no test covers gets
 > characterization tests first. A local web dashboard follows runs live and answers their gates.
-> It can also port C++ modules behind a C header to Rust crates, checked by the project's own
-> C++ tests and against the header's C interface (Phase 12); whole-project ports come next.
+> It can also port a C++ project to Rust module by module, each header kept as a C++ façade so
+> the project's own C++ tests check every step (Phases 12 and 13); translating the tests and
+> retiring the C++ comes next.
 
 ## Developer setup
 

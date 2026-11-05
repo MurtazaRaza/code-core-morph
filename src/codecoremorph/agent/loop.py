@@ -28,7 +28,7 @@ import json
 import logging
 import shutil
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,6 +62,7 @@ from codecoremorph.core.models import (
     DetectorType,
     Diagnostic,
     EditBatch,
+    FileRole,
     InvariantResult,
     LoadedRule,
     Message,
@@ -82,6 +83,12 @@ from codecoremorph.core.models import (
 from codecoremorph.core.secrets import Json, Redactor
 from codecoremorph.invariants.abi import c_abi_differences, c_abi_feedback
 from codecoremorph.invariants.checker import InvariantChecker
+from codecoremorph.invariants.symbol_map import (
+    read_symbol_map,
+    required_names,
+    symbol_map_feedback,
+    symbol_map_problems,
+)
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
 from codecoremorph.patching.engine import PatchEngine
@@ -90,6 +97,7 @@ from codecoremorph.planner.estimate import unit_token_limit
 from codecoremorph.planner.sites import find_sites, load_hook
 from codecoremorph.prompts import PROMPTS_VERSION, render
 from codecoremorph.rules.applicability import StandardOrder, codemod_applies
+from codecoremorph.store.index import IndexStore
 from codecoremorph.store.layout import AttemptArtifacts, RunArtifacts
 from codecoremorph.vcs.worktree import Worktree
 
@@ -154,6 +162,20 @@ def merge_codemod_results(results: Sequence[CodemodResult]) -> CodemodResult:
         duration_s=sum(r.duration_s for r in results),
         log_paths=[p for r in results for p in r.log_paths],
     )
+
+
+def port_specs(
+    specs: Sequence[CodemodSpec], unit: WorkUnit, target_tools: Collection[str]
+) -> list[CodemodSpec]:
+    """A module port's target codemods (the scaffold) learn the unit's package, module and
+    build target (D-58); other passes stay as they are."""
+    if unit.port is None:
+        return list(specs)
+    names = unit.port.codemod_options()
+    return [
+        s.model_copy(update={"options": {**s.options, **names}}) if s.tool in target_tools else s
+        for s in specs
+    ]
 
 
 def first_build(check: Verification) -> str | None:
@@ -381,7 +403,10 @@ class UnitRunner:
         files = owned_files(unit)
         if any(r.rule.kind is RuleKind.PROJECT for r in rules):
             files += [f for f in self.project_files if f not in unit.files]
-        return self.run_codemods(specs, files)
+        target_tools = (
+            self.target_adapter.capabilities().codemod_tools if self.target_adapter else []
+        )
+        return self.run_codemods(port_specs(specs, unit, target_tools), files)
 
     def run_codemods(self, specs: Sequence[CodemodSpec], files: list[str]) -> CodemodResult:
         """Each run of consecutive passes goes to the adapter that lists their tool: a port's
@@ -543,6 +568,21 @@ class UnitRunner:
                 elif post.type is PostconditionType.C_ABI_KEPT:
                     text = self._c_abi(unit, loaded)
                     found = [RuleSite(file="-", line=1)] if text else []
+                elif post.type is PostconditionType.UNSAFE_IN_BRIDGE:
+                    found = self._unsafe_sites(rule_id)
+                    text = (
+                        f"{rule_id}: unsafe code must stay in the bridge (the crate root keeps "
+                        "#![deny(unsafe_code)], and only its `mod bridge` may allow it):\n"
+                        + "\n".join(f"- {s.file}:{s.line}: {s.text}" for s in found)
+                        if found
+                        else ""
+                    )
+                elif post.type is PostconditionType.LINT_CLEAN:
+                    text = self._lint(unit, loaded)
+                    found = [RuleSite(file="-", line=1)] if text else []
+                elif post.type is PostconditionType.SYMBOL_MAP:
+                    text = self._symbol_map(unit, loaded)
+                    found = [RuleSite(file="-", line=1)] if text else []
                 elif post.type is PostconditionType.CODEMOD_CLEAN:
                     text = self._codemod_leftovers(unit, loaded)
                     found = [RuleSite(file="-", line=1)] if text else []
@@ -565,10 +605,11 @@ class UnitRunner:
 
     def _c_abi(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         """``c_abi_kept``: the unit's new code (its changed files under the rule's
-        ``extra_scope``) exports every function its kept headers (the reference files)
-        declare, with the same signature. Both sides are read by the source adapter."""
+        ``extra_scope``) exports every function its kept headers (the reference files, or a
+        module port's C headers) declare, with the same signature. Both sides are read by the
+        source adapter."""
         rule_id = loaded.rule.id
-        headers = list(unit.reference_files)
+        headers = list(unit.port.c_headers if unit.port is not None else unit.reference_files)
         if not headers:
             return ""
         if self.target_adapter is None or self.target_ctx is None:
@@ -598,6 +639,78 @@ class UnitRunner:
             reason = f": {exc.reason}" if exc.reason else ""
             return f"{rule_id}: the C interface couldn't be compared. {exc.message}{reason}"
         return c_abi_feedback(rule_id, headers, c_abi_differences(expected, exported))
+
+    def _new_code(self, loaded: LoadedRule) -> list[str]:
+        """The unit's changed files under the rule's ``extra_scope``: its new code."""
+        scope = PathMatcher(loaded.rule.extra_scope)
+        return sorted(
+            f.path
+            for f in self.worktree.diff(self.worktree.head()).files
+            if scope.matches(f.path) and (self.worktree.path / f.path).is_file()
+        )
+
+    def _unsafe_sites(self, rule_id: str) -> list[RuleSite]:
+        """``unsafe_in_bridge`` (D-58): where the target adapter finds unsafe code allowed
+        outside the bridge, or a site that says why it couldn't look."""
+        if self.target_adapter is None or self.target_ctx is None:
+            return [RuleSite(file="-", line=1, text=f"{rule_id}: this migration isn't a port")]
+        try:
+            return self.target_adapter.unsafe_sites(self.target_ctx)
+        except AdapterNotSupportedError as exc:
+            return [RuleSite(file="-", line=1, text=f"the target adapter can't check ({exc})")]
+
+    def _lint(self, unit: WorkUnit, loaded: LoadedRule) -> str:
+        """``lint_clean``: the target's linter reports nothing in the unit's new code."""
+        rule_id = loaded.rule.id
+        if self.target_adapter is None or self.target_ctx is None:
+            return f"{rule_id}: lint_clean checks the code a port writes; this isn't a port"
+        new_code = set(self._new_code(loaded))
+        if not new_code:
+            return ""
+        try:
+            diagnostics = self.target_adapter.lint(self.target_ctx)
+        except AdapterNotSupportedError as exc:
+            return f"{rule_id}: the target adapter has no linter ({exc})"
+        found = sorted(
+            (d for d in diagnostics if d.file_path in new_code and d.severity is not Severity.NOTE),
+            key=lambda d: (d.file_path or "", d.line or 0, d.column or 0, d.message),
+        )
+        if not found:
+            return ""
+        lines = [f"{rule_id}: the linter reports {len(found)} problem(s) in the new code:"]
+        for d in found[:30]:
+            code = f" [{d.code}]" if d.code else ""
+            lines.append(f"- {d.file_path}:{d.line or 1}: {d.message}{code}")
+        if len(found) > 30:
+            lines.append(f"- ... and {len(found) - 30} more")
+        return "\n".join(lines)
+
+    def _symbol_map(self, unit: WorkUnit, loaded: LoadedRule) -> str:
+        """``symbol_map`` (the mapping steward, D-58): the project's symbol map has an entry
+        for every name the unit's headers declare publicly, each pointing at items the new code
+        has, and no name twice."""
+        rule_id = loaded.rule.id
+        if self.target_adapter is None or self.target_ctx is None or self.index_path is None:
+            return f"{rule_id}: symbol_map checks a port's map; this isn't a port"
+        try:
+            relative = self.target_adapter.symbol_map_path()
+            target_index = self.target_adapter.index(self.target_ctx)
+        except AdapterNotSupportedError as exc:
+            return f"{rule_id}: the target adapter keeps no symbol map ({exc})"
+        text = read_text(self.worktree.path, relative)
+        if text is None:
+            return f"{rule_id}: the symbol map {relative} is missing; create it"
+        entries, problems = read_symbol_map(
+            text, self.ctx.lang.language, self.target_ctx.lang.language
+        )
+        headers = {f for f in unit.files if (self.worktree.path / f).is_file()}
+        with IndexStore.open(self.index_path) as store:
+            headers = {f for f in headers if (e := store.file(f)) and e.role is FileRole.HEADER}
+            required = required_names(store.symbols(), headers)
+        with IndexStore.open(target_index.path) as store:
+            known = {s.qualified_name for s in store.symbols()}
+        problems += symbol_map_problems(entries, required, known)
+        return symbol_map_feedback(rule_id, relative, problems)
 
     def _codemod_leftovers(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         specs = [
@@ -1006,6 +1119,13 @@ class UnitRunner:
         outside = [p for p in batch.paths if not self.allowed(p, unit, rules)]
         if outside:
             ports = [r.rule for r in rules if r.rule.kind is RuleKind.PORT]
+            if ports and unit.port is not None:
+                scope = ", ".join(g for r in ports for g in r.extra_scope)
+                return (
+                    f"Rejected: you may not edit {', '.join(outside)}. A module port changes "
+                    f"its own files ({', '.join(unit.files)}) and files under {scope}; the "
+                    "C++ that uses the module keeps using it through its headers, unchanged."
+                )
             if ports:
                 editable = [f for f in unit.files if f not in unit.reference_files]
                 scope = ", ".join(g for r in ports for g in r.extra_scope)

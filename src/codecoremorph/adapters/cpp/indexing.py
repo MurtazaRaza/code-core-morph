@@ -18,10 +18,12 @@ from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     Boundary,
+    BuildTarget,
     FileRole,
     IndexMeta,
     LineEnding,
     SymbolIndex,
+    TargetKind,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.sandbox.executor import full_output
@@ -158,6 +160,7 @@ def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = N
         "exclude": list(ctx.lang.exclude),
         "files": None,
         "jobs": jobs,
+        "cmake_build_dir": ctx.sandbox(ctx.build_dir),
     }
     request_path = work / "request.json"
     request_path.write_text(json.dumps(request, indent=2), encoding="utf-8")
@@ -201,6 +204,7 @@ def ingest(
     references: list[ReferenceRow] = []
     dependencies: list[DependencyRow] = []
     problems: list[str] = []
+    targets: list[BuildTarget] = []
     meta: dict[str, object] = {}
     with output.open(encoding="utf-8") as handle:
         for line in handle:
@@ -216,6 +220,8 @@ def ingest(
                 c_files[record[1]] = c_files.get(record[1], False) or bool(record[2])
             elif tag == "problem":
                 problems.append(str(record[1]))
+            elif tag == "target":
+                targets.append(build_target(record[1], record[2], record[3]))
             elif tag == "meta":
                 meta = dict(record[1])
 
@@ -265,9 +271,28 @@ def ingest(
             uncompiled=uncompiled,
         )
         store.set_meta(index_meta)
+        store.set_build_targets(targets)
     finally:
         store.close()
     return SymbolIndex(path=ctx.cache_dir / INDEX_FILE_NAME, meta=index_meta, problems=problems)
+
+
+_LIBRARY_TYPES = frozenset(
+    {"STATIC_LIBRARY", "SHARED_LIBRARY", "MODULE_LIBRARY", "OBJECT_LIBRARY", "INTERFACE_LIBRARY"}
+)
+
+
+def build_target(name: object, cmake_type: object, files: object) -> BuildTarget:
+    """A CMake target from the file API, as the planner sees it."""
+    kind = (
+        TargetKind.LIBRARY
+        if cmake_type in _LIBRARY_TYPES
+        else TargetKind.EXECUTABLE
+        if cmake_type == "EXECUTABLE"
+        else TargetKind.OTHER
+    )
+    paths = [str(f) for f in files] if isinstance(files, list) else []
+    return BuildTarget(name=str(name), kind=kind, files=paths)
 
 
 def _with_public_api(row: SymbolRow, public: set[str]) -> SymbolRow:

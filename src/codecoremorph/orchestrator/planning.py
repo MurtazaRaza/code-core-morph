@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from codecoremorph.adapters.base import AdapterNotSupportedError
 from codecoremorph.core.models import Baseline, LoadedRule, Plan, Role, RuleSite, SymbolIndex
 from codecoremorph.llm.catalog import model_info
 from codecoremorph.orchestrator.session import RunSession
 from codecoremorph.parity.baseline import BaselineCache, capture_baseline
 from codecoremorph.planner.estimate import Estimator, estimate_duration_s, unit_token_limit
-from codecoremorph.planner.planner import PlannerSettings, build_plan
+from codecoremorph.planner.planner import PlannerSettings, build_plan, plain_port_names
 from codecoremorph.planner.project import ProjectModel
 from codecoremorph.planner.sites import RuleScan, find_sites, scan_rule
 from codecoremorph.rules.applicability import StandardOrder, rule_excludes, standard_bump_rules
@@ -194,6 +196,15 @@ def plan_from(
         more = f" (and {len(index.problems) - 3} more)" if len(index.problems) > 3 else ""
         warnings.append(f"the indexer reported {len(index.problems)} problems: {shown}{more}")
     warnings += uncompiled_warnings(project, scans, order=order, source=source, target=target)
+    target_adapter = session.target_adapter
+
+    def port_names(build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+        """The target adapter names a module port's packages and modules (D-58)."""
+        if target_adapter is not None:
+            with suppress(AdapterNotSupportedError):
+                return target_adapter.port_names(build_target, stem, taken)
+        return plain_port_names(build_target, stem, taken)
+
     plan = build_plan(
         project,
         scans,
@@ -206,6 +217,7 @@ def plan_from(
         target_language=migration.target.language if port else None,
         base_commit=session.workspace.base_commit,
         warnings=warnings,
+        port_names=port_names,
     )
     timings["plan_s"] = time.monotonic() - started
     plan_path = session.artifacts.plan_json

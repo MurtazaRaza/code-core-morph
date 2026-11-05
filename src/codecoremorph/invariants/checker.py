@@ -20,6 +20,7 @@ from pathlib import Path
 from pydantic import Field
 
 from codecoremorph.adapters.base import AdapterContext, AdapterNotSupportedError, LanguageAdapter
+from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     BuildResult,
     CoreModel,
@@ -37,6 +38,7 @@ from codecoremorph.invariants.checks import (
     InvariantOutcome,
     PathTest,
     api_changes,
+    api_symbols,
     check_api,
     check_assertions,
     check_build_commands,
@@ -46,7 +48,6 @@ from codecoremorph.invariants.checks import (
     check_tests_kept,
     check_unit_scope,
     check_warnings,
-    is_api_symbol,
     patch_lines,
 )
 from codecoremorph.parity.baseline import warnings_by_file
@@ -139,11 +140,7 @@ class InvariantChecker:
                 return
         index = self.adapter.index(ctx)  # the index must describe the snapshot
         with IndexStore.open(index.path) as store:
-            symbols = [
-                s
-                for s in store.symbols()
-                if is_api_symbol(s) and (files is None or s.file in files)
-            ]
+            symbols = [s for s in api_symbols(store.symbols()) if files is None or s.file in files]
             referencing = (
                 {} if files is None else {s.id: store.files_referencing([s.id]) for s in symbols}
             )
@@ -199,11 +196,28 @@ class InvariantChecker:
                 )
             )
         outcome.results.append(self._api(ctx, unit, rules, changed))
-        allow = any(r.rule.allow_suppressions for r in rules)
         lines = patch_lines(diff.patch)
-        outcome.results.append(check_suppressions(lines, allowed=allow))
+        agent_diff = worktree.diff(agent_since) if agent_since else diff
+        # Suppressions count on the agent's lines, like I-8: a codemod's are the rule's design
+        # (the module port's scaffold allows unsafe code on its bridge, D-58).
+        globs = [
+            g
+            for r in rules
+            if isinstance(r.rule.allow_suppressions, list)
+            for g in r.rule.allow_suppressions
+        ]
+        outcome.results.append(
+            check_suppressions(
+                patch_lines(agent_diff.patch),
+                allowed=any(r.rule.allow_suppressions is True for r in rules),
+                allowed_in=PathMatcher(globs).matches if globs else None,
+            )
+        )
         outcome.results.append(check_build_commands(lines))
-        agent = worktree.diff(agent_since).files if agent_since else diff.files
+        # A port's new code (its rule's extra_scope) is the port itself, as large as the module
+        # it replaces; I-8 bounds the agent's changes to the project's own files (D-58).
+        new_code = PathMatcher([g for r in rules for g in r.rule.extra_scope])
+        agent = [f for f in agent_diff.files if not new_code.matches(f.path)]
         size = sum((f.added_lines or 0) + (f.removed_lines or 0) for f in agent)
         outcome.results.append(check_diff_size(size, limit=self.settings.max_diff_lines))
         self.warnings_after = warnings_by_file(built)
@@ -265,7 +279,7 @@ class InvariantChecker:
             return check_api([], api_changing=False, covered=lambda _c: True, gated=False)
         index = self.adapter.index(ctx)  # brings the touched files up to date
         with IndexStore.open(index.path) as store:
-            now = [s for s in store.symbols() if is_api_symbol(s)]
+            now = api_symbols(store.symbols())
         changes = api_changes(snapshot.symbols, now, files=touched)
         api_changing = any(r.rule.kind is RuleKind.API_CHANGING for r in rules)
         unit_files = set(unit.files)
