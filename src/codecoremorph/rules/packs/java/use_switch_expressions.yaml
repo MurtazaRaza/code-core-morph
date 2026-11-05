@@ -1,0 +1,22 @@
+id: use_switch_expressions
+language: java
+kind: api_preserving
+description: >-
+  Replace switch statements whose every case assigns the same variable or returns with switch
+  expressions, and colon-style case labels with arrows, where no case falls through.
+applies_to: {min_target_standard: java17}
+detector:
+  type: pattern
+  patterns: ['^[ \t]*case[ \t]+[^:\n>-]+:(?!:)']   # case X:  (not case X ->)
+codemods:
+  - tool: openrewrite
+    checks:
+      - org.openrewrite.java.migrate.lang.SwitchCaseAssignmentsToSwitchExpression
+      - org.openrewrite.java.migrate.lang.SwitchCaseReturnsToSwitchExpression
+      - org.openrewrite.java.migrate.lang.SwitchExpressionYieldToArrow
+llm:
+  guidance: guidance/use_switch_expressions.md
+  examples: examples/use_switch_expressions
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # switches that fall through stay statements

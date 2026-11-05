@@ -1,0 +1,76 @@
+{
+ "fixture": "task-planner",
+ "source": "java8",
+ "target": "java21",
+ "rules": [
+  "use_diamond_operator",
+  "use_lambdas",
+  "use_try_with_resources",
+  "use_var",
+  "use_switch_expressions",
+  "use_records"
+ ],
+ "status": "completed",
+ "unit_counts": {
+  "committed": 7
+ },
+ "submissions": {
+  "U-0003": [
+   {
+    "summary": "Replace the queue's anonymous Comparator with a lambda of the same body (it has no state and doesn't use this), with its parameter types spelled out so the diamond still infers PriorityQueue<Slot>; drop the Comparator import.",
+    "review_notes": [],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "core/src/main/java/org/example/tasks/TaskQueue.java",
+      "search": "    private final PriorityQueue<Slot> slots = new PriorityQueue<>(11, new Comparator<Slot>() {\n        @Override\n        public int compare(Slot a, Slot b) {\n            if (a.task.getPriority() != b.task.getPriority()) {\n                return a.task.getPriority() - b.task.getPriority();\n            }\n            if (a.task.getMinutes() != b.task.getMinutes()) {\n                return a.task.getMinutes() - b.task.getMinutes();\n            }\n            return Long.compare(a.order, b.order);\n        }\n    });\n",
+      "replace": "    private final PriorityQueue<Slot> slots = new PriorityQueue<>(11, (Slot a, Slot b) -> {\n        if (a.task.getPriority() != b.task.getPriority()) {\n            return a.task.getPriority() - b.task.getPriority();\n        }\n        if (a.task.getMinutes() != b.task.getMinutes()) {\n            return a.task.getMinutes() - b.task.getMinutes();\n        }\n        return Long.compare(a.order, b.order);\n    });\n"
+     },
+     {
+      "op": "replace",
+      "path": "core/src/main/java/org/example/tasks/TaskQueue.java",
+      "search": "import java.util.Comparator;\n",
+      "replace": ""
+     }
+    ]
+   }
+  ],
+  "U-0006": [
+   {
+    "summary": "Write Effort.describe's switch expression with arrow cases, merging the labels that shared a value (1 and 2, 3 to 7). Every case yielded, so none fell through, and the values are the same.",
+    "review_notes": [],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "core/src/main/java/org/example/tasks/Effort.java",
+      "search": "            case 0: yield \"quick\";\n            case 1:\n            case 2: yield \"short\";\n            case 3:\n            case 4:\n            case 5:\n            case 6:\n            case 7: yield \"long\";\n            default: yield \"huge\";\n",
+      "replace": "            case 0 -> \"quick\";\n            case 1, 2 -> \"short\";\n            case 3, 4, 5, 6, 7 -> \"long\";\n            default -> \"huge\";\n"
+     }
+    ]
+   }
+  ],
+  "U-0007": [
+   {
+    "summary": "Make Task a record: its components are the three fields it had, the constructor's checks move into a compact constructor, and the record's equals replaces the hand-written one over the same fields. getTitle, getPriority and getMinutes stay, so no caller changes; hashCode and toString stay as they were.",
+    "review_notes": [
+     "The record's equals treats a null title as a value; the old equals threw NullPointerException on it. No caller makes a task without a title."
+    ],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "core/src/main/java/org/example/tasks/Task.java",
+      "search": "public final class Task {\n    private final String title;\n    private final int priority;\n    private final int minutes;\n\n    public Task(String title, int priority, int minutes) {\n        if (priority < 1 || priority > 5) {\n            throw new IllegalArgumentException(\"priority must be 1 to 5, not \" + priority);\n        }\n        if (minutes <= 0) {\n            throw new IllegalArgumentException(\"a task takes some time\");\n        }\n        this.title = title;\n        this.priority = priority;\n        this.minutes = minutes;\n    }\n",
+      "replace": "public record Task(String title, int priority, int minutes) {\n    public Task {\n        if (priority < 1 || priority > 5) {\n            throw new IllegalArgumentException(\"priority must be 1 to 5, not \" + priority);\n        }\n        if (minutes <= 0) {\n            throw new IllegalArgumentException(\"a task takes some time\");\n        }\n    }\n"
+     },
+     {
+      "op": "replace",
+      "path": "core/src/main/java/org/example/tasks/Task.java",
+      "search": "    @Override\n    public boolean equals(Object o) {\n        if (!(o instanceof Task)) {\n            return false;\n        }\n        Task other = (Task) o;\n        return title.equals(other.title) && priority == other.priority && minutes == other.minutes;\n    }\n\n    @Override\n    public int hashCode() {\n",
+      "replace": "    // The record's equals compares title, priority and minutes, as the class's did. Its own\n    // hashCode and toString stay, so hash values and the text are the same.\n    @Override\n    public int hashCode() {\n"
+     }
+    ]
+   }
+  ]
+ },
+ "recorded_from": "host-agent run 20261105-153411-c50b"
+}

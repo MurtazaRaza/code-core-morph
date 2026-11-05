@@ -426,21 +426,43 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Goal:** the second language. Java projects can be indexed, built and tested, and upgraded across Java versions.
 
-**Prerequisites:** Phase 8 (Phase 5 at minimum).
+**Prerequisites:** Phase 8 (Phase 5 at minimum). Built after Phases 12 to 14 (D-55); the core is language-neutral, so adding Java must not touch `orchestrator/` (NFR-3.1).
 
 ### Tasks
-- [ ] `images/java/`: LTS JDK(s) needed for the source and target versions, Maven, Spoon-based indexer jar, OpenRewrite CLI or Maven plugin
-- [ ] `java` rows in the manifest and `install-toolchain java` (Temurin JDKs, Maven, indexer jar)
-- [ ] Spoon indexer helper emitting the normalized index (symbols, references, imports, `native` methods as JNI boundaries)
-- [ ] Maven build driver and javac diagnostic parser; Surefire XML test parsing (JUnit 4/5); `fetch_only` network step for dependency resolution
-- [ ] OpenRewrite codemod runner; `detect_disabled_tests` and `extract_assertions` for JUnit; `register_test_files`
-- [ ] Java fixtures (Java 8, Maven, JUnit): legacy APIs, raw types, anonymous classes, `Date`/`Calendar`, removed or deprecated APIs
-- [ ] Java version-upgrade rule pack (e.g. 8 → 21): `bump_java_version` (project), language-feature rules (diamond, lambdas, try-with-resources, `var` where safe, switch expressions, records where safe), each mapped to OpenRewrite recipes plus LLM guidance
-- [ ] Characterization tests with JUnit 5
+**Strategy**
+- [x] Spike on a small Java 8 Maven project with JUnit, on Windows and in Docker: one JDK per standard (the baseline on Java 8's class library, so APIs removed later break only after the bump), Maven's `target/` kept out of the worktree (`git add --all` would commit it), every build offline after a `fetch_only` dependency step (Surefire resolves its JUnit provider at test time), OpenRewrite's Maven plugin run offline with a recipe's changes limited to a unit's files, and the Spoon helper on the project's sources (D-63, on Windows: the unbumped project passed on JDK 8 and failed on JDK 21; `go-offline` missed `surefire-junit4`; `rewrite:runNoFork` ran `UpgradeToJava21` offline from a tools repository chained behind the project's, on JDK 8, in 11 s; Spoon indexed the sources at levels 8 and 25. Docker comes with the image. The spike is in `E:/codecoremorph-trials/java-spike`)
+- [x] Design settled with a `D-xx` row, and SPEC §11.2 filled in: standards, toolchain, build, tests and test IDs, index, codemods, the rule pack, I-12 for Maven (D-63)
+
+**Toolchain**
+- [x] `java` rows in the manifest: a Temurin JDK for each standard, Maven, the Spoon jar (D-64: Temurin 8u504-b01, 11.0.32.1+1, 17.0.21+9, 21.0.13+9, 25.0.5+8, one release each that every platform has, and no JDK 8 for macOS on Apple silicon; Maven 3.9.16; Spoon 11.5.0)
+- [x] `install-toolchain java` (`.bat` and `.sh`): the JDKs, Maven, Spoon, and a Maven repository with the plugins a build and OpenRewrite need (Maven verifies what it downloads, as rustup and cargo do for Rust); writes `java.env` (OpenRewrite's plugin 6.46.1, `rewrite-migrate-java` 3.42.1, `rewrite-static-analysis` 2.41.1 and `maven-dependency-plugin` 3.11.0 in `toolchains/java/m2`, 210 MB; `all` now installs Java too; no `--offline`, as for Rust)
+- [x] `images/java/` and `scripts/build-image java`; `codecoremorph toolchain install|download java` (the image is 3 GB, five JDKs)
+
+**Adapter**
+- [x] `codecoremorph.adapters.java`: Maven builds (`mvn -B -o`) with javac and Maven diagnostics; the dependency step; Surefire XML for JUnit 4 and 5, with stable test IDs and test selection; `detect_project` and `project_standard` from the POMs; `builds`, `clean_build` (Maven from its launcher class on the standard's JDK, in a mirror of the worktree in the cache; `Executor.toolchain_env` gives the JDKs' paths; the Surefire providers by what the run's repository holds after `go-offline`)
+- [x] Spoon index helper: types, members, references, imports as file dependencies, `native` methods as JNI boundaries, `project.public_api` files (`JavaIndexHelper.java`, compiled with the newest JDK's `javac` into the cache; only the files under a module's source roots, the rest listed as uncompiled)
+- [x] Codemods: OpenRewrite recipes through its Maven plugin, applied to the unit's files only; the POM's Java version bump (D-64: `compile` first in the same run, for multi-module builds, and the network for the recipes' own lookups)
+- [x] JUnit: `detect_disabled_tests` (`@Ignore`, `@Disabled`, assumptions), `extract_assertions` (I-4), the `test_cases` query
+- [x] I-12 for Maven: new plugins that run code or download (exec, antrun and the like), build extensions, new repositories, annotation processors (and `.mvn/extensions.xml`, `jvm.config`, `maven.config`; the dependency step and OpenRewrite also refuse extensions the run's first configure didn't see, before the network goes on)
+
+**Rules**
+- [x] `java` rule pack (8 → 11, 17, 21): `bump_java_version` (project: OpenRewrite's migration recipe for the target, then the agent fixes what it leaves), `use_diamond_operator`, `use_lambdas`, `use_try_with_resources`, `use_var` (where safe), `use_switch_expressions`, `use_records` (where safe), each with OpenRewrite recipes where they exist, guidance, examples and post-conditions (D-64: `use_records` finds its classes with the adapter query `record_candidates`; an agent may submit no edits when what is left should stay)
+
+**Fixtures and evals**
+- [x] Java fixtures (Java 8, Maven, JUnit): legacy APIs, raw types, anonymous classes, `Date`/`Calendar`, APIs removed after Java 8; JUnit 4 in one and JUnit 5 in another, and a multi-module build (`fixtures/java/legacy-ledger`: `sun.misc.BASE64Encoder`, JAXB, raw types, anonymous classes, `try`/`finally`, `Calendar`, a switch statement, a value class, 23 JUnit 4 tests; `fixtures/java/task-planner`: two modules, `${java.version}`, `javax.annotation.PostConstruct`, 21 JUnit 5 tests with `@Nested` and parameterized ones)
+- [x] Each fixture's 8 → 21 migration whole through `run --host-agent`, replayed from recorded edits natively and in Docker (7 of 7 units each, natively; `tests/integration/test_java_e2e.py`, `tests/cassettes/java/`)
+- [ ] Characterization tests with JUnit 5 (registered in the POM)
 - [ ] Live evals on Java fixtures
+
+### Tests
+- Unit: javac and Maven diagnostics, Surefire XML, the POMs' standard and its bump, JUnit scanning (cases, assertions, disabled tests), OpenRewrite's patch limited to a unit, I-12 on POMs
+- Integration (`toolchain`, `docker`): a fixture's build, tests and index, and an OpenRewrite pass
+- End to end: each fixture's migration replays from recorded host-agent edits, natively and in Docker
+- NFR-3.1: nothing under `orchestrator/` changed
 
 ### Exit criteria (M3)
 - Java fixtures migrate 8 → 21 end to end, branch green; zero changes to the orchestrator graph were needed (NFR-3.1 check)
+- Met on Windows, natively and in Docker: `legacy-ledger` and `task-planner` migrated 8 → 21 whole through `codecoremorph run --host-agent` (every unit committed, every commit green, the final clean build and tests passing) and replay from the recorded edits; nothing under `orchestrator/`, `planner/` or `agent/` changed. Open: characterization tests with JUnit 5, live evals; Linux and macOS wait for CI (D-28)
 
 ---
 

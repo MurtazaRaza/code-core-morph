@@ -5,7 +5,7 @@ from __future__ import annotations
 from codecoremorph.config.models import BuildToolOptions, MigrationConfig
 from codecoremorph.core.models import LanguageConfig
 
-DEFAULT_BUILD_SYSTEMS = {"cpp": "cmake", "rust": "cargo"}
+DEFAULT_BUILD_SYSTEMS = {"cpp": "cmake", "rust": "cargo", "java": "maven"}
 
 
 def is_port(config: MigrationConfig) -> bool:

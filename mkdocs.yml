@@ -58,6 +58,7 @@ nav:
   - Guides:
       - Migrating with Claude Code: claude-code.md
       - Porting C++ to Rust: porting-to-rust.md
+      - Upgrading Java: upgrading-java.md
       - The dashboard: dashboard.md
       - Installing dependencies: dependencies.md
       - Troubleshooting: troubleshooting.md

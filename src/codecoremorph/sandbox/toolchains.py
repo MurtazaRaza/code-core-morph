@@ -17,7 +17,7 @@ from codecoremorph.core.models import ToolchainSpec
 from codecoremorph.core.paths import HomeLayout
 from codecoremorph.sandbox.executor import COMMAND_NOT_FOUND, Executor
 
-LANGUAGES = ("cpp", "rust")  # rust includes the cpp toolchain (D-56)
+LANGUAGES = ("cpp", "rust", "java")  # rust includes the cpp toolchain (D-56)
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 _VERSION = re.compile(r"(\d+)\.(\d+)(?:\.(\d+))?")
 
@@ -51,7 +51,7 @@ def install_command(
     """The command line that runs ``install-toolchain`` for this platform. ``offline`` is a
     directory of pre-downloaded archives to install from instead of the network (FR-1.12)."""
     if language not in (*LANGUAGES, "all"):
-        raise SandboxError(f"no native toolchain for {language!r}; available: cpp, rust")
+        raise SandboxError(f"no native toolchain for {language!r}; available: cpp, rust, java")
     directory = scripts_dir()
     args = [language]
     if force:
@@ -72,7 +72,7 @@ def download_command(language: str, directory: Path, *, platform: str | None = N
     offline install on a machine of ``platform`` (default: this one, FR-1.12). It runs
     ``scripts/deps/fetch-offline.py`` with this Python."""
     if language not in (*LANGUAGES, "all"):
-        raise SandboxError(f"no native toolchain for {language!r}; available: cpp, rust")
+        raise SandboxError(f"no native toolchain for {language!r}; available: cpp, rust, java")
     script = scripts_dir() / "deps" / "fetch-offline.py"
     argv = [sys.executable, str(script), str(directory)]
     for group in LANGUAGES if language == "all" else (language,):

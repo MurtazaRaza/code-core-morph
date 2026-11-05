@@ -48,6 +48,9 @@ class FileEntry(CoreModel):
 class SymbolKind(StrEnum):
     NAMESPACE = "namespace"
     CLASS = "class"
+    INTERFACE = "interface"  # Java (D-63)
+    RECORD = "record"
+    ANNOTATION = "annotation"
     STRUCT = "struct"
     UNION = "union"
     ENUM = "enum"

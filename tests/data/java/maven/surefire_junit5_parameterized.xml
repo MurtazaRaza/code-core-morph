@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="org.example.tasks.EffortTest" time="0.073" tests="9" errors="0" skipped="0" failures="0">
+  <testcase name="describesEstimates(int, String)[1]" classname="org.example.tasks.EffortTest" time="0.02"/>
+  <testcase name="describesEstimates(int, String)[2]" classname="org.example.tasks.EffortTest" time="0.001"/>
+  <testcase name="describesEstimates(int, String)[3]" classname="org.example.tasks.EffortTest" time="0.0"/>
+  <testcase name="describesEstimates(int, String)[4]" classname="org.example.tasks.EffortTest" time="0.0"/>
+  <testcase name="describesEstimates(int, String)[5]" classname="org.example.tasks.EffortTest" time="0.001"/>
+  <testcase name="describesEstimates(int, String)[6]" classname="org.example.tasks.EffortTest" time="0.001"/>
+  <testcase name="describesEstimates(int, String)[7]" classname="org.example.tasks.EffortTest" time="0.0"/>
+  <testcase name="equalTasksAreEqual" classname="org.example.tasks.EffortTest" time="0.001"/>
+  <testcase name="formatsEstimates" classname="org.example.tasks.EffortTest" time="0.001"/>
+</testsuite>

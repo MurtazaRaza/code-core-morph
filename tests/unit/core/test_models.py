@@ -89,7 +89,7 @@ def test_edit_batch_parses_each_op() -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {"edits": [], "summary": "s"},
+        {"summary": "s"},
         {"edits": [{"op": "rename", "path": "a"}], "summary": "s"},
         {"edits": [{"op": "replace", "path": "a", "search": "", "replace": "y"}], "summary": "s"},
         {"edits": [{"op": "delete", "path": "../a"}], "summary": "s"},
@@ -100,6 +100,13 @@ def test_edit_batch_parses_each_op() -> None:
 def test_edit_batch_rejects(payload: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         EditBatch.model_validate(payload)
+
+
+def test_an_empty_edit_batch_says_the_unit_is_done() -> None:
+    # The agent judged what is left fine as it is (D-64); it is verified like any other.
+    batch = EditBatch.model_validate({"edits": [], "summary": "nothing safe to change"})
+    assert batch.edits == []
+    assert batch.paths == []
 
 
 def test_models_are_immutable() -> None:

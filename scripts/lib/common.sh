@@ -208,6 +208,18 @@ ccm_manifest_row() {
         "the manifest has no pinned download of $2 for $CCM_PLATFORM; install $2 yourself"
 }
 
+# ccm_has_row GROUP TOOL: whether the manifest pins a download of TOOL for this platform (a
+# tool its #!platforms line leaves out has none).
+ccm_has_row() {
+    while IFS='|' read -r _g _t _v _p _rest || [ -n "$_g" ]; do
+        case $_g in '' | '#'*) continue ;; esac
+        if [ "$_g" = "$1" ] && [ "$_t" = "$2" ] && { [ "$_p" = "$CCM_PLATFORM" ] || [ "$_p" = any ]; }; then
+            return 0
+        fi
+    done <"$CCM_MANIFEST"
+    return 1
+}
+
 # Exit 3 unless a downloader (not needed with --offline), a SHA-256 tool and tar are available.
 ccm_require_download_tools() {
     if [ -z "${CCM_OFFLINE:-}" ] && ! ccm_have curl && ! ccm_have wget; then

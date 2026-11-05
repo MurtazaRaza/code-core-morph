@@ -1,0 +1,22 @@
+id: use_lambdas
+language: java
+kind: api_preserving
+description: >-
+  Replace anonymous classes that implement a functional interface (one abstract method:
+  Runnable, Comparator, Callable, listeners) with lambdas or method references, where the
+  meaning stays the same.
+applies_to: {min_target_standard: java8}
+detector:
+  type: pattern
+  patterns: ['\bnew\s+[\w.]+\s*(<[^;{}()]*>)?\s*\(\s*\)\s*\{']   # new Interface<...>() {
+codemods:
+  - tool: openrewrite
+    checks:
+      - org.openrewrite.staticanalysis.UseLambdaForFunctionalInterface
+      - org.openrewrite.staticanalysis.LambdaBlockToExpression
+llm:
+  guidance: guidance/use_lambdas.md
+  examples: examples/use_lambdas
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # anonymous classes that must stay

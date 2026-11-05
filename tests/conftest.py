@@ -120,6 +120,16 @@ def rust_toolchain_env() -> Path:
     return env
 
 
+@pytest.fixture
+def java_toolchain_env() -> Path:
+    """The installed native Java toolchain's environment file (D-63); skips when there is
+    none."""
+    env = REAL_HOME / "toolchains" / "java.env"
+    if not env.is_file():
+        pytest.skip(f"no native Java toolchain at {env}; run: codecoremorph toolchain install java")
+    return env
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--record-cassettes",

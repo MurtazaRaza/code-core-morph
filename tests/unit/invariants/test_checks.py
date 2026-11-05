@@ -346,6 +346,63 @@ def test_cargo_build_commands() -> None:
     assert "lib.rs" not in result.message  # the manifest patterns only apply to Cargo.toml
 
 
+MAVEN_PATCH = """\
+diff --git a/pom.xml b/pom.xml
+--- a/pom.xml
++++ b/pom.xml
+@@ -10,6 +10,22 @@
+   <build>
+     <plugins>
++      <!-- <artifactId>maven-antrun-plugin</artifactId> in a comment doesn't count -->
++      <plugin>
++        <artifactId>exec-maven-plugin</artifactId>
++        <extensions>true</extensions>
++      </plugin>
++      <plugin>
++        <artifactId>maven-compiler-plugin</artifactId>
++        <version>3.13.0</version>
++        <configuration>
++          <annotationProcessorPaths><path/></annotationProcessorPaths>
++        </configuration>
++      </plugin>
+     </plugins>
+   </build>
++  <repositories><repository><url>https://example.org/m2</url></repository></repositories>
+ </project>
+diff --git a/.mvn/extensions.xml b/.mvn/extensions.xml
+new file mode 100644
+--- /dev/null
++++ b/.mvn/extensions.xml
+@@ -0,0 +1 @@
++<extensions><extension><artifactId>spy</artifactId></extension></extensions>
+diff --git a/.mvn/jvm.config b/.mvn/jvm.config
+--- a/.mvn/jvm.config
++++ b/.mvn/jvm.config
+@@ -1 +1 @@
+--Xmx1g
++-javaagent:/tmp/agent.jar
+"""
+
+
+def test_maven_build_commands() -> None:
+    """A Java run (D-63): plugins that run commands, build extensions, repositories,
+    annotation processors and Maven's own settings, which run while the POM is read or the
+    project builds. Raising a plugin's version is not one."""
+    result = check_build_commands(patch_lines(MAVEN_PATCH))
+    assert not result.passed
+    for found in (
+        "exec-maven-plugin in pom.xml",
+        "a build extension in pom.xml",
+        "an annotation processor in pom.xml",
+        "a repository in pom.xml",
+        "Maven core extensions (.mvn/extensions.xml)",
+        "Maven settings in .mvn/jvm.config",
+    ):
+        assert found in result.message
+    assert "antrun" not in result.message
+    assert "maven-compiler-plugin" not in result.message
+
+
 def test_the_w_flag_is_a_suppression_in_cmake_only() -> None:
     found = check_suppressions(patch_lines(CMAKE_PATCH), allowed=False)
     assert not found.passed

@@ -394,6 +394,8 @@ def test_toolchain_env_of_the_image_reaches_every_command(tmp_path: Path) -> Non
     environment = client.api.execs["exec0"]["environment"]
     assert environment["CC"] == "gcc"  # the command's own variables win
     assert environment["PATH"].startswith("/opt/llvm/bin:")
+    # What an adapter reads to pick a tool per command (D-63): the file's variables, not PATH.
+    assert executor.toolchain_env == {"CC": "/opt/llvm/bin/clang"}
     executor.stop()
 
 

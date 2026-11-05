@@ -23,7 +23,11 @@ Languages:
         rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
         ports; rustup and cargo download Rust and cbindgen themselves, so
         --offline doesn't apply
-  all   every available language (cpp and rust)
+  java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
+        Spoon jar, and a Maven repository with OpenRewrite and the plugins
+        builds run offline; Maven downloads those itself, so --offline
+        doesn't apply
+  all   every available language (cpp, rust and java)
 
 Options:
   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)
@@ -437,6 +441,172 @@ install_rust() {
     rust_write_env
 }
 
+# The Maven artifacts the Java adapter runs offline (D-63): OpenRewrite's plugin and recipes, and
+# the dependency plugin of its dependency step. Maven downloads them, checking each
+# against the repository's checksums (-C), into toolchains/java/m2, which builds chain behind
+# their own repository (maven.repo.local.tail). java.env names them for the adapter.
+REWRITE_PLUGIN=org.openrewrite.maven:rewrite-maven-plugin:6.46.1
+REWRITE_RECIPES=org.openrewrite.recipe:rewrite-migrate-java:3.42.1,org.openrewrite.recipe:rewrite-static-analysis:2.41.1
+DEPENDENCY_PLUGIN=org.apache.maven.plugins:maven-dependency-plugin:3.11.0
+JAVA_STANDARDS="8 11 17 21 25"
+
+# Installs the JDK of each standard the manifest pins for this platform. Sets JDK_LINES (the
+# CODECOREMORPH_JDK_N lines of java.env), JDK_IDS, JDK_NEWEST (the newest JDK's home) and
+# JDK_NEWEST_BIN.
+java_install_jdks() {
+    JDK_LINES=""
+    JDK_IDS=""
+    for _n in $JAVA_STANDARDS; do
+        if ! ccm_has_row java "jdk$_n"; then
+            ccm_warn "Temurin publishes no JDK $_n for $CCM_PLATFORM; projects at Java $_n" \
+                "build in Docker (sandbox.mode: docker)"
+            continue
+        fi
+        ccm_install_tool java "jdk$_n"
+        _home=${CCM_TOOL_BIN_DIR%/bin}
+        JDK_LINES="$JDK_LINES
+CODECOREMORPH_JDK_$_n=$(ccm_env_path "$_home")"
+        JDK_IDS="$JDK_IDS jdk$_n $CCM_ROW_VERSION,"
+        JDK_NEWEST=$_home
+        JDK_NEWEST_BIN=$CCM_TOOL_BIN_DIR
+    done
+    JDK_IDS=${JDK_IDS%,}
+}
+
+# Writes CodeCoreMorph's Maven settings (builds use them instead of the user's
+# ~/.m2/settings.xml, its mirrors and credentials) and fills the tools repository, unless it
+# already holds the same artifacts. Sets MAVEN_SETTINGS and MAVEN_TOOLS_REPO.
+java_fill_repository() {
+    _java_root="$CCM_HOME/toolchains/java"
+    MAVEN_SETTINGS="$_java_root/settings.xml"
+    MAVEN_TOOLS_REPO="$_java_root/m2"
+    _stamp="maven $MAVEN_VERSION $REWRITE_PLUGIN $REWRITE_RECIPES $DEPENDENCY_PLUGIN"
+    if [ "$CCM_FORCE" != 1 ] && [ -f "$MAVEN_TOOLS_REPO/.built" ]; then
+        _have=""
+        read -r _have <"$MAVEN_TOOLS_REPO/.built" || true
+        if [ "${_have%"$_ccm_cr"}" = "$_stamp" ]; then
+            ccm_log "the Maven tools repository is already filled in $MAVEN_TOOLS_REPO"
+            return 0
+        fi
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would download OpenRewrite and the dependency step's plugins with Maven into" \
+            "$MAVEN_TOOLS_REPO"
+        return 0
+    fi
+    { mkdir -p "$_java_root" && : >"$_java_root/m2.log"; } 2>/dev/null ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not create $_java_root"
+    if ! {
+        printf '<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">\n'
+        printf '  <!-- CodeCoreMorph builds use these settings instead of ~/.m2/settings.xml.\n'
+        printf '       Written by install-toolchain. Do not edit. -->\n'
+        printf '  <interactiveMode>false</interactiveMode>\n'
+        printf '</settings>\n'
+    } >"$MAVEN_SETTINGS.tmp" || ! mv -f "$MAVEN_SETTINGS.tmp" "$MAVEN_SETTINGS"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $MAVEN_SETTINGS"
+    fi
+    _tmp="$_java_root/.m2-$$"
+    rm -rf "$_tmp"
+    ccm_log "downloading OpenRewrite and the dependency step's plugins with Maven (log:" \
+        "$_java_root/m2.log)"
+    _mvn="$MAVEN_BIN/mvn"
+    case $CCM_PLATFORM in windows-*) _mvn="$MAVEN_BIN/mvn.cmd" ;; esac
+    # shellcheck disable=SC2046 # one artifact per word
+    for _artifact in "$REWRITE_PLUGIN" $(printf '%s\n' "$REWRITE_RECIPES" | tr ',' ' ') \
+        "$DEPENDENCY_PLUGIN"; do
+        # Outside any project, so no POM's build extensions load.
+        if ! (cd "$_java_root" && JAVA_HOME="$(ccm_native_path "$JDK_NEWEST")" "$_mvn" -B -ntp -C \
+            -s "$(ccm_native_path "$MAVEN_SETTINGS")" \
+            "-Dmaven.repo.local=$(ccm_native_path "$_tmp")" "$DEPENDENCY_PLUGIN:get" \
+            "-Dartifact=$_artifact") >>"$_java_root/m2.log" 2>&1; then
+            rm -rf "$_tmp"
+            tail -n 20 "$_java_root/m2.log" >&2
+            ccm_die "$CCM_EXIT_DOWNLOAD" "Maven could not download $_artifact; the full log is" \
+                "$_java_root/m2.log"
+        fi
+    done
+    printf '%s\n' "$_stamp" >"$_tmp/.built"
+    rm -rf "$MAVEN_TOOLS_REPO"
+    mv "$_tmp" "$MAVEN_TOOLS_REPO" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not move the Maven repository into $MAVEN_TOOLS_REPO"
+    ccm_log "filled the Maven tools repository in $MAVEN_TOOLS_REPO"
+}
+
+java_write_env() {
+    _env="$CCM_HOME/toolchains/java.env"
+    _activate="$CCM_HOME/toolchains/activate-java.sh"
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would write $_env and $_activate"
+        return 0
+    fi
+    _sep=:
+    case $CCM_PLATFORM in windows-*) _sep=';' ;; esac
+    _prepend="$(ccm_env_path "$MAVEN_BIN")$_sep$(ccm_env_path "$JDK_NEWEST_BIN")"
+    if ! {
+        printf '# CodeCoreMorph Java toolchain, written by install-toolchain. Do not edit.\n'
+        printf '#%s, maven %s, spoon %s\n' "$JDK_IDS" "$MAVEN_VERSION" "$SPOON_VERSION"
+        printf 'PATH_PREPEND=%s\n' "$_prepend"
+        # The newest JDK; the Java adapter sets JAVA_HOME to the build standard's own.
+        printf 'JAVA_HOME=%s\n' "$(ccm_env_path "$JDK_NEWEST")"
+        printf '%s\n' "${JDK_LINES#?}"
+        # The adapter starts Maven's launcher on the build standard's JDK itself, not mvn.
+        printf 'CODECOREMORPH_MAVEN_HOME=%s\n' "$(ccm_env_path "${MAVEN_BIN%/bin}")"
+        printf 'CODECOREMORPH_MAVEN_LAUNCHER=%s\n' "$(ccm_env_path "$MAVEN_LAUNCHER")"
+        printf 'CODECOREMORPH_MAVEN_SETTINGS=%s\n' "$(ccm_env_path "$MAVEN_SETTINGS")"
+        printf 'CODECOREMORPH_MAVEN_TOOLS_REPO=%s\n' "$(ccm_env_path "$MAVEN_TOOLS_REPO")"
+        printf 'CODECOREMORPH_MAVEN_DEPENDENCY_PLUGIN=%s\n' "$DEPENDENCY_PLUGIN"
+        printf 'CODECOREMORPH_REWRITE_PLUGIN=%s\n' "$REWRITE_PLUGIN"
+        printf 'CODECOREMORPH_REWRITE_RECIPES=%s\n' "$REWRITE_RECIPES"
+        printf 'CODECOREMORPH_SPOON_JAR=%s\n' "$(ccm_env_path "$SPOON_JAR")"
+    } >"$_env.tmp" || ! mv -f "$_env.tmp" "$_env"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_env"
+    fi
+    if ! {
+        printf '# Use the CodeCoreMorph Java toolchain in this shell:  . "%s"\n' "$_activate"
+        # shellcheck disable=SC2016 # $PATH expands when the activation script runs
+        printf 'PATH="%s:%s:$PATH"\n' "$MAVEN_BIN" "$JDK_NEWEST_BIN"
+        printf 'JAVA_HOME="%s"\n' "$(ccm_native_path "$JDK_NEWEST")"
+        printf 'export PATH JAVA_HOME\n'
+    } >"$_activate.tmp" || ! mv -f "$_activate.tmp" "$_activate"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_activate"
+    fi
+    case $CCM_PLATFORM in
+        windows-*)
+            # Keep the cmd.exe activation script in step (install-toolchain.bat writes the same).
+            _bat="$CCM_HOME/toolchains/activate-java.bat"
+            if ! {
+                printf '@echo off\r\n'
+                printf 'rem Use the CodeCoreMorph Java toolchain in this cmd.exe window:  call "%s"\r\n' \
+                    "$(ccm_env_path "$_bat")"
+                printf 'set "PATH=%s;%%PATH%%"\r\n' "$_prepend"
+                printf 'set "JAVA_HOME=%s"\r\n' "$(ccm_env_path "$JDK_NEWEST")"
+            } >"$_bat.tmp" || ! mv -f "$_bat.tmp" "$_bat"; then
+                ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_bat"
+            fi
+            ;;
+    esac
+    ccm_log "wrote $_env"
+    ccm_log "to use the toolchain in your own shell, run: . \"$_activate\""
+}
+
+install_java() {
+    [ -z "$CCM_OFFLINE" ] || ccm_die "$CCM_EXIT_USAGE" "--offline doesn't apply to java: Maven" \
+        "downloads OpenRewrite and the plugins builds run offline itself"
+    java_install_jdks
+    ccm_install_tool java maven
+    MAVEN_VERSION=$CCM_ROW_VERSION
+    MAVEN_BIN=$CCM_TOOL_BIN_DIR
+    MAVEN_LAUNCHER=""
+    for _jar in "${MAVEN_BIN%/bin}"/boot/plexus-classworlds-*.jar; do
+        MAVEN_LAUNCHER=$_jar
+    done
+    ccm_install_tool java spoon
+    SPOON_VERSION=$CCM_ROW_VERSION
+    SPOON_JAR="$CCM_TOOL_DIR/${CCM_ROW_URL##*/}"
+    java_fill_repository
+    java_write_env
+}
+
 ccm_parse_args "$@"
 if [ "$CCM_HELP" = 1 ]; then
     usage
@@ -444,19 +614,25 @@ if [ "$CCM_HELP" = 1 ]; then
 fi
 # shellcheck disable=SC2086 # split the positional arguments into words
 set -- $CCM_POSITIONAL
-[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp, rust or all (see --help)"
+[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp, rust, java or all (see" \
+    "--help)"
 language=$1
 case $language in
-    cpp | rust | all) ;;
-    java | csharp)
+    cpp | rust | java | all) ;;
+    csharp)
         ccm_die "$CCM_EXIT_USAGE" "the $language toolchain is not available yet; available:" \
-            "cpp, rust"
+            "cpp, rust, java"
         ;;
-    *) ccm_die "$CCM_EXIT_USAGE" "unknown language '$language'; available: cpp, rust, all" ;;
+    *) ccm_die "$CCM_EXIT_USAGE" "unknown language '$language'; available: cpp, rust, java, all" ;;
 esac
 ccm_setup
 case $language in
     cpp) install_cpp ;;
-    *) install_rust ;; # rust and all: the Rust toolchain includes the C++ one
+    rust) install_rust ;; # the Rust toolchain includes the C++ one
+    java) install_java ;;
+    *)
+        install_rust
+        install_java
+        ;;
 esac
 ccm_log "done"

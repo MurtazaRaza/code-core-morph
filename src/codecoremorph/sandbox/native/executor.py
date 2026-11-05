@@ -21,6 +21,7 @@ from codecoremorph.sandbox.executor import (
     finish_result,
 )
 from codecoremorph.sandbox.native.env import (
+    PATH_PREPEND,
     apply_toolchain_env,
     load_toolchain_env,
     merge_environment,
@@ -63,6 +64,11 @@ class NativeExecutor:
     def _compute_base_env(self) -> dict[str, str]:
         base = scrubbed_environment(self._host_env, self._allowlist)
         return apply_toolchain_env(base, load_toolchain_env(self._toolchain_env_file))
+
+    @property
+    def toolchain_env(self) -> dict[str, str]:
+        values = load_toolchain_env(self._toolchain_env_file)
+        return {k: v for k, v in values.items() if k not in (PATH_PREPEND, "PATH")}
 
     @property
     def base_env(self) -> dict[str, str]:

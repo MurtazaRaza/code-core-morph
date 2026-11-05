@@ -41,6 +41,15 @@ up to C++23, for CMake projects.
   (`templates/plugin/`).
 - Documentation site, with generated configuration and CLI references.
 
+- Java version upgrades for Maven projects (D-63, D-64), from Java 8, 11, 17 or 21 up to Java
+  25: a Temurin JDK per standard (`codecoremorph toolchain install java`, or
+  `scripts/build-image java`), builds and Surefire tests (JUnit 3, 4 and 5) on the build
+  standard's JDK, a Spoon index, and the `java` rule pack: `bump_java_version` (OpenRewrite's
+  migration recipe, then the agent) and `use_diamond_operator`, `use_lambdas`,
+  `use_try_with_resources`, `use_var`, `use_switch_expressions` and `use_records`.
+- An agent may submit no edits when what is left should stay as it is; the unit is verified as
+  it is.
+
 ### Security
 
 - A security review against the threat model (D-52): path fuzzing, a prompt-injection fixture

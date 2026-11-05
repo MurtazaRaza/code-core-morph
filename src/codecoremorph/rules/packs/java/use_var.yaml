@@ -1,0 +1,19 @@
+id: use_var
+language: java
+kind: api_preserving
+description: >-
+  Declare local variables with var where the initializer names the type (a constructor call,
+  a cast, a literal), so the code says each type once. Fields, parameters and return types
+  keep their types.
+applies_to: {min_target_standard: java11}
+detector:
+  type: pattern
+  patterns: ['^[ \t]*(final[ \t]+)?[A-Z][\w.]*(<[^;=()]*>)?[ \t]+\w+[ \t]*=[ \t]*new\b']   # T x = new ...
+codemods:
+  - tool: openrewrite
+    checks: [org.openrewrite.java.migrate.lang.UseVar]
+llm:
+  guidance: guidance/use_var.md
+  examples: examples/use_var
+postconditions:
+  - {type: codemod_clean, severity: error}

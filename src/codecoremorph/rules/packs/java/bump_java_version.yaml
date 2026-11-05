@@ -1,0 +1,39 @@
+id: bump_java_version
+language: java
+kind: project
+description: >-
+  Raise the Java level in the POMs to the migration's target, then fix the code that no longer
+  compiles or behaves the same on the target's JDK: the Java EE and CORBA modules removed in
+  Java 11, the JDK internals hidden since Java 9, removed Thread and finalization methods,
+  Nashorn and RMI activation removed by Java 17, and the library changes after that.
+# Runs first, automatically, whenever the target standard is newer than the source (D-38).
+applies_to: {standard_bump: true, min_target_standard: java11}
+detector:
+  type: pattern
+  # Only what no dependency brings back: the Java EE packages (javax.xml.bind and the like)
+  # keep their names when a POM adds the API's own artifact, so they are not sites.
+  patterns:
+    - {pattern: '\bsun\.misc\.(BASE64Encoder|BASE64Decoder|CharacterEncoder|CharacterDecoder)\b', min_target_standard: java11}
+    - {pattern: '\bsun\.reflect\.Reflection\b', min_target_standard: java11}
+    - {pattern: '\bcom\.sun\.image\.codec\.jpeg\b', min_target_standard: java11}
+    - {pattern: '\brunFinalizersOnExit\s*\(', min_target_standard: java11}
+    - {pattern: '\borg\.omg\.(CORBA|CosNaming|PortableServer)\b', min_target_standard: java11}
+    - {pattern: '\bcom\.sun\.javadoc\b', min_target_standard: java17}
+    - {pattern: '\bjdk\.nashorn\b', min_target_standard: java17}
+    - {pattern: '\bjava\.rmi\.activation\b', min_target_standard: java17}
+codemods:
+  # OpenRewrite's migration recipe for the target (each includes the ones before it), run on
+  # the source's JDK, which still has the APIs it replaces; then the POMs' Java level.
+  - tool: openrewrite
+    options:
+      recipe_for_java11: org.openrewrite.java.migrate.Java8toJava11
+      recipe_for_java17: org.openrewrite.java.migrate.UpgradeToJava17
+      recipe_for_java21: org.openrewrite.java.migrate.UpgradeToJava21
+      recipe_for_java25: org.openrewrite.java.migrate.UpgradeToJava25
+  - tool: maven-java-version               # maven.compiler.*, java.version, the compiler plugin
+llm:
+  guidance: guidance/bump_java_version.md
+  examples: examples/bump_java_version
+postconditions:
+  - {type: builds_cleanly, severity: error}
+  - {type: detector_empty, severity: error}

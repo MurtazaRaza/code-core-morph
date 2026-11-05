@@ -40,7 +40,10 @@ Edit = Annotated[ReplaceEdit | CreateEdit | DeleteEdit, Field(discriminator="op"
 class EditBatch(CoreModel):
     """One ``submit_edits`` call: every edit applies, or none does (FR-3.3)."""
 
-    edits: list[Edit] = Field(min_length=1)
+    # Empty when the agent judges the unit done as it is: what is left is a warning-level site
+    # it should keep, or guidance with nothing safe to change. It is verified like any other
+    # submission, so it succeeds only if the unit already holds (D-64).
+    edits: list[Edit]
     summary: str = Field(min_length=1)
     review_notes: list[str] = Field(default_factory=list[str])
 

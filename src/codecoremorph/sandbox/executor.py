@@ -49,6 +49,13 @@ class Executor(Protocol):
 
     def set_network(self, enabled: bool) -> None: ...
 
+    @property
+    def toolchain_env(self) -> dict[str, str]:
+        """The variables the toolchain file (``toolchains/<lang>.env``, the image's own in
+        Docker) sets for every command, other than ``PATH``: where an adapter finds the tools
+        it picks per command, such as the JDK of a build's standard (D-63)."""
+        ...
+
     def to_sandbox_path(self, host_path: Path) -> str: ...
 
     def stop(self) -> None: ...

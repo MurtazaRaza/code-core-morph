@@ -1,0 +1,51 @@
+$ /opt/codecoremorph/toolchains/jdk21/21.0.13+9/jdk-21.0.13+9/bin/java -classpath /opt/codecoremorph/toolchains/maven/3.9.16/apache-maven-3.9.16/boot/plexus-classworlds-2.11.0.jar -Dclassworlds.conf=/opt/codecoremorph/toolchains/maven/3.9.16/apache-maven-3.9.16/bin/m2.conf -Dmaven.home=/opt/codecoremorph/toolchains/maven/3.9.16/apache-maven-3.9.16 -Dlibrary.jansi.path=/opt/codecoremorph/toolchains/maven/3.9.16/apache-maven-3.9.16/lib/jansi-native -Dmaven.multiModuleProjectDirectory=/cache/maven/project org.codehaus.plexus.classworlds.launcher.Launcher --batch-mode --no-transfer-progress -Dstyle.color=never --settings /opt/codecoremorph/toolchains/java/settings.xml -Dmaven.repo.local=/cache/maven/repository -Dmaven.repo.local.tail=/opt/codecoremorph/toolchains/java/m2 --file /cache/maven/project/pom.xml --offline test-compile
+cwd: /cache/maven/project
+finished: 2026-11-05T15:04:15.972496+00:00
+exit code: 1
+duration: 3.547 s
+
+--- stdout ---
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -------------------------< org.example:spike >--------------------------
+[INFO] Building spike 1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ spike ---
+[INFO] skip non existing resourceDirectory /cache/maven/project/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ spike ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 1 source file with javac [debug target 21] to target/classes
+[INFO] /cache/maven/project/src/main/java/org/example/Codec.java: /cache/maven/project/src/main/java/org/example/Codec.java uses or overrides a deprecated API.
+[INFO] /cache/maven/project/src/main/java/org/example/Codec.java: Recompile with -Xlint:deprecation for details.
+[INFO] /cache/maven/project/src/main/java/org/example/Codec.java: /cache/maven/project/src/main/java/org/example/Codec.java uses unchecked or unsafe operations.
+[INFO] /cache/maven/project/src/main/java/org/example/Codec.java: Recompile with -Xlint:unchecked for details.
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /cache/maven/project/src/main/java/org/example/Codec.java:[23,16] cannot find symbol
+  symbol:   variable Base64
+  location: class org.example.Codec
+[INFO] 1 error
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.744 s
+[INFO] Finished at: 2026-11-05T15:04:15Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.15.0:compile (default-compile) on project spike: Compilation failure
+[ERROR] /cache/maven/project/src/main/java/org/example/Codec.java:[23,16] cannot find symbol
+[ERROR]   symbol:   variable Base64
+[ERROR]   location: class org.example.Codec
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+
+--- stderr ---

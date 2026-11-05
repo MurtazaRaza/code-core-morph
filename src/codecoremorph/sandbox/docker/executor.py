@@ -248,6 +248,10 @@ class DockerExecutor:
         """Variables every command gets: the toolchain environment of the image."""
         return dict(self._command_env)
 
+    @property
+    def toolchain_env(self) -> dict[str, str]:
+        return {k: v for k, v in self._command_env.items() if k != "PATH"}
+
     def stop(self, *, remove_volumes: bool = True) -> None:
         """Remove the container, network and (by default) the build volume. Idempotent."""
         client = self._client

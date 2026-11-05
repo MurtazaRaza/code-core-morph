@@ -8,6 +8,14 @@ rem The Rust release rustup installs, and the cbindgen release cargo builds (D-5
 rem cargo verify what they download themselves (SPEC 7.15 rule 1).
 set "RUST_VERSION=1.99.1"
 set "CBINDGEN_VERSION=0.29.4"
+rem The Maven artifacts the Java adapter runs offline (D-63): OpenRewrite's plugin and recipes,
+rem and the dependency plugin of its dependency step. Maven downloads them, checking
+rem each against the repository's checksums (-C), into toolchains\java\m2, which builds chain
+rem behind their own repository (maven.repo.local.tail). java.env names them for the adapter.
+set "REWRITE_PLUGIN=org.openrewrite.maven:rewrite-maven-plugin:6.46.1"
+set "REWRITE_RECIPES=org.openrewrite.recipe:rewrite-migrate-java:3.42.1,org.openrewrite.recipe:rewrite-static-analysis:2.41.1"
+set "DEPENDENCY_PLUGIN=org.apache.maven.plugins:maven-dependency-plugin:3.11.0"
+set "JAVA_STANDARDS=8 11 17 21 25"
 
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
@@ -18,18 +26,23 @@ for %%a in (%CCM_POSITIONAL%) do call :count_language %%a
 if not "%LANGUAGE_COUNT%"=="1" goto expected_one_language
 if "%LANGUAGE%"=="cpp" goto language_ok
 if "%LANGUAGE%"=="rust" goto language_ok
+if "%LANGUAGE%"=="java" goto language_ok
 if "%LANGUAGE%"=="all" goto language_ok
-if "%LANGUAGE%"=="java" goto language_later
 if "%LANGUAGE%"=="csharp" goto language_later
-call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, rust, all"
+call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, rust, java, all"
 exit /b 2
 
 :language_ok
 call "%CCM_LIB%" :setup
 if errorlevel 1 exit /b %errorlevel%
 if "%LANGUAGE%"=="cpp" goto language_cpp
+if "%LANGUAGE%"=="java" goto language_java
 rem rust and all: the Rust toolchain includes the C++ one.
 call :install_rust
+if errorlevel 1 exit /b %errorlevel%
+if not "%LANGUAGE%"=="all" goto language_done
+:language_java
+call :install_java
 if errorlevel 1 exit /b %errorlevel%
 goto language_done
 :language_cpp
@@ -382,12 +395,172 @@ call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
 exit /b 1
 
 
+:install_java
+if defined CCM_OFFLINE goto install_java_offline
+set "JDK_IDS="
+rem The loop's calls stop at the first failure, so start from errorlevel 0.
+ver >nul
+for %%n in (%JAVA_STANDARDS%) do call :java_jdk %%n
+if errorlevel 1 exit /b %errorlevel%
+if not defined JDK_NEWEST exit /b 1
+set "JDK_IDS=%JDK_IDS:~0,-1%"
+call "%CCM_LIB%" :install_tool java maven
+if errorlevel 1 exit /b %errorlevel%
+set "MAVEN_VERSION=%CCM_ROW_VERSION%"
+set "MAVEN_BIN=%CCM_TOOL_BIN_DIR%"
+set "MAVEN_HOME_DIR=%CCM_TOOL_BIN_DIR:~0,-4%"
+set "MAVEN_LAUNCHER="
+for %%f in ("%MAVEN_HOME_DIR%\boot\plexus-classworlds-*.jar") do set "MAVEN_LAUNCHER=%%~ff"
+call "%CCM_LIB%" :install_tool java spoon
+if errorlevel 1 exit /b %errorlevel%
+set "SPOON_VERSION=%CCM_ROW_VERSION%"
+for %%u in ("%CCM_ROW_URL%") do set "SPOON_JAR=%CCM_TOOL_DIR%\%%~nxu"
+call :java_fill_repository
+if errorlevel 1 exit /b %errorlevel%
+call :java_write_env
+exit /b %errorlevel%
+:install_java_offline
+call "%CCM_LIB%" :die 2 "--offline doesn't apply to java: Maven downloads OpenRewrite and the plugins builds run offline itself"
+exit /b 2
+
+
+rem :java_jdk N  -- install the JDK of Java standard N. Sets JDK_HOME_N, JDK_NEWEST and
+rem JDK_NEWEST_BIN, and adds it to JDK_IDS. Every JDK has a Windows build.
+:java_jdk
+if errorlevel 1 exit /b %errorlevel%
+call "%CCM_LIB%" :install_tool java jdk%~1
+if errorlevel 1 exit /b %errorlevel%
+set "JDK_HOME_%~1=%CCM_TOOL_BIN_DIR:~0,-4%"
+set "JDK_NEWEST=%CCM_TOOL_BIN_DIR:~0,-4%"
+set "JDK_NEWEST_BIN=%CCM_TOOL_BIN_DIR%"
+set "JDK_IDS=%JDK_IDS% jdk%~1 %CCM_ROW_VERSION%,"
+exit /b 0
+
+
+rem :java_fill_repository  -- write CodeCoreMorph's Maven settings (builds use them instead of
+rem the user's ~/.m2/settings.xml, its mirrors and credentials) and fill the tools repository,
+rem unless it already holds the same artifacts. Sets MAVEN_SETTINGS and MAVEN_TOOLS_REPO.
+:java_fill_repository
+set "JAVA_ROOT=%CCM_HOME%\toolchains\java"
+set "MAVEN_SETTINGS=%JAVA_ROOT%\settings.xml"
+set "MAVEN_TOOLS_REPO=%JAVA_ROOT%\m2"
+set "M2_LOG=%JAVA_ROOT%\m2.log"
+set "M2_STAMP=maven %MAVEN_VERSION% %REWRITE_PLUGIN% %REWRITE_RECIPES% %DEPENDENCY_PLUGIN%"
+if "%CCM_FORCE%"=="1" goto java_fill_needed
+if not exist "%MAVEN_TOOLS_REPO%\.built" goto java_fill_needed
+set "M2_HAVE="
+for /f "usebackq delims=" %%m in ("%MAVEN_TOOLS_REPO%\.built") do if not defined M2_HAVE set "M2_HAVE=%%m"
+if not "%M2_HAVE%"=="%M2_STAMP%" goto java_fill_needed
+call "%CCM_LIB%" :log "the Maven tools repository is already filled in %MAVEN_TOOLS_REPO%"
+exit /b 0
+:java_fill_needed
+if not "%CCM_DRY_RUN%"=="1" goto java_fill_real
+call "%CCM_LIB%" :log "would download OpenRewrite and the dependency step's plugins with Maven into %MAVEN_TOOLS_REPO%"
+exit /b 0
+:java_fill_real
+if not exist "%JAVA_ROOT%" mkdir "%JAVA_ROOT%"
+if not exist "%JAVA_ROOT%" goto java_fill_mkdir_failed
+>"%MAVEN_SETTINGS%.tmp" echo(^<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"^>
+if errorlevel 1 goto java_settings_failed
+>>"%MAVEN_SETTINGS%.tmp" echo(  ^<!-- CodeCoreMorph builds use these settings instead of ~/.m2/settings.xml.
+>>"%MAVEN_SETTINGS%.tmp" echo(       Written by install-toolchain. Do not edit. --^>
+>>"%MAVEN_SETTINGS%.tmp" echo(  ^<interactiveMode^>false^</interactiveMode^>
+>>"%MAVEN_SETTINGS%.tmp" echo(^</settings^>
+move /y "%MAVEN_SETTINGS%.tmp" "%MAVEN_SETTINGS%" >nul
+if errorlevel 1 goto java_settings_failed
+set "M2_TMP=%JAVA_ROOT%\.m2-%RANDOM%"
+if exist "%M2_TMP%" rmdir /s /q "%M2_TMP%"
+type nul >"%M2_LOG%"
+call "%CCM_LIB%" :log "downloading OpenRewrite and the dependency step's plugins with Maven (log: %M2_LOG%)"
+ver >nul
+for %%a in (%REWRITE_PLUGIN% %REWRITE_RECIPES% %DEPENDENCY_PLUGIN%) do call :java_get %%a
+if errorlevel 1 exit /b %errorlevel%
+>"%M2_TMP%\.built" echo(%M2_STAMP%
+if exist "%MAVEN_TOOLS_REPO%" rmdir /s /q "%MAVEN_TOOLS_REPO%"
+move "%M2_TMP%" "%MAVEN_TOOLS_REPO%" >nul
+if errorlevel 1 goto java_fill_move_failed
+call "%CCM_LIB%" :log "filled the Maven tools repository in %MAVEN_TOOLS_REPO%"
+exit /b 0
+:java_fill_mkdir_failed
+call "%CCM_LIB%" :die 1 "could not create %JAVA_ROOT%"
+exit /b 1
+:java_settings_failed
+call "%CCM_LIB%" :die 1 "could not write %MAVEN_SETTINGS%"
+exit /b 1
+:java_fill_move_failed
+call "%CCM_LIB%" :die 1 "could not move the Maven repository into %MAVEN_TOOLS_REPO%"
+exit /b 1
+
+
+rem :java_get ARTIFACT  -- download ARTIFACT and its dependencies into M2_TMP, outside any
+rem project, so no POM's build extensions load.
+:java_get
+if errorlevel 1 exit /b %errorlevel%
+pushd "%JAVA_ROOT%"
+set "JAVA_HOME=%JDK_NEWEST%"
+call "%MAVEN_BIN%\mvn.cmd" -B -ntp -C -s "%MAVEN_SETTINGS%" "-Dmaven.repo.local=%M2_TMP%" "%DEPENDENCY_PLUGIN%:get" "-Dartifact=%~1" >>"%M2_LOG%" 2>&1
+set "M2_RESULT=%errorlevel%"
+popd
+if "%M2_RESULT%"=="0" exit /b 0
+if exist "%M2_TMP%" rmdir /s /q "%M2_TMP%"
+call "%CCM_LIB%" :die 1 "Maven could not download %~1; the full log is %M2_LOG%"
+exit /b 1
+
+
+:java_write_env
+set "ENV_FILE=%CCM_HOME%\toolchains\java.env"
+set "ACTIVATE=%CCM_HOME%\toolchains\activate-java.bat"
+if not "%CCM_DRY_RUN%"=="1" goto java_write_env_real
+call "%CCM_LIB%" :log "would write %ENV_FILE% and %ACTIVATE%"
+exit /b 0
+:java_write_env_real
+set "JAVA_PREPEND=%MAVEN_BIN%;%JDK_NEWEST_BIN%"
+>"%ENV_FILE%.tmp" echo(# CodeCoreMorph Java toolchain, written by install-toolchain. Do not edit.
+if errorlevel 1 goto java_write_env_failed
+>>"%ENV_FILE%.tmp" echo(#%JDK_IDS%, maven %MAVEN_VERSION%, spoon %SPOON_VERSION%
+>>"%ENV_FILE%.tmp" echo(PATH_PREPEND=%JAVA_PREPEND%
+rem The newest JDK; the Java adapter sets JAVA_HOME to the build standard's own.
+>>"%ENV_FILE%.tmp" echo(JAVA_HOME=%JDK_NEWEST%
+for %%n in (%JAVA_STANDARDS%) do call :java_env_jdk %%n
+rem The adapter starts Maven's launcher on the build standard's JDK itself, not mvn.
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_MAVEN_HOME=%MAVEN_HOME_DIR%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_MAVEN_LAUNCHER=%MAVEN_LAUNCHER%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_MAVEN_SETTINGS=%MAVEN_SETTINGS%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_MAVEN_TOOLS_REPO=%MAVEN_TOOLS_REPO%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_MAVEN_DEPENDENCY_PLUGIN=%DEPENDENCY_PLUGIN%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_REWRITE_PLUGIN=%REWRITE_PLUGIN%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_REWRITE_RECIPES=%REWRITE_RECIPES%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_SPOON_JAR=%SPOON_JAR%
+move /y "%ENV_FILE%.tmp" "%ENV_FILE%" >nul
+if errorlevel 1 goto java_write_env_failed
+>"%ACTIVATE%.tmp" echo(@echo off
+if errorlevel 1 goto java_write_activate_failed
+>>"%ACTIVATE%.tmp" echo(rem Use the CodeCoreMorph Java toolchain in this cmd.exe window:  call "%ACTIVATE%"
+>>"%ACTIVATE%.tmp" echo(set "PATH=%JAVA_PREPEND%;%%PATH%%"
+>>"%ACTIVATE%.tmp" echo(set "JAVA_HOME=%JDK_NEWEST%"
+move /y "%ACTIVATE%.tmp" "%ACTIVATE%" >nul
+if errorlevel 1 goto java_write_activate_failed
+call "%CCM_LIB%" :log "wrote %ENV_FILE%"
+echo(codecoremorph: to use the toolchain in your own shell, run: call "%ACTIVATE%"
+exit /b 0
+:java_write_env_failed
+call "%CCM_LIB%" :die 1 "could not write %ENV_FILE%"
+exit /b 1
+:java_env_jdk
+call set "JDK_LINE=%%JDK_HOME_%~1%%"
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_JDK_%~1=%JDK_LINE%
+exit /b 0
+:java_write_activate_failed
+call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
+exit /b 1
+
+
 :language_later
-call "%CCM_LIB%" :die 2 "the %LANGUAGE% toolchain is not available yet; available: cpp, rust"
+call "%CCM_LIB%" :die 2 "the %LANGUAGE% toolchain is not available yet; available: cpp, rust, java"
 exit /b 2
 
 :expected_one_language
-call "%CCM_LIB%" :die 2 "expected one language: cpp, rust or all (see --help)"
+call "%CCM_LIB%" :die 2 "expected one language: cpp, rust, java or all (see --help)"
 exit /b 2
 
 :usage
@@ -405,7 +578,11 @@ echo   rust  the cpp toolchain, plus Rust (through rustup, with clippy and
 echo         rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
 echo         ports; rustup and cargo download Rust and cbindgen themselves, so
 echo         --offline doesn't apply
-echo   all   every available language (cpp and rust)
+echo   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
+echo         Spoon jar, and a Maven repository with OpenRewrite and the plugins
+echo         builds run offline; Maven downloads those itself, so --offline
+echo         doesn't apply
+echo   all   every available language (cpp, rust and java)
 echo.
 echo Options:
 echo   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)

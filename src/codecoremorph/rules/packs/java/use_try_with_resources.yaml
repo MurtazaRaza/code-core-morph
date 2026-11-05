@@ -1,0 +1,19 @@
+id: use_try_with_resources
+language: java
+kind: api_preserving
+description: >-
+  Replace try/finally blocks that close a resource (a stream, reader, connection or other
+  AutoCloseable) with try-with-resources.
+applies_to: {min_target_standard: java8}
+detector:
+  type: pattern
+  patterns: ['\bfinally\s*\{[^{}]*\.close\s*\(\s*\)']   # finally { ... x.close(); }
+codemods:
+  - tool: openrewrite
+    checks: [org.openrewrite.staticanalysis.UseTryWithResources]
+llm:
+  guidance: guidance/use_try_with_resources.md
+  examples: examples/use_try_with_resources
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}

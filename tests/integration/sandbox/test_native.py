@@ -73,6 +73,8 @@ def test_toolchain_env_file_is_applied(tmp_path: Path) -> None:
     lines = result.stdout.splitlines()
     assert lines[0] == "clang++-pinned"
     assert lines[1].startswith(str(tools))
+    # What an adapter reads to pick a tool per command (D-63): the file's variables, not PATH.
+    assert ex.toolchain_env == {"CXX": "clang++-pinned"}
 
 
 def test_programs_are_resolved_with_the_commands_own_path(tmp_path: Path) -> None:

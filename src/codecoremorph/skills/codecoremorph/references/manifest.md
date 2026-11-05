@@ -20,14 +20,27 @@ migration:
   target: {language: cpp, standard: cpp20, rules: []}
 ```
 
+A Java manifest (Maven):
+
+```yaml
+version: "1.0"
+project:
+  name: my-service
+  source_dirs: ["."]
+  test_dirs: ["**/src/test"]         # every module's tests
+migration:
+  source: {language: java, standard: java8, build_system: maven}
+  target: {language: java, standard: java21, rules: [use_diamond_operator, use_lambdas]}
+```
+
 How to fill it in:
 
-- **Standards:** `cpp98`, `cpp03`, `cpp11`, `cpp14`, `cpp17`, `cpp20`, `cpp23`. Find the source standard in the build files (`CMAKE_CXX_STANDARD`, `set_property(... CXX_STANDARD ...)`, `-std=` flags). Confirm the target with the user.
+- **Standards:** C++ `cpp98`, `cpp03`, `cpp11`, `cpp14`, `cpp17`, `cpp20`, `cpp23`; Java `java8`, `java11`, `java17`, `java21`, `java25`. Find the source standard in the build files (`CMAKE_CXX_STANDARD`, `set_property(... CXX_STANDARD ...)`, `-std=` flags; the POMs' `maven.compiler.source`/`release`, `java.version` or the compiler plugin's settings, where `1.8` is `java8`). Confirm the target with the user.
 - **Directories:** look at the repository layout. Leave out vendored code with `project.exclude: ["third_party/**"]`.
 - **Rules:** `target.rules` lists the rules a full run applies, in order (`codecoremorph rules list`); the standard bump runs first automatically. A unit started with `unit start --rule` doesn't need its rule listed here.
 - **A port to Rust:** `target: {language: rust, standard: rust2021, rules: [port_module]}` (editions `rust2015` to `rust2024`) ports every module of the project's library targets to a Cargo workspace under `rust/`, one crate per target, leaves first; each module's header stays as a C++ façade, so the project's C++ tests keep checking it. `rules: [port_c_abi_module]` ports only the C++ behind the project's C headers (functions declared `extern "C"`) to crates. Any C++98 or newer source works; no standard bump runs first. It needs the Rust toolchain: `codecoremorph toolchain install rust`, or the Rust image (`scripts/build-image rust`).
 - **A whole port, to pure Rust:** `rules: [port_module, port_executable, port_tests, retire_cpp]` also turns each executable into a Rust program of the same name, translates the tests (paired in `rust/test-map.toml`) and retires the C++ and the CMake build, so a Cargo workspace is left. `migration.target.keep_source_api: true` keeps the public headers as a thin C++ library over the crates, with the C++ tests that use only them. A later run on a partly ported branch plans only what is left.
-- **Build:** only CMake is supported. `build.cmake.configure_args` passes extra configure flags, e.g. `["-DBUILD_TESTING=ON"]` when tests are off by default.
+- **Build:** CMake for C++, Maven for Java. `build.cmake.configure_args` passes extra configure flags, e.g. `["-DBUILD_TESTING=ON"]` when tests are off by default; `build.maven.configure_args` passes arguments to every Maven command, e.g. `["-Pci"]`. Java needs its toolchain: `codecoremorph toolchain install java`, or the Java image (`scripts/build-image java`).
 - **Sandbox:** `sandbox.mode: auto` uses Docker when it is available, otherwise native.
 - **Retries:** `guardrails.max_retry_budget` (default 3) is the number of retries after a unit's first attempt; `guardrails.max_edit_retries` (default 2) is the number of extra tries for rejected edits within an attempt.
 

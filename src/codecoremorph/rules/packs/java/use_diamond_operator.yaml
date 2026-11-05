@@ -1,0 +1,20 @@
+id: use_diamond_operator
+language: java
+kind: api_preserving
+description: >-
+  Replace explicit type arguments in constructor calls with the diamond operator
+  (new ArrayList<>() for new ArrayList<String>()) where the compiler infers the same types.
+applies_to: {min_target_standard: java8}
+detector:
+  type: pattern
+  # new Type<Args>(...), not new Type<>() and not an anonymous class (the lambda rule's)
+  patterns: ['\bnew\s+[\w.]+\s*<\s*[\w.?\[][^;(){}]*>\s*\((?![^()]*\)\s*\{)']
+codemods:
+  - tool: openrewrite
+    checks: [org.openrewrite.staticanalysis.UseDiamondOperator]
+llm:
+  guidance: guidance/use_diamond_operator.md
+  examples: examples/use_diamond_operator
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # what inference can't handle stays explicit

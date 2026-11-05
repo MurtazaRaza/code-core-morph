@@ -151,9 +151,10 @@ def test_bat_and_sh_print_the_same_help(name: str) -> None:
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        ([], "expected one language: cpp, rust or all"),
-        (["cpp", "all"], "expected one language: cpp, rust or all"),
-        (["java"], "the java toolchain is not available yet"),
+        ([], "expected one language: cpp, rust, java or all"),
+        (["cpp", "all"], "expected one language: cpp, rust, java or all"),
+        (["csharp"], "the csharp toolchain is not available yet"),
+        (["java", "--offline", "."], "--offline doesn't apply to java"),
         (["cobol"], "unknown language 'cobol'"),
     ],
 )

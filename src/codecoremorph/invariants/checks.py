@@ -72,6 +72,22 @@ CARGO_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
     "[build-dependencies]": re.compile(r"^\s*\[\s*(?:target\.[^\]]*\.)?build-dependencies\s*\]"),
     "a procedural macro crate": re.compile(r"^\s*proc-macro\s*=\s*true\b"),
 }
+# The same in a Maven POM (D-63): plugins that run commands or scripts or download tools, build
+# extensions (Maven loads them while it reads the POM, before the dependency step turns the
+# network off), new repositories, and annotation processors, which run inside javac.
+_PLUGIN = r"<artifactId>\s*{}\s*</artifactId>"
+MAVEN_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
+    "exec-maven-plugin": re.compile(_PLUGIN.format("exec-maven-plugin")),
+    "maven-antrun-plugin": re.compile(_PLUGIN.format("maven-antrun-plugin")),
+    "a Groovy plugin": re.compile(_PLUGIN.format(r"(?:gmavenplus-plugin|groovy-maven-plugin)")),
+    "frontend-maven-plugin": re.compile(_PLUGIN.format("frontend-maven-plugin")),
+    "download-maven-plugin": re.compile(_PLUGIN.format("download-maven-plugin")),
+    "a build extension": re.compile(r"<extensions>\s*true\s*</extensions>|<extension>"),
+    "a repository": re.compile(r"<(?:plugin)?[rR]epository>"),
+    "an annotation processor": re.compile(r"<annotationProcessor(?:Paths|s)>"),
+}
+# Maven's own settings in a project (.mvn/): the JVM options and command line of every build.
+MAVEN_SETTINGS_FILES = (".mvn/jvm.config", ".mvn/maven.config")
 
 # Symbols whose signature is an interface others depend on (I-6). Macros have no signature in
 # the index, and a typedef rewritten as an alias declaration keeps its signature.
@@ -316,12 +332,16 @@ def is_api_symbol(symbol: Symbol) -> bool:
 _SCOPE_KINDS = frozenset(
     {
         SymbolKind.CLASS,
+        SymbolKind.INTERFACE,
+        SymbolKind.RECORD,
+        SymbolKind.ANNOTATION,
         SymbolKind.STRUCT,
         SymbolKind.UNION,
         SymbolKind.ENUM,
         SymbolKind.CLASS_TEMPLATE,
     }
 )
+_SCOPE_SEPARATOR = re.compile(r"::|\.")  # C++ and Rust paths, Java names
 
 
 def private_scopes(symbols: Iterable[Symbol]) -> set[str]:
@@ -335,8 +355,9 @@ def private_scopes(symbols: Iterable[Symbol]) -> set[str]:
 
 
 def in_private_scope(symbol: Symbol, scopes: set[str]) -> bool:
-    parts = symbol.qualified_name.split("::")
-    return any("::".join(parts[:i]) in scopes for i in range(1, len(parts)))
+    name = symbol.qualified_name
+    ends = [m.start() for m in _SCOPE_SEPARATOR.finditer(name)]
+    return any(name[:end] in scopes for end in ends)
 
 
 def api_symbols(symbols: Iterable[Symbol]) -> list[Symbol]:
@@ -529,7 +550,9 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
 
     def count(pattern: re.Pattern[str], texts: list[str]) -> int:
         return sum(
-            len(pattern.findall(text)) for text in texts if not text.lstrip().startswith("#")
+            len(pattern.findall(text))
+            for text in texts
+            if not text.lstrip().startswith(("#", "<!--"))
         )
 
     added: list[str] = []
@@ -538,12 +561,19 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
         patterns = dict(BUILD_COMMANDS)
         if file_name == "Cargo.toml":
             patterns.update(CARGO_BUILD_COMMANDS)
+        if file_name == "pom.xml":
+            patterns.update(MAVEN_BUILD_COMMANDS)
         for name, pattern in patterns.items():
             plus = count(pattern, lines.added.get(path, []))
             if plus > count(pattern, lines.removed.get(path, [])):
                 added.append(f"{name} in {path}")
-        if file_name == "build.rs" and lines.added.get(path) and not lines.removed.get(path):
+        new_file = bool(lines.added.get(path)) and not lines.removed.get(path)
+        if file_name == "build.rs" and new_file:
             added.append(f"a new Cargo build script {path}")
+        if path.endswith(".mvn/extensions.xml") and new_file:
+            added.append(f"Maven core extensions ({path})")
+        if path.endswith(MAVEN_SETTINGS_FILES) and lines.added.get(path):
+            added.append(f"Maven settings in {path}")
     if not added:
         return _ok("I-12")
     return InvariantResult(

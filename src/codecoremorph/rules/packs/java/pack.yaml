@@ -1,0 +1,6 @@
+# The built-in Java rule pack (SPEC §11.2, D-63).
+name: java
+language: java
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
+version: "1"
+description: Java version upgrades from Java 8 up to Java 25, and modernization.
