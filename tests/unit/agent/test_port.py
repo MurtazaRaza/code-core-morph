@@ -117,7 +117,8 @@ class TargetAdapter(LanguageAdapter):
         )
 
     def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
-        raise NotImplementedError
+        self.calls.append("tests")  # a port runs the new code's tests too (D-60)
+        return TestReport(cases=[], duration_s=0, log_path=ctx.log_dir / "t.log")
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
         raise NotImplementedError

@@ -114,3 +114,71 @@ def test_workspace_members_build_through_the_workspace(tmp_path: Path) -> None:
     manifest("tools/gen", '[package]\nname = "gen"\n')
     assert find_crates(tmp_path) == ["rust", "tools/gen"]
     assert find_packages(tmp_path) == ["rust/calc_rs", "rust/textkit_ring", "tools/gen"]
+
+
+# --------------------------------------------------------------------------- Phase 14 (D-60)
+
+
+def test_a_programs_package_and_its_cmake_target_going() -> None:
+    manifest = ports.bin_manifest("tinycalc_rs", "2021", "tinycalc", "tinycalc", ["calc_rs"])
+    assert '[[bin]]\nname = "tinycalc"\npath = "src/main.rs"' in manifest
+    assert 'calc_rs = { path = "../calc_rs" }' in manifest
+    assert ports.cmake_target(manifest) == "tinycalc"
+    assert "#![forbid(unsafe_code)]" in ports.main_rs(["app/main.cpp"])
+    cmake = (
+        "add_library(calc a.cpp)\n"
+        "target_include_directories(calc PUBLIC include)\n"
+        "\n"
+        "add_executable(tinycalc\n    app/main.cpp)\n"
+        "target_link_libraries(tinycalc PRIVATE calc)\n"
+        "target_link_libraries(tinycalc2 PRIVATE calc)\n"
+        "\n"
+        "enable_testing()\n"
+    )
+    assert ports.without_cmake_target(cmake, "tinycalc") == (
+        "add_library(calc a.cpp)\n"
+        "target_include_directories(calc PUBLIC include)\n"
+        "\n"
+        "target_link_libraries(tinycalc2 PRIVATE calc)\n"
+        "\n"
+        "enable_testing()\n"
+    )
+    crlf = "x()\r\n\r\nadd_executable(t m.cpp)\r\n\r\ny()\r\n"
+    assert ports.without_cmake_target(crlf, "t") == "x()\r\n\r\ny()\r\n"
+
+
+def test_a_test_files_scaffold() -> None:
+    assert "#![forbid(unsafe_code)]" in ports.test_rs("tests/rational_test.cpp")
+    text = ports.with_test_entries(ports.TEST_MAP_TEXT, [("ctest:calc_tests", ports.WRAPPER_NOTE)])
+    assert text.endswith(f'[[test]]\ncpp = "ctest:calc_tests"\nnote = "{ports.WRAPPER_NOTE}"\n')
+    again = ports.with_test_entries(text, [("ctest:calc_tests", "other")])
+    assert again == text
+    manifest = ports.package_manifest("calc_rs", "2021", "calc")
+    deps = ports.with_dev_dependencies(manifest, ["util_rs"])
+    assert deps.endswith('\n[dev-dependencies]\nutil_rs = { path = "../util_rs" }\n')
+    assert ports.with_dev_dependencies(deps, ["util_rs"]) == deps
+
+
+def test_retired_crates() -> None:
+    lib = ports.lib_rs("calc_rs", "calc") + "pub mod rational;\n"
+    retired = ports.retired_lib_rs(lib, "calc_rs", "calc")
+    assert retired == (
+        "//! The C++ library `calc`, ported to Rust (CodeCoreMorph, D-58, D-60).\n"
+        "#![forbid(unsafe_code)]\n\npub mod rational;\n"
+    )
+    # A root the agent rewrote keeps its doc; the bridge and the deny still go.
+    custom = (
+        "//! Mine.\n#![deny(unsafe_code)]\n#[allow(unsafe_code)]\npub mod bridge;\npub mod x;\n"
+    )
+    assert ports.retired_lib_rs(custom, "calc_rs", "calc") == (
+        "//! Mine.\n#![forbid(unsafe_code)]\npub mod x;\n"
+    )
+    manifest = ports.retired_manifest(ports.package_manifest("calc_rs", "2021", "calc"))
+    assert manifest == (
+        '[package]\nname = "calc_rs"\nversion = "0.1.0"\nedition = "2021"\npublish = false\n'
+    )
+    assert ports.retired_workspace(ports.workspace_manifest(["calc_rs"])).startswith(
+        "# The Rust port of this project (CodeCoreMorph, D-58, D-60).\n[workspace]\n"
+    )
+    masked = mask("fn f() { unsafe { g() } }\n// unsafe\n#![forbid(unsafe_code)]\n")
+    assert ports.unsafe_keywords("x.rs", masked) == [("x.rs", 1, "uses unsafe code")]

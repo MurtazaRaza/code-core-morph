@@ -328,3 +328,193 @@ def unsafe_problems(
 
 def _line(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
+
+
+# --------------------------------------------------------------------------- Phase 14 (D-60)
+
+TEST_MAP = f"{WORKSPACE_DIR}/test-map.toml"
+
+TEST_MAP_TEXT = """\
+# The C++ tests this port moved to Rust, and the Rust tests that took them over (CodeCoreMorph,
+# D-60). One entry per test of the baseline, by the IDs test reports use:
+#
+#   [[test]]
+#   cpp = "gtest:Rational.AddsFractions"     # or "ctest:<name>" for a CTest entry
+#   rust = "nextest:calc_rs::rational_test::adds_fractions"
+#   note = "..."    # optional: behavior the port couldn't keep; without `rust`, why there is none
+"""
+
+WRAPPER_NOTE = "only runs a GoogleTest binary, whose cases are mapped one by one"
+
+
+def bin_manifest(
+    crate: str, edition_year: str, bin_name: str, build_target: str, dependencies: Collection[str]
+) -> str:
+    """A program's package: one ``bin`` named after the C++ executable, so CTest and scripts
+    keep calling it by its name (Corrosion imports it as a CMake executable of that name)."""
+    deps = "".join(f'{d} = {{ path = "../{d}" }}\n' for d in sorted(dependencies))
+    return (
+        "[package]\n"
+        f'name = "{crate}"\n'
+        'version = "0.1.0"\n'
+        f'edition = "{edition_year}"\n'
+        "publish = false\n\n"
+        "# The C++ executable's name: CTest entries and scripts call the program by it.\n"
+        "[[bin]]\n"
+        f'name = "{bin_name}"\n'
+        'path = "src/main.rs"\n\n'
+        "[dependencies]\n"
+        f"{deps}"
+        "\n[package.metadata.codecoremorph]\n"
+        f'cmake-target = "{build_target}"\n'
+    )
+
+
+def main_rs(sources: Collection[str]) -> str:
+    return (
+        _doc(f"Ported from {', '.join(sorted(sources))} (CodeCoreMorph, D-60).")
+        + "#![forbid(unsafe_code)]\n\nfn main() {}\n"
+    )
+
+
+def test_rs(source: str) -> str:
+    return (
+        _doc(
+            f"Translated from {source} (CodeCoreMorph, D-60): one test per C++ test case, each "
+            f"named in {TEST_MAP}."
+        )
+        + "#![forbid(unsafe_code)]\n"
+    )
+
+
+def with_dev_dependencies(manifest: str, dependencies: Collection[str]) -> str:
+    """A package manifest with path ``dev-dependencies`` on the workspace's ``dependencies``
+    (a test that uses another target's crate); those already listed stay."""
+    missing = [
+        d for d in sorted(dependencies) if not re.search(rf"(?m)^\s*{re.escape(d)}\s*=", manifest)
+    ]
+    if not missing:
+        return manifest
+    lines = "".join(f'{d} = {{ path = "../{d}" }}\n' for d in missing)
+    header = re.search(r"(?m)^\[dev-dependencies\]\s*$", manifest)
+    if header is not None:
+        end = manifest.find("\n", header.end())
+        end = len(manifest) if end < 0 else end + 1
+        return manifest[:end] + lines + manifest[end:]
+    return manifest.rstrip("\n") + "\n\n[dev-dependencies]\n" + lines
+
+
+def with_test_entries(text: str, entries: Collection[tuple[str, str]]) -> str:
+    """The test map with ``(source test ID, note)`` entries that map to no target test,
+    appended unless the test is already mapped."""
+    added = ""
+    for source, note in entries:
+        if re.search(rf'(?m)^\s*cpp\s*=\s*"{re.escape(source)}"', text):
+            continue
+        added += f'\n[[test]]\ncpp = "{source}"\nnote = "{note}"\n'
+    return text if not added else text.rstrip("\n") + "\n" + added
+
+
+_CMAKE_TARGET_COMMANDS = (
+    "add_executable",
+    "target_link_libraries",
+    "target_include_directories",
+    "target_compile_definitions",
+    "target_compile_options",
+    "target_compile_features",
+    "target_link_options",
+    "target_sources",
+    "set_target_properties",
+)
+
+
+def without_cmake_target(text: str, target: str) -> str:
+    """CMake text without the commands that define or configure ``target``
+    (``add_executable(<target> ...)`` and the ``target_*(<target> ...)`` that follow it), each
+    with its whole lines: a Rust program takes the name over (D-60)."""
+    pattern = re.compile(
+        rf"(?im)^[ \t]*(?:{'|'.join(_CMAKE_TARGET_COMMANDS)})[ \t]*\("
+        rf"[ \t\r\n]*{re.escape(target)}(?=[\s)])"
+    )
+    out = text
+    while (match := pattern.search(out)) is not None:
+        depth, i = 0, out.index("(", match.start())
+        while i < len(out):
+            if out[i] == "(":
+                depth += 1
+            elif out[i] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        end = out.find("\n", i)
+        end = len(out) if end < 0 else end + 1
+        before, after = out[: match.start()], out[end:]
+        if before.endswith(("\n\n", "\r\n\r\n")):
+            # No blank line twice where the commands were.
+            for newline in ("\r\n", "\n"):
+                if after.startswith(newline):
+                    after = after[len(newline) :]
+                    break
+        out = before + after
+    return out
+
+
+_BRIDGE_LINES = re.compile(
+    r"(?m)^[ \t]*#\[\s*allow\s*\(\s*unsafe_code\s*\)\s*\][ \t]*\r?\n"
+    r"[ \t]*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+bridge\s*;[ \t]*\r?\n?"
+)
+
+
+def retired_lib_rs(text: str, crate: str, build_target: str | None) -> str:
+    """A crate root once C++ is gone: no ``mod bridge``, ``#![forbid(unsafe_code)]``, and the
+    scaffold's doc, if it is still the scaffold's, without the bridge."""
+    out = _BRIDGE_LINES.sub("", text)
+    out = re.sub(
+        r"(?m)^[ \t]*#!\[\s*deny\s*\(\s*unsafe_code\s*\)\s*\]", "#![forbid(unsafe_code)]", out
+    )
+    if build_target is not None:
+        scaffold_doc = lib_rs(crate, build_target).split("#![deny", 1)[0]
+        if out.startswith(scaffold_doc):
+            out = (
+                f"//! The C++ library `{build_target}`, ported to Rust "
+                "(CodeCoreMorph, D-58, D-60).\n" + out[len(scaffold_doc) :]
+            )
+    return out
+
+
+_LIB_SECTION = re.compile(
+    r'(?ms)^\[lib\]\s*\n(?:#[^\n]*\n)*crate-type\s*=\s*\["staticlib",\s*"rlib"\]\s*\n\n?'
+)
+_METADATA = re.compile(r"(?ms)\n*^\[package\.metadata\.codecoremorph\]\s*\n(?:[^\[\n][^\n]*\n?)*")
+
+
+def retired_manifest(manifest: str) -> str:
+    """A package manifest once C++ is gone: no ``staticlib`` (Cargo's default ``rlib``) and no
+    CMake target."""
+    out = _LIB_SECTION.sub("", manifest)
+    out = _METADATA.sub("\n", out)
+    return out.rstrip("\n") + "\n"
+
+
+_WORKSPACE_DOC = (
+    "# The Rust port of this project (CodeCoreMorph, D-58): one crate per C++ library\n"
+    "# target, built and linked by CMake through Corrosion.\n"
+)
+
+
+def retired_workspace(manifest: str) -> str:
+    if manifest.startswith(_WORKSPACE_DOC):
+        return (
+            "# The Rust port of this project (CodeCoreMorph, D-58, D-60).\n"
+            + manifest[len(_WORKSPACE_DOC) :]
+        )
+    return manifest
+
+
+_UNSAFE = re.compile(r"\bunsafe\b")
+
+
+def unsafe_keywords(path: str, masked: str) -> list[tuple[str, int, str]]:
+    """Each ``unsafe`` in a masked source, as ``(file, line, what)``."""
+    return [(path, _line(masked, m.start()), "uses unsafe code") for m in _UNSAFE.finditer(masked)]

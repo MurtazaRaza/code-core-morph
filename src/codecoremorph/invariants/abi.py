@@ -8,13 +8,33 @@ thing: every function the header declares is exported, with the same signature.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 
 MAX_SHOWN = 20
+_TAGS = frozenset({"enum", "struct", "union"})
+_TOKEN = re.compile(r"\w+|[^\w\s]")
 
 
 def _same(a: str, b: str) -> bool:
-    return " ".join(a.split()) == " ".join(b.split())
+    """Whether two canonical C signatures name the same types. Spacing doesn't count, nor a tag
+    keyword one side spells and the other doesn't: libclang spells an anonymous enum or struct
+    that a typedef names by the typedef's name (snappy-c.h's `snappy_status`), and cbindgen's
+    `typedef enum snappy_status {...} snappy_status;` as `enum snappy_status` (D-62). Canonical
+    types have no typedefs left, so a bare name there is such a tag type. Two different
+    keywords still differ."""
+    x, y = _TOKEN.findall(a), _TOKEN.findall(b)
+    i = j = 0
+    while i < len(x) and j < len(y):
+        if x[i] == y[j]:
+            i, j = i + 1, j + 1
+        elif x[i] in _TAGS and y[j] not in _TAGS:
+            i += 1
+        elif y[j] in _TAGS and x[i] not in _TAGS:
+            j += 1
+        else:
+            return False
+    return i == len(x) and j == len(y)
 
 
 def c_abi_differences(expected: Mapping[str, str], exported: Mapping[str, str]) -> list[str]:

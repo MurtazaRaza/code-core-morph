@@ -21,6 +21,7 @@ from codecoremorph.core.models import (
     FinalVerification,
     JobResult,
     Plan,
+    PortSummary,
     ReviewItem,
     ReviewKind,
     RuleSummary,
@@ -39,6 +40,7 @@ log = logging.getLogger(__name__)
 
 UNIT_RESULT_FILE = "result.json"
 FINAL_FILE = "final.json"
+PORT_FILE = "port.json"
 BASELINE_FILE = "baseline.json"
 
 
@@ -69,6 +71,10 @@ def load_unit_result(artifacts: RunArtifacts, unit_id: str) -> UnitResult | None
 
 def load_final(artifacts: RunArtifacts) -> FinalVerification | None:
     return _load(FinalVerification, artifacts.root / FINAL_FILE)
+
+
+def load_port(artifacts: RunArtifacts) -> PortSummary | None:
+    return _load(PortSummary, artifacts.root / PORT_FILE)
 
 
 def characterization_summary(
@@ -215,6 +221,7 @@ def build_report(
         plan_warnings=list(plan.warnings),
         characterization=characterization_summary(artifacts, baseline),
         final=final,
+        port=load_port(artifacts),
         usage_by_role=dict(sorted(by_role.items())),
         usage_total=total,
         providers=providers,

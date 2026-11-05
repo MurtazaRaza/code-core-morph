@@ -120,6 +120,12 @@ class LanguageAdapter(ABC):
         (D-42). Reads files only; runs no command."""
         return None
 
+    def builds(self, ctx: AdapterContext) -> bool:
+        """Whether the worktree still has this language's build (C++: a top-level
+        ``CMakeLists.txt``). A port's retirement removes the source's, after which the target
+        adapter alone builds and tests the project (D-60)."""
+        return True
+
     def clean_build(self, ctx: AdapterContext) -> None:
         """Empty the build tree so the next ``configure`` and ``build`` start from nothing (the
         run's final verification, SPEC §7.5). Runs commands through ``ctx.executor`` only."""
@@ -214,3 +220,22 @@ class LanguageAdapter(ABC):
     def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
         """The linter's diagnostics over the port's packages (Rust: clippy)."""
         raise AdapterNotSupportedError(f"{self.language}: lint")
+
+    def apply_lint_fixes(self, ctx: AdapterContext) -> list[str]:
+        """Apply the linter's machine-applicable fixes to the port's packages (Rust: ``cargo
+        clippy --fix``), so mechanical findings cost the agent no attempt (D-62); the files it
+        changed, worktree-relative. A port's verification runs it before the build, so the
+        build and the tests judge the fixed code. Runs commands through ``ctx.executor`` only."""
+        raise AdapterNotSupportedError(f"{self.language}: apply_lint_fixes")
+
+    # The rest of a port (D-60), on the target adapter.
+
+    def test_map_path(self) -> str:
+        """Where the project keeps its test map (worktree-relative): a TOML file of
+        ``[[test]]`` entries naming a source test ID (under the source language's name), the
+        target test that took it over (under this language's name) and a note."""
+        raise AdapterNotSupportedError(f"{self.language}: test_map_path")
+
+    def unsafe_uses(self, ctx: AdapterContext) -> list[RuleSite]:
+        """Every use of unsafe code in the port's packages, for the report."""
+        raise AdapterNotSupportedError(f"{self.language}: unsafe_uses")

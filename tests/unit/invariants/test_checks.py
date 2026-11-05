@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     Boundary,
+    ChangedFile,
+    FileChangeKind,
     Severity,
     SourceRange,
     Symbol,
@@ -29,6 +32,7 @@ from codecoremorph.invariants.checks import (
     check_unit_scope,
     check_warnings,
     comparable_signature,
+    diff_size,
     patch_lines,
 )
 
@@ -128,6 +132,19 @@ def test_tests_kept_counts_and_markers() -> None:
     disabled = check_tests_kept(baseline, ok, markers_before=before, markers_after=added)
     assert not disabled.passed
     assert "DISABLED_Area" in disabled.message
+
+
+def test_a_ports_retired_tests_are_kept_through_the_map() -> None:
+    baseline = TestBaseline(runs=2, passing=["gtest:A", "gtest:B"], failing=[])
+    rust_only = report("nextest:a")
+
+    def accounted(test: str, seen: set[str]) -> bool:  # the test map: gtest:A -> nextest:a
+        return test == "gtest:A" and "nextest:a" in seen
+
+    result = check_tests_kept(baseline, rust_only, accounted=accounted)
+    assert not result.passed
+    assert "gtest:B" in result.message
+    assert "gtest:A" not in result.message
 
 
 def test_api_changes_ignore_moves_and_additions() -> None:
@@ -345,6 +362,22 @@ def test_diff_size() -> None:
     big = check_diff_size(801, limit=800)
     assert not big.passed
     assert "801" in big.message
+
+
+def test_a_ports_diff_counts_what_it_writes_in_the_project() -> None:
+    """snappy.cc's port (M8, D-62): 114 façade lines written, 1936 lines of C++ that moved into
+    Rust deleted, and the Rust itself. Only the façade counts; an upgrade counts both ways."""
+    files = [
+        ChangedFile(path="snappy.cc", change=FileChangeKind.MODIFIED, added_lines=114,
+                    removed_lines=1936),
+        ChangedFile(path="rust/snappy_rs/src/snappy.rs", change=FileChangeKind.ADDED,
+                    added_lines=655, removed_lines=0),
+        ChangedFile(path="logo.png", change=FileChangeKind.ADDED),  # binary
+    ]  # fmt: skip
+    rust = PathMatcher(["rust/**"]).matches
+    assert diff_size(files, new_code=rust, port=True) == 114
+    assert check_diff_size(diff_size(files, new_code=rust, port=True), limit=800).passed
+    assert diff_size(files, new_code=PathMatcher([]).matches, port=False) == 114 + 1936 + 655
 
 
 def test_warnings_warn_or_fail() -> None:

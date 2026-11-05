@@ -252,6 +252,9 @@ def test_build_targets_from_the_file_api(make_context: MakeContext) -> None:
     ctx = make_context("port-legacy", "cpp98")
     adapter = CppAdapter()
     assert adapter.configure(ctx).success
+    # CTest names an entry's command once its program is built; a run indexes after the
+    # baseline's build.
+    assert adapter.build(ctx).success
     adapter.index(ctx)
     with IndexStore.open(ctx.cache_dir / INDEX_FILE_NAME) as store:
         targets = {t.name: t for t in store.build_targets()}
@@ -266,6 +269,17 @@ def test_build_targets_from_the_file_api(make_context: MakeContext) -> None:
     )
     assert targets["calc_tests"].kind is TargetKind.EXECUTABLE
     assert "tests/expr_test.cpp" in targets["calc_tests"].files
+    # What each target links and builds, and what each CTest entry runs (D-60).
+    assert targets["tinycalc"].dependencies == ["calc"]
+    assert "calc" in targets["calc_tests"].dependencies
+    assert any(a.startswith("tinycalc") for a in targets["tinycalc"].artifacts)
+    with IndexStore.open(ctx.cache_dir / INDEX_FILE_NAME) as store:
+        entries = {e.test_id: (e.runs, e.file) for e in store.test_entries()}
+    assert entries == {
+        "ctest:calc_tests": ("calc_tests", "tests/CMakeLists.txt"),
+        "ctest:tinycalc_args": ("tinycalc", "tests/CMakeLists.txt"),
+        "ctest:tinycalc_rejects_bad_input": ("tinycalc", "tests/CMakeLists.txt"),
+    }
 
 
 def test_cpp98_build_uses_the_cpp98_googletest(make_context: MakeContext) -> None:

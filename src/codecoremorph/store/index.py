@@ -34,6 +34,7 @@ from codecoremorph.core.models import (
     SourceRange,
     Symbol,
     SymbolKind,
+    TestEntry,
     Visibility,
 )
 
@@ -209,6 +210,10 @@ class IndexStore:
         """The build's targets and their files (D-58), kept with the index they came with."""
         self.set_value("build_targets", "[" + ",".join(t.model_dump_json() for t in targets) + "]")
 
+    def set_test_entries(self, entries: Sequence[TestEntry]) -> None:
+        """The tests the build registers and what they run (D-60)."""
+        self.set_value("test_entries", "[" + ",".join(e.model_dump_json() for e in entries) + "]")
+
     # ------------------------------------------------------------------ reading
 
     def build_targets(self) -> list[BuildTarget]:
@@ -217,6 +222,13 @@ class IndexStore:
         if not text:
             return []
         return [BuildTarget.model_validate(t) for t in json.loads(text)]
+
+    def test_entries(self) -> list[TestEntry]:
+        """The test entries the adapter recorded, or none."""
+        text = self.value("test_entries")
+        if not text:
+            return []
+        return [TestEntry.model_validate(e) for e in json.loads(text)]
 
     def meta(self) -> IndexMeta | None:
         row = self._conn.execute("SELECT value FROM meta WHERE key = 'index'").fetchone()

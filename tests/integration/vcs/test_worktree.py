@@ -49,6 +49,16 @@ def test_rollback_discards_edits_new_files_and_deletions(worktree: Worktree, git
     assert not worktree.has_changes()
 
 
+def test_tracked_files_are_the_worktrees(worktree: Worktree, git) -> None:
+    """What a port's report counts under `project.exclude` (D-62): the files git tracks in the
+    worktree, not untracked ones."""
+    (worktree.path / "untracked.cpp").write_bytes(b"x")
+    files = worktree.tracked_files()
+    assert files == sorted(f for f in git(worktree.path, "ls-files", "-z").split("\0") if f)
+    assert "README.md" in files
+    assert "untracked.cpp" not in files
+
+
 def test_rollback_to_an_earlier_commit(worktree: Worktree) -> None:
     first = worktree.snapshot()
     (worktree.path / "a.txt").write_bytes(b"a")

@@ -32,6 +32,7 @@ from codecoremorph.core.models import (
     RuleSite,
     Symbol,
     SymbolKind,
+    TestEntry,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.graph import ClusterGraph, condense
@@ -91,6 +92,7 @@ class ProjectModel:
     boundaries: dict[str, set[Boundary]]
     uncompiled: list[str] = field(default_factory=list[str])  # in scope, never compiled
     targets: list[BuildTarget] = field(default_factory=list[BuildTarget])  # the build's (D-58)
+    tests: list[TestEntry] = field(default_factory=list[TestEntry])  # the build's tests (D-60)
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -118,6 +120,7 @@ class ProjectModel:
             meta = store.meta()
             uncompiled = sorted(p for p in (meta.uncompiled if meta else []) if in_scope.matches(p))
             targets = store.build_targets()
+            tests = store.test_entries()
         partners = pair_headers(files, edges)
         for path, others in partners.items():
             edges[path].update(others)
@@ -138,6 +141,7 @@ class ProjectModel:
             boundaries=boundaries,
             uncompiled=uncompiled,
             targets=targets,
+            tests=tests,
         )
 
     @property

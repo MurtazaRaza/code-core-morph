@@ -65,6 +65,30 @@ class FinalVerification(CoreModel):
     duration_s: float = Field(default=0.0, ge=0)
 
 
+class PortSummary(CoreModel):
+    """What a port to another language left (D-60): its maps, the behavior it couldn't keep,
+    its unsafe code and the source code still there."""
+
+    symbols: int = Field(default=0, ge=0, description="Entries of the symbol map")
+    tests_mapped: int = Field(default=0, ge=0, description="Tests the test map pairs")
+    tests_without_counterpart: list[str] = Field(
+        default_factory=list[str],
+        description="Source tests mapped to no target test, each with the note that says why",
+    )
+    deviations: list[str] = Field(
+        default_factory=list[str],
+        description="The maps' notes: behavior the port couldn't keep, by source name or test",
+    )
+    unsafe: list[str] = Field(
+        default_factory=list[str], description="Every use of unsafe code, as path:line"
+    )
+    source_left: list[str] = Field(
+        default_factory=list[str],
+        description="Source-language files still on the branch, each with the reason, and the "
+        "project.exclude patterns that still hold files, with their count",
+    )
+
+
 class ReviewKind(StrEnum):
     FAILED_UNIT = "failed_unit"
     SKIPPED_UNIT = "skipped_unit"
@@ -136,6 +160,7 @@ class RunReport(CoreModel):
     )
     characterization: CharacterizationSummary | None = None
     final: FinalVerification | None = None
+    port: PortSummary | None = Field(default=None, description="A port's summary (D-60)")
     usage_by_role: dict[str, UsageTotals] = Field(default_factory=dict[str, UsageTotals])
     usage_total: UsageTotals = Field(default_factory=UsageTotals)
     providers: list[str] = Field(

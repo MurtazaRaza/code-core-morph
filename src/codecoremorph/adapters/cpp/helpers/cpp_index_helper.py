@@ -751,9 +751,11 @@ def main(argv):
 
 
 def cmake_targets(build_dir, workspace):
-    """``[name, type, files]`` for each of the project's own CMake targets, from the file API
-    reply to the codemodel query the configure step writes; imported targets are left out, and
-    files are workspace-relative. Nothing when there is no reply."""
+    """``[name, type, files, dependencies, artifacts]`` for each of the project's own CMake
+    targets, from the file API reply to the codemodel query the configure step writes:
+    imported targets are left out, files are workspace-relative, dependencies are the names of
+    the project's targets it depends on, and artifacts are relative to the build directory.
+    Nothing when there is no reply."""
     reply = os.path.join(build_dir, ".cmake", "api", "v1", "reply")
     try:
         indexes = sorted(
@@ -773,22 +775,33 @@ def cmake_targets(build_dir, workspace):
     source_dir = codemodel.get("paths", {}).get("source", "")
     found = []
     for configuration in codemodel.get("configurations", [])[:1]:
+        loaded = []
+        names = {}
         for ref in configuration.get("targets", []):
             try:
                 target = load(ref["jsonFile"])
             except (KeyError, OSError, TypeError, ValueError):
                 continue
-            if target.get("imported"):
-                continue
+            name = target.get("name") or ref.get("name", "")
+            names[target.get("id") or ref.get("id", "")] = name
+            if not target.get("imported"):
+                loaded.append((name, target))
+        for name, target in loaded:
             files = []
             for source in target.get("sources", []):
                 path = source.get("path", "")
                 rel = workspace.rel(path if os.path.isabs(path) else os.path.join(source_dir, path))
                 if rel is not None and rel not in files:
                     files.append(rel)
-            found.append(
-                [target.get("name") or ref.get("name", ""), target.get("type", ""), sorted(files)]
+            dependencies = sorted(
+                {names[d["id"]] for d in target.get("dependencies", []) if d.get("id") in names}
             )
+            artifacts = sorted(
+                a["path"].replace(os.sep, "/")
+                for a in target.get("artifacts", [])
+                if isinstance(a.get("path"), str)
+            )
+            found.append([name, target.get("type", ""), sorted(files), dependencies, artifacts])
     return sorted(found)
 
 

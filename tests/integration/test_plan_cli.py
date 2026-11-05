@@ -208,6 +208,45 @@ def test_a_module_port_plan(make_project: MakeProject) -> None:
     assert (app.files, app.status) == (["app/main.cpp"], UnitStatus.SKIPPED)
 
 
+def test_a_whole_port_plan(make_project: MakeProject) -> None:
+    """``port-legacy`` to pure Rust (D-60): the module units, then the program's unit with the
+    CTest entries that run it, a unit per test file, each needing the modules it includes, and
+    the retirement, needing every other unit."""
+    rules = ["port_module", "port_executable", "port_tests", "retire_cpp"]
+    root = make_project("port-legacy", "cpp98", "rust2021", rules, target_language="rust")
+    code, payload, stderr = _plan(root)
+    assert code == 0, stderr
+    plan = Plan.model_validate(payload["plan"])
+    assert [u.rules[0] for u in plan.units] == [
+        *["port_module"] * 6,
+        "port_executable",
+        *["port_tests"] * 6,
+        "retire_cpp",
+    ]
+    assert all(u.status is UnitStatus.PENDING for u in plan.units)
+    modules = {u.port.module: u.id for u in plan.units[:6] if u.port}
+    program = plan.units[6]
+    assert program.port is not None
+    assert (program.port.crate, program.port.bin, program.port.dependencies) == (
+        "tinycalc_rs",
+        "tinycalc",
+        ["calc_rs"],
+    )
+    assert program.port.tests == ["ctest:tinycalc_args", "ctest:tinycalc_rejects_bad_input"]
+    assert program.needs == sorted([modules["calc"], modules["strutil"]])
+    tests = plan.units[7:13]
+    cases = [c for u in tests if u.port for c in u.port.tests]
+    assert len(cases) == 34
+    assert all(c.startswith("gtest:") for c in cases)
+    parser_test = next(u for u in tests if u.files == ["tests/parser_test.cpp"])
+    assert parser_test.needs == sorted([modules["expr"], modules["parser"], modules["rational"]])
+    assert [u.port.wrappers for u in tests if u.port and u.port.wrappers] == [["ctest:calc_tests"]]
+    retire = plan.units[13]
+    assert retire.needs == [u.id for u in plan.units[:13]]
+    assert "app/main.cpp" in retire.files
+    assert "CMakeLists.txt" in retire.files
+
+
 def test_plans_are_deterministic(make_project: MakeProject) -> None:
     source, target, rules = MIGRATIONS["multi-module"]
     root = make_project("multi-module", source, target, rules)

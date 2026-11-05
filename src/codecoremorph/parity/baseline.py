@@ -63,6 +63,28 @@ def merge_test_runs(reports: Sequence[TestReport]) -> TestBaseline:
     )
 
 
+def merge_reports(reports: Sequence[TestReport]) -> TestReport:
+    """Several test runs of one tree as one report (a port runs both sides' tests, D-60): the
+    cases of all, the first run's case where an ID repeats, the durations added up."""
+    if len(reports) == 1:
+        return reports[0]
+    seen: set[str] = set()
+    cases = []
+    for report in reports:
+        for case in report.cases:
+            if case.test_id not in seen:
+                seen.add(case.test_id)
+                cases.append(case)
+    return TestReport(
+        cases=cases,
+        duration_s=sum(r.duration_s for r in reports),
+        log_path=reports[0].log_path,
+    )
+
+
+Side = tuple[LanguageAdapter, AdapterContext]
+
+
 def _failure(step: str, result: BuildResult, base: str) -> BaselineError:
     errors = result.errors
     shown = [
@@ -102,21 +124,45 @@ def capture_baseline(
     require_tests: bool,
     on_step: Callable[[str], None] | None = None,
     reuse: Baseline | None = None,
+    target: Side | None = None,
 ) -> Baseline:
     """Configure, build and run the tests ``runs`` times on the base commit.
 
     With ``reuse`` (an earlier baseline of the same commit, standard and build options), the
     tests don't run again: the build still does, because the run needs its build tree and the
-    warnings invariant needs this build's warnings."""
+    warnings invariant needs this build's warnings.
+
+    A port's ``target`` (adapter, context) configures first (its dependency fetch); its tests
+    run after the source's, in the same report, when the tree has its code, and it builds
+    alone when the source's build is gone (D-60)."""
     step = on_step or (lambda _: None)
+    source_builds = target is None or adapter.builds(ctx)
     step("configure")
-    configured = adapter.configure(ctx)
-    if not configured.success:
+    if target is not None:
+        fetched = target[0].configure(target[1])
+        if not fetched.success:
+            raise _failure("configure", fetched, base_commit)
+    configured = adapter.configure(ctx) if source_builds else None
+    if configured is not None and not configured.success:
         raise _failure("configure", configured, base_commit)
     step("build")
-    built = adapter.build(ctx)
+    built = adapter.build(ctx) if source_builds or target is None else target[0].build(target[1])
     if not built.success:
         raise _failure("build", built, base_commit)
+    if configured is None:
+        configured = built.model_copy(update={"duration_s": 0.0, "diagnostics": []})
+    targeted = target is not None and target[0].builds(target[1])
+
+    def run_tests() -> TestReport:
+        reports = [adapter.run_tests(ctx)] if source_builds else []
+        if target is not None and targeted:
+            reports.append(target[0].run_tests(target[1]))
+        return (
+            merge_reports(reports)
+            if reports
+            else TestReport(cases=[], duration_s=0.0, log_path=built.log_path)
+        )
+
     if reuse is not None:
         step(f"tests: reusing the results of {reuse.tests_from or 'an earlier baseline'}")
         return reuse.model_copy(
@@ -134,7 +180,7 @@ def capture_baseline(
     reports: list[TestReport] = []
     for n in range(1, runs + 1):
         step(f"test run {n} of {runs}")
-        reports.append(adapter.run_tests(ctx))
+        reports.append(run_tests())
     tests = merge_test_runs(reports)
     if tests.flaky:
         log.warning(

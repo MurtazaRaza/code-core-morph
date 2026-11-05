@@ -14,15 +14,19 @@ always give the same plan, byte for byte (FR-5.6).
   partners; fan-in files whose sites an earlier unit covers are its ``reference_files``
   (D-42).
 - ``port`` rules: one unit per C interface (``port_units: c_header``, D-57), or one unit per
-  module, leaves first, behind façades (``port_units: module``, D-58).
+  module, leaves first, behind façades (``port_units: module``, D-58); then, to finish a port
+  (D-60), one unit per executable (``executable``), one per test source (``tests``), each
+  needing the module units of what it includes, and one last unit that retires the source
+  language (``retirement``), needing every other port unit.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 
+from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.ids import unit_id
 from codecoremorph.core.models import (
     Boundary,
@@ -33,6 +37,7 @@ from codecoremorph.core.models import (
     PlanGraph,
     PlanRule,
     PortUnit,
+    PortUnits,
     RuleKind,
     RuleSite,
     SkipCondition,
@@ -100,6 +105,9 @@ class _Draft:
     sized: bool = True  # build-configuration units are mechanical edits, never too large
     references: list[str] = field(default_factory=list[str])  # fan-in files, sites elsewhere
     port: PortUnit | None = None
+    needs: list[_Draft] = field(default_factory=list["_Draft"])  # units that must commit first
+    blocking: bool = True  # whether a port's retirement needs it (a skip-list unit doesn't)
+    counted: list[str] | None = None  # the files its estimate counts, when not all of them
 
 
 def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
@@ -117,11 +125,28 @@ class _Former:
         settings: PlannerSettings,
         estimator: Estimator,
         names: PortNamer = plain_port_names,
+        port_units: Collection[PortUnits] = (),
+        keep_source_api: bool = False,
+        mapped_tests: Collection[str] = (),
+        new_code: Collection[str] = (),
     ):
         self.project = project
         self.settings = settings
         self.estimator = estimator
         self.names = names
+        # What the plan's port rules cut (D-60): a module port leaves executables and tests to
+        # later rules when the plan has them.
+        self.planned_ports = set(port_units)
+        self.keep_source_api = keep_source_api
+        self.mapped_tests = set(mapped_tests)  # the project's test map already has these
+        # A port's new code (its rules' extra_scope: the crates, and the C++ glue headers of a
+        # module port's bridge) is no source code to port (D-60).
+        self.new_code = PathMatcher(list(new_code)) if new_code else None
+        self.module_drafts: dict[str, _Draft] = {}  # file -> the module unit that ports it
+        self.port_drafts: list[_Draft] = []
+
+    def is_new_code(self, path: str) -> bool:
+        return self.new_code is not None and self.new_code.matches(path)
 
     # ------------------------------------------------------------------ sizes
 
@@ -334,7 +359,9 @@ class _Former:
             members = [
                 f
                 for f in cluster
-                if f in project.files and project.files[f].role is not FileRole.TEST
+                if f in project.files
+                and project.files[f].role is not FileRole.TEST
+                and not self.is_new_code(f)
             ]
             if not members or not any(f in with_sites for f in members):
                 continue
@@ -342,6 +369,8 @@ class _Former:
             if libraries:
                 modules.append((position, members, libraries[0]))
             elif any(f in compiled for f in members):
+                if PortUnits.EXECUTABLE in self.planned_ports:
+                    continue  # the executable's own unit ports it
                 note = "skipped: an executable's code stays C++ until its tests are ported"
                 placed.append((position, self._skipped(scan, members, f"{note} (Phase 14)")))
             else:
@@ -354,13 +383,17 @@ class _Former:
             ported_users = sorted({unit_of[u] for u in users if u in unit_of})
             kept = sorted(u for u in users if u not in unit_of)
             if kept or not ported_users:
+                if self._retired_later(kept):
+                    continue  # only tests and programs use it: they go Rust, and it goes
                 shown = ", ".join(kept[:3]) + (f" (+{len(kept) - 3})" if len(kept) > 3 else "")
                 note = (
                     f"skipped: header-only code that C++ still uses ({shown})"
                     if kept
                     else "skipped: header-only code that no module uses"
                 )
-                placed.append((position, self._skipped(scan, members, note)))
+                draft = self._skipped(scan, members, note)
+                draft.blocking = bool(kept)
+                placed.append((position, draft))
                 continue
             last = ported_users[-1]
             attached.setdefault(last, []).extend(members)
@@ -414,8 +447,266 @@ class _Former:
                 note=note,
                 port=port,
             )
+            for path in unit_files:
+                self.module_drafts.setdefault(path, draft)
             placed.append((position, draft))
-        return [d for _, d in sorted(placed, key=lambda pd: pd[0])]
+        drafts = [d for _, d in sorted(placed, key=lambda pd: pd[0])]
+        self.port_drafts += drafts
+        return drafts
+
+    # ------------------------------------------------------------------ finishing a port (D-60)
+
+    def _retired_later(self, users: Sequence[str]) -> bool:
+        """Whether every C++ file in ``users`` is a test or a program that the plan's later
+        port rules take over, so code only they use goes with the retirement."""
+        if not users or PortUnits.RETIREMENT not in self.planned_ports:
+            return False
+        programs = {
+            f
+            for t in self.project.targets
+            if t.kind is TargetKind.EXECUTABLE and not self._test_target(t.name)
+            for f in t.files
+        }
+        for path in users:
+            entry = self.project.files.get(path)
+            if entry is None:
+                return False
+            if entry.role is FileRole.TEST and PortUnits.TESTS in self.planned_ports:
+                continue
+            if path in programs and PortUnits.EXECUTABLE in self.planned_ports:
+                continue
+            return False
+        return True
+
+    def _test_target(self, name: str) -> bool:
+        """A test target: an executable whose project files are all tests."""
+        target = next((t for t in self.project.targets if t.name == name), None)
+        if target is None or target.kind is not TargetKind.EXECUTABLE:
+            return False
+        known = [self.project.files[f] for f in target.files if f in self.project.files]
+        return bool(known) and all(e.role is FileRole.TEST for e in known)
+
+    def _project_libraries(self, names: Collection[str]) -> list[str]:
+        """The library targets among ``names`` that compile the project's own code: not a
+        vendored library (googletest built from third_party/) nor one of test helpers only."""
+        found: list[str] = []
+        for target in self.project.targets:
+            if target.kind is not TargetKind.LIBRARY or target.name not in names:
+                continue
+            own = [self.project.files[f] for f in target.files if f in self.project.files]
+            if any(e.role is not FileRole.TEST for e in own):
+                found.append(target.name)
+        return found
+
+    def _crate_of(self, library: str) -> str:
+        return self.names(library, "lib", ())[0]
+
+    def _needed_modules(self, files: Iterable[str]) -> list[_Draft]:
+        """The module units that port the project files ``files`` include, in plan order."""
+        found: list[_Draft] = []
+        for path in files:
+            for dependency in sorted(self.project.edges.get(path, set())):
+                draft = self.module_drafts.get(dependency)
+                if draft is not None and draft not in found:
+                    found.append(draft)
+        return found
+
+    def _closure(self, files: Iterable[str], role: FileRole) -> list[str]:
+        """``files`` with the project headers (and files of ``role``) that only they include,
+        transitively: a program's own headers, a test's helpers. Ported modules stay out."""
+        members = set(files)
+        changed = True
+        while changed:
+            changed = False
+            reached = {d for f in members for d in self.project.edges.get(f, set())} - members
+            for path in sorted(reached):
+                entry = self.project.files.get(path)
+                if entry is None or path in self.module_drafts:
+                    continue
+                if entry.role not in (FileRole.HEADER, role):
+                    continue
+                if set(self.project.dependents([path])) <= members:
+                    members.add(path)
+                    changed = True
+        return sorted(members)
+
+    def executable_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """One unit per executable that isn't a test target (D-60): its sources and the
+        headers only they use become a Rust program named after it; the CTest entries that
+        run it are the unit's tests; it needs the module units of what it includes."""
+        project = self.project
+        wanted = set(files)
+        drafts: list[tuple[int, _Draft]] = []
+        taken: set[str] = set()
+        for build in sorted(project.targets, key=lambda b: b.name):
+            if build.kind is not TargetKind.EXECUTABLE or self._test_target(build.name):
+                continue
+            sources = [f for f in build.files if f in project.files and f in wanted]
+            if not sources:
+                continue
+            own = self._closure(sources, FileRole.HEADER)
+            crate, _ = self.names(build.name, "main", taken)
+            taken.add(crate)
+            libraries = self._project_libraries(build.dependencies)
+            tests = sorted(e.test_id for e in project.tests if e.runs == build.name)
+            port = PortUnit(
+                build_target=build.name,
+                crate=crate,
+                module="main",
+                bin=build.name,
+                dependencies=sorted({self._crate_of(lib) for lib in libraries}),
+                tests=tests,
+            )
+            runs = f"; {len(tests)} CTest entries run it" if tests else ""
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({*own, *project.build_files}),
+                sites=self.site_counts(scan, own),
+                note=f"ports {build.name} ({', '.join(sources)}) to a {target} program, "
+                f"{crate} (bin {build.name}){runs}",
+                port=port,
+                needs=self._needed_modules(own),
+            )
+            drafts.append((min(project.cluster_index(f) for f in own), draft))
+        placed = [d for _, d in sorted(drafts, key=lambda pd: pd[0])]
+        self.port_drafts += placed
+        return placed
+
+    def test_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """One unit per test source a test target compiles (D-60): the file, read-only, is
+        translated into an integration test of the crate of the library it tests; its cases
+        are the unit's tests, and the unit that translates a test target's last file also maps
+        the CTest entries that only run that binary. It needs the module units of what it
+        includes."""
+        project = self.project
+        owner = {
+            f: t.name
+            for t in sorted(project.targets, key=lambda b: b.name)
+            if self._test_target(t.name)
+            for f in t.files
+        }
+        ordered = sorted(
+            (f for f in files if f in owner and project.files[f].role is FileRole.TEST),
+            key=lambda f: (project.cluster_index(f), f),
+        )
+        last: dict[str, str] = {}
+        for path in ordered:
+            last[owner[path]] = path
+        taken: dict[str, set[str]] = {}
+        drafts: list[_Draft] = []
+        for path in ordered:
+            test_target = owner[path]
+            build = next(t for t in project.targets if t.name == test_target)
+            references = self._closure([path], FileRole.TEST)
+            modules = self._needed_modules(references)
+            libraries = [m.port.build_target for m in modules if m.port is not None]
+            libraries += self._project_libraries(build.dependencies)
+            if not libraries:
+                drafts.append(
+                    self._skipped(scan, [path], "skipped: the test uses no library of the project")
+                )
+                continue
+            # The library it uses most is the one it tests.
+            library = max(dict.fromkeys(libraries), key=libraries.count)
+            crate = self._crate_of(library)
+            stem = path.rsplit("/", 1)[-1].split(".", 1)[0]
+            _, module = self.names(library, stem, taken.setdefault(crate, set()))
+            taken[crate].add(module)
+            cases = sorted(s.text for s in scan.sites.get(path, []) if s.text)
+            if cases and set(cases) <= self.mapped_tests:
+                continue  # translated in an earlier run: the test map has every case
+            wrappers = (
+                sorted(
+                    e.test_id
+                    for e in project.tests
+                    if e.runs == test_target and e.test_id not in self.mapped_tests
+                )
+                if last[test_target] == path
+                else []
+            )
+            port = PortUnit(
+                build_target=library,
+                crate=crate,
+                module=module,
+                dependencies=sorted({self._crate_of(lib) for lib in libraries} - {crate}),
+                tests=cases,
+                wrappers=wrappers,
+            )
+            maps = f"; maps {', '.join(wrappers)} to its cases" if wrappers else ""
+            drafts.append(
+                _Draft(
+                    rule=scan.rule_id,
+                    files=references,
+                    sites=self.site_counts(scan, [path]),
+                    references=references,
+                    note=f"translates {path} ({len(cases)} tests) to {target}: "
+                    f"{crate}/tests/{module}.rs{maps}",
+                    port=port,
+                    needs=modules,
+                )
+            )
+        self.port_drafts += [d for d in drafts if d.status is UnitStatus.PENDING]
+        return drafts
+
+    def retirement_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """The port's last unit (D-60): it deletes the source language's files and build,
+        needing every other port unit. With ``keep_source_api`` the public headers stay, with
+        what they include, the sources behind them, the build and the tests that use only
+        them."""
+        project = self.project
+        code = sorted(f for f in files if f in project.files)
+        kept: set[str] = set()
+        if self.keep_source_api:
+            kept = {f for f in code if project.files[f].public_api}
+            grew = True
+            while grew:
+                before = len(kept)
+                kept |= {d for f in kept for d in project.edges.get(f, set()) if d in project.files}
+                kept |= {
+                    f
+                    for draft in self.module_drafts.values()
+                    if kept & set(draft.files)
+                    for f in draft.files
+                    if f in project.files
+                }
+                grew = len(kept) > before
+
+            def uses_kept_only(path: str) -> bool:
+                return all(
+                    d in kept or project.files[d].role is FileRole.TEST
+                    for d in project.edges.get(path, set())
+                    if d in project.files
+                )
+
+            tests = {
+                f for f in code if project.files[f].role is FileRole.TEST and uses_kept_only(f)
+            }
+            kept |= tests
+        retired = [f for f in code if f not in kept]
+        build = [] if self.keep_source_api else list(project.build_files)
+        if not retired and not build:
+            return []
+        needs = [d for d in self.port_drafts if d.blocking]
+        if self.keep_source_api:
+            note = (
+                f"retires the C++ the public API doesn't need: deletes {len(retired)} files, "
+                f"keeps {len(kept)} for outside C++ consumers"
+            )
+        else:
+            note = (
+                f"retires the C++: deletes {len(retired)} files and the CMake build; the "
+                f"{target} workspace then builds alone"
+            )
+        draft = _Draft(
+            rule=scan.rule_id,
+            files=sorted({*retired, *build}),
+            sites=self.site_counts(scan, retired),
+            note=note,
+            sized=False,
+            needs=needs,
+            counted=[],
+        )
+        return [draft]
 
     def _skipped(self, scan: RuleScan, files: list[str], note: str) -> _Draft:
         return _Draft(
@@ -433,6 +724,8 @@ class _Former:
         skipped: dict[SkipCondition, list[str]] = {}
         files: list[str] = []
         for path in scan.targets():
+            if self.is_new_code(path):
+                continue
             entry = self.project.files[path]
             condition = next((c for c in rule.skip if skip_matches(c, entry)), None)
             if condition is None:
@@ -443,6 +736,12 @@ class _Former:
             drafts = self.project_units(scan, files, target)
         elif rule.module_port:
             drafts = self.module_units(scan, files, rule.target_language or target)
+        elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.EXECUTABLE:
+            drafts = self.executable_units(scan, files, rule.target_language or target)
+        elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.TESTS:
+            drafts = self.test_units(scan, files, rule.target_language or target)
+        elif rule.retirement:
+            drafts = self.retirement_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT:
             drafts = self.port_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.API_CHANGING:
@@ -453,6 +752,8 @@ class _Former:
             drafts = self.preserving_units(scan, files, None)
         for condition in rule.skip:
             paths = skipped.get(condition)
+            if paths and rule.kind is RuleKind.PORT and self._retired_later(paths):
+                continue  # tests the port's later rules translate, or retire (test helpers)
             if paths:
                 drafts.append(
                     _Draft(
@@ -462,6 +763,7 @@ class _Former:
                         status=UnitStatus.SKIPPED,
                         flags={_SKIP_FLAGS[condition]},
                         note=f"skipped: {scan.rule_id} doesn't apply to {SKIP_REASONS[condition]}",
+                        blocking=False,
                     )
                 )
         for draft in drafts:
@@ -505,10 +807,24 @@ def build_plan(
     base_commit: str | None = None,
     warnings: Sequence[str] = (),
     port_names: PortNamer | None = None,
+    keep_source_api: bool = False,
+    mapped_tests: Collection[str] = (),
 ) -> Plan:
     """The ordered plan for ``scans`` (the standard bump first, then the manifest's rules).
-    ``port_names`` names a module port's packages and modules (the target adapter's)."""
-    former = _Former(project, settings, estimator, port_names or plain_port_names)
+    ``port_names`` names a module port's packages and modules (the target adapter's);
+    ``keep_source_api`` keeps the public API a port's retirement would remove, and
+    ``mapped_tests`` are the tests the project's test map already pairs (D-60)."""
+    port_rules = [s.loaded.rule for s in scans if s.loaded.rule.kind is RuleKind.PORT]
+    former = _Former(
+        project,
+        settings,
+        estimator,
+        port_names or plain_port_names,
+        port_units=[r.port_units for r in port_rules if r.port_units is not None],
+        keep_source_api=keep_source_api,
+        mapped_tests=mapped_tests,
+        new_code=sorted({g for r in port_rules for g in r.extra_scope}),
+    )
     drafts: list[_Draft] = []
     plan_rules: list[PlanRule] = []
     notes = list(warnings)
@@ -546,12 +862,14 @@ def build_plan(
         )
 
     rules_by_id = {scan.rule_id: scan.loaded.rule for scan in scans}
+    ids = {id(draft): unit_id(seq) for seq, draft in enumerate(drafts, start=1)}
     units: list[WorkUnit] = []
     for seq, draft in enumerate(drafts, start=1):
         estimate = None
         if draft.status in (UnitStatus.PENDING, UnitStatus.TOO_LARGE):
-            chars = sum(project.chars(f) for f in draft.files)
-            lines = sum(project.lines(f) for f in draft.files)
+            counted = draft.files if draft.counted is None else draft.counted
+            chars = sum(project.chars(f) for f in counted)
+            lines = sum(project.lines(f) for f in counted)
             estimate = estimator.unit(chars, [rules_by_id[draft.rule]], lines)
         units.append(
             WorkUnit(
@@ -566,6 +884,7 @@ def build_plan(
                 estimate=estimate,
                 note=draft.note,
                 port=draft.port,
+                needs=sorted(ids[id(n)] for n in draft.needs if id(n) in ids),
             )
         )
     pending = [u.estimate for u in units if u.status is UnitStatus.PENDING and u.estimate]

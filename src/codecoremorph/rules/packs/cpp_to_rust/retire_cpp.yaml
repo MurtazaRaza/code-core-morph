@@ -1,0 +1,22 @@
+id: retire_cpp
+language: cpp
+target_language: rust
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-60)
+description: >-
+  Retire the C++ once the modules, programs and tests are Rust: delete the C++ files, the CMake
+  build and each crate's C bridge, so the Cargo workspace builds and tests alone. With
+  migration.target.keep_source_api the public headers stay as a thin C++ library over Rust.
+detector:
+  type: files                     # each C++ file, until it is deleted
+codemods:
+  - tool: rust-retire             # deletes the C++ and CMake files and the bridges
+extra_scope: ['rust/**']
+llm:
+  guidance: guidance/retire_cpp.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no C++ file left (but a kept API)
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code
+  - {type: lint_clean, severity: error}         # clippy is quiet about every crate
+allow_suppressions: ['rust/*/src/bridge/**']

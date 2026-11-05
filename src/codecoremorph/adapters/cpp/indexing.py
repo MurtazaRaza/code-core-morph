@@ -14,6 +14,7 @@ from importlib import resources
 from pathlib import Path
 
 from codecoremorph.adapters.base import AdapterContext
+from codecoremorph.adapters.cpp.testing import parse_ctest_listing
 from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -183,6 +184,7 @@ def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = N
 
     started = time.monotonic()
     index = ingest(ctx, output, adapter_version=adapter_version, helper_s=helper_s)
+    record_test_entries(ctx, index.path)
     log.info(
         "indexed %s files, %s symbols in %.1f s (%s translation units parsed, %s cached)",
         index.meta.stats.get("files"),
@@ -192,6 +194,30 @@ def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = N
         index.meta.stats.get("cached"),
     )
     return index
+
+
+def record_test_entries(ctx: AdapterContext, index_path: Path) -> None:
+    """The CTest entries of the configured build and what each runs, kept with the index
+    (D-60). A build without tests has none. ctest runs in the sandbox, where the build tree is
+    (a Docker volume the host doesn't see)."""
+    result = ctx.executor.run(
+        ["ctest", "--show-only=json-v1", "--test-dir", ctx.sandbox(ctx.build_dir)],
+        cwd=ctx.sandbox(ctx.build_dir),
+        timeout_s=120,
+        log_path=ctx.log_dir / "ctest-listing.log",
+    )
+    if not result.ok:
+        log.warning("ctest couldn't list the tests; see %s", result.log_path)
+        return
+    stdout, _ = full_output(result)
+    with IndexStore.open(index_path) as store:
+        entries = parse_ctest_listing(
+            stdout,
+            build_dir=ctx.sandbox(ctx.build_dir),
+            source_dir=ctx.sandbox(ctx.worktree),
+            targets=store.build_targets(),
+        )
+        store.set_test_entries(entries)
 
 
 def ingest(
@@ -221,7 +247,7 @@ def ingest(
             elif tag == "problem":
                 problems.append(str(record[1]))
             elif tag == "target":
-                targets.append(build_target(record[1], record[2], record[3]))
+                targets.append(build_target(*record[1:6]))
             elif tag == "meta":
                 meta = dict(record[1])
 
@@ -282,7 +308,13 @@ _LIBRARY_TYPES = frozenset(
 )
 
 
-def build_target(name: object, cmake_type: object, files: object) -> BuildTarget:
+def build_target(
+    name: object,
+    cmake_type: object,
+    files: object,
+    dependencies: object = None,
+    artifacts: object = None,
+) -> BuildTarget:
     """A CMake target from the file API, as the planner sees it."""
     kind = (
         TargetKind.LIBRARY
@@ -291,8 +323,17 @@ def build_target(name: object, cmake_type: object, files: object) -> BuildTarget
         if cmake_type == "EXECUTABLE"
         else TargetKind.OTHER
     )
-    paths = [str(f) for f in files] if isinstance(files, list) else []
-    return BuildTarget(name=str(name), kind=kind, files=paths)
+
+    def strings(value: object) -> list[str]:
+        return [str(v) for v in value] if isinstance(value, list) else []  # type: ignore[union-attr]
+
+    return BuildTarget(
+        name=str(name),
+        kind=kind,
+        files=strings(files),
+        dependencies=strings(dependencies),
+        artifacts=strings(artifacts),
+    )
 
 
 def _with_public_api(row: SymbolRow, public: set[str]) -> SymbolRow:

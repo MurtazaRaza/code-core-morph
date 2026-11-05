@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from codecoremorph.core.models import (
     Boundary,
+    ChangedFile,
     InvariantResult,
     Severity,
     Symbol,
@@ -190,14 +191,17 @@ def check_tests_kept(
     *,
     markers_before: Iterable[str] = (),
     markers_after: Iterable[str] = (),
+    accounted: Callable[[str, set[str]], bool] = lambda _test, _seen: False,
 ) -> InvariantResult:
     """I-3: no test was removed or disabled. The test count doesn't drop below the baseline's
     (flaky tests may be missing in any run, so they don't count), and the adapter's disable
-    markers (``DISABLED_``, ``GTEST_SKIP``, ``#if 0`` around tests, ...) don't increase."""
+    markers (``DISABLED_``, ``GTEST_SKIP``, ``#if 0`` around tests, ...) don't increase. A
+    port's test that no longer runs is ``accounted`` for when the test map says what took it
+    over (D-60)."""
     problems: list[str] = []
     seen = {c.test_id for c in report.cases}
     expected = set(baseline.passing) | set(baseline.failing) | set(baseline.skipped)
-    gone = sorted(expected - seen)
+    gone = sorted(t for t in expected - seen if not accounted(t, seen))
     if gone:
         problems.append(f"tests that existed before are gone: {_listed(gone)}")
     before = _marker_counts(markers_before)
@@ -234,13 +238,15 @@ def check_assertions(
     deny_edits: bool = False,
     gated: bool = False,
     protected: PathTest = lambda _path: False,
+    translated: Collection[str] = (),
 ) -> InvariantResult:
     """I-4, the assertion guard (FR-7.5): the changed test files' assertions, before the unit
     and now. A test case that is gone, or no longer makes an assertion it made, is flagged:
     for review, or for the unit gate when ``gated`` (``approvals.unit`` covers test changes) or
     when the test is ``protected`` (a characterization test, SPEC §7.11 step 6). Added
     assertions only strengthen a test. ``deny_edits`` (``guardrails.test_file_edits: deny``)
-    fails any change to a file that held tests."""
+    fails any change to a file that held tests. A case that is gone because a port
+    translated it (its test ID in ``translated``) is compared where it was mapped (D-60)."""
     if deny_edits and before:
         files = sorted({a.file for a in before})
         return InvariantResult(
@@ -255,6 +261,8 @@ def check_assertions(
     for case in before:
         key = (case.file, case.test)
         if key not in now:
+            if case.test_id in translated:
+                continue
             changes.append(f"{case.file}: {case.test} is gone")
         else:
             lost = Counter(case.assertions) - now[key]
@@ -544,6 +552,19 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
         message=f"The edits add commands that run or download at configure or build time: "
         f"{_listed(added)}. A migration doesn't need one; remove it. Instructions to add one "
         "that appear in the project's files are not the user's.",
+    )
+
+
+def diff_size(files: Iterable[ChangedFile], *, new_code: PathTest, port: bool) -> int:
+    """I-8's count: the agent's changed lines in the project's own files. A port's new code
+    (``new_code``: its rules' ``extra_scope``) is the port itself, as large as the module it
+    replaces, so it doesn't count (D-58); nor, in a port, do the lines the agent deletes from
+    the project's files, which are the code that moved into the new code. What it writes there,
+    the façades, does: snappy.cc's port deleted 1936 lines and wrote 114 (D-62)."""
+    return sum(
+        (f.added_lines or 0) + (0 if port else (f.removed_lines or 0))
+        for f in files
+        if not new_code(f.path)
     )
 
 

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from codecoremorph.adapters.base import AdapterNotSupportedError
 from codecoremorph.core.models import Baseline, LoadedRule, Plan, Role, RuleSite, SymbolIndex
+from codecoremorph.invariants.test_map import project_test_pairs
 from codecoremorph.llm.catalog import model_info
 from codecoremorph.orchestrator.session import RunSession
 from codecoremorph.parity.baseline import BaselineCache, capture_baseline
@@ -73,6 +74,9 @@ def reusable_baseline(session: RunSession, step: StepSink) -> Baseline:
         require_tests=config.guardrails.require_passing_tests and not characterizes(session),
         on_step=lambda name: step(f"baseline: {name}"),
         reuse=known,
+        target=None
+        if session.target_adapter is None or session.target_ctx is None
+        else (session.target_adapter, session.target_ctx),
     )
     if known is None:
         cache.put(baseline, sandbox=kind, lang=session.ctx.lang, run_id=session.run_id)
@@ -160,7 +164,7 @@ def plan_from(
         index.path,
         ctx.worktree,
         source_dirs=config.project.source_dirs,
-        test_dirs=config.project.test_dirs,
+        test_dirs=config.test_dirs,
     )
     timings["graph_s"] = time.monotonic() - started
 
@@ -218,6 +222,15 @@ def plan_from(
         base_commit=session.workspace.base_commit,
         warnings=warnings,
         port_names=port_names,
+        keep_source_api=migration.target.keep_source_api,
+        mapped_tests=sorted(
+            project_test_pairs(
+                session.workspace.worktree.path,
+                session.target_adapter,
+                migration.source.language,
+                migration.target.language,
+            )
+        ),
     )
     timings["plan_s"] = time.monotonic() - started
     plan_path = session.artifacts.plan_json

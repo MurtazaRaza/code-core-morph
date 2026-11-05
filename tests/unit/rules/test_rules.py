@@ -184,7 +184,13 @@ def test_entry_point_packs() -> None:
         for pack in ("cpp", "cpp_to_rust")
     }
     assert len(by_pack["cpp"]) == 5
-    assert by_pack["cpp_to_rust"] == ["port_c_abi_module", "port_module"]
+    assert by_pack["cpp_to_rust"] == [
+        "port_c_abi_module",
+        "port_executable",
+        "port_module",
+        "port_tests",
+        "retire_cpp",
+    ]
     port = registry.get("port_c_abi_module").rule
     assert (port.kind, port.target_language, port.extra_scope) == ("port", "rust", ["rust/**"])
     assert not port.module_port

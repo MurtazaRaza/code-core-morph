@@ -12,10 +12,11 @@ from codecoremorph.adapters.cpp.testing import (
     gtest_filter,
     merge_cases,
     parse_ctest_junit,
+    parse_ctest_listing,
     parse_gtest_xml,
     read_gtest_dir,
 )
-from codecoremorph.core.models import TestCaseResult, TestStatus
+from codecoremorph.core.models import BuildTarget, TargetKind, TestCaseResult, TestStatus
 
 CTEST = b"""<?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="(empty)" tests="5" failures="2" disabled="1" skipped="1" time="0">
@@ -125,3 +126,39 @@ def test_read_gtest_dir_merges_files_and_reports_bad_ones(tmp_path: Path) -> Non
 def test_selection_helpers() -> None:
     assert ctest_regex(["a.b", "c+"]) == r"^(a\.b|c\+)$"
     assert gtest_filter(["gtest:A.b", "gtest:C.d"]) == "A.b:C.d"
+
+
+# --------------------------------------------------------------------------- CTest's listing (D-60)
+
+LISTING = """\ufeff{
+  "kind": "ctestInfo",
+  "backtraceGraph": {
+    "commands": ["add_test"],
+    "files": ["E:/w/tests/CMakeLists.txt"],
+    "nodes": [{"file": 0}, {"command": 0, "file": 0, "line": 12, "parent": 0}]
+  },
+  "tests": [
+    {"name": "calc_tests", "command": ["E:/b/tests/calc_tests.exe"], "backtrace": 1},
+    {"name": "tinycalc_args", "command": ["e:/B/tinycalc.exe", "1 + 2"], "backtrace": 1},
+    {"name": "script", "command": ["E:/tools/python.exe", "x.py"], "backtrace": 1},
+    {"name": "no_command", "backtrace": 7}
+  ]
+}"""
+
+
+def test_ctest_listing_names_what_each_entry_runs() -> None:
+    targets = [
+        BuildTarget(
+            name="calc_tests", kind=TargetKind.EXECUTABLE, artifacts=["tests/calc_tests.exe"]
+        ),
+        BuildTarget(name="tinycalc", kind=TargetKind.EXECUTABLE, artifacts=["tinycalc.exe"]),
+        BuildTarget(name="calc", kind=TargetKind.LIBRARY, artifacts=["libcalc.a"]),
+    ]
+    entries = parse_ctest_listing(LISTING, build_dir=r"E:\b", source_dir="E:/w", targets=targets)
+    assert [(e.test_id, e.runs, e.file) for e in entries] == [
+        ("ctest:calc_tests", "calc_tests", "tests/CMakeLists.txt"),
+        ("ctest:no_command", None, None),
+        ("ctest:script", None, "tests/CMakeLists.txt"),
+        ("ctest:tinycalc_args", "tinycalc", "tests/CMakeLists.txt"),  # Windows: case differs
+    ]
+    assert parse_ctest_listing("not json", build_dir="/b", source_dir="/w", targets=[]) == []

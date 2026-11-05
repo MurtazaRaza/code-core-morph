@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codecoremorph.core.models import BuildTarget, TargetKind
+from codecoremorph.core.models import BuildTarget, TargetKind, TestEntry
 from codecoremorph.store.index import (
     DependencyRow,
     FileRow,
@@ -29,6 +29,7 @@ class FakeProject:
     refs: list[ReferenceRow] = field(default_factory=list[ReferenceRow])
     deps: list[DependencyRow] = field(default_factory=list[DependencyRow])
     targets: list[BuildTarget] = field(default_factory=list[BuildTarget])
+    tests: list[TestEntry] = field(default_factory=list[TestEntry])
 
     def file(
         self,
@@ -86,8 +87,18 @@ class FakeProject:
         self.deps.append((from_file, to_file, "include"))
         return self
 
-    def target(self, name: str, kind: str, files: list[str]) -> FakeProject:
-        self.targets.append(BuildTarget(name=name, kind=TargetKind(kind), files=files))
+    def target(
+        self, name: str, kind: str, files: list[str], dependencies: tuple[str, ...] = ()
+    ) -> FakeProject:
+        self.targets.append(
+            BuildTarget(
+                name=name, kind=TargetKind(kind), files=files, dependencies=list(dependencies)
+            )
+        )
+        return self
+
+    def test(self, test_id: str, runs: str | None, file: str | None = None) -> FakeProject:
+        self.tests.append(TestEntry(test_id=test_id, runs=runs, file=file))
         return self
 
     def build(self) -> Path:
@@ -96,6 +107,7 @@ class FakeProject:
                 files=self.files, symbols=self.symbols, references=self.refs, dependencies=self.deps
             )
             store.set_build_targets(self.targets)
+            store.set_test_entries(self.tests)
         return self.index_path
 
 

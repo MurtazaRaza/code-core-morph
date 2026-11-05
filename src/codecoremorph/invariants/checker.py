@@ -27,6 +27,7 @@ from codecoremorph.core.models import (
     InvariantResult,
     LoadedRule,
     RuleKind,
+    Severity,
     Symbol,
     TestAssertions,
     TestBaseline,
@@ -48,7 +49,15 @@ from codecoremorph.invariants.checks import (
     check_tests_kept,
     check_unit_scope,
     check_warnings,
+    diff_size,
     patch_lines,
+)
+from codecoremorph.invariants.test_map import (
+    TestPair,
+    by_source,
+    gone_but_mapped,
+    read_test_map,
+    weaker_translations,
 )
 from codecoremorph.parity.baseline import warnings_by_file
 from codecoremorph.store.index import IndexStore
@@ -82,6 +91,17 @@ class InvariantSettings:
     characterization_dir: str | None = None  # its tests' assertions always need approval
 
 
+@dataclass(frozen=True)
+class PortSide:
+    """A port's target adapter and what the invariants read of its test map (D-60)."""
+
+    adapter: LanguageAdapter
+    ctx: AdapterContext
+    test_map: str | None  # worktree-relative, None when the adapter keeps none
+    source_language: str
+    target_language: str
+
+
 @dataclass
 class _TestsSeen:
     """What the changed files' tests looked like before the unit and now."""
@@ -101,11 +121,15 @@ class InvariantChecker:
         excluded: PathTest,
         warnings_before: Mapping[str, int],
         store_dir: Path,
+        port: PortSide | None = None,
     ):
         """``excluded`` matches paths no change may touch (I-1); ``warnings_before`` holds the
         distinct warnings per file before the unit (I-10); ``store_dir`` keeps the unit's
-        interface snapshot, so a host unit's later commands find it."""
+        interface snapshot, so a host unit's later commands find it. A ``port``'s test map
+        accounts for translated tests (I-3, I-4), and its adapter reads the new tests'
+        assertions (D-60)."""
         self.adapter = adapter
+        self.port = port
         self.settings = settings
         self.excluded = excluded
         self.warnings_before = dict(warnings_before)
@@ -178,24 +202,43 @@ class InvariantChecker:
         outcome.results.append(check_path_scope(changed, excluded=self.excluded))
         outcome.results.append(check_unit_scope(changed, allowed=allowed))
         tests = self._tests(ctx, worktree, snapshot, changed)
+        pairs = self._pairs(worktree.path, None)
         outcome.results.append(
             check_tests_kept(
-                baseline, report, markers_before=tests.markers[0], markers_after=tests.markers[1]
+                baseline,
+                report,
+                markers_before=tests.markers[0],
+                markers_after=tests.markers[1],
+                accounted=lambda test, seen: not gone_but_mapped([test], seen, pairs),
             )
         )
+        protected_dir = self.settings.characterization_dir
+
+        def protected(path: str) -> bool:
+            return protected_dir is not None and path.startswith(protected_dir.rstrip("/") + "/")
+
         if tests.assertions is not None:
-            protected = self.settings.characterization_dir
             outcome.results.append(
                 check_assertions(
                     *tests.assertions,
                     deny_edits=self.settings.test_file_edits == "deny",
                     gated=self.settings.gate_test_changes,
-                    protected=(lambda p: p.startswith(protected.rstrip("/") + "/"))
-                    if protected
-                    else (lambda _p: False),
+                    protected=protected,
+                    translated=set(pairs),
                 )
             )
-        outcome.results.append(self._api(ctx, unit, rules, changed))
+        translations = self._translations(
+            ctx, worktree, snapshot, agent_since or snapshot, unit, pairs, protected
+        )
+        if translations is not None:
+            outcome.results.append(translations)
+        if any(r.rule.retirement for r in rules):
+            # The retirement removes the source language's API on purpose (D-60).
+            outcome.results.append(
+                check_api([], api_changing=False, covered=lambda _c: True, gated=False)
+            )
+        else:
+            outcome.results.append(self._api(ctx, unit, rules, changed))
         lines = patch_lines(diff.patch)
         agent_diff = worktree.diff(agent_since) if agent_since else diff
         # Suppressions count on the agent's lines, like I-8: a codemod's are the rule's design
@@ -214,11 +257,13 @@ class InvariantChecker:
             )
         )
         outcome.results.append(check_build_commands(lines))
-        # A port's new code (its rule's extra_scope) is the port itself, as large as the module
-        # it replaces; I-8 bounds the agent's changes to the project's own files (D-58).
-        new_code = PathMatcher([g for r in rules for g in r.rule.extra_scope])
-        agent = [f for f in agent_diff.files if not new_code.matches(f.path)]
-        size = sum((f.added_lines or 0) + (f.removed_lines or 0) for f in agent)
+        # I-8 bounds the agent's changes to the project's own files, a port's façades (D-58,
+        # D-62).
+        size = diff_size(
+            agent_diff.files,
+            new_code=PathMatcher([g for r in rules for g in r.rule.extra_scope]).matches,
+            port=any(r.rule.kind is RuleKind.PORT for r in rules),
+        )
         outcome.results.append(check_diff_size(size, limit=self.settings.max_diff_lines))
         self.warnings_after = warnings_by_file(built)
         if self.settings.new_warnings != "off":
@@ -232,6 +277,82 @@ class InvariantChecker:
                 )
             )
         return outcome
+
+    def _pairs(self, root: Path, snapshot: tuple[Worktree, str] | None) -> dict[str, TestPair]:
+        """The port's test map, now (in ``root``) or at a snapshot commit; empty without."""
+        port = self.port
+        if port is None or port.test_map is None:
+            return {}
+        if snapshot is None:
+            path = root / port.test_map
+            data = path.read_bytes() if path.is_file() else None
+        else:
+            data = snapshot[0].show(snapshot[1], port.test_map)
+        if data is None:
+            return {}
+        entries, _ = read_test_map(
+            data.decode("utf-8", errors="replace"), port.source_language, port.target_language
+        )
+        return by_source(entries)
+
+    def _translations(
+        self,
+        ctx: AdapterContext,
+        worktree: Worktree,
+        snapshot: str,
+        mapped_since: str,
+        unit: WorkUnit,
+        pairs: Mapping[str, TestPair],
+        protected: PathTest,
+    ) -> InvariantResult | None:
+        """I-4 across languages (D-60): each test the agent mapped since ``mapped_since`` (the
+        tree after the codemods, whose entries are the rule's), against its translation. None
+        when the agent maps nothing."""
+        port = self.port
+        if port is None:
+            return None
+        before = self._pairs(worktree.path, (worktree, mapped_since))
+        added = [p for source, p in sorted(pairs.items()) if before.get(source) != p]
+        if not added:
+            return None
+        sources: list[TestAssertions] = []
+        old = Path(tempfile.mkdtemp(prefix="codecoremorph-tests-"))
+        try:
+            # The source cases as they were before the unit (a retirement deletes them).
+            for path in unit.files:
+                data = worktree.show(snapshot, path)
+                if data is not None:
+                    target = old.joinpath(*path.split("/"))
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+            with suppress(AdapterNotSupportedError):
+                sources = self.adapter.extract_assertions(replace(ctx, worktree=old), unit.files)
+        finally:
+            shutil.rmtree(old, ignore_errors=True)
+        try:
+            rust_files = [
+                p.relative_to(worktree.path).as_posix() for p in worktree.path.rglob("*.rs")
+            ]
+            targets = port.adapter.extract_assertions(port.ctx, rust_files)
+        except AdapterNotSupportedError:
+            return None
+        found = weaker_translations(added, sources, targets)
+        if not found:
+            return InvariantResult(invariant="I-4", passed=True)
+        cases = {a.test_id: a.file for a in sources}
+        gate = self.settings.gate_test_changes or any(
+            protected(cases[p.source]) for p in added if p.source in cases
+        )
+        return InvariantResult(
+            invariant="I-4",
+            passed=False,
+            severity=Severity.WARNING,
+            needs_approval=gate,
+            message="Translated tests check less than their originals: "
+            + "; ".join(found[:10])
+            + (f"; and {len(found) - 10} more" if len(found) > 10 else "")
+            + ".",
+        )
 
     def _tests(
         self, ctx: AdapterContext, worktree: Worktree, snapshot: str, changed: list[str]
@@ -262,6 +383,24 @@ class InvariantChecker:
                     self.adapter.extract_assertions(old_ctx, existed),
                     self.adapter.extract_assertions(ctx, present),
                 )
+            if self.port is not None:
+                # A port's own tests are guarded too (a later unit must not weaken a test it
+                # translated), in their package as it was: its manifest names the tests.
+                for path in existed:
+                    parts = path.split("/")
+                    for n in range(len(parts) - 1, 0, -1):
+                        manifest = "/".join([*parts[:n], "Cargo.toml"])
+                        data = worktree.show(snapshot, manifest)
+                        if data is not None and not old.joinpath(*manifest.split("/")).exists():
+                            old.joinpath(*manifest.split("/")).write_bytes(data)
+                with suppress(AdapterNotSupportedError):
+                    port = self.port
+                    before = port.adapter.extract_assertions(
+                        replace(port.ctx, worktree=old), existed
+                    )
+                    after = port.adapter.extract_assertions(port.ctx, present)
+                    found = seen.assertions or ([], [])
+                    seen.assertions = (found[0] + before, found[1] + after)
         finally:
             shutil.rmtree(old, ignore_errors=True)
         return seen

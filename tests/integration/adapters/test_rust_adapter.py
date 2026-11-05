@@ -23,6 +23,7 @@ from codecoremorph.adapters.rust import RustAdapter
 from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.ids import new_run_id
 from codecoremorph.core.models import CodemodSpec, LanguageConfig, Severity, TestStatus
+from codecoremorph.invariants.abi import c_abi_differences
 from codecoremorph.sandbox.executor import Executor
 from codecoremorph.sandbox.native import NativeExecutor
 
@@ -188,6 +189,48 @@ def test_cargo_diagnostics_clippy_and_nextest(make_contexts: MakeContexts) -> No
     ]
 
 
+LINTED = """\
+pub fn blocks(n: usize) -> usize {
+    if n % 64 == 0 {
+        n / 64
+    } else {
+        n / 64 + 1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn splits() {
+        let mut a = vec![0u8; 4];
+        let mut segments = [&mut a[..]];
+        segments[0][0] = 1;
+        assert_eq!(a[0], 1);
+        assert_eq!(super::blocks(65), 2);
+    }
+}
+"""
+
+
+def test_clippy_fixes_what_it_can(make_contexts: MakeContexts) -> None:
+    """snappy's port lost its last attempts to these (M8, D-62): a manual `is_multiple_of`, and
+    a `useless_vec` on a buffer used as a slice. clippy's own fixes take them."""
+    ctx = make_contexts(None)
+    adapter = RustAdapter()
+    _crate(ctx.worktree, LINTED)
+    lib = "rust/demo/src/lib.rs"
+    before = [(d.code, d.line) for d in adapter.lint(ctx.rust) if d.file_path == lib]
+    assert ("clippy::manual_is_multiple_of", 2) in before
+    assert ("clippy::useless_vec", 13) in before
+    assert adapter.apply_lint_fixes(ctx.rust) == [lib]
+    text = (ctx.worktree / lib).read_text(encoding="utf-8")
+    assert "is_multiple_of(64)" in text
+    assert "let mut a = [0u8; 4];" in text
+    assert [d for d in adapter.lint(ctx.rust) if d.file_path == lib] == []
+    assert adapter.build(ctx.rust).success
+    assert adapter.apply_lint_fixes(ctx.rust) == []  # nothing more it can fix
+
+
 def _port_lib() -> str:
     data = json.loads(EDITS.read_text(encoding="utf-8"))
     [batch] = data["submissions"]["U-0001"]
@@ -250,6 +293,41 @@ def test_the_ffi_module_ported_by_hand(make_contexts: MakeContexts) -> None:
     # The mixed build left the crate as it was: Corrosion builds it FROZEN, out of the tree.
     crate = root / "rust" / "textkit_ring"
     assert sorted(p.name for p in crate.iterdir()) == ["Cargo.lock", "Cargo.toml", "src"]
+
+    # An anonymous enum that a typedef names, as snappy-c.h's snappy_status (M8, D-62):
+    # libclang spells the header's type by the typedef, and cbindgen's export as an enum tag.
+    # The same C type, so the interface is kept.
+    (root / "include" / "textkit" / "status.h").write_text(
+        "typedef enum { TK_OK = 0, TK_FULL = 1 } tk_status;\ntk_status tk_status_of(int code);\n",
+        encoding="utf-8",
+    )
+    lib = crate / "src" / "lib.rs"
+    lib.write_text(lib.read_text(encoding="utf-8") + STATUS_RS, encoding="utf-8")
+    [exported] = rust.exported_c_headers(ctx.rust, ["rust/textkit_ring/src/lib.rs"])
+    header = cpp.c_declarations(ctx.cpp, root / "include" / "textkit" / "status.h")
+    exports = cpp.c_declarations(ctx.cpp, exported)
+    assert header == {"tk_status_of": "tk_status (int)"}
+    assert exports["tk_status_of"] == "enum tk_status (int)"
+    assert c_abi_differences(header, exports) == []
+
+
+STATUS_RS = """
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub enum tk_status {
+    TK_OK = 0,
+    TK_FULL = 1,
+}
+
+#[no_mangle]
+pub extern "C" fn tk_status_of(code: i32) -> tk_status {
+    if code == 0 {
+        tk_status::TK_OK
+    } else {
+        tk_status::TK_FULL
+    }
+}
+"""
 
 
 PORT_LEGACY = ROOT / "fixtures" / "cpp" / "port-legacy"
@@ -332,3 +410,101 @@ def test_the_module_scaffold(make_contexts: MakeContexts) -> None:
     assert [(s.file, s.line) for s in rust.unsafe_sites(ctx.rust)] == [
         ("rust/calc_rs/src/strutil.rs", 1)
     ]
+
+
+def test_the_rest_of_a_port(make_contexts: MakeContexts) -> None:
+    """Phase 14's codemods on ``port-legacy`` (D-60): the program's package takes the CMake
+    executable's name, a test file's integration test and the test map, and the retirement,
+    after which Cargo alone builds and tests. The test IDs the adapter reads from the sources
+    are the ones nextest reports."""
+    ctx = make_contexts(PORT_LEGACY, "cpp98")
+    rust, cpp = RustAdapter(), CppAdapter()
+    root = ctx.worktree
+    module = ["CMakeLists.txt", "include/calc/strutil.h", "src/strutil.cpp"]
+    assert rust.run_codemods(ctx.rust, [_module("strutil")], module).diagnostics == []
+    bin_options = {
+        "crate": "tinycalc_rs",
+        "bin": "tinycalc",
+        "build_target": "tinycalc",
+        "dependencies": "calc_rs",
+    }
+    program = rust.run_codemods(
+        ctx.rust,
+        [CodemodSpec(tool="rust-bin", options=bin_options)],
+        ["CMakeLists.txt", "app/main.cpp", "tests/CMakeLists.txt"],
+    )
+    assert program.diagnostics == []
+    assert sorted(c.file for c in program.changes) == [
+        "CMakeLists.txt",
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/test-map.toml",
+        "rust/tinycalc_rs/Cargo.toml",
+        "rust/tinycalc_rs/src/main.rs",
+    ]
+    top = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "add_executable(tinycalc" not in top
+    assert "target_link_libraries(tinycalc" not in top
+    tests_options = {"crate": "calc_rs", "module": "strutil_test", "wrappers": "ctest:calc_tests"}
+    translation = rust.run_codemods(
+        ctx.rust,
+        [CodemodSpec(tool="rust-tests", options=tests_options)],
+        ["tests/strutil_test.cpp"],
+    )
+    assert sorted(c.file for c in translation.changes) == [
+        "rust/calc_rs/tests/strutil_test.rs",
+        "rust/test-map.toml",
+    ]
+    test_map = (root / "rust/test-map.toml").read_text(encoding="utf-8")
+    assert 'cpp = "ctest:calc_tests"\nnote = "only runs a GoogleTest binary' in test_map
+    with (root / "rust/calc_rs/tests/strutil_test.rs").open("a", encoding="utf-8") as test:
+        test.write(
+            "\nmod suite {\n    #[test]\n    fn adds() {\n        assert_eq!(1 + 1, 2);\n    }\n}\n"
+        )
+    (root / "rust/tinycalc_rs/tests").mkdir()
+    (root / "rust/tinycalc_rs/tests/tinycalc.rs").write_text(
+        '#[test]\nfn runs() {\n    let program = env!("CARGO_BIN_EXE_tinycalc");\n'
+        "    assert!(std::process::Command::new(program).status().unwrap().success());\n}\n",
+        encoding="utf-8",
+    )
+    # CMake builds the C++ library with the crate, and the Rust program under the C++ name.
+    assert rust.configure(ctx.rust).success
+    assert cpp.configure(ctx.cpp).success
+    built = cpp.build(ctx.cpp)
+    assert built.success, [d.message for d in built.errors]
+    assert rust.build(ctx.rust).success
+    report = rust.run_tests(ctx.rust)
+    ran = {c.test_id: c.status for c in report.cases}
+    assert ran == {
+        "nextest:calc_rs::strutil_test::suite::adds": TestStatus.PASSED,
+        "nextest:tinycalc_rs::tinycalc::runs": TestStatus.PASSED,
+    }
+    read = rust.extract_assertions(
+        ctx.rust, ["rust/calc_rs/tests/strutil_test.rs", "rust/tinycalc_rs/tests/tinycalc.rs"]
+    )
+    assert {a.test_id for a in read} == set(ran)
+    assert rust.unsafe_sites(ctx.rust) == []
+
+    cpp_files = [
+        "CMakeLists.txt",
+        "tests/CMakeLists.txt",
+        *(p.relative_to(root).as_posix() for d in ("app", "include", "src", "tests")
+          for p in (root / d).rglob("*") if p.is_file()),
+    ]  # fmt: skip
+    retired = rust.run_codemods(
+        ctx.rust, [CodemodSpec(tool="rust-retire", options={"keep": "false"})], cpp_files
+    )
+    assert "rust/calc_rs/src/bridge/mod.rs" in {c.file for c in retired.changes}
+    assert not (root / "CMakeLists.txt").exists()
+    assert not (root / "rust/calc_rs/include").exists()
+    assert not cpp.builds(ctx.cpp)
+    assert rust.builds(ctx.rust)
+    lib = (root / "rust/calc_rs/src/lib.rs").read_text(encoding="utf-8")
+    assert "#![forbid(unsafe_code)]" in lib
+    assert "mod bridge" not in lib
+    assert "staticlib" not in (root / "rust/calc_rs/Cargo.toml").read_text(encoding="utf-8")
+    rust.clean_build(ctx.rust)
+    assert rust.configure(ctx.rust).success
+    assert rust.build(ctx.rust).success
+    assert {c.test_id for c in rust.run_tests(ctx.rust).cases} == set(ran)
+    assert rust.unsafe_uses(ctx.rust) == []

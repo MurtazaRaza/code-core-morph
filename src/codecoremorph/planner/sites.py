@@ -79,13 +79,24 @@ def find_sites(
     source: str,
     target: str,
     query: QueryFn,
+    language_of: Callable[[str], str | None] | None = None,
 ) -> dict[str, list[RuleSite]]:
     """The rule's detector sites in ``files``, by file, in line order. Empty without a
-    detector."""
+    detector. A ``files`` detector (D-60) makes each of them that exists a site, those of the
+    rule's language only when ``language_of`` tells."""
     detector = loaded.rule.detector
     found: list[RuleSite] = []
     if detector is None:
         pass
+    elif detector.type is DetectorType.FILES:
+        language = loaded.rule.language
+        for path in files:
+            if language_of is not None and language_of(path) not in (None, language):
+                continue
+            if (worktree / path).is_file():
+                found.append(
+                    RuleSite(file=path, line=1, text="still here: delete it once it is ported")
+                )
     elif detector.type is DetectorType.PATTERN:
         patterns = active_patterns(order, detector, source, target)
         if patterns:

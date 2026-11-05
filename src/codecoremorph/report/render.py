@@ -126,6 +126,31 @@ def render_markdown(report: RunReport) -> str:
             out(f"- regression: `{test_id}`")
     out("")
 
+    port = report.port
+    if port is not None:
+        out("## Port")
+        out("")
+        out(
+            f"The symbol map has {port.symbols} entries; the test map pairs {port.tests_mapped} "
+            f"tests. Unsafe code: {len(port.unsafe) or 'none'}"
+            + (f" ({', '.join(f'`{u}`' for u in port.unsafe[:20])})" if port.unsafe else "")
+            + "."
+        )
+        sections = [
+            ("Tests without a counterpart", port.tests_without_counterpart),
+            ("Behavior the port couldn't keep, or kept differently", port.deviations),
+            ("Source code left", port.source_left),
+        ]
+        for title, items in sections:
+            if items:
+                out("")
+                out(f"{title}:")
+                for item in items[:50]:
+                    out(f"- {_cell(item)}")
+                if len(items) > 50:
+                    out(f"- ... and {len(items) - 50} more")
+        out("")
+
     summary = report.characterization
     if summary is not None:
         out("## Characterization tests")

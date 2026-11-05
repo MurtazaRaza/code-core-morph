@@ -26,6 +26,7 @@ from codecoremorph.core.models import (
     LoadedRule,
     Message,
     PortUnit,
+    PortUnits,
     RuleKind,
     RuleSite,
     SystemBlock,
@@ -161,6 +162,7 @@ def unit_message(
     build: str | None,
     find_symbol: str = "find_symbol",
     port: bool = False,
+    port_units: PortUnits | None = None,
 ) -> str:
     """The unit's first message: its files in full, signatures, codemods, sites, build.
 
@@ -183,7 +185,13 @@ def unit_message(
         shown.append(f"[{len(signatures) - MAX_SIGNATURES} more; use {find_symbol}]")
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
-    if unit.port is not None:
+    if port_units is PortUnits.RETIREMENT:
+        note += retirement_note(unit)
+    elif unit.port is not None and port_units is PortUnits.EXECUTABLE:
+        note += executable_note(unit, unit.port)
+    elif unit.port is not None and port_units is PortUnits.TESTS:
+        note += tests_note(unit, unit.port)
+    elif unit.port is not None:
         note += module_port_note(unit.port)
     elif port and unit.reference_files:
         note += (
@@ -232,6 +240,61 @@ def module_port_note(port: PortUnit) -> str:
     )
 
 
+def executable_note(unit: WorkUnit, port: PortUnit) -> str:
+    """An executable's unit (D-60): the program it becomes, and its tests."""
+    crate = port.crate
+    deps = ", ".join(port.dependencies) or "none"
+    tests = ", ".join(port.tests)
+    translate = (
+        f" Translate the CTest entries that run it ({tests}) into integration tests of {crate} "
+        f"(rust/{crate}/tests/), and map each in rust/test-map.toml."
+        if port.tests
+        else ""
+    )
+    return (
+        f"Port the program `{port.bin}` to Rust: rust/{crate}/src/main.rs, the `bin` named "
+        f"`{port.bin}`, calling the Rust API of its library crates ({deps}), never their "
+        "`bridge` module. Delete its C++ sources (listed under Left to do) once the program "
+        f"does their job.{translate}\n\n"
+    )
+
+
+def tests_note(unit: WorkUnit, port: PortUnit) -> str:
+    """A test file's unit (D-60): where its tests go, and what to map."""
+    crate, module = port.crate, port.module
+    shown = ", ".join(port.tests) or "none"
+    wrappers = (
+        f" The codemod mapped {', '.join(port.wrappers)} (it only runs the test binary) to its "
+        "cases already."
+        if port.wrappers
+        else ""
+    )
+    return (
+        f"Translate the C++ tests of {', '.join(unit.reference_files)} into "
+        f"rust/{crate}/tests/{module}.rs (an integration test of {crate}: its public API only), "
+        "one Rust test per case, each checking at least as much as the original, and map each "
+        f"in rust/test-map.toml: {shown}.{wrappers} The C++ files stay as they are (read-only) "
+        "and keep running.\n\n"
+    )
+
+
+def retirement_note(unit: WorkUnit) -> str:
+    """The retirement (D-60): what went, and what is left to do."""
+    return (
+        f"The codemod retired the C++: it deleted {len(unit.files)} C++ and CMake files and the "
+        "crates' C bridges, so the Cargo workspace now builds and tests alone. Make it build, "
+        "pass and lint clean on its own (code only the bridge used, docs that describe the "
+        "C++), and give every baseline test an entry in rust/test-map.toml.\n\n"
+    )
+
+
+def _port_units(rules: Sequence[LoadedRule]) -> PortUnits | None:
+    return next(
+        (r.rule.port_units for r in rules if r.rule.kind is RuleKind.PORT and r.rule.port_units),
+        None,
+    )
+
+
 def build_context(
     unit: WorkUnit,
     rules: Sequence[LoadedRule],
@@ -256,6 +319,7 @@ def build_context(
         remaining=remaining,
         build=build,
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
+        port_units=_port_units(rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -305,6 +369,7 @@ def host_document(
         build=build,
         find_symbol="`codecoremorph unit symbol`",
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
+        port_units=_port_units(rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]

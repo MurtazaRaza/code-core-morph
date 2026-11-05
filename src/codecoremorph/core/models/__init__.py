@@ -55,6 +55,7 @@ from codecoremorph.core.models.index import (
     SymbolIndex,
     SymbolKind,
     TargetKind,
+    TestEntry,
     Visibility,
 )
 from codecoremorph.core.models.llm import (
@@ -89,6 +90,7 @@ from codecoremorph.core.models.planning import (
 )
 from codecoremorph.core.models.report import (
     FinalVerification,
+    PortSummary,
     ReviewItem,
     ReviewKind,
     RuleSummary,
@@ -201,6 +203,7 @@ __all__ = [
     "PlanEstimate",
     "PlanGraph",
     "PlanRule",
+    "PortSummary",
     "PortUnit",
     "PortUnits",
     "Postcondition",
@@ -236,6 +239,7 @@ __all__ = [
     "TestAssertions",
     "TestBaseline",
     "TestCaseResult",
+    "TestEntry",
     "TestReport",
     "TestSelection",
     "TestStatus",

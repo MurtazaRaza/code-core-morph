@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from codecoremorph.adapters.base import AdapterNotSupportedError
 from codecoremorph.agent.host import HostFiles, HostStep, HostUnit
 from codecoremorph.agent.loop import AgentSettings, Guard, UnitOutcome, UnitRunner
 from codecoremorph.config import load_config
@@ -39,7 +40,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.core.models.vcs import DirtyState
 from codecoremorph.core.paths import HomeLayout
-from codecoremorph.invariants.checker import InvariantChecker, InvariantSettings
+from codecoremorph.invariants.checker import InvariantChecker, InvariantSettings, PortSide
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.planning import BASELINE_FILE, baseline_cache, reusable_baseline
 from codecoremorph.orchestrator.session import RunSession, project_root
@@ -142,7 +143,7 @@ def prepare_unit(
         for f in entries
         if f.role in code_roles and f.language == config.migration.source.language
     ]
-    scope_dirs = [*config.project.source_dirs, *config.project.test_dirs]
+    scope_dirs = [*config.project.source_dirs, *config.test_dirs]
     in_scope = PathMatcher([d for d in scope_dirs if d != "."]) if "." not in scope_dirs else None
     uncompiled = [f for f in index.meta.uncompiled if in_scope is None or in_scope.matches(f)]
     if not files:
@@ -153,6 +154,11 @@ def prepare_unit(
             )
         files = build_files
     missing = [f for f in files if not (ctx.worktree / f).is_file()]
+    if missing and planned is not None and any(r.rule.kind is RuleKind.PORT for r in rules):
+        # An earlier unit of the port deleted them (a module's header-only code, a program's
+        # sources); the unit goes on without them (D-60).
+        files = [f for f in files if f not in missing]
+        missing = [] if files else missing
     if missing:
         raise UsageError(
             f"not files of the repository at the base commit: {', '.join(missing)}",
@@ -190,6 +196,19 @@ def invariant_checker(
     config = session.config
     policy = config.approvals.unit
     characterization = config.parity.characterization_tests
+    port: PortSide | None = None
+    if session.target_adapter is not None and session.target_ctx is not None:
+        try:
+            test_map: str | None = session.target_adapter.test_map_path()
+        except AdapterNotSupportedError:
+            test_map = None
+        port = PortSide(
+            adapter=session.target_adapter,
+            ctx=session.target_ctx,
+            test_map=test_map,
+            source_language=config.migration.source.language,
+            target_language=config.migration.target.language,
+        )
     return InvariantChecker(
         session.adapter,
         InvariantSettings(
@@ -203,6 +222,7 @@ def invariant_checker(
         excluded=PathMatcher(session.ctx.lang.exclude).matches,
         warnings_before=warnings_before,
         store_dir=session.artifacts.unit_dir(unit_id),
+        port=port,
     )
 
 
@@ -245,6 +265,7 @@ def make_runner(
         deadline=deadline,
         target_adapter=session.target_adapter,
         target_ctx=session.target_ctx,
+        keep_source_api=config.migration.target.keep_source_api,
     )
 
 

@@ -63,3 +63,13 @@ def test_denied_test_edits_fail_the_attempt() -> None:
     assert result.severity is Severity.ERROR
     assert "guardrails.test_file_edits: deny" in result.message
     assert check_assertions([], [case("t.cpp", "N.New", "EXPECT_TRUE(1)")], deny_edits=True).passed
+
+
+def test_a_case_a_port_translated_is_not_gone() -> None:
+    # The retirement deleted the C++ test file; the test map pairs A.One with a Rust test, and
+    # the guard compared the two when the pair was made (D-60).
+    result = check_assertions(BEFORE, [], translated={"gtest:A.One"})
+    assert not result.passed
+    assert "A.Two is gone" in result.message
+    assert "A.One" not in result.message
+    assert check_assertions(BEFORE, [], translated={"gtest:A.One", "gtest:A.Two"}).passed

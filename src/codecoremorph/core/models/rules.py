@@ -57,6 +57,9 @@ class DetectorType(StrEnum):
     PATTERN = "pattern"  # regular expressions over code, with comments and strings masked
     ADAPTER_QUERY = "adapter_query"  # a named query the language adapter answers
     HOOK = "hook"  # a Python function, "module:function"
+    # Every file of the rule's language is a site until it is deleted: a port that replaces
+    # its files, an executable's or the retirement's (D-60).
+    FILES = "files"
 
 
 class Detector(CoreModel):
@@ -76,6 +79,7 @@ class Detector(CoreModel):
             DetectorType.PATTERN: ("patterns", bool(self.patterns)),
             DetectorType.ADAPTER_QUERY: ("query", self.query is not None),
             DetectorType.HOOK: ("hook", self.hook is not None),
+            DetectorType.FILES: ("type", True),
         }[self.type]
         if not needed[1]:
             raise ValueError(f"a {self.type.value} detector needs `{needed[0]}`")
@@ -122,6 +126,9 @@ class PostconditionType(StrEnum):
     UNSAFE_IN_BRIDGE = "unsafe_in_bridge"
     LINT_CLEAN = "lint_clean"
     SYMBOL_MAP = "symbol_map"
+    # Tests (D-60): every test the unit translates is in the project's test map, each mapped
+    # target test run and passing.
+    TEST_MAP = "test_map"
 
 
 class Postcondition(CoreModel):
@@ -145,6 +152,12 @@ class PortUnits(StrEnum):
     # One unit per module (a cluster of the file graph a library target compiles), leaves
     # first, its headers kept as façades over the new code (Phase 13).
     MODULE = "module"
+    # Phase 14 (D-60): one unit per executable that isn't a test, its sources replaced by a
+    # program in the target language; one per test source, translated beside it; and one last
+    # unit that retires what is left of the source language.
+    EXECUTABLE = "executable"
+    TESTS = "tests"
+    RETIREMENT = "retirement"
 
 
 class Rule(CoreModel):
@@ -176,7 +189,8 @@ class Rule(CoreModel):
     port_units: PortUnits | None = Field(
         default=None,
         description="For kind: port, how units are cut: c_header (one per C interface, the "
-        "default) or module (one per module, behind façades)",
+        "default), module (one per module, behind façades), executable (one per program), "
+        "tests (one per test source) or retirement (one, last)",
     )
 
     @model_validator(mode="after")
@@ -215,6 +229,11 @@ class Rule(CoreModel):
     def module_port(self) -> bool:
         """A port cut by module, behind façades (D-58)."""
         return self.kind is RuleKind.PORT and self.port_units is PortUnits.MODULE
+
+    @property
+    def retirement(self) -> bool:
+        """The port's last unit, which removes the source language's code (D-60)."""
+        return self.kind is RuleKind.PORT and self.port_units is PortUnits.RETIREMENT
 
     @property
     def natural_language_only(self) -> bool:

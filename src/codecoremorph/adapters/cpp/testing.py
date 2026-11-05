@@ -12,12 +12,15 @@ as its cases' ``gtest:`` IDs. Both are stable across runs, and parity is checked
 
 from __future__ import annotations
 
+import json
+import posixpath
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import Any, cast
 
-from codecoremorph.core.models import TestCaseResult, TestStatus
+from codecoremorph.core.models import BuildTarget, TestCaseResult, TestEntry, TestStatus
 
 _DTD = re.compile(rb"<!(DOCTYPE|ENTITY)", re.IGNORECASE)
 _STATUS_RANK = {
@@ -165,3 +168,63 @@ def ctest_regex(names: Iterable[str]) -> str:
 
 def gtest_filter(ids: Iterable[str]) -> str:
     return ":".join(i.removeprefix("gtest:") for i in ids)
+
+
+# --------------------------------------------------------------------------- CTest's listing
+
+
+def _posix(path: str) -> str:
+    return path.replace("\\", "/").rstrip("/")
+
+
+def _relative(path: str, root: str) -> str | None:
+    """``path`` under ``root``, both as CTest and the sandbox spell them; case-insensitive
+    when only the case differs (Windows)."""
+    path, root = _posix(path), _posix(root)
+    for p, r in ((path, root), (path.casefold(), root.casefold())):
+        if p.startswith(r + "/"):
+            return path[len(r) + 1 :]
+    return None
+
+
+def parse_ctest_listing(
+    text: str, *, build_dir: str, source_dir: str, targets: Sequence[BuildTarget]
+) -> list[TestEntry]:
+    """``ctest --show-only=json-v1``: each entry, the project target its command runs (by the
+    target's artifacts, relative to ``build_dir``) and the build file that adds it (relative to
+    ``source_dir``). Paths are as the sandbox spells them (D-60)."""
+    try:
+        data = json.loads(text.lstrip("﻿"))
+    except ValueError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    listing = cast(dict[str, Any], data)
+    graph = cast(dict[str, Any], listing.get("backtraceGraph") or {})
+    nodes = cast(list[dict[str, Any]], graph.get("nodes") or [])
+    files = cast(list[str], graph.get("files") or [])
+    by_artifact: dict[str, str] = {}
+    for target in targets:
+        for artifact in target.artifacts:
+            by_artifact.setdefault(_posix(artifact), target.name)
+            by_artifact.setdefault(_posix(artifact).casefold(), target.name)
+    entries: list[TestEntry] = []
+    for test in cast(list[dict[str, Any]], listing.get("tests") or []):
+        name = test.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        runs: str | None = None
+        command = cast(list[str], test.get("command") or [])
+        if command:
+            rel = _relative(str(command[0]), build_dir)
+            if rel is not None:
+                runs = by_artifact.get(rel) or by_artifact.get(rel.casefold())
+        file: str | None = None
+        node = test.get("backtrace")
+        if isinstance(node, int) and 0 <= node < len(nodes):
+            index = nodes[node].get("file")
+            if isinstance(index, int) and 0 <= index < len(files):
+                rel = _relative(files[index], source_dir)
+                file = posixpath.normpath(rel) if rel is not None else None
+        entries.append(TestEntry(test_id=f"ctest:{name}", runs=runs, file=file))
+    return sorted(entries, key=lambda e: e.test_id)

@@ -227,6 +227,12 @@ class TargetSpec(ConfigModel):
         "a port lists its port rules (`port_c_abi_module`); `codecoremorph rules list` shows "
         "them",
     )
+    keep_source_api: bool = Field(
+        default=False,
+        description="For a port that retires the source language (`retire_cpp`): keep the "
+        "public headers as a thin library over the new code, with the tests that use only "
+        "them, for outside consumers (D-60)",
+    )
 
     @field_validator("rules")
     @classmethod
@@ -246,6 +252,14 @@ class MigrationSection(ConfigModel):
     rules_paths: list[RelPath] = Field(
         default_factory=list[str], description="Extra project-local rule directories"
     )
+
+    @model_validator(mode="after")
+    def _keep_source_api_ports(self) -> MigrationSection:
+        if self.target.keep_source_api and self.target.language == self.source.language:
+            raise ValueError(
+                "target.keep_source_api is for a port (a target language other than the source's)"
+            )
+        return self
 
 
 class BuildToolOptions(ConfigModel):
@@ -551,3 +565,13 @@ class MigrationConfig(ConfigModel):
             return data
         mode = SandboxMode.DOCKER if flag else SandboxMode.NATIVE
         return {**raw, "sandbox": {**sandbox, "mode": mode.value}}
+
+    @property
+    def test_dirs(self) -> list[str]:
+        """The project's tests: ``project.test_dirs`` and the directory of the
+        characterization tests, which CodeCoreMorph writes as tests whatever the project's
+        own layout (D-46): a manifest whose test globs name only its own files still has
+        them classified as tests."""
+        written = self.parity.characterization_tests.dir
+        dirs = list(self.project.test_dirs)
+        return dirs if written in dirs else [*dirs, written]

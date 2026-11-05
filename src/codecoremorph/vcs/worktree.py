@@ -56,6 +56,12 @@ class Worktree:
     def head(self) -> str:
         return self.git.text("rev-parse", "--verify", "HEAD")
 
+    def tracked_files(self) -> list[str]:
+        """Every file git tracks in the worktree, the files of checked-out submodules too, as
+        sorted POSIX paths from its root. Reads only."""
+        out = self.git.run("ls-files", "-z", "--recurse-submodules").stdout
+        return sorted({p for p in out.decode("utf-8", errors="replace").split("\0") if p})
+
     def snapshot(self) -> str:
         """The commit to roll back to if the next attempt fails (FR-6.3)."""
         return self.head()

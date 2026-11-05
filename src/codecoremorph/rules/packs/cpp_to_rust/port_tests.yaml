@@ -1,0 +1,21 @@
+id: port_tests
+language: cpp
+target_language: rust
+kind: port
+port_units: tests                 # one unit per C++ test source, after its modules (D-60)
+description: >-
+  Translate a C++ test file (GoogleTest) into a Rust integration test of the crate it tests,
+  case by case, once the modules it uses are Rust. The C++ file stays and keeps running until
+  the C++ is retired; the test map pairs each C++ test with its Rust test.
+detector:
+  type: adapter_query
+  query: test_cases               # the file's GoogleTest cases
+codemods:
+  - tool: rust-tests              # the test file, the test map, dev-dependencies
+extra_scope: ['rust/**']
+llm:
+  guidance: guidance/port_tests.md
+postconditions:
+  - {type: test_map, severity: error}           # every case mapped to a passing Rust test
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code in the tests
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new tests

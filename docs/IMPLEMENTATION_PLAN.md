@@ -582,22 +582,37 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 **Prerequisites:** Phase 13.
 
 ### Tasks
-- [ ] Test-translation units: a C++ test file is translated once every project module it uses is Rust. GoogleTest suites become Rust tests (integration tests under `tests/` for the public API, `#[cfg(test)]` modules otherwise), fixtures become helper types, `ASSERT_*`/`EXPECT_*` become `assert!`/`assert_eq!` (noting where `EXPECT_*` continuing after a failure mattered). Both versions pass until retirement
-- [ ] Test-ID map as parity (`gtest:Suite.Case` ↔ the Rust test's path): every baseline test maps to a passing Rust test, or the report says why not. The assertion guard (I-4) compares each translation's assertions with the original's
-- [ ] Characterization tests (Phase 6) translate with the rest
-- [ ] Retirement units: a façade and its bridge declarations go once no C++ calls them, the C++ tests once translated, then the CMake build; executables become `bin` targets. `keep_cpp_api: true` keeps the public headers, a thin façade library and its C++ tests for outside C++ consumers
-- [ ] Final verification of a pure-Rust result: `cargo build` and `cargo nextest` from clean, `--locked --offline`
-- [ ] Report: the symbol map, the test map, deviations the agent recorded (behavior it couldn't keep, such as overflow or error-message text), the `unsafe` count with locations, any C++ left and why
-- [ ] Benchmark (M8): pick and pin a real old C++ project (C++98/03 or C++11, CMake, tests, 2–10k lines, permissive license); port it whole with Claude Code; record time, cost, units committed, tests mapped and `unsafe` in `bench/results/`; set SPEC §13 targets from it
-- [ ] Docs: a guide to porting C++ to Rust (modernize first with the C++ upgrade, then port)
+**Strategy**
+- [x] Design settled with a `D-xx` row (D-60): three rules after `port_module` (`port_executable`, `port_tests`, `retire_cpp`), unit prerequisites, the test map and parity through it, I-4 across languages, one retirement unit, which side builds, `keep_source_api` (the plan's `keep_cpp_api`). A spike on the ported `port-legacy` branch showed a Rust `bin` named after the CMake target keeps the CTest entries that run it passing (Corrosion imports it as an executable of that name)
+
+**Index and models**
+- [x] The C++ adapter records CTest entries with the index (`ctest --show-only=json-v1`: name, the build target its command runs, the CMake file that adds it) and each build target's dependencies and artifacts (the file API); the query `test_cases` (a test file's GoogleTest cases); `LanguageAdapter.builds` (a top-level `CMakeLists.txt`) (D-61: `ctest` runs in the sandbox at every index; the index helper's target records grow)
+- [x] Models: `PortUnits` `executable`, `tests`, `retirement`; detector type `files`; post-condition `test_map`; `WorkUnit.needs`; `PortUnit.tests`, `bin`, `dependencies`; `migration.target.keep_source_api`
+
+**Units**
+- [x] Executables as `bin` targets (`port_executable`, the `rust-bin` codemod): one unit per non-test executable, after the module units it needs; its CTest entries translated into the package's integration tests (the codemod takes the C++ target's commands out of CMake, so the program's CTest entries fail until `main.rs` does its job)
+- [x] Test-translation units (`port_tests`, the `rust-tests` codemod): a C++ test file is translated once every project module it uses is Rust. GoogleTest suites become Rust tests (integration tests under `tests/` for the public API), fixtures become helper types, `ASSERT_*`/`EXPECT_*` become `assert!`/`assert_eq!` (noting where `EXPECT_*` continuing after a failure mattered). Both versions pass until retirement
+- [x] Unit prerequisites: the run skips a unit whose `needs` didn't commit, with the reason
+- [x] Test-ID map as parity (`gtest:Suite.Case` ↔ `nextest:<binary>::<path>`, `rust/test-map.toml`, the `test_map` post-condition): every baseline test maps to a passing Rust test, or the report says why not. Port builds run both sides' tests; I-3, I-5 and the final verification go through the map. The assertion guard (I-4) compares each translation's assertions with the original's (D-61: the IDs are nextest's, and an integration test checks the ones the adapter reads against nextest's report; I-4 counts checks, and flagged `EventsTest.AnEmptyHandlerIsRefused` in `port-modern`)
+- [x] Characterization tests (Phase 6) translate with the rest (they are test files like the others; no fixture has them yet)
+- [x] Retirement (`retire_cpp`, the `rust-retire` codemod): one unit, last, deleting the C++ and CMake files and each crate's bridge; then the Cargo workspace alone builds. `keep_source_api: true` keeps the public headers, a thin façade library and its C++ tests for outside C++ consumers
+- [x] Final verification of a pure-Rust result: `cargo build` and `cargo nextest` from clean, `--locked --offline`
+- [x] Report: the symbol map, the test map, deviations the agent recorded (behavior it couldn't keep, such as overflow or error-message text), the `unsafe` count with locations, any C++ left and why (`port.json`, written at the final verification, D-61)
+- [x] Host-agent support: the skill and the unit context describe executable, test and retirement units
+
+**Fixtures, benchmark and docs**
+- [x] Both fixtures ported whole to pure Rust through `run --host-agent`, replayed from recorded edits natively and in Docker (14 units each, every unit committed; `run-all-port-{legacy,modern}-*` cassettes)
+- [x] Benchmark (M8): pick and pin a real old C++ project (C++98/03 or C++11, CMake, tests, 2–10k lines, permissive license); port it whole with Claude Code; record time, cost, units committed, tests mapped and `unsafe` in `bench/results/`; set SPEC §13 targets from it (D-62: snappy 1.1.9, `bench/port-pin.json`; 12 of 12 units committed in 47 min, 58 of 62 tests mapped and the rest with notes, no `unsafe`, $6.96 API-equivalent; `bench/results/20261105-m8-snappy-windows-docker-claude-code.json`. Four earlier attempts found five defects, fixed with regression tests: a skipped unit for test helpers, characterization tests classified as code, lints costing attempts (clippy's fixes now run before the build), `c_abi_kept` and an anonymous enum's typedef, I-8 counting the C++ a port deletes)
+- [x] Docs: a guide to porting C++ to Rust (modernize first with the C++ upgrade, then port) (`docs/porting-to-rust.md`)
 
 ### Tests
 - Unit: test-ID mapping and the cross-language assertion comparison; retirement order (a façade goes only when no C++ calls it)
 - End to end: each fixture's whole port to pure Rust replays from recorded edits, natively and in Docker
 
 ### Exit criteria (M8)
-- `port-legacy` (C++98) and `port-modern` end as pure Rust: no C++ left (or only the kept API with `keep_cpp_api`), every original test maps to a passing Rust test, and the branch was green at every commit
+- `port-legacy` (C++98) and `port-modern` end as pure Rust: no C++ left (or only the kept API with `keep_source_api`), every original test maps to a passing Rust test, and the branch was green at every commit
 - The benchmark project is ported and measured, and SPEC §13 has its targets
+- The first criterion is met on Windows, natively and in Docker: both fixtures ported whole to pure Rust through `codecoremorph run --host-agent` (14 units each, every unit committed, every commit green, the final verification a clean Cargo build and nextest run), 37 and 15 tests mapped, no `unsafe` left; both replay from the recorded edits (`test_every_unit_of_a_fixture`). `keep_source_api` is covered by unit tests, not yet by a fixture run. The benchmark: snappy 1.1.9 ported whole to Rust with headless Claude Code in Docker (D-62), every unit committed and every commit green, its Cargo workspace building and testing alone, natively too; SPEC §13 has the port targets
 
 ---
 

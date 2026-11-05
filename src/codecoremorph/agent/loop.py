@@ -74,7 +74,6 @@ from codecoremorph.core.models import (
     Severity,
     StopReason,
     TestReport,
-    TestStatus,
     TextBlock,
     ToolResult,
     WorkUnit,
@@ -89,8 +88,17 @@ from codecoremorph.invariants.symbol_map import (
     symbol_map_feedback,
     symbol_map_problems,
 )
+from codecoremorph.invariants.test_map import (
+    TestPair,
+    by_source,
+    parity,
+    read_test_map,
+    test_map_feedback,
+    test_map_problems,
+)
 from codecoremorph.llm.routing import Route
 from codecoremorph.llm.service import LLMService
+from codecoremorph.parity.baseline import merge_reports
 from codecoremorph.patching.engine import PatchEngine
 from codecoremorph.patching.schema import SUBMIT_EDITS_TOOL
 from codecoremorph.planner.estimate import unit_token_limit
@@ -266,6 +274,7 @@ class UnitRunner:
         deadline: float | None = None,
         target_adapter: LanguageAdapter | None = None,
         target_ctx: AdapterContext | None = None,
+        keep_source_api: bool = False,
     ):
         """``project_files`` are the project's editable code files: a project-wide rule (the
         standard bump) runs its codemods on all of them, not only on the unit's files.
@@ -278,8 +287,11 @@ class UnitRunner:
 
         A port (D-56) also has the ``target_adapter``, on the same worktree and executor
         (``target_ctx``): codemods go to the adapter that lists their tool, a failed build adds
-        its diagnostics, and it reads the C interface the new code exports (``c_abi_kept``)."""
+        its diagnostics, and it reads the C interface the new code exports (``c_abi_kept``).
+        ``keep_source_api`` tells a port's retirement to keep the source's public API
+        (D-60)."""
         self.adapter = adapter
+        self.keep_source_api = keep_source_api
         self.ctx = ctx
         self.target_adapter = target_adapter
         self.target_ctx = target_ctx
@@ -308,6 +320,7 @@ class UnitRunner:
         self.error_lines: list[str] = []
         self.last_tests: TestReport | None = None  # the last verification's test run
         self.last_sites: dict[str, list[RuleSite]] = {}  # and the rule sites it found
+        self.lint_fixed: list[str] = []  # and the files the linter's own fixes changed (D-62)
         self.invariants = invariants
         self.guard = guard
         self.deadline = deadline
@@ -406,7 +419,16 @@ class UnitRunner:
         target_tools = (
             self.target_adapter.capabilities().codemod_tools if self.target_adapter else []
         )
-        return self.run_codemods(port_specs(specs, unit, target_tools), files)
+        specs = port_specs(specs, unit, target_tools)
+        if any(r.rule.retirement for r in rules):
+            keep = "true" if self.keep_source_api else "false"
+            specs = [
+                s.model_copy(update={"options": {**s.options, "keep": keep}})
+                if s.tool in target_tools
+                else s
+                for s in specs
+            ]
+        return self.run_codemods(specs, files)
 
     def run_codemods(self, specs: Sequence[CodemodSpec], files: list[str]) -> CodemodResult:
         """Each run of consecutive passes goes to the adapter that lists their tool: a port's
@@ -434,20 +456,68 @@ class UnitRunner:
 
     # ------------------------------------------------------------------ verification
 
+    def source_builds(self, ctx: AdapterContext) -> bool:
+        """Whether the source language's build is still there: a port's retirement removes
+        it, and the target adapter alone builds and tests from then on (D-60)."""
+        return self.target_adapter is None or self.adapter.builds(ctx)
+
     def verify(
+        self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
+    ) -> Verification:
+        self.lint_fixed = []
+        result = self._verify(unit, rules, ctx)
+        if self.lint_fixed and not result.ok:
+            shown = ", ".join(self.lint_fixed[:5])
+            if len(self.lint_fixed) > 5:
+                shown += f" (+{len(self.lint_fixed) - 5})"
+            note = (
+                f"Before the build, CodeCoreMorph applied the linter's own fixes to {shown}; "
+                "base your search texts on the files' current text.\n\n"
+            )
+            result = replace(result, feedback=note + result.feedback)
+        return result
+
+    def _lint_fixes(self, rules: Sequence[LoadedRule]) -> list[str]:
+        """The linter's machine-applicable fixes to a port's new code (D-62), when a rule of the
+        unit checks ``lint_clean`` and the unit has new code: the files they changed."""
+        if self.target_adapter is None or self.target_ctx is None:
+            return []
+        linted = [
+            r
+            for r in rules
+            if any(p.type is PostconditionType.LINT_CLEAN for p in r.rule.postconditions)
+        ]
+        if not any(self._new_code(r) for r in linted):
+            return []
+        try:
+            return self.target_adapter.apply_lint_fixes(self.target_ctx)
+        except AdapterNotSupportedError:
+            return []  # a target linter without fixes: lint_clean reports everything
+
+    def _verify(
         self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
     ) -> Verification:
         changed = {f.path for f in self.worktree.diff(self.worktree.head()).files}
         port = self.target_adapter is not None and self.target_ctx is not None
+        source = self.source_builds(ctx)
         if self.target_adapter is not None and self.target_ctx is not None:
             # The target's dependency fetch (the only step with the network, fetch_only)
             # comes first: the source build compiles the target's code offline.
             fetched = self.target_adapter.configure(self.target_ctx)
             if not fetched.success:
                 return self._build_failure(fetched, unit, "configure", changed, {})
+            # Then the linter's own fixes, so the build and the tests judge the fixed code; the
+            # bridge headers (written by configure) come again from it.
+            self.lint_fixed = self._lint_fixes(rules)
+            if self.lint_fixed:
+                fetched = self.target_adapter.configure(self.target_ctx)
+                if not fetched.success:
+                    return self._build_failure(fetched, unit, "configure", changed, {})
         # A port reconfigures every time: the source build system reads the new code's
         # manifests when it configures (Corrosion runs `cargo metadata`).
-        if port or ctx.lang.standard != self.configured_standard or changed & self.build_files:
+        if source and (
+            port or ctx.lang.standard != self.configured_standard or changed & self.build_files
+        ):
             configured = self.adapter.configure(ctx)
             if not configured.success:
                 return self._build_failure(configured, unit, "configure", changed, {})
@@ -458,18 +528,55 @@ class UnitRunner:
             for rule_id, by_file in self._sites(unit, rules, ctx).items()
         }
         self.last_sites = sites
-        built = self.adapter.build(ctx)
-        if not built.success:
-            return self._build_failure(built, unit, "build", changed, sites)
-        report = self.adapter.run_tests(ctx)
+        reports: list[TestReport] = []
+        built: BuildResult | None = None
+        if source:
+            built = self.adapter.build(ctx)
+            if not built.success:
+                return self._build_failure(built, unit, "build", changed, sites)
+            reports.append(self.adapter.run_tests(ctx))
+        if (
+            self.target_adapter is not None
+            and self.target_ctx is not None
+            and (self.target_adapter.builds(self.target_ctx) or not source)
+        ):
+            # Every target of the new code, its tests and programs too (D-60).
+            own = self.target_adapter.build(self.target_ctx)
+            if not own.success:
+                return self._build_failure(own, unit, "build", changed, sites, own=own)
+            built = built or own
+            try:
+                reports.append(self.target_adapter.run_tests(self.target_ctx))
+            except SandboxError as exc:
+                reason = f"\n{exc.reason}" if exc.reason else ""
+                return Verification(
+                    ok=False,
+                    stage="tests",
+                    feedback=f"The tests of the new code didn't run: {exc.message}{reason}",
+                    sites=sites,
+                )
+        if built is None:
+            return Verification(
+                ok=False,
+                stage="build",
+                feedback="Nothing builds the project any more: the source language's build is "
+                "gone, and the new code has no package to build.",
+                sites=sites,
+            )
+        report = (
+            merge_reports(reports)
+            if reports
+            else TestReport(cases=[], duration_s=0.0, log_path=built.log_path)
+        )
         self.last_tests = report
         statuses = {c.test_id: c for c in report.cases}
-        failing = [
-            statuses[t]
-            for t in self.baseline.tests.passing
-            if t in statuses and statuses[t].status is not TestStatus.PASSED
-        ]
-        missing = [t for t in self.baseline.tests.passing if t not in statuses]
+        compared = parity(
+            self.baseline.tests.passing,
+            {k: c.status for k, c in statuses.items()},
+            self.test_pairs(),
+        )
+        failing = [statuses[t] for t in compared.failing]
+        missing = compared.missing
         if failing or missing:
             regressions = [c.test_id for c in failing] + missing
             return Verification(
@@ -495,7 +602,13 @@ class UnitRunner:
                 untold="\n\n".join(untold),
                 sites=sites,
                 invariant_results=[
-                    InvariantResult(invariant="I-9", passed=False, message="sites left")
+                    InvariantResult(
+                        invariant="I-9",
+                        passed=False,
+                        # What failed, in a line per check: the report and the attempt's record
+                        # say which rule check it was, not just that something is left.
+                        message="; ".join(p.splitlines()[0] for p in problems)[:500],
+                    )
                 ],
             )
         warnings += self.unverified(unit, rules, ctx)
@@ -583,6 +696,9 @@ class UnitRunner:
                 elif post.type is PostconditionType.SYMBOL_MAP:
                     text = self._symbol_map(unit, loaded)
                     found = [RuleSite(file="-", line=1)] if text else []
+                elif post.type is PostconditionType.TEST_MAP:
+                    text = self._test_map(unit, loaded)
+                    found = [RuleSite(file="-", line=1)] if text else []
                 elif post.type is PostconditionType.CODEMOD_CLEAN:
                     text = self._codemod_leftovers(unit, loaded)
                     found = [RuleSite(file="-", line=1)] if text else []
@@ -664,7 +780,16 @@ class UnitRunner:
         rule_id = loaded.rule.id
         if self.target_adapter is None or self.target_ctx is None:
             return f"{rule_id}: lint_clean checks the code a port writes; this isn't a port"
-        new_code = set(self._new_code(loaded))
+        if loaded.rule.retirement:
+            # The retirement's result is the whole workspace: every crate file counts (D-60).
+            scope = PathMatcher(loaded.rule.extra_scope)
+            new_code = {
+                p.relative_to(self.worktree.path).as_posix()
+                for p in self.worktree.path.rglob("*.rs")
+                if scope.matches(p.relative_to(self.worktree.path).as_posix())
+            }
+        else:
+            new_code = set(self._new_code(loaded))
         if not new_code:
             return ""
         try:
@@ -711,6 +836,49 @@ class UnitRunner:
             known = {s.qualified_name for s in store.symbols()}
         problems += symbol_map_problems(entries, required, known)
         return symbol_map_feedback(rule_id, relative, problems)
+
+    def test_pairs(self) -> dict[str, TestPair]:
+        """The project's test map (D-60), by source test ID; empty outside a port or without
+        one."""
+        if self.target_adapter is None or self.target_ctx is None:
+            return {}
+        try:
+            relative = self.target_adapter.test_map_path()
+        except AdapterNotSupportedError:
+            return {}
+        text = read_text(self.worktree.path, relative)
+        if text is None:
+            return {}
+        entries, _ = read_test_map(text, self.ctx.lang.language, self.target_ctx.lang.language)
+        return by_source(entries)
+
+    def _test_map(self, unit: WorkUnit, loaded: LoadedRule) -> str:
+        """``test_map`` (D-60): an entry for every test the unit translates (a retirement's:
+        every baseline test that no longer runs), each target test run and passing in this
+        verification, no test twice."""
+        rule_id = loaded.rule.id
+        if self.target_adapter is None or self.target_ctx is None:
+            return f"{rule_id}: test_map checks a port's tests; this isn't a port"
+        try:
+            relative = self.target_adapter.test_map_path()
+        except AdapterNotSupportedError as exc:
+            return f"{rule_id}: the target adapter keeps no test map ({exc})"
+        report = self.last_tests
+        statuses = {c.test_id: c.status for c in report.cases} if report else {}
+        if loaded.rule.retirement:
+            required = [t for t in self.baseline.tests.passing if t not in statuses]
+        else:
+            required = list(unit.port.tests) if unit.port is not None else []
+        text = read_text(self.worktree.path, relative)
+        if text is None:
+            if not required:
+                return ""
+            return f"{rule_id}: the test map {relative} is missing; create it"
+        entries, problems = read_test_map(
+            text, self.ctx.lang.language, self.target_ctx.lang.language
+        )
+        problems += test_map_problems(entries, required, statuses)
+        return test_map_feedback(rule_id, relative, problems)
 
     def _codemod_leftovers(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         specs = [
@@ -772,13 +940,17 @@ class UnitRunner:
         step: str,
         changed: set[str],
         sites: dict[str, list[RuleSite]],
+        *,
+        own: BuildResult | None = None,
     ) -> Verification:
+        """Feedback for a failed configure or build. ``own`` is the target adapter's build
+        when it is the one that failed: its diagnostics are already the result's."""
         diagnostics = list(result.diagnostics)
         unit_files = list(unit.files)
         if self.target_adapter is not None and self.target_ctx is not None:
             # The new code's files are the unit's too.
             unit_files += sorted(changed - set(unit.files))
-            if step == "build":
+            if step == "build" and own is None:
                 # The source build runs the target's compiler too (Corrosion runs Cargo), but
                 # only the target adapter reads its diagnostics: Cargo's JSON messages.
                 own = self.target_adapter.build(self.target_ctx)
@@ -819,6 +991,11 @@ class UnitRunner:
         def query(name: str, files: list[str]) -> list[RuleSite]:
             return self.adapter.query(ctx, name, files)
 
+        languages: dict[str, str] = {}
+        if self.index_path is not None and self.index_path.is_file():
+            with IndexStore.open(self.index_path) as store:
+                languages = {e.path: e.language for e in store.files()}
+
         return {
             loaded.rule.id: find_sites(
                 loaded,
@@ -829,6 +1006,7 @@ class UnitRunner:
                 source=self.source,
                 target=self.target,
                 query=query,
+                language_of=languages.get,
             )
             for loaded in rules
         }

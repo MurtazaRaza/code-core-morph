@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import Field
 
@@ -147,6 +148,27 @@ class BuildTarget(CoreModel):
     name: str = Field(min_length=1)
     kind: TargetKind
     files: list[WorktreePath] = Field(default_factory=list[str])
+    dependencies: list[str] = Field(
+        default_factory=list[str],
+        description="The project's targets it depends on (links), by name (D-60)",
+    )
+    artifacts: list[str] = Field(
+        default_factory=list[str],
+        description="What it builds, relative to the build directory (D-60)",
+    )
+
+
+class TestEntry(CoreModel):
+    """A test the build registers (a CTest entry), and what it runs: a port gives an entry
+    that runs a program to that program's unit (D-60)."""
+
+    __test__: ClassVar[bool] = False  # not a pytest test class
+
+    test_id: str = Field(min_length=1, description='The ID test reports use, "ctest:<name>"')
+    runs: str | None = Field(
+        default=None, description="The project's build target its command runs, if any"
+    )
+    file: WorktreePath | None = Field(default=None, description="The build file that adds it")
 
 
 class IndexMeta(CoreModel):

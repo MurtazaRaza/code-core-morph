@@ -81,6 +81,7 @@ class ModuleTarget(LanguageAdapter):
 
     def __init__(self) -> None:
         self.options: list[dict[str, str]] = []
+        self.tested = 0  # a port runs the new code's tests too (D-60)
 
     def capabilities(self) -> AdapterCapabilities:
         return AdapterCapabilities(codemod_tools=["rust-module"])
@@ -95,7 +96,8 @@ class ModuleTarget(LanguageAdapter):
         return BuildResult(success=True, duration_s=0, log_path=ctx.log_dir / "b.log")
 
     def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
-        raise NotImplementedError
+        self.tested += 1
+        return TestReport(cases=[], duration_s=0, log_path=ctx.log_dir / "t.log")
 
     def _rust(self, ctx: AdapterContext) -> dict[str, str]:
         return {
@@ -159,9 +161,37 @@ class ModuleTarget(LanguageAdapter):
         ]
 
 
-def _runner(world: World, responses: list[Responder]) -> tuple[UnitRunner, ModuleTarget]:
+class FixingTarget(ModuleTarget):
+    """With clippy's machine-applicable fixes (D-62): a `LINT FIXABLE` line loses its lint.
+    ``calls`` records the order of the steps."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def configure(self, ctx: AdapterContext) -> BuildResult:
+        self.calls.append("configure")
+        return super().configure(ctx)
+
+    def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
+        self.calls.append("build")
+        return super().build(ctx, targets)
+
+    def apply_lint_fixes(self, ctx: AdapterContext) -> list[str]:
+        self.calls.append("fix")
+        changed: list[str] = []
+        for rel, text in self._rust(ctx).items():
+            if "LINT FIXABLE" in text:
+                (ctx.worktree / rel).write_text(text.replace("LINT FIXABLE", "fixed"), "utf-8")
+                changed.append(rel)
+        return changed
+
+
+def _runner(
+    world: World, responses: list[Responder], target: ModuleTarget | None = None
+) -> tuple[UnitRunner, ModuleTarget]:
     runner, _ = world.runner(responses)
-    target = ModuleTarget()
+    target = target or ModuleTarget()
     runner.target_adapter = target
     runner.target_ctx = replace(
         world.ctx,
@@ -228,6 +258,53 @@ def test_the_checks_of_a_module_port(world: World) -> None:
     assert "port_module: the linter reports 1 problem(s) in the new code" in feedback
     assert "unneeded `return` statement [clippy::needless_return]" in feedback
     assert "geo::area (declared in include/geo.h) has no entry" in feedback
+    # The attempt's record says which checks failed, not just that something is left.
+    [i9] = [r for r in first.invariant_results if r.invariant == "I-9"]
+    assert "port_module: unsafe code must stay in the bridge" in (i9.message or "")
+    assert "port_module: the linter reports 1 problem(s) in the new code" in (i9.message or "")
+
+
+def test_mechanical_lints_are_fixed_before_the_build(world: World) -> None:
+    """snappy's port of snappy.cc built and passed every test, then spent its last two
+    attempts on `useless_vec`, each fix exposing the next (M8): clippy's own fixes now run on
+    the new code before the build, so the tests judge the fixed code and no attempt goes."""
+    module = "// item geo_rs::geo::area\nlet v = vec![0u8; 4]; // LINT FIXABLE\n"
+    entry = '\n[[symbol]]\ncpp = "geo::area"\nrust = "geo_rs::geo::area"\n'
+    edits = submit(
+        "s1",
+        FORWARD,
+        _module(module),
+        {"op": "replace", "path": "rust/symbol-map.toml", "search": MAP, "replace": MAP + entry},
+    )
+    target = FixingTarget()
+    runner, _ = _runner(world, [reply(edits)], target)
+    outcome = runner.run(_unit(), [MODULE])
+    assert outcome.succeeded, outcome.reason
+    assert len(outcome.attempts) == 1
+    text = (world.worktree.path / "rust/geo_rs/src/geo.rs").read_text(encoding="utf-8")
+    assert "// fixed" in text
+    # The fixes come after the dependency fetch and before the build; the bridge headers are
+    # written again from the fixed code.
+    assert target.calls[-4:] == ["configure", "fix", "configure", "build"]
+
+
+def test_fixes_need_new_code_and_a_lint_check(world: World) -> None:
+    target = FixingTarget()
+    runner, _ = _runner(world, [], target)
+    unit = _unit()
+    runner.verify(unit, [MODULE], runner.verify_context([MODULE]))
+    assert "fix" not in target.calls  # no new code yet
+    new = world.worktree.path / "rust/geo_rs/src/geo.rs"
+    new.parent.mkdir(parents=True, exist_ok=True)
+    new.write_text("// item geo_rs::geo::area\n", encoding="utf-8")
+    checks = [p for p in MODULE.rule.postconditions if p.type is not PostconditionType.LINT_CLEAN]
+    plain = MODULE.model_copy(
+        update={"rule": MODULE.rule.model_copy(update={"postconditions": checks})}
+    )
+    runner.verify(unit, [plain], runner.verify_context([plain]))
+    assert "fix" not in target.calls  # no rule checks lint_clean
+    runner.verify(unit, [MODULE], runner.verify_context([MODULE]))
+    assert "fix" in target.calls
 
 
 def test_the_callers_stay_as_they_are(world: World) -> None:

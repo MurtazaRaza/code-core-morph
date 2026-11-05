@@ -78,9 +78,33 @@ class PortUnit(CoreModel):
         "exports them (c_abi_kept)",
     )
 
+    tests: list[str] = Field(
+        default_factory=list[str],
+        description="The test IDs the unit translates: each needs an entry in the test map (D-60)",
+    )
+    wrappers: list[str] = Field(
+        default_factory=list[str],
+        description="Test IDs that only run the unit's test binary: the scaffold maps them "
+        "to nothing, since their cases are mapped one by one (D-60)",
+    )
+    bin: str | None = Field(
+        default=None, description="An executable's unit: the program's name (D-60)"
+    )
+    dependencies: list[str] = Field(
+        default_factory=list[str],
+        description="The packages its new code depends on: an executable's libraries (D-60)",
+    )
+
     def codemod_options(self) -> dict[str, str]:
         """What the scaffold codemod needs to know about the unit."""
-        return {"crate": self.crate, "module": self.module, "build_target": self.build_target}
+        options = {"crate": self.crate, "module": self.module, "build_target": self.build_target}
+        if self.bin is not None:
+            options["bin"] = self.bin
+        if self.dependencies:
+            options["dependencies"] = ",".join(self.dependencies)
+        if self.wrappers:
+            options["wrappers"] = ",".join(self.wrappers)
+        return options
 
 
 class WorkUnit(CoreModel):
@@ -103,6 +127,10 @@ class WorkUnit(CoreModel):
     estimate: UnitEstimate | None = None
     note: str | None = None
     port: PortUnit | None = Field(default=None, description="A module port's unit (D-58)")
+    needs: list[UnitId] = Field(
+        default_factory=list[UnitId],
+        description="Units that must commit first; the run skips this one otherwise (D-60)",
+    )
 
     @field_validator("flags")
     @classmethod

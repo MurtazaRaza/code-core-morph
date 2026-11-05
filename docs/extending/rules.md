@@ -35,15 +35,18 @@ skip:
   `extra_scope`, globs of the new code's files a unit may create (`rust/**`). `port_units`
   says how units are cut: `c_header` (the default) holds the files with sites, the headers
   declaring what they define (read-only) and the build files; `module` makes one unit per
-  module of a library target, leaves first, its headers kept as façades.
+  module of a library target, leaves first, its headers kept as façades; `executable` one per
+  program that isn't a test; `tests` one per test source, read-only, translated beside it; and
+  `retirement` one last unit that removes what is left of the source language.
   See [Porting C++ to Rust](../porting-to-rust.md).
 - **`applies_to`.** `min_target_standard` and `max_source_standard` limit a rule to some
   migrations; `codecoremorph validate` reports a listed rule that doesn't apply.
 - **`detector`.** `type: pattern` with regular expressions, matched on code only (comments and
   string literals are blanked out first); a pattern can carry its own standard conditions, as
   in `{pattern: '\bauto_ptr\b', min_target_standard: cpp17}`. `type: adapter_query` asks the
-  language adapter (`codecoremorph adapters list` shows its queries). Without a detector, the
-  rule applies to every file of its language.
+  language adapter (`codecoremorph adapters list` shows its queries). `type: files` makes each
+  of a unit's files of the rule's language a site until it is deleted (a port that replaces its
+  files). Without a detector, the rule applies to every file of its language.
 - **`codemods`.** Tools the adapter runs before the agent. For C++: `clang-tidy` with checks
   that have fixes.
 - **`llm`.** `guidance` is Markdown that tells the agent what to do and what to leave alone;
@@ -53,7 +56,9 @@ skip:
   nothing left), `c_abi_kept` (a port's new code exports the C interface its headers declare;
   every port rule checks it), and for module ports `unsafe_in_bridge`, `lint_clean` (the target
   language's linter is quiet about the new code) and `symbol_map` (the project's symbol map
-  covers the module's names). `error` sends the agent back to work; `warning` is a review item.
+  covers the module's names), and `test_map` (every test the unit translates is in the project's
+  test map, its new test run and passing). `error` sends the agent back to work; `warning` is a
+  review item.
 - **`allow_suppressions`.** `true` lets the agent add `NOLINT`, `#[allow(...)]` and the like;
   a list of globs allows them in those files only (`port_module`: the Rust bridge).
 - **`hooks`** (optional, `module:function`) add a custom detector or post-condition in Python.

@@ -1,0 +1,21 @@
+id: port_executable
+language: cpp
+target_language: rust
+kind: port
+port_units: executable            # one unit per program, after the modules it uses (D-60)
+description: >-
+  Port a C++ executable to a Rust program of the same name, once the library modules it uses
+  are Rust. The CTest entries that run it keep calling it by its name, and become Rust tests.
+detector:
+  type: files                     # each of the program's C++ files, until it is deleted
+codemods:
+  - tool: rust-bin                # the package, its bin, its dependencies; the C++ target goes
+extra_scope: ['rust/**']
+llm:
+  guidance: guidance/port_executable.md
+postconditions:
+  - {type: detector_empty, severity: error}     # the C++ sources are gone
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code in the program
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new code
+  - {type: test_map, severity: error}           # the CTest entries that run it are mapped
+allow_suppressions: ['rust/*/src/bridge/**']

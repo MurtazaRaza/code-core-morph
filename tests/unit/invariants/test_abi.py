@@ -35,6 +35,27 @@ def test_missing_and_changed_functions() -> None:
     assert "- `tk_checksum` isn't exported" in text
 
 
+def test_a_tag_type_named_by_a_typedef() -> None:
+    """snappy-c.h's `typedef enum { SNAPPY_OK = 0, ... } snappy_status;` spells as
+    `snappy_status` in libclang's canonical types, and cbindgen's `typedef enum snappy_status
+    {...} snappy_status;` as `enum snappy_status`: the same C type, which the M8 port fought
+    for three attempts (D-62). Anything else still differs."""
+    header = {
+        "snappy_compress": "snappy_status (const char *, unsigned long, char *, unsigned long *)",
+        "make": "point (int, int)",
+    }
+    exported = {
+        "snappy_compress": "enum snappy_status (const char *, unsigned long, char *, "
+        "unsigned long *)",
+        "make": "struct point (int, int)",
+    }
+    assert c_abi_differences(header, exported) == []
+    assert c_abi_differences({"f": "snappy_status (void)"}, {"f": "int (void)"}) != []
+    assert c_abi_differences({"f": "enum a (void)"}, {"f": "enum b (void)"}) != []
+    assert c_abi_differences({"f": "struct point *(void)"}, {"f": "union point *(void)"}) != []
+    assert c_abi_differences({"f": "char*(void)"}, {"f": "char *(void)"}) == []
+
+
 def test_feedback_is_capped() -> None:
     problems = [f"`f{i}` isn't exported" for i in range(MAX_SHOWN + 5)]
     text = c_abi_feedback("port", ["a.h"], problems)

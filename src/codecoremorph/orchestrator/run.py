@@ -47,7 +47,7 @@ from typing import Any, Final, Literal
 from pydantic import JsonValue
 
 from codecoremorph import __version__
-from codecoremorph.adapters.base import AdapterNotSupportedError
+from codecoremorph.adapters.base import AdapterContext, AdapterNotSupportedError, LanguageAdapter
 from codecoremorph.adapters.config import language_config
 from codecoremorph.agent.host import CHECKPOINT_EMAIL, HostFiles, HostStep, HostUnit
 from codecoremorph.agent.loop import AgentSettings, UnitOutcome, UnitRunner
@@ -67,6 +67,7 @@ from codecoremorph.core.models import (
     Attempt,
     AttemptOutcome,
     Baseline,
+    BuildResult,
     CharacterizationPlan,
     EventType,
     FileRole,
@@ -78,17 +79,18 @@ from codecoremorph.core.models import (
     JobStatus,
     LlmCallRecord,
     LoadedRule,
+    PortSummary,
     Role,
     RunRecord,
     RunStatus,
     SymbolIndex,
-    TestStatus,
     UnitResult,
     UnitStatus,
     Usage,
     WorkUnit,
 )
 from codecoremorph.core.resources import MIB, peak_rss_bytes
+from codecoremorph.invariants.test_map import parity, project_test_pairs
 from codecoremorph.llm.ledger import LedgerEntry, UsageLedger
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.characterize import Characterization
@@ -109,16 +111,18 @@ from codecoremorph.orchestrator.unit import (
     resume_host_unit,
     user_tree_warnings,
 )
-from codecoremorph.parity.baseline import unit_baseline
+from codecoremorph.parity.baseline import merge_reports, unit_baseline
 from codecoremorph.prompts import PROMPTS_VERSION
 from codecoremorph.report.build import (
     FINAL_FILE,
+    PORT_FILE,
     build_report,
     load_unit_result,
     unit_result_path,
     write_json,
     write_report,
 )
+from codecoremorph.report.port import port_summary
 from codecoremorph.store.db import Store
 from codecoremorph.store.events import EventWriter
 from codecoremorph.store.index import IndexStore
@@ -477,7 +481,7 @@ class RunEngine:
         if self._tests is None:
             with IndexStore.open(self.index.path) as store:
                 self._tests = {f.path for f in store.files(FileRole.TEST)}
-        dirs = list(self.config.project.test_dirs)
+        dirs = self.config.test_dirs
         return path in self._tests or (bool(dirs) and PathMatcher(dirs).matches(path))
 
     @property
@@ -749,6 +753,11 @@ class RunEngine:
         recovered = worktree.unit_commits(base).get(unit_id)
         if recovered is not None:
             return self._recover(unit, recovered)
+        unmet = self._unmet_needs(unit)
+        if unmet:
+            self._put_unit(unit, UnitStatus.SKIPPED, f"skipped: {unmet}")
+            self._step(f"unit {unit.id}: skipped, {unmet}")
+            return {"unit": None, "gate": False, "agent": False}
         # A crash may have left a partial attempt, or a host unit's checkpoint commits.
         worktree.rollback(worktree.below(CHECKPOINT_EMAIL, base))
         self.store.delete_attempts(self.run_id, unit_id)
@@ -815,6 +824,22 @@ class RunEngine:
                 unit, started, outcome.reason or "the unit failed", outcome=outcome
             )
         return self._finish_succeeded(unit, started, outcome, runner, prepared.rules)
+
+    def _unmet_needs(self, unit: WorkUnit) -> str | None:
+        """Why the unit can't run: a unit it needs didn't commit (D-60), or None."""
+        if not unit.needs:
+            return None
+        statuses = {u.id: u for u in self.store.units(self.run_id)}
+        missing = [
+            n
+            for n in unit.needs
+            if n in statuses and statuses[n].status is not UnitStatus.COMMITTED
+        ]
+        if not missing:
+            return None
+        shown = ", ".join(f"{n} ({statuses[n].status.value})" for n in missing[:5])
+        more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+        return f"needs {shown}{more}, which didn't commit"
 
     def _record_attempts(self, unit_id: str, attempts: list[Attempt]) -> None:
         """Store the unit's attempts not stored yet (a host unit's arrive one per command)."""
@@ -1202,14 +1227,21 @@ class RunEngine:
         self._step("final verification: a clean build and every test")
         started = time.monotonic()
         adapter, ctx = session.adapter, session.ctx
+        target, target_ctx = session.target_adapter, session.target_ctx
+        # A port builds both sides while the source's build is there, and the target alone
+        # once its retirement removed it (D-60).
+        source = target is None or adapter.builds(ctx)
+        targeted = target is not None and target_ctx is not None and target.builds(target_ctx)
         clean = True
         try:
-            adapter.clean_build(ctx)
+            if source:
+                adapter.clean_build(ctx)
+            if targeted and target is not None and target_ctx is not None:
+                target.clean_build(target_ctx)
         except AdapterNotSupportedError:
             clean = False
         final = FinalVerification(ran=True, commit=head, clean=clean)
-        configured = adapter.configure(ctx)
-        built = adapter.build(ctx) if configured.success else configured
+        built = self._final_build(source=source, targeted=targeted)
         if not built.success:
             errors = [
                 f"{d.file_path}:{d.line}: {d.message}" if d.file_path else d.message
@@ -1219,20 +1251,30 @@ class RunEngine:
                 update={"build_errors": errors, "reason": "the branch doesn't build"}
             )
         else:
-            report = adapter.run_tests(ctx)
-            statuses = {c.test_id: c.status for c in report.cases}
-            regressions = [
-                t
-                for t in self.baseline.tests.passing
-                if t not in characterized and statuses.get(t) is not TestStatus.PASSED
-            ]
+            reports = [adapter.run_tests(ctx)] if source else []
+            if targeted and target is not None and target_ctx is not None:
+                reports.append(target.run_tests(target_ctx))
+            report = merge_reports(reports) if reports else None
+            statuses = {c.test_id: c.status for c in report.cases} if report else {}
+            pairs = project_test_pairs(
+                session.workspace.worktree.path,
+                target,
+                self.config.migration.source.language,
+                self.config.migration.target.language,
+            )
+            compared = parity(
+                [t for t in self.baseline.tests.passing if t not in characterized],
+                statuses,
+                pairs,
+            )
+            regressions = [*compared.failing, *compared.missing]
             reason = (
                 f"{len(regressions)} baseline-passing test(s) don't pass" if regressions else None
             )
             final = final.model_copy(
                 update={
                     "passed": not regressions,
-                    "tests_run": len(report.cases),
+                    "tests_run": len(report.cases) if report else 0,
                     "regressions": regressions,
                     "reason": reason,
                 }
@@ -1240,7 +1282,71 @@ class RunEngine:
         self.configured_standard = ctx.lang.standard
         final = final.model_copy(update={"duration_s": round(time.monotonic() - started, 1)})
         write_json(path, final)
+        if target is not None and target_ctx is not None:
+            summary = self._port_summary(target, target_ctx)
+            write_json(session.artifacts.root / PORT_FILE, summary)
         return {"verified": final.passed}
+
+    def _port_summary(self, target: LanguageAdapter, target_ctx: AdapterContext) -> PortSummary:
+        """What the port left on the branch, for the report (D-60)."""
+        session = self.session
+        migration = self.config.migration
+        new_code = PathMatcher(
+            [
+                g
+                for rule_id in migration.target.rules
+                for g in session.rules.get(rule_id).rule.extra_scope
+            ]
+        )
+        with IndexStore.open(self.index.path) as store:
+            files = [
+                f.path
+                for f in store.files()
+                if f.language == migration.source.language
+                and f.role in (FileRole.SOURCE, FileRole.HEADER, FileRole.TEST)
+                and not new_code.matches(f.path)
+            ]
+        tracked = session.workspace.worktree.tracked_files()
+        excluded = {
+            pattern: sum(1 for f in tracked if PathMatcher([pattern]).matches(f))
+            for pattern in self.config.project.exclude
+        }
+        return port_summary(
+            worktree=session.workspace.worktree.path,
+            target=target,
+            target_ctx=target_ctx,
+            source_language=migration.source.language,
+            target_language=migration.target.language,
+            source_files=files,
+            units=self.store.units(self.run_id),
+            keep_source_api=migration.target.keep_source_api,
+            excluded=excluded,
+        )
+
+    def _final_build(self, *, source: bool, targeted: bool) -> BuildResult:
+        """Configure and build the final tree: the port's target configures first (its
+        dependency fetch and bridge headers), then the source's build, then the target's own
+        (every target, its tests too)."""
+        session = self.session
+        adapter, ctx = session.adapter, session.ctx
+        target, target_ctx = session.target_adapter, session.target_ctx
+        if target is not None and target_ctx is not None:
+            fetched = target.configure(target_ctx)
+            if not fetched.success:
+                return fetched
+        if source:
+            configured = adapter.configure(ctx)
+            if not configured.success:
+                return configured
+            built = adapter.build(ctx)
+            if not built.success or not targeted:
+                return built
+        if target is None or target_ctx is None:
+            raise UsageError(
+                "nothing builds the final tree",
+                reason="the source language's build is gone and the migration isn't a port",
+            )
+        return target.build(target_ctx)
 
     def _final_status(self, state: RunState) -> RunStatus:
         stop = state.get("stop")

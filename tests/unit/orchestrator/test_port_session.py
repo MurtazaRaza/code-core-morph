@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codecoremorph.adapters.config import is_port, language_config, target_language_config
 from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.rust import RustAdapter
-from codecoremorph.config import parse_config
+from codecoremorph.config import ConfigValidationError, parse_config
 from codecoremorph.orchestrator.session import toolchain_spec
 
 PORT = parse_config(
@@ -44,3 +46,21 @@ def test_a_port_runs_with_the_target_toolchain_and_both_tools() -> None:
     assert {"clang++", "cmake", "ctest", "cargo", "cargo-nextest", "cbindgen"} <= set(names)
     assert len(names) == len(set(names))
     assert toolchain_spec(UPGRADE, CppAdapter()).image == "codecoremorph-cpp"
+
+
+def test_keeping_the_source_api_is_for_ports() -> None:
+    kept = parse_config(
+        'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+        "  source: {language: cpp, standard: cpp98}\n"
+        "  target: {language: rust, standard: rust2021, rules: [port_module, retire_cpp],\n"
+        "           keep_source_api: true}\n"
+    ).config
+    assert kept.migration.target.keep_source_api
+    assert not PORT.migration.target.keep_source_api
+    with pytest.raises(ConfigValidationError) as raised:
+        parse_config(
+            'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+            "  source: {language: cpp, standard: cpp11}\n"
+            "  target: {language: cpp, standard: cpp20, keep_source_api: true}\n"
+        )
+    assert any("keep_source_api is for a port" in i.message for i in raised.value.issues)

@@ -133,7 +133,12 @@ class CppAdapter(LanguageAdapter):
             detect_disabled_tests=True,
             c_declarations=True,
             codemod_tools=["clang-tidy", "cmake-standard"],
-            queries=["typedef_declarations", "c_abi_definitions", "unported_definitions"],
+            queries=[
+                "typedef_declarations",
+                "c_abi_definitions",
+                "unported_definitions",
+                "test_cases",
+            ],
             standards=list(SUPPORTED_STANDARDS),
         )
 
@@ -374,6 +379,9 @@ class CppAdapter(LanguageAdapter):
             except BinaryFileError:
                 continue  # not a CMake file after all
         return lowest_standard(texts)
+
+    def builds(self, ctx: AdapterContext) -> bool:
+        return (ctx.worktree / "CMakeLists.txt").is_file()
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
         # Unchanged translation units come from the helper's cache, so re-indexing after an
@@ -688,6 +696,12 @@ class CppAdapter(LanguageAdapter):
         return found
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
+        if name == "test_cases":
+            # Each GoogleTest case in the files, by its test ID: what a port translates (D-60).
+            return [
+                RuleSite(file=case.file, line=case.line, text=case.test_id)
+                for case in self.extract_assertions(ctx, files)
+            ]
         if name not in ("typedef_declarations", "c_abi_definitions", "unported_definitions"):
             return super().query(ctx, name, files)
         index_path = ctx.cache_dir / INDEX_FILE_NAME
