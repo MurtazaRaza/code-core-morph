@@ -1,0 +1,41 @@
+{
+  "project": "snappy",
+  "url": "https://github.com/google/snappy.git",
+  "tag": "1.1.9",
+  "commit": "2b63814b15a2aaae54b7943f0cd935892fae628f",
+  "submodules": {
+    "third_party/benchmark": "bf585a2789e30585b4e3ce6baf11ef2750b54677",
+    "third_party/googletest": "18f8200e3079b0e54fa00cb7ac55d4c39dcf6da6"
+  },
+  "license": "BSD-3-Clause",
+  "milestone": "m8",
+  "migration": {
+    "source": "cpp11",
+    "target": {
+      "language": "rust",
+      "standard": "rust2021",
+      "rules": ["port_module", "port_executable", "port_tests", "retire_cpp"]
+    }
+  },
+  "configure_args": [
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+    "-DSNAPPY_BUILD_BENCHMARKS=OFF",
+    "-DSNAPPY_INSTALL=OFF"
+  ],
+  "exclude": [
+    "third_party/**",
+    "snappy_benchmark.cc",
+    "snappy_*_fuzzer.cc"
+  ],
+  "test_dirs": [
+    "snappy_unittest.cc",
+    "snappy-test.*",
+    "snappy_test_data.*"
+  ],
+  "public_api": [
+    "snappy.h",
+    "snappy-c.h",
+    "snappy-sinksource.h"
+  ],
+  "build_note": "The M8 port benchmark (bench/pin.json is M1's). The benchmark and the fuzzers aren't built (Google Benchmark, libFuzzer), so they stay out of the port; nor is the install step, since Corrosion's imported crates can't join snappy's CMake export set."
+}

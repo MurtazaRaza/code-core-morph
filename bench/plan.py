@@ -1,10 +1,12 @@
 """Plan the benchmark migration with ``codecoremorph plan`` and record a summary (Phase 3 exit).
 
-Usage: uv run python bench/plan.py [--project DIR] [--sandbox native|docker]
+Usage: uv run python bench/plan.py [--pin FILE] [--project DIR] [--sandbox native|docker]
 
-Writes a manifest for the pinned project (bench/fetch.py) next to its clone, migrating it
-C++11 -> C++20 with the rules of examples/cpp11-to-cpp20.yaml, runs the plan (baseline, index,
-graph, units; no code changes), and records units, estimates and timings in bench/results/.
+Writes a manifest for the pinned project (bench/fetch.py) next to its clone, runs the plan
+(baseline, index, graph, units; no code changes), and records units, estimates and timings in
+bench/results/. The pin names the migration: bench/pin.json (M1) names none, so leveldb goes
+C++11 -> C++20 with the rules of examples/cpp11-to-cpp20.yaml; bench/port-pin.json (M8) ports
+snappy to Rust.
 """
 
 from __future__ import annotations
@@ -17,21 +19,46 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from codecoremorph.core.paths import codecoremorph_home
 
 BENCH = Path(__file__).resolve().parent
+PIN = BENCH / "pin.json"
 RULES = [
     "replace_typedefs_with_using",
     "convert_raw_pointers_to_smart_pointers",
     "use_concepts_for_templates",
 ]
+UPGRADE: dict[str, Any] = {
+    "source": "cpp11",
+    "target": {"language": "cpp", "standard": "cpp20", "rules": RULES},
+}
 
 
-def manifest(pin: dict[str, object], root: Path, sandbox: str) -> str:
+def load_pin(path: Path) -> dict[str, Any]:
+    pin: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return pin
+
+
+def migration(pin: dict[str, Any]) -> dict[str, Any]:
+    """The pin's migration; a pin without one is M1's C++11 -> C++20 upgrade."""
+    found = pin.get("migration")
+    return found if isinstance(found, dict) else UPGRADE
+
+
+def describe(pin: dict[str, Any]) -> str:
+    """The migration in a few words, as the results record it: ``cpp11 -> rust2021``."""
+    found = migration(pin)
+    return f"{found['source']} -> {found['target']['standard']}"
+
+
+def manifest(pin: dict[str, Any], root: Path, sandbox: str) -> str:
     def items(values: object) -> str:
         return ", ".join(json.dumps(v) for v in values) if isinstance(values, list) else ""
 
+    found = migration(pin)
+    target = found["target"]
     return f"""\
 version: "1.0"
 project:
@@ -41,8 +68,11 @@ project:
   exclude: [{items(pin["exclude"])}]
   public_api: [{items(pin["public_api"])}]
 migration:
-  source: {{language: cpp, standard: cpp11, build_system: cmake}}
-  target: {{language: cpp, standard: cpp20, rules: [{", ".join(RULES)}]}}
+  source: {{language: cpp, standard: {found["source"]}, build_system: cmake}}
+  target:
+    language: {target["language"]}
+    standard: {target["standard"]}
+    rules: [{", ".join(target["rules"])}]
 build:
   cmake:
     configure_args: [{items(pin["configure_args"])}]
@@ -52,13 +82,14 @@ sandbox: {{mode: {sandbox}}}
 
 
 def main(argv: list[str]) -> int:
-    pin = json.loads((BENCH / "pin.json").read_text(encoding="utf-8"))
     parser = argparse.ArgumentParser(description="Plan the benchmark migration.")
-    parser.add_argument(
-        "--project", type=Path, default=codecoremorph_home() / "bench" / pin["project"]
-    )
+    parser.add_argument("--pin", type=Path, default=PIN, help="the benchmark's pin")
+    parser.add_argument("--project", type=Path, help="its clone (default: bench/fetch.py's)")
     parser.add_argument("--sandbox", choices=("native", "docker"), default="docker")
     args = parser.parse_args(argv)
+    pin = load_pin(args.pin)
+    if args.project is None:
+        args.project = codecoremorph_home() / "bench" / pin["project"]
     root: Path = args.project.resolve()
     if not (root / ".git").exists():
         print(f"{root} doesn't exist; run bench/fetch.py first", file=sys.stderr)
@@ -85,7 +116,7 @@ def main(argv: list[str]) -> int:
     record = {
         "date": datetime.now(UTC).isoformat(timespec="seconds"),
         "project": f"{pin['project']} {pin['tag']} ({pin['commit'][:12]})",
-        "migration": "cpp11 -> cpp20",
+        "migration": describe(pin),
         "sandbox": args.sandbox,
         "machine": {
             "os": platform.platform(),

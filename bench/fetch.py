@@ -1,8 +1,9 @@
 """Fetch the pinned benchmark project (SPEC §12, D-10).
 
-Usage: uv run python bench/fetch.py [DEST]
+Usage: uv run python bench/fetch.py [--pin FILE] [DEST]
 
-Clones bench/pin.json's repository at its pinned commit, with submodules, into DEST (default:
+Clones the pin's repository (default bench/pin.json, M1's leveldb; bench/port-pin.json is M8's
+snappy) at its pinned commit, with submodules, into DEST (default:
 <CODECOREMORPH_HOME>/bench/<project>), then checks that every commit matches the pin. Git
 verifies content by commit hash, so the pin is the checksum. An existing clone at the right
 commits is left alone.
@@ -10,6 +11,7 @@ commits is left alone.
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -40,7 +42,7 @@ def verify(dest: Path, pin: dict[str, object]) -> list[str]:
         problems.append(f"HEAD is {head}, expected {pin['commit']}")
     submodules = pin.get("submodules") or {}
     if not isinstance(submodules, dict):
-        raise SystemExit("bench/pin.json: submodules must be an object")
+        raise SystemExit("the pin's submodules must be an object")
     for path, commit in submodules.items():
         actual = git("rev-parse", "HEAD", cwd=dest / str(path))
         if actual != commit:
@@ -49,8 +51,12 @@ def verify(dest: Path, pin: dict[str, object]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    pin = json.loads(PIN.read_text(encoding="utf-8"))
-    dest = Path(argv[0]) if argv else codecoremorph_home() / "bench" / str(pin["project"])
+    parser = argparse.ArgumentParser(description="Fetch the pinned benchmark project.")
+    parser.add_argument("--pin", type=Path, default=PIN, help="the benchmark's pin")
+    parser.add_argument("dest", type=Path, nargs="?", help="where to clone it")
+    args = parser.parse_args(argv)
+    pin = json.loads(args.pin.read_text(encoding="utf-8"))
+    dest: Path = args.dest or codecoremorph_home() / "bench" / str(pin["project"])
     if (dest / ".git").exists():
         problems = verify(dest, pin)
         if not problems:

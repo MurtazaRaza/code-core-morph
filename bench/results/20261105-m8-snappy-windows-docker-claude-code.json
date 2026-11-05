@@ -1,0 +1,630 @@
+{
+  "date": "2026-11-05T12:49:00+00:00",
+  "project": "snappy 1.1.9 (2b63814b15a2)",
+  "migration": "cpp11 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "2b63814b15a2aaae54b7943f0cd935892fae628f",
+  "seconds": 2807.3,
+  "runs_started": 1,
+  "run_id": "20261105-120253-a596",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 12
+    },
+    "success_rate": 1.0,
+    "agent_units": 11,
+    "attempts_per_agent_unit": 1.18,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "4d86d4e2e5dfba46609695a13e3f8641bfc1bdfc",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 75,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 18.0
+    },
+    "port": {
+      "symbols": 65,
+      "tests_mapped": 58,
+      "tests_without_counterpart": [
+        "ctest:snappy_unittest: only runs a GoogleTest binary, whose cases are mapped one by one",
+        "gtest:Snappy.FindMatchLength: Tests snappy::internal::FindMatchLength, a C++ helper of snappy-internal.h with word-at-a-time code paths. The Rust compressor has a private prefix comparison with no public API and no such paths; match finding is exercised by every compression round trip of the other tests.",
+        "gtest:Snappy.FindMatchLengthRandom: Tests snappy::internal::FindMatchLength, a C++ helper of snappy-internal.h that is not part of the Rust API (see Snappy.FindMatchLength).",
+        "gtest:StubsGetFlagCharacterization.ReturnsArgument: snappy::GetFlag is a C++ template that stubs absl::GetFlag by returning its argument; flags are plain Rust values, so there is no Rust counterpart to test.",
+        "ctest:codecoremorph_characterization: only runs a GoogleTest binary, whose cases are mapped one by one"
+      ],
+      "deviations": [
+        "snappy::Sink: Abstract C++ interface, kept in C++ because other C++ code subclasses it; Rust holds its default behavior as free functions.",
+        "snappy::Sink::Sink: Empty constructor; stays in C++.",
+        "snappy::Sink::Append: Pure virtual; implemented by C++ subclasses.",
+        "snappy::Source: Abstract C++ interface, kept in C++ because other C++ code subclasses it.",
+        "snappy::Source::Source: Empty constructor; stays in C++.",
+        "snappy::Source::Available: Pure virtual; implemented by C++ subclasses (ByteArraySource::Available is ported).",
+        "snappy::Source::Peek: Pure virtual; implemented by C++ subclasses (ByteArraySource::Peek is ported).",
+        "snappy::Source::Skip: Pure virtual; implemented by C++ subclasses (ByteArraySource::Skip is ported).",
+        "snappy::ByteArraySource::ByteArraySource: The C++ constructor stores the pointer and length; Rust keeps only the length and a cursor offset.",
+        "snappy::ByteArraySource::Skip: Like the C++, skipping more than is left is not checked: the counts wrap.",
+        "snappy::UncheckedByteArraySink: The destination pointer is a C++ member; Rust holds the write logic as free functions.",
+        "snappy::UncheckedByteArraySink::UncheckedByteArraySink: Stores the destination pointer; stays in C++.",
+        "snappy::UncheckedByteArraySink::CurrentDestination: Simple accessor of the C++ destination pointer; stays in C++.",
+        "snappy::GetFlag: Stub of absl::GetFlag: a template that returns its argument; stays in C++.",
+        "snappy::STLStringResizeUninitialized: One call to std::string::resize; stays in C++.",
+        "snappy::LittleEndian: Static helper class; its functions are ported to free functions.",
+        "snappy::LittleEndian::IsLittleEndian: No longer constexpr; the Rust side decides from the target's endianness.",
+        "snappy::Bits: Static helper class; its functions are ported to free functions.",
+        "snappy::Bits::Log2FloorNonZero: The C++ assert(n != 0) is a debug_assert! in Rust.",
+        "snappy::Bits::FindLSBSetNonZero: The C++ assert(n != 0) is a debug_assert! in Rust.",
+        "snappy::Bits::FindLSBSetNonZero64: The C++ assert(n != 0) is a debug_assert! in Rust.",
+        "snappy::Varint: Static helper class; its functions are ported to free functions.",
+        "snappy::Compress: The Source/Sink overload is snappy::compress; the std::string overload is compress_to_vec. The Sink's GetAppendBuffer is no longer called: Rust compresses to its own buffer and appends it.",
+        "snappy::Uncompress: The std::string overload no longer checks the length against std::string::max_size().",
+        "snappy_status: The C enum is the #[repr(C)] enum snappy_status of the bridge; Status holds the two failures and success is Ok.",
+        "gtest:CorruptedTest.VerifyCorrupted: The pages guarding the ends of the buffers (mmap/mprotect) are gone: Rust slices are bounds checked.",
+        "gtest:Snappy.AppendSelfPatternExtensionEdgeCasesExhaustive: The random bytes come from a small generator of the test, not from std::mt19937.",
+        "gtest:Snappy.MaxBlowup: The random bytes come from a small generator of the test, not from std::mt19937.",
+        "gtest:Snappy.RandomData: The random inputs come from a small generator of the test, not from the C++ distributions, so they differ from the C++ run.",
+        "gtest:Snappy.ReadPastEndOfBuffer: The unreadable guard page after the buffer is gone: Rust slices are bounds checked.",
+        "gtest:Snappy.VerifyCharTable: The C++ test compares a computed table with the decompressor's lookup table char_table. The Rust decompressor has no such table, so the test checks the computed table against how the decompressor reads each of the 256 tags.",
+        "gtest:SnappyCApiTwoCharacterization.BufferTooSmall: The C++ test checked that the in/out length argument of the C function stays unchanged on failure; the Rust API has no such argument, so the test checks that the output buffer stays untouched.",
+        "gtest:SnappyCApiTwoCharacterization.InvalidInput: The C++ test checked that the in/out length argument of the C function stays unchanged on failure; the Rust API has no such argument, so the test checks that the output buffer stays untouched.",
+        "gtest:WorkingMemoryCharacterization.ScratchLayoutSmallInput: The Rust API describes the working memory as a layout of offsets (working_memory_layout) instead of pointers.",
+        "gtest:WorkingMemoryCharacterization.HashTableIsClearedOnEachRequest: The Rust API clears a caller-owned table (clear_hash_table); the C++ test also checked that the same table pointer comes back, which has no counterpart.",
+        "gtest:SinkSourceViaCApiCharacterization.SinkAndSourceBasics: The Rust functions work on offsets and slices instead of pointers.",
+        "gtest:SnappyCCharacterization.CompressBufferTooSmall: The C++ test checked that the in/out length argument stays unchanged on failure; the Rust API has no such argument, so the test checks that the output buffer stays untouched.",
+        "gtest:SnappyCCharacterization.UncompressBufferTooSmallLeavesLengthUntouched: The Rust API has no in/out length argument; the test checks that the output buffer stays untouched instead.",
+        "gtest:SnappyCCharacterization.InvalidInput: The C++ test checked that the in/out length argument stays unchanged on failure; the Rust API has no such argument, so the test checks that the output buffer stays untouched.",
+        "gtest:SinkCharacterization.DefaultGetAppendBufferReturnsScratch: The Rust function returns the offset into the scratch buffer (0) instead of a pointer.",
+        "gtest:SinkCharacterization.DefaultGetAppendBufferVariableReturnsScratch: The Rust function returns the offset into the scratch buffer (0) instead of a pointer.",
+        "gtest:SinkCharacterization.DefaultAppendAndTakeOwnershipAppendsAndCallsDeleter: The deleter is a closure without arguments; the C++ checks of the pointer and size passed to it are replaced by checks of the order of the calls.",
+        "gtest:ByteArraySourceCharacterization.AvailablePeekSkip: Peek returns an offset and a length instead of a pointer and a length.",
+        "gtest:ByteArraySourceCharacterization.EmptySourceAndZeroSkip: Peek returns an offset and a length instead of a pointer and a length.",
+        "gtest:UncheckedByteArraySinkCharacterization.AppendCopiesAndAdvances: The Rust functions return how far the destination moves instead of the destination pointer.",
+        "gtest:UncheckedByteArraySinkCharacterization.GetAppendBufferReturnsDestination: The Rust functions return offsets from the destination instead of pointers.",
+        "gtest:UncheckedByteArraySinkCharacterization.GetAppendBufferVariableUsesHint: The Rust function returns only the allocated size; the buffer is the destination itself.",
+        "gtest:UncheckedByteArraySinkCharacterization.AppendAndTakeOwnershipCopiesAndCallsDeleter: The deleter is a closure without arguments; the C++ checks of the pointer and size passed to it are replaced by checks that the source bytes are unchanged and the byte after the copy is untouched.",
+        "gtest:StubsUnalignedCharacterization.LoadsReadHostOrder: The Rust functions take the bytes as arrays (there are no unaligned pointers); only the 16 and 32 bit loads were tested in C++.",
+        "gtest:StubsUnalignedCharacterization.StoresWriteHostOrder: The Rust functions return the bytes to store; the test copies them into the buffer at the same offsets the C++ test wrote to.",
+        "gtest:LittleEndianCharacterization.Store16: The Rust function returns the bytes to store; the test copies them into the buffer at the same offsets the C++ test wrote to.",
+        "gtest:LittleEndianCharacterization.Store32: The Rust function returns the bytes to store; the test copies them into the buffer at the same offsets the C++ test wrote to.",
+        "gtest:LittleEndianCharacterization.Store64: The Rust function returns the bytes to store; the test copies them into the buffer at the same offsets the C++ test wrote to."
+      ],
+      "unsafe": [],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_module",
+        "units": 4,
+        "committed": 4,
+        "planned_sites": 86,
+        "converted_sites": 86
+      },
+      {
+        "id": "port_executable",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 1,
+        "converted_sites": 1
+      },
+      {
+        "id": "port_tests",
+        "units": 6,
+        "committed": 6,
+        "planned_sites": 61,
+        "converted_sites": 61
+      },
+      {
+        "id": "retire_cpp",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 20,
+        "converted_sites": 20
+      }
+    ],
+    "review_items": 28,
+    "duration_s": 2742.3,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 249.6,
+        "changed_files": 13,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 173.4,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 825.9,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 117.7,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 192.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 277.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 130.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 108.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 160.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 120.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 110.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 25.1,
+        "changed_files": 33,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\snappy\\.codecoremorph\\runs\\20261105-120253-a596\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 15,
+      "project_lines": 6191,
+      "units": 12,
+      "rule_sites": {
+        "port_module": 98,
+        "port_executable": 20,
+        "port_tests": 61,
+        "retire_cpp": 20
+      },
+      "sites": 199,
+      "files": 22,
+      "lines": 6191,
+      "expected_agent_attempts": 10.8,
+      "verify_s": 8.5,
+      "estimated_s": 2937.7,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 12
+      },
+      "agent_units": 11,
+      "agent_attempts": 13,
+      "changed_files": 34,
+      "lines_added": 3896,
+      "lines_deleted": 6589
+    },
+    "time": {
+      "run_s": 2742.3,
+      "phases_s": {
+        "baselining": 5.7,
+        "indexing": 2.3,
+        "characterizing": 183.5,
+        "planning": 0.4,
+        "awaiting_plan_approval": 9.1,
+        "migrating": 2523.3,
+        "verifying": 18.0
+      },
+      "migrating_s": 2523.3,
+      "agent_s": 1702.0,
+      "unit_gates_s": 19.4,
+      "tools_s": 801.9,
+      "unit_s": {
+        "mean": 210.2,
+        "median": 151.8,
+        "max": 826.8
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.86,
+      "agent_attempts_over_expected": 1.2,
+      "agent_s_per_attempt": 130.9,
+      "migrating_s_per_unit": 210.3,
+      "migrating_s_per_site": 12.7,
+      "migrating_s_per_changed_line": 0.24,
+      "run_min_per_1k_project_lines": 7.38
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_module"
+        ],
+        "files": 4,
+        "lines": 303,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 276.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 251.0,
+        "agent_s": 175.1,
+        "gate_s": 0.0,
+        "tools_s": 75.9,
+        "lines_changed": 719
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_module"
+        ],
+        "files": 4,
+        "lines": 534,
+        "sites": 18,
+        "expected_attempts": 0.9,
+        "estimated_s": 351.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 174.3,
+        "agent_s": 144.3,
+        "gate_s": 0.0,
+        "tools_s": 30.0,
+        "lines_changed": 908
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_module"
+        ],
+        "files": 4,
+        "lines": 2402,
+        "sites": 55,
+        "expected_attempts": 0.9,
+        "estimated_s": 957.0,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 826.8,
+        "agent_s": 757.2,
+        "gate_s": 0.0,
+        "tools_s": 69.6,
+        "lines_changed": 3722
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_module"
+        ],
+        "files": 4,
+        "lines": 228,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 252.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 118.5,
+        "agent_s": 58.7,
+        "gate_s": 0.0,
+        "tools_s": 59.7,
+        "lines_changed": 314
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_executable"
+        ],
+        "files": 3,
+        "lines": 471,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 331.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 193.7,
+        "agent_s": 144.1,
+        "gate_s": 0.0,
+        "tools_s": 49.6,
+        "lines_changed": 855
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 20,
+        "expected_attempts": 0.9,
+        "estimated_s": 347.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 278.4,
+        "agent_s": 214.5,
+        "gate_s": 0.0,
+        "tools_s": 63.9,
+        "lines_changed": 859
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 142.1,
+        "agent_s": 51.9,
+        "gate_s": 11.0,
+        "tools_s": 79.2,
+        "lines_changed": 178
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 109.9,
+        "agent_s": 30.5,
+        "gate_s": 0.0,
+        "tools_s": 79.4,
+        "lines_changed": 129
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 161.4,
+        "agent_s": 60.2,
+        "gate_s": 0.0,
+        "tools_s": 101.2,
+        "lines_changed": 209
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 129.2,
+        "agent_s": 38.2,
+        "gate_s": 8.4,
+        "tools_s": 82.5,
+        "lines_changed": 185
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 111.3,
+        "agent_s": 27.3,
+        "gate_s": 0.0,
+        "tools_s": 84.1,
+        "lines_changed": 161
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "retire_cpp"
+        ],
+        "files": 22,
+        "lines": 6191,
+        "sites": 20,
+        "expected_attempts": 0.9,
+        "estimated_s": 70.1,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 25.2,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 25.2,
+        "lines_changed": 5847
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 115,
+    "duration_ms": 2805170,
+    "total_cost_usd_equivalent": 6.9605505,
+    "usage": {
+      "input_tokens": 164,
+      "cache_creation_input_tokens": 495421,
+      "cache_read_input_tokens": 20923318,
+      "output_tokens": 288606,
+      "output_tokens_details": {
+        "thinking_tokens": 124468
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 495421,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1365,
+          "cache_read_input_tokens": 516983,
+          "cache_creation_input_tokens": 8262,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 8262
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The run ended with status **completed**: all 12 units are committed and the final clean build and full test run passed. That was 75 tests, against a baseline of 62 passing.\n\nThe work is on branch `codecoremorph/20261105-120253-a596` (last commit `4d86d4e2e5df`), which took about 46 minutes. Your working tree and `main` are untouched.\n\n## What was done\n\n- **Characterization tests:** snappy had untested code, so I first wrote 41 C++ tests in 5 jobs (C-0001 to C-0005) to pin its current behaviour. All were accepted.\n- **Plan:** I approved the full 12-unit plan without exclusions.\n- **Module ports (U-0001 to U-0004):** each C++ module's logic now lives in the Rust crate `snappy_rs`, with thin C++ facades that forward through a bridge.\n  - U-0001 is `snappy-sinksource` and U-0002 is `snappy-stubs-internal`.\n  - U-0003 is `snappy.cc`, the compressor and decompressor.\n  - U-0004 is `snappy-c`. Its five C functions are now exported straight from Rust, and `snappy-c.cc` only includes the header.\n- **Executable (U-0005):** `snappy_test_tool` is now a Rust binary and its C++ source is deleted.\n- **Test translations (U-0006 to U-0011):** the 20 cases in `snappy_unittest.cc` and the 5 characterization files are now Rust tests, with a test map pairing each C++ test to its Rust one.\n- **Retirement (U-0012):** the codemod deleted the C++ and the CMake build on its own, with no edits from me.\n\n## What the verification did not cover\n\n- **Tests with no Rust counterpart:**\n  - `Snappy.FindMatchLength` and `Snappy.FindMatchLengthRandom` test a C++-only helper that isn't in the Rust API. The report flags that the translations check less than the originals.\n  - `StubsGetFlagCharacterization.ReturnsArgument` tests a C++ stub (`absl::GetFlag`) and maps to nothing.\n  - The two CTest entries that only launch a GoogleTest binary are mapped to nothing as well.\n- **Parity warnings:** the report flags two units, U-0007 and U-0010. In U-0007 the translated test makes 3 checks where the original made 4; the missing one compared a returned pointer. U-0010 is the `GetFlag` case above. I approved both units because each gap has no Rust equivalent.\n- **Other test differences:**\n  - The C++ checks that an in/out length argument stays unchanged on failure now check the buffer is untouched instead.\n  - Several pointer checks became offset checks.\n  - The random tests use a small generator of their own, so their inputs differ from the C++ run.\n  - The guard-page tests are gone because Rust slices are bounds-checked.\n- **Behaviour changes:**\n  - `Compress` no longer calls the sink's `GetAppendBuffer`.\n  - The SSSE3/BMI2/branchless fast paths are gone, so speed differs, and the functions that used to be inline in `snappy-stubs-internal.h` are now calls through the bridge.\n  - The string overloads no longer check `std::string::max_size()`.\n  - `snappy_test_tool` no longer measures zlib, LZO or LZ4; it logs \"library not compiled in\" on stderr.\n  - An empty input file now measures one empty block instead of hitting the C++ undefined behaviour.\n- **Unverified file:** the build doesn't compile `rust/snappy_rs/include/snappy_rs/bridge.hpp`, so its changes in U-0002 are unverified.\n- **Unsafe code:** none outside the bridge.\n\n## Review\n\nRun `git diff 2b63814 codecoremorph/20261105-120253-a596` or `git log` on that branch. Merging is up to you. The full report is at `E:\\codecoremorph-home\\bench\\snappy\\.codecoremorph\\runs\\20261105-120253-a596\\report.md`."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 115,
+      "duration_ms": 2805170,
+      "total_cost_usd_equivalent": 6.9605505,
+      "usage": {
+        "input_tokens": 164,
+        "cache_creation_input_tokens": 495421,
+        "cache_read_input_tokens": 20923318,
+        "output_tokens": 288606,
+        "output_tokens_details": {
+          "thinking_tokens": 124468
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 495421,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1365,
+            "cache_read_input_tokens": 516983,
+            "cache_creation_input_tokens": 8262,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 8262
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The run ended with status **completed**: all 12 units are committed and the final clean build and full test run passed. That was 75 tests, against a baseline of 62 passing.\n\nThe work is on branch `codecoremorph/20261105-120253-a596` (last commit `4d86d4e2e5df`), which took about 46 minutes. Your working tree and `main` are untouched.\n\n## What was done\n\n- **Characterization tests:** snappy had untested code, so I first wrote 41 C++ tests in 5 jobs (C-0001 to C-0005) to pin its current behaviour. All were accepted.\n- **Plan:** I approved the full 12-unit plan without exclusions.\n- **Module ports (U-0001 to U-0004):** each C++ module's logic now lives in the Rust crate `snappy_rs`, with thin C++ facades that forward through a bridge.\n  - U-0001 is `snappy-sinksource` and U-0002 is `snappy-stubs-internal`.\n  - U-0003 is `snappy.cc`, the compressor and decompressor.\n  - U-0004 is `snappy-c`. Its five C functions are now exported straight from Rust, and `snappy-c.cc` only includes the header.\n- **Executable (U-0005):** `snappy_test_tool` is now a Rust binary and its C++ source is deleted.\n- **Test translations (U-0006 to U-0011):** the 20 cases in `snappy_unittest.cc` and the 5 characterization files are now Rust tests, with a test map pairing each C++ test to its Rust one.\n- **Retirement (U-0012):** the codemod deleted the C++ and the CMake build on its own, with no edits from me.\n\n## What the verification did not cover\n\n- **Tests with no Rust counterpart:**\n  - `Snappy.FindMatchLength` and `Snappy.FindMatchLengthRandom` test a C++-only helper that isn't in the Rust API. The report flags that the translations check less than the originals.\n  - `StubsGetFlagCharacterization.ReturnsArgument` tests a C++ stub (`absl::GetFlag`) and maps to nothing.\n  - The two CTest entries that only launch a GoogleTest binary are mapped to nothing as well.\n- **Parity warnings:** the report flags two units, U-0007 and U-0010. In U-0007 the translated test makes 3 checks where the original made 4; the missing one compared a returned pointer. U-0010 is the `GetFlag` case above. I approved both units because each gap has no Rust equivalent.\n- **Other test differences:**\n  - The C++ checks that an in/out length argument stays unchanged on failure now check the buffer is untouched instead.\n  - Several pointer checks became offset checks.\n  - The random tests use a small generator of their own, so their inputs differ from the C++ run.\n  - The guard-page tests are gone because Rust slices are bounds-checked.\n- **Behaviour changes:**\n  - `Compress` no longer calls the sink's `GetAppendBuffer`.\n  - The SSSE3/BMI2/branchless fast paths are gone, so speed differs, and the functions that used to be inline in `snappy-stubs-internal.h` are now calls through the bridge.\n  - The string overloads no longer check `std::string::max_size()`.\n  - `snappy_test_tool` no longer measures zlib, LZO or LZ4; it logs \"library not compiled in\" on stderr.\n  - An empty input file now measures one empty block instead of hitting the C++ undefined behaviour.\n- **Unverified file:** the build doesn't compile `rust/snappy_rs/include/snappy_rs/bridge.hpp`, so its changes in U-0002 are unverified.\n- **Unsafe code:** none outside the bridge.\n\n## Review\n\nRun `git diff 2b63814 codecoremorph/20261105-120253-a596` or `git log` on that branch. Merging is up to you. The full report is at `E:\\codecoremorph-home\\bench\\snappy\\.codecoremorph\\runs\\20261105-120253-a596\\report.md`."
+    }
+  ]
+}

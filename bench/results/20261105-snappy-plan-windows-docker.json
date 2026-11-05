@@ -1,0 +1,81 @@
+{
+  "date": "2026-11-05T10:07:22+00:00",
+  "project": "snappy 1.1.9 (2b63814b15a2)",
+  "migration": "cpp11 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 5.031,
+    "index_s": 2.344,
+    "graph_s": 0.0,
+    "plan_s": 0.235
+  },
+  "baseline": {
+    "passing": 21,
+    "failing": [],
+    "flaky": [],
+    "build_s": 2.328,
+    "test_s": 6.055
+  },
+  "graph": {
+    "files": 15,
+    "edges": 39,
+    "clusters": 11,
+    "cyclic_clusters": 4,
+    "largest_cluster": 2
+  },
+  "rules": [
+    {
+      "id": "port_module",
+      "kind": "port",
+      "automatic": false,
+      "sites": 98,
+      "files": 6,
+      "skipped_files": 3,
+      "units": 4
+    },
+    {
+      "id": "port_executable",
+      "kind": "port",
+      "automatic": false,
+      "sites": 15,
+      "files": 15,
+      "skipped_files": 0,
+      "units": 1
+    },
+    {
+      "id": "port_tests",
+      "kind": "port",
+      "automatic": false,
+      "sites": 20,
+      "files": 1,
+      "skipped_files": 0,
+      "units": 1
+    },
+    {
+      "id": "retire_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 15,
+      "files": 15,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 7
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 781018,
+    "cost_usd": 5.26
+  },
+  "duration_estimate_s": 2417.7,
+  "warnings": []
+}
