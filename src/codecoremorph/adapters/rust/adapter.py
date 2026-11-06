@@ -10,15 +10,17 @@ what only Cargo knows. Every command goes through ``ctx.executor``.
 from __future__ import annotations
 
 import hashlib
+import json
 import posixpath
 import re
 import shutil
 import time
 from collections.abc import Callable, Collection
 from pathlib import Path, PurePath, PurePosixPath
+from typing import cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
-from codecoremorph.adapters.rust import ports
+from codecoremorph.adapters.rust import cports, ports
 from codecoremorph.adapters.rust.cargo import (
     EDITIONS,
     NEXTEST_PROFILE,
@@ -104,6 +106,7 @@ class RustAdapter(LanguageAdapter):
                     name="cargo-nextest", version_args=["--version"], purpose="Rust tests"
                 ),
                 ToolRequirement(name="cbindgen", purpose="the C header a crate exports"),
+                ToolRequirement(name="bindgen", purpose="the C headers a C port keeps (D-68)"),
             ],
             install_hint="codecoremorph toolchain install rust",
         )
@@ -187,8 +190,10 @@ class RustAdapter(LanguageAdapter):
         packages needs nothing, and no network."""
         started = time.monotonic()
         log_path = self._note(ctx, "cargo-configure.log")
-        # A module port's bridge headers come first: the C++ build includes them (D-58).
-        diagnostics = self._bridge_headers(ctx)
+        # A C port's sys modules (D-68) and a module port's bridge headers come first: the
+        # crates use the former, and the C++ build includes the latter (D-58).
+        _, diagnostics = self._sys_modules(ctx)
+        diagnostics += self._bridge_headers(ctx)
         for crate in self.crates(ctx):
             lock = _text(ctx.worktree / crate / "Cargo.lock")
             if lock is None:
@@ -440,6 +445,8 @@ class RustAdapter(LanguageAdapter):
                 reason=f"crate={crate!r}, module={module!r}, build_target={target!r}",
                 hint="Use it in a port rule with `port_units: module`.",
             )
+        if spec.options.get("language") == "c":
+            return self._c_module_scaffold(ctx, spec, files)
         try:
             year = edition(ctx.lang.target_standard or ctx.lang.standard)
         except ValueError as exc:
@@ -513,6 +520,418 @@ class RustAdapter(LanguageAdapter):
         once = {c.file: c for c in changes}  # a file written twice is one change
         return list(once.values()), problems
 
+    # ------------------------------------------------------------------ C ports (D-68)
+
+    def _c_module_scaffold(
+        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
+    ) -> tuple[list[CodemodChange], list[Diagnostic]]:
+        """``rust-module`` for a C translation unit (``options.language: c``, D-68): the
+        workspace with its release profile, the library's crate (its archive and kept headers
+        in the manifest), the unit's module and bridge module, the symbol map, the lockfile,
+        the Make integration and the ``sys`` module. ``options``: ``crate``, ``module``,
+        ``build_target``, ``archive`` and ``headers``, from the unit (``PortUnit``)."""
+        crate = spec.options["crate"]
+        module = spec.options["module"]
+        library = spec.options["build_target"]
+        archive = spec.options.get("archive", "")
+        headers = [h for h in spec.options.get("headers", "").split(",") if h]
+        if not archive:
+            raise ConfigError(
+                "the rust-module codemod needs the C library's static archive",
+                reason=f"the build gives library {library} no .a archive",
+                hint="A C port folds each crate into its library's archive (D-68).",
+            )
+        year = self._edition_year(ctx, "rust-module")
+        workspace = cports.WORKSPACE_DIR
+        package = f"{workspace}/{crate}"
+        sources = sorted(f for f in files if f.lower().endswith((".c", ".h")))
+        changes: list[CodemodChange] = []
+        write = self._writer(ctx, changes)
+
+        def current(rel: str) -> str | None:
+            return _text(ctx.worktree / rel)
+
+        manifest = current(f"{workspace}/Cargo.toml")
+        write(
+            f"{workspace}/Cargo.toml",
+            cports.workspace_manifest([crate])
+            if manifest is None
+            else cports.with_release_profile(ports.with_member(manifest, crate)),
+        )
+        if current(f"{workspace}/.gitignore") is None:
+            write(f"{workspace}/.gitignore", "/target/\n")  # where the Make build puts it
+        package_toml = current(f"{package}/Cargo.toml")
+        if package_toml is None:
+            write(
+                f"{package}/Cargo.toml",
+                cports.package_manifest(crate, year, library, archive, headers),
+            )
+            write(f"{package}/src/lib.rs", cports.lib_rs(library))
+            write(f"{package}/src/bridge/mod.rs", cports.bridge_mod_rs())
+        else:
+            write(f"{package}/Cargo.toml", cports.with_headers(package_toml, headers))
+        if current(f"{package}/{cports.SYS_FILE}") is None:
+            write(f"{package}/{cports.SYS_FILE}", cports.placeholder_sys())
+        if current(f"{package}/src/{module}.rs") is None:
+            write(f"{package}/src/{module}.rs", cports.module_rs(sources))
+        lib = current(f"{package}/src/lib.rs") or cports.lib_rs(library)
+        write(f"{package}/src/lib.rs", ports.with_module(lib, module))
+        if current(f"{package}/src/bridge/{module}.rs") is None:
+            write(f"{package}/src/bridge/{module}.rs", cports.bridge_module_rs(module, sources))
+        bridge = current(f"{package}/src/bridge/mod.rs") or cports.bridge_mod_rs()
+        write(f"{package}/src/bridge/mod.rs", ports.with_module(bridge, module, public=False))
+        if current(ports.SYMBOL_MAP) is None:
+            write(ports.SYMBOL_MAP, cports.SYMBOL_MAP_TEXT)
+        problems = self._lock_workspace(ctx, workspace, changes)
+        problems += self._make_integration(ctx, write)
+        written, sys_problems = self._sys_modules(ctx)
+        changes += [CodemodChange(file=f, replacements=1) for f in written]
+        once = {c.file: c for c in changes}  # a file written twice is one change
+        return list(once.values()), problems + sys_problems
+
+    def _c_bin_scaffold(
+        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
+    ) -> tuple[list[CodemodChange], list[Diagnostic]]:
+        """``rust-bin`` for a C program (``options.language: c``, D-68): a package whose
+        ``bin`` keeps the program's name, with the library crates as dependencies, and the
+        program's Make rule copying it to the program's path, so ``make test`` and scripts run
+        Rust. The C sources stay for the agent to port, then delete. ``options``: ``crate``,
+        ``bin``, ``build_target``, ``artifact``, ``dependencies``."""
+        crate = spec.options["crate"]
+        name = spec.options["bin"]
+        artifact = spec.options.get("artifact", "")
+        if not artifact:
+            raise ConfigError(
+                "the rust-bin codemod needs the C program's path",
+                reason=f"the build gives program {name} no artifact",
+                hint="A C port copies the Rust program to the program's path (D-68).",
+            )
+        year = self._edition_year(ctx, "rust-bin")
+        dependencies = [d for d in spec.options.get("dependencies", "").split(",") if d]
+        workspace = cports.WORKSPACE_DIR
+        package = f"{workspace}/{crate}"
+        sources = sorted(f for f in files if f.lower().endswith((".c", ".h")))
+        changes: list[CodemodChange] = []
+        write = self._writer(ctx, changes)
+        manifest = _text(ctx.worktree / workspace / "Cargo.toml")
+        write(
+            f"{workspace}/Cargo.toml",
+            cports.workspace_manifest([crate])
+            if manifest is None
+            else cports.with_release_profile(ports.with_member(manifest, crate)),
+        )
+        if _text(ctx.worktree / package / "Cargo.toml") is None:
+            write(
+                f"{package}/Cargo.toml",
+                cports.bin_manifest(crate, year, name, artifact, dependencies),
+            )
+        if _text(ctx.worktree / package / "src" / "main.rs") is None:
+            write(f"{package}/src/main.rs", cports.main_rs(sources))
+        if _text(ctx.worktree / ports.TEST_MAP) is None:
+            write(ports.TEST_MAP, cports.TEST_MAP_TEXT)
+        problems = self._lock_workspace(ctx, workspace, changes)
+        problems += self._make_integration(ctx, write)
+        once = {c.file: c for c in changes}
+        return list(once.values()), problems
+
+    def _c_crates(self, ctx: AdapterContext) -> list[tuple[str, str]]:
+        """The workspace's C port crates (D-68): ``(package, manifest text)``."""
+        found: list[tuple[str, str]] = []
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            manifest = _text(ctx.worktree / package / "Cargo.toml") or ""
+            if cports.manifest_archive(manifest) is not None:
+                found.append((package, manifest))
+        return found
+
+    def _make_integration(
+        self, ctx: AdapterContext, write: Callable[[str, str], None]
+    ) -> list[Diagnostic]:
+        """Each C port crate in the Makefile that makes its library's archive (the archive's
+        rule folds it in, the links get Rust's native libraries) and each C program's package
+        in the Makefile that makes the program (its rule copies the Rust program), with the
+        marked block that builds the workspace (D-68)."""
+        crates: dict[str, list[cports.Crate]] = {}
+        programs: dict[str, list[cports.Program]] = {}
+        am_libraries: dict[str, list[cports.AmLibrary]] = {}
+        am_programs: dict[str, list[cports.AmProgram]] = {}
+        problems: list[Diagnostic] = []
+        release = f"{cports.WORKSPACE_DIR}/target/release"
+
+        def missing(package: str, path: str, what: str) -> Diagnostic:
+            return Diagnostic(
+                file_path=f"{package}/Cargo.toml",
+                severity=Severity.ERROR,
+                message=f"no Makefile has a rule that makes {path}, so {what}; the rule must be "
+                "in a Makefile (or the Makefile.in that configure writes it from) beside or "
+                "above it, or a Makefile.am there must list it",
+                origin=DiagnosticOrigin.BUILD_SYSTEM,
+            )
+
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            manifest = _text(ctx.worktree / package / "Cargo.toml") or ""
+            archive = cports.manifest_archive(manifest)
+            program = cports.manifest_program(manifest)
+            name = (_package_name(manifest) or posixpath.basename(package)).replace("-", "_")
+            if archive is not None and (am := self._automake_for(ctx, archive, False)):
+                makefile, canonical, libtool = am
+                am_libraries.setdefault(makefile, []).append(
+                    cports.AmLibrary(
+                        name=name,
+                        canonical=canonical,
+                        libtool=libtool,
+                        staticlib=f"{release}/lib{name}.a",
+                        archive=posixpath.basename(archive),
+                    )
+                )
+                continue
+            if program is not None and (am := self._automake_for(ctx, program[1], True)):
+                makefile, canonical, _ = am
+                am_programs.setdefault(makefile, []).append(
+                    cports.AmProgram(
+                        name=program[0], canonical=canonical, binary=f"{release}/{program[0]}"
+                    )
+                )
+                continue
+            if archive is not None:
+                found = self._makefile_for(ctx, archive)
+                if found is None:
+                    problems.append(missing(package, archive, "the crate can't be folded in"))
+                    continue
+                makefile, target = found
+                directory = posixpath.dirname(makefile) or "."
+                crates.setdefault(makefile, []).append(
+                    cports.Crate(
+                        name=name,
+                        library=cports.manifest_library(manifest) or "",
+                        archive=posixpath.relpath(archive, directory),
+                        staticlib=posixpath.relpath(f"{release}/lib{name}.a", directory),
+                        target=target,
+                    )
+                )
+            elif program is not None:
+                bin_name, artifact = program
+                found = self._makefile_for(ctx, artifact)
+                if found is None:
+                    problems.append(missing(package, artifact, "the Rust program can't take over"))
+                    continue
+                makefile, target = found
+                directory = posixpath.dirname(makefile) or "."
+                programs.setdefault(makefile, []).append(
+                    cports.Program(
+                        name=bin_name,
+                        binary=posixpath.relpath(f"{release}/{bin_name}", directory),
+                        target=target,
+                    )
+                )
+        makefiles = sorted({*crates, *programs})
+        if not makefiles and not am_libraries and not am_programs:
+            return problems
+        libs: list[str] = []
+        if crates or am_libraries:
+            found_libs = self._native_libs(ctx)
+            if isinstance(found_libs, Diagnostic):
+                return [*problems, found_libs]
+            libs = found_libs
+        for makefile in sorted({*am_libraries, *am_programs}):
+            original = _text(ctx.worktree / makefile) or ""
+            text = original
+            here = am_libraries.get(makefile, [])
+            for am_program in am_programs.get(makefile, []):
+                text = cports.with_am_program(text, am_program.canonical)
+            text = cports.with_am_native_libs(
+                text, {library.archive for library in here if not library.libtool}
+            )
+            block = cports.am_block(
+                here,
+                am_programs.get(makefile, []),
+                libs,
+                f"{cports.WORKSPACE_DIR}/Cargo.toml",
+                cports.am_defined(text),
+            )
+            text = cports.with_make_block(text, block)
+            if text != original:
+                write(makefile, text)
+        for makefile in makefiles:
+            original = _text(ctx.worktree / makefile) or ""
+            text = original
+            here = crates.get(makefile, [])
+            for crate in here:
+                text = cports.fold_archive(text, crate)
+            text = cports.with_native_libs(text, here)
+            for program in programs.get(makefile, []):
+                text = cports.with_rust_program(text, program)
+            manifest = posixpath.relpath(
+                f"{cports.WORKSPACE_DIR}/Cargo.toml", posixpath.dirname(makefile) or "."
+            )
+            block = cports.make_block(here, manifest, libs, programs.get(makefile, []))
+            text = cports.with_make_block(text, block)
+            if text != original:
+                write(makefile, text)
+        return problems
+
+    def _makefile_for(self, ctx: AdapterContext, archive: str) -> tuple[str, str] | None:
+        """``(Makefile, target)`` for the rule that makes ``archive`` (or a program): in its
+        directory or one above it, the configure template (``Makefile.in``) before the
+        Makefile it writes, then make's own order. Names compare exactly, also where the file
+        system ignores case (Windows), since make's don't."""
+        directory = posixpath.dirname(archive)
+        while True:
+            try:
+                present = {p.name for p in (ctx.worktree / directory).iterdir() if p.is_file()}
+            except OSError:
+                present = set()
+            for name in ("Makefile.in", *cports.MAKEFILES):
+                if name not in present or (name == "Makefile.in" and cports.AUTOMAKE in present):
+                    continue  # automake writes that Makefile.in: _automake_for edits its input
+                rel = posixpath.join(directory, name) if directory else name
+                text = _text(ctx.worktree / rel)
+                if text is None:
+                    continue
+                target = cports.rule_making(text, posixpath.relpath(archive, directory or "."))
+                if target is not None:
+                    return rel, target
+            if not directory:
+                return None
+            directory = posixpath.dirname(directory)
+
+    def _automake_for(
+        self, ctx: AdapterContext, path: str, program: bool
+    ) -> tuple[str, str, bool] | None:
+        """``(Makefile.am, canonical name, libtool)`` for the automake file, in ``path``'s
+        directory or one above it, that lists the library whose archive is ``path`` (libtool's
+        ``<dir>/.libs/libfoo.a`` is ``<dir>/libfoo.la``) or, with ``program``, the program
+        (D-70). None for a project without automake."""
+        directory, name = posixpath.split(path)
+        libtool = False
+        if program and posixpath.basename(directory) == ".libs":  # libtool's program, behind
+            directory, name = posixpath.dirname(directory), name.removeprefix("lt-")  # a wrapper
+        elif not program and posixpath.basename(directory) == ".libs" and name.endswith(".a"):
+            directory, name, libtool = posixpath.dirname(directory), f"{name[:-2]}.la", True
+        primaries = ("PROGRAMS",) if program else ("LTLIBRARIES",) if libtool else ("LIBRARIES",)
+        start = directory
+        while True:
+            try:
+                present = {p.name for p in (ctx.worktree / directory).iterdir() if p.is_file()}
+            except OSError:
+                present = set()
+            if cports.AUTOMAKE in present:
+                rel = posixpath.join(directory, cports.AUTOMAKE) if directory else cports.AUTOMAKE
+                listed = posixpath.relpath(posixpath.join(start, name), directory or ".")
+                canonical = cports.am_target(_text(ctx.worktree / rel) or "", listed, primaries)
+                if canonical is not None:
+                    return rel, canonical, libtool
+            if not directory:
+                return None
+            directory = posixpath.dirname(directory)
+
+    def _native_libs(self, ctx: AdapterContext) -> list[str] | Diagnostic:
+        """The libraries a staticlib needs on this target, as rustc lists them for an empty
+        crate (the standard library's)."""
+        work = ctx.cache_dir / "native-libs"
+        work.mkdir(parents=True, exist_ok=True)
+        probe = work / "probe.rs"
+        probe.write_text("", encoding="utf-8")
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        result = ctx.executor.run(
+            [
+                "rustc",
+                "--crate-type",
+                "staticlib",
+                "--crate-name",
+                "probe",
+                "--print",
+                "native-static-libs",
+                "-o",
+                ctx.sandbox(work / "libprobe.a"),
+                ctx.sandbox(probe),
+            ],
+            cwd=ctx.sandbox(work),
+            timeout_s=300,
+            log_path=ctx.log_dir / "rustc-native-libs.log",
+        )
+        stdout, stderr = full_output(result)
+        libs = cports.native_libs(stdout + stderr) if result.ok else None
+        if libs is None:
+            tail = "\n".join((stdout + stderr).strip().splitlines()[-10:])
+            return Diagnostic(
+                file_path=f"{cports.WORKSPACE_DIR}/Cargo.toml",
+                severity=Severity.ERROR,
+                message=f"rustc didn't list the native libraries a staticlib needs:\n{tail}",
+                origin=DiagnosticOrigin.BUILD_SYSTEM,
+            )
+        return libs
+
+    def _sys_modules(self, ctx: AdapterContext) -> tuple[list[str], list[Diagnostic]]:
+        """bindgen writes each C port crate's ``sys`` module (D-68) from the headers its
+        manifest keeps, with the include directories and macros of the C build's compile
+        database (in the build directory), the crate's own exports left out. A crate whose
+        headers are all gone, or with no C build left to read them with, keeps the module it
+        has. Returns the files it changed."""
+        written: list[str] = []
+        problems: list[Diagnostic] = []
+        database = ctx.build_dir / "compile_commands.json"
+        try:
+            entries = cast(
+                list[dict[str, object]], json.loads(database.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError):
+            entries = []
+        clang = cports.clang_args(entries)
+        for package, manifest in self._c_crates(ctx):
+            headers = [h for h in cports.manifest_headers(manifest) if (ctx.worktree / h).is_file()]
+            if not headers:
+                continue
+            base = ctx.worktree / package
+            out = base / cports.SYS_FILE
+            before = out.read_bytes() if out.is_file() else None
+            placeholder = cports.placeholder_sys().encode("utf-8")
+            if not entries and before is not None and before.strip() != placeholder.strip():
+                continue  # no C build to read the headers with (it was retired): keep it
+            name = (_package_name(manifest) or posixpath.basename(package)).replace("-", "_")
+            sources: dict[str, tuple[str, str]] = {}
+            for file in sorted(base.rglob("*.rs")):
+                inner = file.relative_to(base).as_posix()
+                rel = file.relative_to(ctx.worktree).as_posix()
+                if inner == cports.SYS_FILE or _skipped(PurePosixPath(rel)):
+                    continue
+                text = _text(file)
+                if text is not None:
+                    sources[inner] = (rel, text)
+            exports = {i.path.rsplit("::", 1)[-1] for i in scan_crate(name, sources) if i.c_abi}
+            work = ctx.cache_dir / "bindgen"
+            work.mkdir(parents=True, exist_ok=True)
+            wrapper = work / f"{_slug(package)}.h"
+            wrapper.write_text(
+                cports.wrapper_header([ctx.sandbox(ctx.worktree / h) for h in headers]),
+                encoding="utf-8",
+            )
+            argv = cports.bindgen_argv(
+                ctx.sandbox(wrapper), ctx.sandbox(out), ctx.sandbox(ctx.worktree), exports, clang
+            )
+            ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            result = ctx.executor.run(
+                argv,
+                cwd=ctx.sandbox(base),
+                timeout_s=600,
+                log_path=ctx.log_dir / f"bindgen-{_slug(package)}.log",
+            )
+            if not result.ok:
+                stdout, stderr = full_output(result)
+                tail = "\n".join((stdout + stderr).strip().splitlines()[-15:])
+                problems.append(
+                    Diagnostic(
+                        file_path=f"{package}/{cports.SYS_FILE}",
+                        severity=Severity.ERROR,
+                        message=f"bindgen couldn't read the kept headers "
+                        f"({', '.join(headers)}):\n{tail}",
+                        origin=DiagnosticOrigin.BUILD_SYSTEM,
+                    )
+                )
+                continue
+            if out.is_file() and out.read_bytes() != before:
+                written.append(f"{package}/{cports.SYS_FILE}")
+        return written, problems
+
     def _writer(
         self, ctx: AdapterContext, changes: list[CodemodChange]
     ) -> Callable[[str, str], None]:
@@ -557,6 +976,8 @@ class RustAdapter(LanguageAdapter):
                 reason=f"crate={crate!r}, bin={name!r}, build_target={target!r}",
                 hint="Use it in a port rule with `port_units: executable`.",
             )
+        if spec.options.get("language") == "c":
+            return self._c_bin_scaffold(ctx, spec, files)
         year = self._edition_year(ctx, "rust-bin")
         dependencies = [d for d in spec.options.get("dependencies", "").split(",") if d]
         workspace = ports.WORKSPACE_DIR
@@ -618,20 +1039,26 @@ class RustAdapter(LanguageAdapter):
                     origin=DiagnosticOrigin.BUILD_SYSTEM,
                 )
             ]
+        c_port = spec.options.get("language") == "c"  # D-68
         sources = sorted(f for f in files if f.lower().endswith(ports.CPP_EXTENSIONS))
         test_file = f"{package}/tests/{module}.rs"
         if _text(ctx.worktree / test_file) is None:
-            write(test_file, ports.test_rs(", ".join(sources) or module))
+            template = cports.test_rs if c_port else ports.test_rs
+            write(test_file, template(", ".join(sources) or module))
         dependencies = [
             d for d in spec.options.get("dependencies", "").split(",") if d and d != crate
         ]
         if dependencies:
             write(f"{package}/Cargo.toml", ports.with_dev_dependencies(manifest, dependencies))
-        test_map = _text(ctx.worktree / ports.TEST_MAP) or ports.TEST_MAP_TEXT
+        test_map = _text(ctx.worktree / ports.TEST_MAP) or (
+            cports.TEST_MAP_TEXT if c_port else ports.TEST_MAP_TEXT
+        )
         wrappers = [w for w in spec.options.get("wrappers", "").split(",") if w]
         write(
             ports.TEST_MAP,
-            ports.with_test_entries(test_map, [(w, ports.WRAPPER_NOTE) for w in wrappers]),
+            ports.with_test_entries(
+                test_map, [(w, ports.WRAPPER_NOTE) for w in wrappers], "c" if c_port else "cpp"
+            ),
         )
         problems: list[Diagnostic] = []
         if dependencies:
@@ -643,10 +1070,10 @@ class RustAdapter(LanguageAdapter):
         self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
     ) -> list[CodemodChange]:
         """The ``rust-retire`` codemod (D-60): delete the unit's files outside the workspace
-        (the C++ and CMake files left) and, unless ``keep`` is ``true`` (the kept C++ API
-        needs it), each crate's bridge: ``src/bridge/``, ``include/``, ``cbindgen.toml``, the
-        ``staticlib`` crate type and the CMake metadata, with ``#![forbid(unsafe_code)]`` at
-        the root."""
+        (the C++ and CMake files left, or a C port's C and Make files, D-68) and, unless
+        ``keep`` is ``true`` (the kept API needs it), each crate's bridge: ``src/bridge/`` (with a
+        C port's ``sys``), ``include/``, ``cbindgen.toml``, the ``staticlib`` crate type and the
+        build's metadata, with ``#![forbid(unsafe_code)]`` at the root."""
         changes: list[CodemodChange] = []
         workspace = ports.WORKSPACE_DIR
         for rel in sorted(files):
@@ -660,7 +1087,9 @@ class RustAdapter(LanguageAdapter):
         write = self._writer(ctx, changes)
         root = _text(ctx.worktree / workspace / "Cargo.toml")
         if root is not None:
-            write(f"{workspace}/Cargo.toml", ports.retired_workspace(root))
+            write(
+                f"{workspace}/Cargo.toml", cports.retired_workspace(ports.retired_workspace(root))
+            )
         for package in find_packages(ctx.worktree, ctx.lang.exclude):
             if not package.startswith(f"{workspace}/"):
                 continue
@@ -668,6 +1097,7 @@ class RustAdapter(LanguageAdapter):
             manifest = _text(base / "Cargo.toml") or ""
             name = (_package_name(manifest) or posixpath.basename(package)).replace("-", "_")
             target = ports.cmake_target(manifest)
+            library = cports.manifest_library(manifest)
             removed = [p for p in (base / "src" / "bridge", base / "include") if p.is_dir()]
             removed += [
                 p for p in (base / "cbindgen.toml", base / "src" / "bridge.rs") if p.is_file()
@@ -691,7 +1121,8 @@ class RustAdapter(LanguageAdapter):
                     )
             lib = _text(base / "src" / "lib.rs")
             if lib is not None:
-                write(f"{package}/src/lib.rs", ports.retired_lib_rs(lib, name, target))
+                retired = cports.retired_lib_rs(lib, library)
+                write(f"{package}/src/lib.rs", ports.retired_lib_rs(retired, name, target))
             if manifest:
                 write(f"{package}/Cargo.toml", ports.retired_manifest(manifest))
         once = {c.file: c for c in changes}
@@ -816,8 +1247,35 @@ class RustAdapter(LanguageAdapter):
         return sites
 
     def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
-        """clippy over every crate: compiler and clippy diagnostics, by file."""
-        return self.clippy(ctx).diagnostics
+        """clippy over every crate: compiler and clippy diagnostics, by file; and in a C port's
+        crate, a ``#[repr(C)]`` copy of a kept header's type (D-68)."""
+        return self.clippy(ctx).diagnostics + self._c_type_copies(ctx)
+
+    def _c_type_copies(self, ctx: AdapterContext) -> list[Diagnostic]:
+        found: list[Diagnostic] = []
+        for package, _ in self._c_crates(ctx):
+            base = ctx.worktree / package
+            sys_text = _text(base / cports.SYS_FILE) or ""
+            files: dict[str, str] = {}
+            for file in sorted((base / "src").rglob("*.rs")):
+                if file.relative_to(base).as_posix() == cports.SYS_FILE:
+                    continue
+                text = _text(file)
+                if text is not None:
+                    files[file.relative_to(ctx.worktree).as_posix()] = mask(text)
+            for path, line, name, original in cports.copied_c_types(sys_text, files):
+                found.append(
+                    Diagnostic(
+                        file_path=path,
+                        line=line,
+                        severity=Severity.ERROR,
+                        code="codecoremorph::c-type-copy",
+                        message=f"`{name}` copies the C type `sys::{original}` of the kept "
+                        f"headers; use `sys::{original}`, so its layout is C's",
+                        origin=DiagnosticOrigin.ANALYZER,
+                    )
+                )
+        return found
 
     def apply_lint_fixes(self, ctx: AdapterContext) -> list[str]:
         """``cargo clippy --fix`` over every crate: the machine-applicable suggestions (a
@@ -924,12 +1382,20 @@ class RustAdapter(LanguageAdapter):
             for c in find_packages(ctx.worktree, ctx.lang.exclude)
             if any(c == "." or f.startswith(f"{c}/") for f in files)
         ]
-        config = ctx.cache_dir / "cbindgen.toml"
-        config.parent.mkdir(parents=True, exist_ok=True)
-        config.write_text(cbindgen_config(), encoding="utf-8")
+        ctx.cache_dir.mkdir(parents=True, exist_ok=True)
         ctx.log_dir.mkdir(parents=True, exist_ok=True)
         headers: list[Path] = []
         for crate in crates:
+            # A C port's header includes the kept headers, whose types it uses (D-68).
+            kept = [
+                ctx.sandbox(ctx.worktree / h)
+                for h in cports.manifest_headers(_text(ctx.worktree / crate / "Cargo.toml") or "")
+                if (ctx.worktree / h).is_file()
+            ]
+            config = ctx.cache_dir / f"cbindgen-{_slug(crate)}.toml"
+            config.write_text(
+                cports.cbindgen_config(kept) if kept else cbindgen_config(), encoding="utf-8"
+            )
             out = ctx.cache_dir / f"cbindgen-{_slug(crate)}.h"
             out.unlink(missing_ok=True)
             argv = ["cbindgen", "--config", ctx.sandbox(config), "--output", ctx.sandbox(out)]

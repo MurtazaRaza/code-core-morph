@@ -1,0 +1,22 @@
+id: port_c_tests
+language: c
+target_language: rust
+kind: port
+port_units: tests                 # one unit per C test source, after its modules (D-60, D-69)
+description: >-
+  Translate a C test file into a Rust integration test of the crate it tests, one Rust test
+  per test the C program reports (a TAP point, an automake test), each mapped in the project's
+  test map. The C tests keep running until the C is retired.
+detector:
+  type: adapter_query
+  query: test_cases               # the tests the file's program reported in the last run
+codemods:
+  - tool: rust-tests              # the integration test file and the test map
+    options: {language: c}
+extra_scope: ['rust/**']          # the Cargo workspace lives here
+llm:
+  guidance: guidance/port_c_tests.md
+postconditions:
+  - {type: test_map, severity: error}           # every test mapped to a passing Rust test
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code in the tests
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new tests

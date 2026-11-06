@@ -46,15 +46,25 @@ def _pairs() -> dict[str, TestPair]:
 def test_reading_the_map() -> None:
     pairs = _pairs()
     assert pairs["gtest:Rational.Adds"] == TestPair(
-        "gtest:Rational.Adds", "nextest:calc_rs::rational_test::adds", None
+        "gtest:Rational.Adds", ("nextest:calc_rs::rational_test::adds",), None
     )
-    assert pairs["ctest:calc_tests"].target is None
+    assert pairs["ctest:calc_tests"].targets == ()
     assert pairs["gtest:Rational.Parse"].note == "returns an Option"
-    bad = '[[test]]\nrust = "x"\n\n[[test]]\ncpp = "a"\nrust = ["x", "y"]\n'
+    bad = (
+        '[[test]]\nrust = "x"\n\n[[test]]\ncpp = "a"\nrust = ["x", 3]\n\n'
+        '[[test]]\ncpp = "b"\nrust = []\n'
+    )
     assert read_test_map(bad, "cpp", "rust") == (
         [],
-        ["entry 1 has no `cpp` test ID", "a: `rust` must be one test ID"],
+        [
+            "entry 1 has no `cpp` test ID",
+            "a: `rust` must be a test ID or a list of them",
+            "b: `rust` must be a test ID or a list of them",
+        ],
     )
+    # One source test may split into several target tests (D-69).
+    split = read_test_map('[[test]]\nc = "make:test"\nrust = ["r:a", "r:b"]\n', "c", "rust")
+    assert split == ([TestPair("make:test", ("r:a", "r:b"), None)], [])
     assert read_test_map("[[test", "cpp", "rust")[1][0].startswith("the file isn't valid TOML")
     assert read_test_map('test = "x"', "cpp", "rust") == (
         [],
@@ -75,10 +85,10 @@ def test_the_post_condition() -> None:
         "gtest:Rational.Parse: its test nextest:calc_rs::rational_test::parse failed"
     ]
     twice = [
-        TestPair("a", "x", None),
-        TestPair("a", "y", None),
-        TestPair("b", "x", None),
-        TestPair("c", None, None),
+        TestPair("a", ("x",), None),
+        TestPair("a", ("y",), None),
+        TestPair("b", ("x",), None),
+        TestPair("c", (), None),
     ]
     assert tm.test_map_problems(twice, [], {}) == [
         "a is mapped 2 times; keep one entry",
@@ -152,3 +162,34 @@ def test_a_projects_map(tmp_path: Path) -> None:
         "ctest:calc_tests",
         "gtest:Rational.Parse",
     }
+
+
+def test_a_test_split_into_several() -> None:
+    """``make:test`` maps to the tests that took its checks over: all of them must pass, all
+    must be in a run that no longer has it, and their checks add up (D-69)."""
+    split = {"make:test": TestPair("make:test", ("r:top", "r:keys"), None)}
+    assert tm.test_map_problems(split.values(), ["make:test"], {"r:top": PASSED}) == [
+        "make:test: its test r:keys didn't run"
+    ]
+    result = parity(["make:test"], {"r:top": PASSED, "r:keys": FAILED}, split)
+    assert (result.failing, result.missing) == (["r:keys"], [])
+    assert gone_but_mapped(["make:test"], {"r:top"}, split) == ["make:test"]
+    assert gone_but_mapped(["make:test"], {"r:top", "r:keys"}, split) == []
+    sources = [
+        TestAssertions(
+            file="Makefile", test="test", test_id="make:test", line=1,
+            assertions=["cmp a", "cmp b", "cmp c"],
+        )
+    ]  # fmt: skip
+    targets = [
+        TestAssertions(file="t.rs", test="top", test_id="r:top", line=1, assertions=["x", "y"]),
+        TestAssertions(file="t.rs", test="keys", test_id="r:keys", line=9, assertions=["z"]),
+    ]
+    assert weaker_translations(split.values(), sources, targets) == []
+    assert weaker_translations(split.values(), sources, targets[:1]) == [
+        "make:test: its test r:keys isn't in the sources"
+    ]
+    fewer = [targets[0], TestAssertions(file="t.rs", test="keys", test_id="r:keys", line=9)]
+    assert weaker_translations(split.values(), sources, fewer) == [
+        "make:test made 3 check(s); its 2 tests make 2"
+    ]

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from codecoremorph.core.errors import ContextOverflowError
 from codecoremorph.core.models import (
+    Boundary,
     CodemodResult,
     LoadedRule,
     Message,
@@ -36,7 +37,7 @@ from codecoremorph.core.models import (
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.estimate import estimate_tokens
 from codecoremorph.prompts import render
-from codecoremorph.store.index import IndexStore
+from codecoremorph.store.index import IndexStore, takes_variable_arguments
 
 MAX_SIGNATURES = 80
 MAX_UNCOMPILED = 40
@@ -163,6 +164,7 @@ def unit_message(
     find_symbol: str = "find_symbol",
     port: bool = False,
     port_units: PortUnits | None = None,
+    c_port: bool = False,
 ) -> str:
     """The unit's first message: its files in full, signatures, codemods, sites, build.
 
@@ -186,11 +188,15 @@ def unit_message(
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
     if port_units is PortUnits.RETIREMENT:
-        note += retirement_note(unit)
+        note += c_retirement_note(unit) if c_port else retirement_note(unit)
+    elif unit.port is not None and port_units is PortUnits.EXECUTABLE and c_port:
+        note += c_executable_note(unit.port)
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE:
         note += executable_note(unit, unit.port)
     elif unit.port is not None and port_units is PortUnits.TESTS:
-        note += tests_note(unit, unit.port)
+        note += c_tests_note(unit, unit.port) if c_port else tests_note(unit, unit.port)
+    elif unit.port is not None and port_units is PortUnits.TRANSLATION_UNIT:
+        note += translation_unit_note(unit, unit.port, c_variadic(index_path, unit.files))
     elif unit.port is not None:
         note += module_port_note(unit.port)
     elif port and unit.reference_files:
@@ -240,6 +246,67 @@ def module_port_note(port: PortUnit) -> str:
     )
 
 
+def c_variadic(index_path: Path | None, files: Sequence[str]) -> list[tuple[str, str]]:
+    """``(file, function)`` for the C interface of ``files`` that takes ``...`` or a
+    ``va_list``, which stays C in a port (D-70)."""
+    if index_path is None or not index_path.is_file():
+        return []
+    found: list[tuple[str, str]] = []
+    with IndexStore.open(index_path) as store:
+        for path in files:
+            if not path.lower().endswith(".c"):
+                continue
+            found += [
+                (path, s.name)
+                for s in store.used_elsewhere(path)
+                if s.boundary is Boundary.C_ABI and takes_variable_arguments(s)
+            ]
+    return found
+
+
+def translation_unit_note(
+    unit: WorkUnit, port: PortUnit, variadic: Sequence[tuple[str, str]] = ()
+) -> str:
+    """A C source file's unit (D-68): where its code goes, what it exports, what stays."""
+    crate, module = port.crate, port.module
+    kept = set(unit.reference_files)
+    gone = [f for f in unit.files if f not in kept and f.lower().endswith((".c", ".h"))]
+    exports = ", ".join(port.exports) or "none"
+    callers = ", ".join(port.callers) or "none"
+    headers = ", ".join(unit.reference_files) or "none"
+    automake = any(f.rsplit("/", 1)[-1] == "Makefile.am" for f in unit.files)
+    build = (
+        "with its file in its library's `_SOURCES` in the Makefile.am"
+        if automake
+        else "with its objects in the build files"
+    )
+    them = "them" if len(gone) > 1 else "it"
+    deletion = f", and delete {them} once Rust does the job, {build}."
+    if variadic:
+        names = " and ".join(f"`{name}`" for _, name in variadic)
+        files = ", ".join(sorted({f for f, _ in variadic}))
+        deletion = (
+            f". {names} stay in {files}: stable Rust can't define a function that takes `...` "
+            "or a `va_list`. Reduce them to C that formats the arguments and calls a function "
+            "the bridge exports for the rest, and delete everything else there once Rust does "
+            "the job; the file stays in the build until the retirement deletes it."
+        )
+    return (
+        f"Port {', '.join(gone)} to the Rust module `{crate}::{module}` "
+        f"(rust/{crate}/src/{module}.rs, safe Rust){deletion} Export what other files "
+        f"use, under the same C names and signatures, from rust/{crate}/src/bridge/{module}.rs, "
+        '`#[no_mangle] pub extern "C"` functions and `#[no_mangle]` statics, the one place '
+        f"unsafe code may go: {exports}. The headers stay as they are (read-only): {headers}. "
+        f"Their types, constants and the functions still in C are in `{crate}::bridge::sys` "
+        f"(rust/{crate}/src/bridge/sys.rs, which bindgen writes from them before each build; "
+        "don't edit "
+        "it, and define no copy of its types). These files keep calling the code through the "
+        f"headers and don't change: {callers}. The build folds the crate into the library, so "
+        "the C callers and tests link against Rust. Add the module's entries to "
+        "rust/symbol-map.toml (read it first: it also says where earlier units went).\n\n"
+    )
+
+
 def executable_note(unit: WorkUnit, port: PortUnit) -> str:
     """An executable's unit (D-60): the program it becomes, and its tests."""
     crate = port.crate
@@ -256,6 +323,27 @@ def executable_note(unit: WorkUnit, port: PortUnit) -> str:
         f"`{port.bin}`, calling the Rust API of its library crates ({deps}), never their "
         "`bridge` module. Delete its C++ sources (listed under Left to do) once the program "
         f"does their job.{translate}\n\n"
+    )
+
+
+def c_executable_note(port: PortUnit) -> str:
+    """A C program's unit (D-68): the program it becomes, where the build puts it, its
+    tests."""
+    crate = port.crate
+    deps = ", ".join(port.dependencies) or "none"
+    tests = ", ".join(port.tests)
+    translate = (
+        f" These tests run it ({tests}): translate those you can into integration tests of "
+        f"{crate} (rust/{crate}/tests/), and map each in rust/test-map.toml."
+        if port.tests
+        else ""
+    )
+    return (
+        f"Port the C program `{port.bin}` to Rust: rust/{crate}/src/main.rs, the `bin` named "
+        f"`{port.bin}`, which the Make build copies to {port.artifact or port.bin}. It calls "
+        f"the Rust API of its library crates ({deps}), never their `bridge` or `sys` modules. "
+        "Delete its C sources (listed under Left to do) once the program does their job, with "
+        f"what the build files still say about them.{translate}\n\n"
     )
 
 
@@ -278,6 +366,44 @@ def tests_note(unit: WorkUnit, port: PortUnit) -> str:
     )
 
 
+def c_tests_note(unit: WorkUnit, port: PortUnit) -> str:
+    """A C test file's unit (D-68): where its tests go, and what to map."""
+    crate, module = port.crate, port.module
+    shown = ", ".join(port.tests) or "none"
+    whole = [t for t in port.tests if t.startswith("make:")]
+    programs = (
+        f" {', '.join(whole)} {'is a whole program' if len(whole) == 1 else 'are whole programs'}"
+        " (automake's test, by its exit status): give its checks Rust tests and map it to all of "
+        "them (`rust = [...]`)."
+        if whole
+        else ""
+    )
+    return (
+        f"Translate the C tests of {', '.join(unit.reference_files)} into "
+        f"rust/{crate}/tests/{module}.rs (an integration test of {crate}: its safe Rust API, "
+        "never its `bridge` or `sys`), one Rust test per test the C program reports (a TAP "
+        "point, an automake test), each checking at least as much as the original, and map "
+        f"each in rust/test-map.toml (`c = ...`, `rust = ...`): {shown}.{programs} What a C "
+        "test checks "
+        "through the C interface (a struct's fields, a NUL terminator, errno) is checked on "
+        "the Rust values that stand for it. The C files stay as they are (read-only) and keep "
+        "running.\n\n"
+    )
+
+
+def c_retirement_note(unit: WorkUnit) -> str:
+    """A C port's retirement (D-68): what went, and what is left to do."""
+    return (
+        f"The codemod retired the C: it deleted {len(unit.files)} C and Make files and the "
+        "crates' C bridges with their `sys` modules, so the Cargo workspace now builds and "
+        "tests alone. Make it build, pass and lint clean on its own (code only the bridge "
+        "used, docs that describe the C), and give every baseline test an entry in "
+        "rust/test-map.toml: a coarse one, such as `make:test` (the test target's exit "
+        "status), maps to the Rust tests that took over what it checked beyond the tests "
+        "mapped one by one (`rust = [...]`), with a note.\n\n"
+    )
+
+
 def retirement_note(unit: WorkUnit) -> str:
     """The retirement (D-60): what went, and what is left to do."""
     return (
@@ -286,6 +412,11 @@ def retirement_note(unit: WorkUnit) -> str:
         "pass and lint clean on its own (code only the bridge used, docs that describe the "
         "C++), and give every baseline test an entry in rust/test-map.toml.\n\n"
     )
+
+
+def _c_port(rules: Sequence[LoadedRule]) -> bool:
+    """Whether the unit ports C (D-68), whose programs and tests build with Make."""
+    return any(r.rule.kind is RuleKind.PORT and r.rule.language == "c" for r in rules)
 
 
 def _port_units(rules: Sequence[LoadedRule]) -> PortUnits | None:
@@ -320,6 +451,7 @@ def build_context(
         build=build,
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
         port_units=_port_units(rules),
+        c_port=_c_port(rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -370,6 +502,7 @@ def host_document(
         find_symbol="`codecoremorph unit symbol`",
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
         port_units=_port_units(rules),
+        c_port=_c_port(rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]

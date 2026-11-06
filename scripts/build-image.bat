@@ -30,7 +30,9 @@ docker info >nul 2>&1
 if errorlevel 1 goto docker_unreachable
 call "%CCM_LIB%" :log "building %TAG% (this downloads the pinned toolchain inside Docker)"
 docker build -f "%DOCKERFILE%" -t "%TAG%" "%CCM_REPO%"
-if errorlevel 1 goto build_failed
+rem Any exit code but 0, as the .sh twin's ||: "if errorlevel 1" misses a negative one (a
+rem killed docker).
+if not "%errorlevel%"=="0" goto build_failed
 call "%CCM_LIB%" :log "built %TAG%"
 exit /b 0
 

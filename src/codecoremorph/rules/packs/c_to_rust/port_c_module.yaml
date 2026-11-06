@@ -1,0 +1,28 @@
+id: port_c_module
+language: c
+target_language: rust
+kind: port
+port_units: translation_unit      # one unit per source file of a library, leaves first by calls (D-68)
+description: >-
+  Port one C source file of a library to a Rust module, leaves first by the calls between the
+  files. The headers stay as they are: the crate exports the file's functions under their C
+  names and is folded into the library's archive, so the C that calls them and the project's
+  tests link against Rust unchanged.
+detector:
+  type: adapter_query
+  query: c_abi_definitions        # what the file defines that other files declare or use
+codemods:
+  - tool: rust-module             # workspace, crate, module, bridge, sys, symbol map, Make block
+    options: {language: c}
+extra_scope: ['rust/**']          # the Cargo workspace lives here
+llm:
+  guidance: guidance/port_c_module.md
+postconditions:
+  - {type: detector_empty, severity: error}     # the file's definitions are gone from C
+  - {type: unsafe_in_bridge, severity: error}   # unsafe code only in the bridge
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new code
+  - {type: symbol_map, severity: error}         # every export is in rust/symbol-map.toml
+  - {type: c_abi_kept, severity: error}         # exported with the headers' signatures
+skip:
+  - test                          # the C tests stay as they are: they judge the port
+allow_suppressions: ['rust/*/src/bridge/**']   # C names in the bridge only

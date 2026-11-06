@@ -33,9 +33,10 @@ from codecoremorph.core.paths import HomeLayout
 from codecoremorph.rules.applicability import StandardOrder, check_migration
 from codecoremorph.rules.registry import RuleRegistry
 from codecoremorph.sandbox.executor import Executor
-from codecoremorph.sandbox.selection import choose_executor
+from codecoremorph.sandbox.selection import ExecutorChoice, choose_executor
 from codecoremorph.store.layout import RunArtifacts, StateDir
 from codecoremorph.vcs.workspace import RunWorkspace
+from codecoremorph.vcs.worktree import LineEndings
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +93,13 @@ def toolchain_spec(
     )
 
 
+def checkout_for(choice: ExecutorChoice) -> LineEndings:
+    """How the run worktree is checked out: as on Linux for a Linux container, where a CRLF
+    ``configure`` script fails; with the machine's git settings natively, where a batch file
+    may need CRLF (D-68)."""
+    return "lf" if choice.kind == "docker" else "native"
+
+
 def start_executor(
     config: MigrationConfig,
     mode: SandboxMode,
@@ -100,14 +108,16 @@ def start_executor(
     log_dir: Path,
     on_warning: WarningSink,
     target: LanguageAdapter | None = None,
+    *,
+    choice: ExecutorChoice | None = None,
 ) -> Executor:
-    """Choose, provision and start the executor (FR-1.2, FR-1.3). A port (``target``) runs
-    with the target language's toolchain."""
+    """Choose (unless ``choice`` was made already), provision and start the executor (FR-1.2,
+    FR-1.3). A port (``target``) runs with the target language's toolchain."""
     from codecoremorph.sandbox.native import NativeExecutor
     from codecoremorph.sandbox.toolchains import require_tools
 
     spec = toolchain_spec(config, adapter, target)
-    choice = choose_executor(mode)
+    choice = choice or choose_executor(mode)
     if choice.kind == "native" and mode is not SandboxMode.NATIVE:
         # The native executor itself warns about reduced isolation when it starts.
         on_warning(f"{choice.reason}, so commands run natively")
@@ -245,9 +255,13 @@ def open_session(
             warn(issue.render(loaded.source))
     adapter = adapters.get(config.migration.source.language)
     target = adapters.get(config.migration.target.language) if is_port(config) else None
+    sandbox_mode = mode or config.sandbox.mode
+    choice = choose_executor(sandbox_mode)  # before the worktree, which it checks out (D-68)
     if resume is None:
         run_id = new_run_id()
-        workspace = RunWorkspace.create(root, run_id, base=base or config.migration.base)
+        workspace = RunWorkspace.create(
+            root, run_id, base=base or config.migration.base, line_endings=checkout_for(choice)
+        )
     else:
         run_id, base_commit = resume
         workspace = RunWorkspace.resume(root, run_id, base_commit=base_commit)
@@ -258,7 +272,7 @@ def open_session(
         log_dir = artifacts.root / log_subdir
         log_dir.mkdir(parents=True, exist_ok=True)
         executor = start_executor(
-            config, mode or config.sandbox.mode, adapter, workspace, log_dir, warn, target
+            config, sandbox_mode, adapter, workspace, log_dir, warn, target, choice=choice
         )
         ctx = AdapterContext(
             worktree=workspace.worktree.path,

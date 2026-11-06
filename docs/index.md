@@ -10,8 +10,8 @@ It upgrades **C++** from C++98/03, 11, 14, 17 or 20 to any newer standard up to 
 modern idioms (alias declarations, smart pointers, concepts, and more); ports **C++ to Rust**,
 module by module, to a pure Cargo workspace; and upgrades **Java** from Java 8, 11, 17 or 21 up
 to Java 25 (records, lambdas, switch expressions, and more); and upgrades **C#** from C# 7.3 up
-to C# 14 (nullable reference types, records, pattern matching, and more). Java to C# comes
-next.
+to C# 14 (nullable reference types, records, pattern matching, and more). C to Rust comes
+next, then Rust to C.
 
 ## How a migration runs
 

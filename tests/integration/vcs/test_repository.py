@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from codecoremorph.core.errors import SafetyViolationError, VcsError
-from codecoremorph.vcs import Repository, is_run_branch
+from codecoremorph.vcs import Repository, Worktree, is_run_branch
 from codecoremorph.vcs.repository import EXCLUDE_ENTRY
 
 RUN = "20261102-141500-a3f9"
@@ -179,3 +179,72 @@ def test_worktrees_get_submodules_from_the_users_checkout(repo: Path, tmp_path: 
     assert (repo / ".git" / "config").read_bytes() == config
     repository.remove_worktree(worktree.path)
     assert not worktree.path.exists()
+
+
+CONFIGURE = b"#!/bin/sh\necho configured\n"
+
+
+def _windows_style_repo(tmp_path: Path, git) -> Path:
+    """A repository whose files were committed with LF, checked out under Git for Windows'
+    default ``core.autocrlf=true``, with a submodule and a batch file its attributes keep CRLF."""
+    lib = tmp_path / "lib"
+    git(tmp_path, "init", "--quiet", str(lib))
+    (lib / "lib.sh").write_bytes(b"#!/bin/sh\necho lib\n")
+    git(lib, "add", "--all")
+    git(lib, "commit", "--quiet", "-m", "lib")
+    root = tmp_path / "c-project"
+    git(tmp_path, "init", "--quiet", str(root))
+    (root / "configure").write_bytes(CONFIGURE)
+    (root / "build.bat").write_bytes(b"@echo off\necho built\n")
+    (root / ".gitattributes").write_bytes(b"*.bat text eol=crlf\n")
+    git(root, "add", "--all")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "--quiet", str(lib),
+        "vendor/lib")  # fmt: skip
+    git(root, "commit", "--quiet", "-m", "initial")
+    git(root, "config", "core.autocrlf", "true")
+    return root
+
+
+def test_a_linux_checkout_keeps_the_committed_line_endings(tmp_path: Path, git) -> None:
+    """D-68: under core.autocrlf=true a native checkout gives `configure` CRLF line endings,
+    which sh refuses in a Linux container; a run that builds there checks out as on Linux."""
+    root = _windows_style_repo(tmp_path, git)
+    repository = Repository(root)
+    head = repository.resolve_commit("HEAD")
+    before = git(root, "status", "--porcelain")
+    other = f"codecoremorph/{RUN[:-4]}bbbb"
+
+    native = repository.add_worktree(tmp_path / "native", other, head)
+    linux = repository.add_worktree(tmp_path / "linux", BRANCH, head, line_endings="lf")
+    repository.populate_submodules(linux, head)
+
+    assert (native.path / "configure").read_bytes() == CONFIGURE.replace(b"\n", b"\r\n")
+    assert (linux.path / "configure").read_bytes() == CONFIGURE
+    assert (linux.path / "vendor" / "lib" / "lib.sh").read_bytes() == b"#!/bin/sh\necho lib\n"
+    assert (linux.path / "build.bat").read_bytes() == b"@echo off\r\necho built\r\n"  # attribute
+    assert (native.line_endings, linux.line_endings) == ("native", "lf")
+    assert git(root, "status", "--porcelain") == before  # the user's checkout is untouched
+
+
+def test_a_reopened_worktree_keeps_its_line_endings(tmp_path: Path, git) -> None:
+    """Every later command in the worktree (status, commit, rollback, restore) reads its files
+    the way it was checked out, whoever opens it (a resumed run, `unit abort`)."""
+    root = _windows_style_repo(tmp_path, git)
+    repository = Repository(root)
+    head = repository.resolve_commit("HEAD")
+    path = tmp_path / "linux"
+    repository.add_worktree(path, BRANCH, head, line_endings="lf")
+
+    reopened = Worktree(path, BRANCH)
+    assert reopened.line_endings == "lf"
+    assert not reopened.has_changes()
+    (path / "configure").write_bytes(b"#!/bin/sh\necho reconfigured\n")
+    commit = reopened.commit("reconfigure")
+    assert reopened.show(commit, "configure") == b"#!/bin/sh\necho reconfigured\n"
+    reopened.rollback(head)
+    assert (path / "configure").read_bytes() == CONFIGURE
+    tree = reopened.write_tree()
+    (path / "configure").write_bytes(b"changed\n")
+    reopened.restore_tree(tree)
+    assert (path / "configure").read_bytes() == CONFIGURE
+    assert Worktree(tmp_path / "missing", BRANCH).line_endings == "native"

@@ -28,3 +28,6 @@ dashboard-ui/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Workflows stay local: the GitHub token in use has no workflow scope
+.github/workflows/

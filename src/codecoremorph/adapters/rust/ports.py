@@ -404,14 +404,16 @@ def with_dev_dependencies(manifest: str, dependencies: Collection[str]) -> str:
     return manifest.rstrip("\n") + "\n\n[dev-dependencies]\n" + lines
 
 
-def with_test_entries(text: str, entries: Collection[tuple[str, str]]) -> str:
+def with_test_entries(
+    text: str, entries: Collection[tuple[str, str]], language: str = "cpp"
+) -> str:
     """The test map with ``(source test ID, note)`` entries that map to no target test,
-    appended unless the test is already mapped."""
+    appended unless the test is already mapped; ``language`` is the source's key."""
     added = ""
     for source, note in entries:
-        if re.search(rf'(?m)^\s*cpp\s*=\s*"{re.escape(source)}"', text):
+        if re.search(rf'(?m)^\s*{language}\s*=\s*"{re.escape(source)}"', text):
             continue
-        added += f'\n[[test]]\ncpp = "{source}"\nnote = "{note}"\n'
+        added += f'\n[[test]]\n{language} = "{source}"\nnote = "{note}"\n'
     return text if not added else text.rstrip("\n") + "\n" + added
 
 

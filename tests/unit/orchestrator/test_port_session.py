@@ -1,4 +1,5 @@
-"""A port's session pieces (D-56, D-57): each side's language config and the pair's toolchain."""
+"""A run's session pieces: each side of a port (D-56, D-57), the pair's toolchain, and the
+worktree's checkout (D-68)."""
 
 from __future__ import annotations
 
@@ -8,7 +9,8 @@ from codecoremorph.adapters.config import is_port, language_config, target_langu
 from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.rust import RustAdapter
 from codecoremorph.config import ConfigValidationError, parse_config
-from codecoremorph.orchestrator.session import toolchain_spec
+from codecoremorph.orchestrator.session import checkout_for, toolchain_spec
+from codecoremorph.sandbox import ExecutorChoice
 
 PORT = parse_config(
     'version: "1.0"\nproject: {name: demo, exclude: ["third_party/**"]}\nmigration:\n'
@@ -64,3 +66,9 @@ def test_keeping_the_source_api_is_for_ports() -> None:
             "  target: {language: cpp, standard: cpp20, keep_source_api: true}\n"
         )
     assert any("keep_source_api is for a port" in i.message for i in raised.value.issues)
+
+
+def test_a_linux_container_gets_a_linux_checkout() -> None:
+    """D-68: a CRLF `configure` fails in the container; natively the machine's settings hold."""
+    assert checkout_for(ExecutorChoice(kind="docker", reason="Docker is available")) == "lf"
+    assert checkout_for(ExecutorChoice(kind="native", reason="sandbox.mode is native")) == "native"

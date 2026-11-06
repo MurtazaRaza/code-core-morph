@@ -51,7 +51,8 @@ cpp|googletest-cxx98|1.8.1|any|https://github.com/google/googletest/archive/refs
 # rust: the native Rust toolchain installed by scripts/install-toolchain rust (SPEC 11.5, D-56),
 # together with the cpp rows above: every Rust run here is a mixed CMake + Cargo build.
 # rustup-init installs the Rust release pinned in install-toolchain (RUST_VERSION) and checks
-# what it downloads itself; so does `cargo install --locked` for cbindgen (CBINDGEN_VERSION).
+# what it downloads itself; so does `cargo install --locked` for cbindgen (CBINDGEN_VERSION)
+# and for bindgen, the bindgen-cli crate (BINDGEN_VERSION, D-68).
 # Windows uses the -gnu installer with the gnullvm host, which links with llvm-mingw (D-32).
 rust|rustup|1.29.0|windows-x64|https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-pc-windows-gnu/rustup-init.exe|03dbaae1d33a4d220bd0d202e5092955dae859c119074192ca513f8c4713fff7|file|.
 rust|rustup|1.29.0|linux-x64|https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init|4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10|file|.

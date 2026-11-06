@@ -60,6 +60,7 @@ class LanguageConfig(CoreModel):
     build_system: str | None = None
     configure_args: list[str] = Field(default_factory=list[str])
     build_targets: list[str] = Field(default_factory=list[str])
+    test_targets: list[str] = Field(default_factory=list[str])
     source_dirs: list[str] = Field(default_factory=lambda: ["."])
     test_dirs: list[str] = Field(default_factory=list[str])
     exclude: list[str] = Field(default_factory=list[str])

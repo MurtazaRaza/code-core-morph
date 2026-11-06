@@ -11,11 +11,53 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from codecoremorph.core.errors import NothingToCommitError, SafetyViolationError, VcsError
 from codecoremorph.core.models.vcs import ChangedFile, DiffResult, FileChangeKind
-from codecoremorph.vcs.git import Git
+from codecoremorph.vcs.git import LF_CHECKOUT, Git
 from codecoremorph.vcs.messages import TRAILER_PREFIX, parse_trailers, with_trailers
+
+LineEndings = Literal["native", "lf"]
+"""How a run worktree is checked out: ``native`` with the machine's git settings, as the user's
+own checkout is; ``lf`` as on Linux (:data:`LF_CHECKOUT`), for builds in a Linux container
+(D-68). With Git for Windows' ``core.autocrlf=true``, a native checkout gives a ``configure``
+script CRLF line endings, and ``sh`` fails on them."""
+
+_CHECKOUT_MARKER = "codecoremorph-checkout"  # in the worktree's directory under .git/worktrees
+
+
+def admin_dir(path: Path) -> Path | None:
+    """The worktree's own directory in the repository (``.git/worktrees/<name>``), from its
+    ``.git`` file; None when ``path`` holds no worktree."""
+    dot_git = path / ".git"
+    if not dot_git.is_file():
+        return None
+    text = dot_git.read_text(encoding="utf-8").strip()
+    if not text.startswith("gitdir:"):
+        return None
+    target = Path(text.removeprefix("gitdir:").strip())
+    return target if target.is_absolute() else path / target
+
+
+def checkout_mode(path: Path) -> LineEndings:
+    """The line endings the worktree at ``path`` was checked out with (``native`` when it
+    recorded none)."""
+    admin = admin_dir(path)
+    marker = admin / _CHECKOUT_MARKER if admin is not None else None
+    if marker is None or not marker.is_file():
+        return "native"
+    return "lf" if marker.read_text(encoding="utf-8").strip() == "lf" else "native"
+
+
+def record_checkout(path: Path, mode: LineEndings) -> None:
+    """Remember how the worktree at ``path`` was checked out, so every later command in it
+    (status, reset, checkout, commit) reads its files the same way."""
+    admin = admin_dir(path)
+    if admin is None:
+        raise VcsError(f"{path} is not a git worktree")
+    (admin / _CHECKOUT_MARKER).write_text(f"{mode}\n", encoding="utf-8")
+
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 _AUTHOR_RE = re.compile(r"^(?P<name>[^<>\n]+?) <(?P<email>[^<>\s]+)>$")
@@ -38,7 +80,8 @@ class Worktree:
     def __init__(self, path: Path, branch: str):
         self.path = path
         self.branch = branch
-        self.git = Git(path)
+        self.line_endings: LineEndings = checkout_mode(path)
+        self.git = Git(path, config=LF_CHECKOUT if self.line_endings == "lf" else ())
 
     def verify(self) -> None:
         """Raise unless this is still the run worktree, on the run branch (I-11)."""

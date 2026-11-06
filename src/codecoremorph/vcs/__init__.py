@@ -5,11 +5,12 @@ from codecoremorph.vcs.lock import LockInfo, RepoLock, read_lock
 from codecoremorph.vcs.messages import parse_trailers, summarize_paths, unit_commit_message
 from codecoremorph.vcs.repository import Repository, is_run_branch
 from codecoremorph.vcs.workspace import RunWorkspace
-from codecoremorph.vcs.worktree import Worktree
+from codecoremorph.vcs.worktree import LineEndings, Worktree
 
 __all__ = [
     "MIN_GIT_VERSION",
     "Git",
+    "LineEndings",
     "LockInfo",
     "RepoLock",
     "Repository",

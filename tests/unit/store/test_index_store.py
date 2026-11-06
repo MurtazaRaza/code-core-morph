@@ -87,3 +87,68 @@ def test_other_schema_versions_are_rebuilt(tmp_path: Path) -> None:
     with IndexStore.open(path) as store:
         assert store.counts()["files"] == 0
         assert store.value("schema") == INDEX_SCHEMA_VERSION
+
+
+def test_reference_counts_and_what_other_files_use(tmp_path: Path) -> None:
+    def symbol(sid: str, file: str, line: int, *, definition: int) -> SymbolRow:
+        name = sid.rsplit("@", 1)[-1]
+        return (sid, name, name, "function", file, line, 1, line, 9, None, "none", definition,
+                "c_abi")  # fmt: skip
+
+    with IndexStore.open(tmp_path / "index.sqlite") as store:
+        store.write(
+            files=[
+                ("x.h", "c", "0" * 64, "header", 1, 0, "utf-8", "lf"),
+                ("x.c", "c", "1" * 64, "source", 0, 0, "utf-8", "lf"),
+                ("y.c", "c", "2" * 64, "source", 0, 0, "utf-8", "lf"),
+            ],
+            symbols=[
+                symbol("c:@F@declared", "x.h", 1, definition=0),
+                symbol("c:@F@declared", "x.c", 3, definition=1),
+                symbol("c:@F@called", "x.c", 6, definition=1),
+                symbol("c:@F@alone", "x.c", 9, definition=1),
+                symbol("c:x.c@F@helper", "x.c", 12, definition=1),
+            ],
+            references=[
+                ("y.c", None, "c:@F@called", "call", 2, 3),
+                ("y.c", None, "c:@F@declared", "call", 3, 3),
+                ("y.c", None, "c:@F@declared", "call", 4, 3),
+                ("x.c", None, "c:x.c@F@helper", "call", 7, 3),
+            ],
+            dependencies=[("x.c", "x.h", "include"), ("y.c", "x.h", "include")],
+        )
+        assert store.reference_counts() == [("y.c", "x.c", 2)]
+        assert store.reference_edges() == [("y.c", "x.c")]
+        # Declared in a header or used by another file; not one only its own file uses.
+        assert [s.name for s in store.used_elsewhere("x.c")] == ["declared", "called"]
+        assert store.used_elsewhere("y.c") == []
+
+
+def test_c_files_defining_the_same_type_do_not_use_each_other(tmp_path: Path) -> None:
+    """A C type has no linkage: two files that each define ``struct sink`` define two types,
+    though clang gives both one ID (D-70). In C++ the one-definition rule makes them one."""
+
+    def symbol(sid: str, file: str) -> SymbolRow:
+        return (sid, "sink", "sink", "struct", file, 1, 1, 4, 2, None, "none", 1, "none")
+
+    with IndexStore.open(tmp_path / "index.sqlite") as store:
+        store.write(
+            files=[
+                ("a.c", "c", "0" * 64, "test", 0, 0, "utf-8", "lf"),
+                ("b.c", "c", "1" * 64, "test", 0, 0, "utf-8", "lf"),
+                ("a.cpp", "cpp", "2" * 64, "test", 0, 0, "utf-8", "lf"),
+                ("b.cpp", "cpp", "3" * 64, "test", 0, 0, "utf-8", "lf"),
+            ],
+            symbols=[
+                symbol("c:@S@sink", "a.c"),
+                symbol("c:@S@sink", "b.c"),
+                symbol("c:@S@Sink", "a.cpp"),
+                symbol("c:@S@Sink", "b.cpp"),
+            ],
+            references=[
+                ("a.c", None, "c:@S@sink", "type", 6, 3),
+                ("b.c", None, "c:@S@sink", "type", 6, 3),
+                ("a.cpp", None, "c:@S@Sink", "type", 6, 3),
+            ],
+        )
+        assert store.reference_counts() == [("a.cpp", "b.cpp", 1)]

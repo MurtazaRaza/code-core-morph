@@ -28,7 +28,7 @@ from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.rules.detectors import mask_c_family
 
 CODE_EXTENSIONS = (*SOURCE_EXTENSIONS, *HEADER_EXTENSIONS)
-_CXX_ONLY = tuple(e for e in CODE_EXTENSIONS if e not in (".c", ".h"))
+CXX_ONLY = tuple(e for e in CODE_EXTENSIONS if e not in (".c", ".h"))
 SUGGESTED_TARGET = "cpp20"
 
 # Directory names that hold someone else's code. A run never edits them (project.exclude).
@@ -242,7 +242,7 @@ def _read(root: Path, path: str) -> str | None:
         return None
 
 
-def _vendored_dirs(files: Sequence[str]) -> list[str]:
+def find_vendored_dirs(files: Sequence[str]) -> list[str]:
     dirs: set[str] = set()
     for path in files:
         parts = path.split("/")[:-1]
@@ -253,7 +253,7 @@ def _vendored_dirs(files: Sequence[str]) -> list[str]:
     return sorted(d for d in dirs if not any(d.startswith(f"{o}/") for o in dirs))
 
 
-def _test_layout(code: Sequence[str]) -> tuple[list[str], list[str]]:
+def test_layout(code: Sequence[str]) -> tuple[list[str], list[str]]:
     """Test directories, and name patterns for test files that live beside the code."""
     dirs: set[str] = set()
     for path in code:
@@ -335,12 +335,12 @@ def _suggested_target(source: str) -> str:
 
 def detect(root: Path, files: Sequence[str]) -> ProjectDetection | None:
     """A C++ project's starter settings, or None when it has no C++ code of its own."""
-    vendored_dirs = _vendored_dirs(files)
+    vendored_dirs = find_vendored_dirs(files)
     vendored = PathMatcher(vendored_dirs)
     code = sorted(
         f for f in files if f.lower().endswith(CODE_EXTENSIONS) and not vendored.matches(f)
     )
-    if not any(f.lower().endswith(_CXX_ONLY) for f in code):
+    if not any(f.lower().endswith(CXX_ONLY) for f in code):
         return None  # no C++: a C project (.c and .h), or only vendored code
     cmake = _cmake_texts(root, files)
     own_cmake = [(p, t) for p, t in cmake if not vendored.matches(p)]
@@ -377,7 +377,7 @@ def detect(root: Path, files: Sequence[str]) -> ProjectDetection | None:
             "compiler flags the project is built with."
         )
 
-    test_dirs, test_patterns = _test_layout(code)
+    test_dirs, test_patterns = test_layout(code)
     tests = PathMatcher([*test_dirs, *test_patterns])
     sources = [f for f in code if not tests.matches(f)]
     if any("/" not in f for f in sources):

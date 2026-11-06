@@ -158,6 +158,9 @@ class PortUnits(StrEnum):
     EXECUTABLE = "executable"
     TESTS = "tests"
     RETIREMENT = "retirement"
+    # C (D-68): one unit per source file of a library, ordered leaves first by the calls
+    # between them; the headers stay as they are, and the new code exports the functions.
+    TRANSLATION_UNIT = "translation_unit"
 
 
 class Rule(CoreModel):
@@ -189,8 +192,9 @@ class Rule(CoreModel):
     port_units: PortUnits | None = Field(
         default=None,
         description="For kind: port, how units are cut: c_header (one per C interface, the "
-        "default), module (one per module, behind façades), executable (one per program), "
-        "tests (one per test source) or retirement (one, last)",
+        "default), module (one per module, behind façades), translation_unit (one per C "
+        "source file of a library, by calls), executable (one per program), tests (one per "
+        "test source) or retirement (one, last)",
     )
 
     @model_validator(mode="after")

@@ -54,9 +54,9 @@ def port_summary(
         test_map = None
     if test_map is not None:
         pairs, _ = read_test_map(test_map, source_language, target_language)
-        tests_mapped = sum(1 for p in pairs if p.target is not None)
-        without = [f"{p.source}: {p.note}" for p in pairs if p.target is None and p.note]
-        deviations += [f"{p.source}: {p.note}" for p in pairs if p.target and p.note]
+        tests_mapped = sum(1 for p in pairs if p.targets)
+        without = [f"{p.source}: {p.note}" for p in pairs if not p.targets and p.note]
+        deviations += [f"{p.source}: {p.note}" for p in pairs if p.targets and p.note]
     with suppress(AdapterNotSupportedError):
         unsafe = [f"{s.file}:{s.line}" for s in target.unsafe_uses(target_ctx)]
     left: list[str] = []

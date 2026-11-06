@@ -2,7 +2,7 @@
 
 This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has a goal, its prerequisites, a task checklist, tests, and exit criteria. Requirement IDs (`FR-`, `NFR-`, `D-`) point back to the spec.
 
-**Order of work (D-21, D-47, changed by D-55).** Language version upgrades come first: C++ in the MVP. Then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14). The v0.1.0 release (Phase 8's publishing steps) waits, and Java (9), C# (10) and Java → C# (11) follow the Rust phases. The phases keep their numbers, so the order of work is 12, 13, 14, then 9, 10, 11.
+**Order of work (D-21, D-47, changed by D-55 and D-67).** Language version upgrades come first: C++ in the MVP. Then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14). The v0.1.0 release (Phase 8's publishing steps) waits, and Java (9) and C# (10) follow the Rust phases. Then legacy code to modern languages (D-67): C → Rust (15), then Rust → C (16). Java → C# (11) is in the Backlog. The phases keep their numbers, so the order of work is 12, 13, 14, 9, 10, 15, 16.
 
 ## How to use this plan
 
@@ -20,10 +20,12 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | **M2: v0.1.0 public release** | 8 | Characterization tests, dashboard, docs, packaging, security review |
 | **M3: Java version upgrades** | 9 | Java adapter plus the Java 8 → 21 upgrade rule pack |
 | **M4: C# version upgrades** | 10 | C# adapter plus the C# modernization rule pack |
-| **M5: Cross-language** | 11 | Java → C# port with translated tests |
+| **M5: Cross-language** | 11 | Java → C# port with translated tests (in the Backlog, D-67) |
 | **M6: Rust** | 12 | A C++ module behind a C ABI replaced by Rust |
 | **M7: C++ → Rust, every module** | 13 | Every module of an old C++ project is Rust, behind its unchanged C++ interface; the original tests passed at every commit |
 | **M8: C++ → Rust, finished** | 14 | Pure Rust: tests translated and mapped one to one, C++ retired, a real project ported and measured |
+| **M9: C → Rust** | 15 | An old C project built with Make or autotools ported to Rust module by module, its tests mapped one to one, a real C library ported and measured |
+| **M10: Rust → C** | 16 | A Rust crate ported to C behind Rust façades, its tests translated, the C checked under sanitizers and clang-tidy |
 
 ## Phase overview
 
@@ -40,10 +42,12 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | 8 | Hardening and v0.1.0 (**M2**) | `codecoremorph init`, docs site, security review, performance, plugin API versioning, release | FR-1.4, FR-15.3, NFR-1, NFR-5, NFR-10 |
 | 9 | Java adapter and upgrades (**M3**) | Java image, Spoon indexer, Maven, OpenRewrite, Java 8 → 21 rule pack | §11.2 |
 | 10 | C# adapter and upgrades (**M4**) | .NET image, Roslyn indexer, dotnet build and test, C# modernization pack | §11.3 |
-| 11 | Java → C# (**M5**) | Migration pairs, scaffolding, symbol map, skeleton-first strategy, test translation, multi-agent roles | §11.4 |
+| 11 | Java → C# (**M5**, in the Backlog by D-67) | Migration pairs, scaffolding, symbol map, skeleton-first strategy, test translation, multi-agent roles | §11.4 |
 | 12 | Rust / C++ FFI → Rust (**M6**) | Rust adapter, C-ABI replacement strategy, Corrosion integration | §11.5 |
 | 13 | C++ → Rust, module by module (**M7**) | Bridge, Cargo workspace scaffold, leaves-first port units behind C++ façades, `cpp_to_rust` mapping pack, `unsafe` and clippy checks | §11.6 |
 | 14 | C++ → Rust, finished (**M8**) | Test translation and test-ID map, retirement of façades and the C++ build, report, real-project benchmark | §11.6 |
+| 15 | C → Rust (**M9**) | C as a language, Make as a build backend (captured builds), C test formats, `c_to_rust` pack, bindgen's `sys` module, real-library benchmark | §11.7 |
+| 16 | Rust → C (**M10**) | Rust source index, Rust façades over C, `rust_to_c` pack, sanitizer and clang-tidy checks | §11.8 |
 
 ---
 
@@ -515,6 +519,8 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Goal:** port a Java project to C# with translated tests proving parity.
 
+**In the Backlog (D-67):** legacy code to modern languages comes first (Phases 15 and 16). When this phase returns, rewrite its tasks against what Phases 12–14 built; the first one left is the design question: a skeleton-first port with `pending_parity` (§11.4) or leaves first with no bridge between the two runtimes.
+
 **Prerequisites:** Phases 9 and 10.
 
 **Reuse (D-47, D-55):** the migration pairs, the symbol map, test translation and the mapping steward come from Phases 13 and 14, built language-neutral for C++ → Rust; this phase adds the Java and C# sides.
@@ -662,7 +668,92 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 ---
 
+## Phase 15: C → Rust (M9)
+
+**Goal:** port an old C project (C89 or newer, built with Make, autotools or CMake) to Rust module by module, with the branch green at every commit. It ends as a Cargo workspace, or as a Rust library that keeps its C API (SPEC §11.7, D-67).
+
+**Prerequisites:** Phase 14. Reuses the migration pairs, `kind: port`, the symbol and test maps, unit `needs`, retirement and `keep_source_api`, the Rust adapter, and the C++ adapter's libclang index and `c_abi_kept`.
+
+### Tasks
+**Strategy**
+- [x] Spike on small, old C libraries built with Make: capture the build, port a module by hand, and record what the engine lacks (D-68: bzip2 1.0.8, zlib 1.2.11 and libyaml 0.2.5 captured in the `codecoremorph-rust:local` image; bzip2's `huffman.c` ported to a crate `bz2_rs`, folded into `libbz2.a`, and bzip2's own tests passed with byte-identical output. Not tried by hand: a program and a test file, whose mechanics are Phase 14's with the artifact paths from the capture. Settled: C is its own language; capture through wrapper scripts as `CC` and `AR`; the crate folded into the library's archive; `.trs`, TAP, JUnit XML or the exit status; Docker first; no c2rust. Found: CRLF `configure` scripts under `core.autocrlf`, and a shared internal header that puts the top-level file first when ordering by includes. The spike is in `E:/codecoremorph-trials/c-spike`)
+- [x] Design settled with a `D-xx` row, and SPEC §11.7 filled in (D-68)
+
+**Toolchain and adapter**
+- [x] C as a language: standards `c89` … `c23`; an adapter sharing the C++ adapter's code; `detect_project` and `project_standard` for C projects (`adapters/c/`: `CAdapter` subclasses `CppAdapter`, entry point `c`; detection prefers CMake when a project has both, reads `-std=`, `-ansi` and `C_STANDARD`, else guesses from the code; no characterization-test registration, D-68. Open: `codecoremorph init`'s starter manifest for a C project is an upgrade; it proposes the port once the `c_to_rust` pack exists)
+- [x] Make as a build backend shared by the C and C++ adapters (`migration.source.build_system: make`): configure (`./configure`, network off; again when its inputs change; `autoreconf -fi` first when only `configure.ac` is there, and again when a `Makefile.am`, `configure.ac` or m4 file changes, D-70), build, clean build, in a mirror of the worktree; compiler and archiver calls captured by wrapper scripts during the build and the tests, giving `compile_commands.json` (each file once: libtool compiles twice), the libraries, the programs and what they link, and the artifacts; I-12 for Makefiles, `configure`, `configure.ac`, `Makefile.am` and m4 (`adapters/mirror.py`, `adapters/cpp/{make,capture,makefiles}.py`, `helpers/capture.sh`; the compile commands name the worktree's files and search the mirror's directories after them, for configure's `config.h`; the wrappers reach configure through the environment, since zlib's refuses `CC=` arguments; a configure with no build yet builds once, so the index has commands; `build.make.test_targets`. Tests: the three spike builds' recorded calls, a scripted executor, and `c-legacy` in Docker. Open: Java and C# keep their own mirrors)
+- [x] A run that builds in a Linux container checks its worktree out as on Linux, whatever the machine's `core.autocrlf` (D-68: `Git(config=LF_CHECKOUT)`, `Repository.add_worktree(line_endings=)`, the mode recorded in the worktree's git directory and read by every `Worktree`, submodule clones configured the same; the session chooses the executor before creating the worktree; native runs unchanged. Tests: `test_a_linux_checkout_keeps_the_committed_line_endings`, `test_a_reopened_worktree_keeps_its_line_endings`, `test_a_linux_container_gets_a_linux_checkout`)
+- [x] The image: autoconf, automake and libtool from Ubuntu (a Makefile.am change needs them); bindgen 0.73.2 in the manifest, built from crates.io like cbindgen (both install scripts build it with `cargo install bindgen-cli --locked`; `rust.env` puts it on `PATH` and sets `LIBCLANG_PATH` to LLVM's `lib`, except on Windows, where llvm-mingw has no `libclang.dll`; the C++ and Rust images get the autotools. The local Rust image was rebuilt on top of the 2026-11-04 one with the repository's script, since a full rebuild stalled in rustup's download; open: a full rebuild of both images)
+- [ ] Tests: the test target (`check`, else `test`, set in the manifest); results from automake's `.trs` (`make:<name>`, which runs that program), TAP and JUnit XML, else the exit status as one test; `detect_disabled_tests`, `extract_assertions` (I-4) and the `test_cases` query for C test files (done: the test target, `.trs`, TAP points as `tap:<program>/<description>` by the program make echoed last, with `# SKIP`, `# TODO`, short plans and `Bail out!`, and the target's exit status as `make:<target>` beside them; test entries name the program each test runs. Open: JUnit XML; the TAP side of `extract_assertions`, `detect_disabled_tests` and `test_cases`)
+
+**Rules and checks**
+- [x] `c_to_rust` pack: module units, programs, tests and retirement (rule IDs are global, D-66), with the C mapping of §11.7 as guidance (D-69: `port_c_module`, `port_c_executable`, `port_c_tests` and `retire_c`, each with its guidance; `codecoremorph plan` on `c-legacy` gives 5 translation units, the program, 4 test files and the retirement, and the host-agent run committed all 11)
+- [x] Module units are translation units, leaves first by the calls between them (the index's reference edges), cycles broken where they cost least; headers several units include stay until retirement (D-69: `port_units: translation_unit`; the call counts come from `IndexStore.reference_counts`; a unit's exports from `used_elsewhere`; in C, `c_abi_definitions` is every definition another file declares or uses. Tests: `tests/unit/planner/test_translation_units.py`, and `codecoremorph plan` on `c-legacy` in Docker, `tests/integration/test_c_plan.py`)
+- [x] The crate: exports from a boundary file, the only unsafe code; a `sys` module bindgen writes at configure from the kept headers, with the ported functions blocklisted; a check that the crate defines no copy of a header's type; `c_abi_kept` on the exports (D-69: `bridge::sys`, from the build directory's compile database; cbindgen includes the kept headers; `lint_clean` reports a `#[repr(C)]` copy; `symbol_map` requires the exports. Tested by porting `c-legacy`'s `sbuf.c` by hand in Docker, `tests/integration/adapters/test_c_port.py`: all 40 TAP points and `make test` pass against the folded crate, clippy is quiet)
+- [x] Scaffold codemods for Make builds: a marked block at the end of the `Makefile` (or `Makefile.am`) that builds the workspace offline and folds each crate's staticlib into its library's archive (an `ar` MRI script), with the crate's native libraries; a release profile with LTO and stripped debug info. Programs: a Rust `bin` copied to the C program's artifact path (D-69 for a Makefile or the `Makefile.in` configure writes it from: `adapters/rust/cports.py`; the archive rule starts from an empty archive; links of the library get `$(CODECOREMORPH_RUST_LIBS)`; a program's rule copies its Rust `bin`, whose prerequisite the block gives. D-70 for automake: the block at the end of the library's `Makefile.am`, the crate as one relocatable object in the library's `LIBADD`, through a libtool object for a libtool library, so it reaches both the `.so` and the `.a`; a program's `_SOURCES` emptied and its `_LINK` copying the `bin`; cargo's files get a recipe, so a rebuilt crate reaches the archive in the same make; autoreconf again when a `Makefile.am` changes. Tests: `test_cports.py`, and `strutil.c` ported by hand in Docker, `tests/integration/adapters/test_c_autotools_port.py`)
+- [ ] Characterization tests for a C → Rust port as Rust tests calling the C API through `sys`
+- [x] The test map: one source test may map to several target tests (a coarse `make:test`) (D-69: `rust = ["...", "..."]`; `TestPair.targets`; parity and I-3 need every target, I-4 adds up their checks; a target test still stands for one source test)
+- [ ] `unsafe` only in the boundary layer (`unsafe_in_bridge`), clippy clean, the symbol and test maps
+- [ ] `keep_source_api`: the C headers as the public API of a Rust `staticlib` and `cdylib`, checked by `c_abi_kept`
+- [x] Host-agent support: the skill and the unit context describe C ports (the skill's section 2; C notes for translation units, programs, tests and the retirement in the unit context)
+
+**Fixtures, benchmark and docs**
+- [x] `c-legacy` (C89, a plain Makefile): a string buffer, a hash table, a tokenizer with `goto` cleanup, a status-code API with `errno`, global configuration, a small program, TAP tests (`fixtures/c/c-legacy`: `wordfreq`, a word-frequency library and program; one internal header, `src/wfint.h`, declares every module, as bzip2's does; exported globals in `conf.c`; a `htab_each` callback with a `void *` context; four TAP programs with 40 points, and `cmp` checks of the program's output; `-ansi -pedantic -Wall` builds clean)
+- [x] `c-autotools` (C99, autotools, `make check`): a struct-heavy public header, callbacks with a `void *` context, a union, a variadic logging function (`fixtures/c/c-autotools`: `kvconf` 0.3.1, a key = value configuration library and `kvdump`; automake with recursive `SUBDIRS`, a libtool library of five files with one internal header, `kv_value`'s tagged union, `kv_each`, `kv_scan` and the log sink with `void *` contexts, `kv_log`/`kv_vlog`; four test programs under automake's harness, 162 checks, and `dump.sh` comparing `kvdump`'s output and messages with files; `-std=c99 -Wall` builds clean)
+- [x] Each fixture ported whole through `run --host-agent` and replayed from recorded edits (D-69 for `c-legacy`: run 20261106-125410-f568 in `E:/codecoremorph-trials/c-runs/legacy`, 11 of 11 units on their first attempt in 9 minutes, the final verification a clean Cargo build with 39 tests. The run found that a C `static` and a program's `main` must be on no boundary (I-6), and that a reused baseline left the plan without test units. D-70 for `c-autotools`: run 20261106-151553-2811 in `E:/codecoremorph-trials/c-runs/autotools`, 11 of 11 units on their first attempt in 12.5 minutes, the final verification a clean Cargo build with 27 tests; `kv_log` and `kv_vlog` stayed C until the retirement. Its first attempts found that a rebuilt crate reached a Make archive only at the next make, and that two C files defining `struct sink` were tied as one unit. `tests/cassettes/c/edits/<fixture>.json` and `run-all-<fixture>-docker.json`, replayed by `tests/integration/test_c_e2e.py`)
+- [ ] Benchmark (M9): a real old C library (C89 or C99, Make or autotools, tests, 2–10k lines, permissive license), pinned, ported whole with Claude Code and measured; SPEC §13 targets set from it
+- [x] Docs: a guide to porting C to Rust (`docs/porting-c-to-rust.md`, automake and what stays C included; its Limits name what is open)
+
+### Tests
+- Unit: compile and link capture (the spike's three projects as recorded logs), Make and autotools diagnostics, the test formats, translation-unit ordering on a shared internal header, the no-copied-types check, I-12 on Make and autotools files
+- Integration (`docker`, and `toolchain` if native): a fixture's build, tests and index
+- End to end: each fixture's port replays from recorded host-agent edits
+- Safety: working tree byte-identical, crash and resume, and path traversal on a C port run; NFR-3.1, nothing under `orchestrator/` changed
+
+### Exit criteria (M9)
+- `c-legacy` and `c-autotools` end as pure Rust (or a Rust library with its C API kept): every original test maps to a passing Rust test, the branch was green at every commit, and `unsafe` appears only at the C boundary
+- In Docker; native Windows for Make projects later (D-68)
+- The benchmark project is ported and measured, and SPEC §13 has its targets
+
+---
+
+## Phase 16: Rust → C (M10)
+
+**Goal:** port a Rust crate to C (C99 or C11), the mirror image of Phases 13 and 14. Modules go leaves first behind Rust façades, so the crate's own tests verify every unit; then the tests are translated to C and the Rust retired, leaving a CMake project (SPEC §11.8, D-67).
+
+**Prerequisites:** Phase 15 (C as a language, its builds and its tests).
+
+### Tasks
+**Strategy**
+- [ ] Spike on a small crate: one module ported to C behind its Rust façade by hand, with bindgen and a build script linking the C. Settle how Cargo builds the C during the port (the `cc` crate, or CMake first and a build script that links), the Rust source index, the C test library for translated tests, and what the first version refuses (async, procedural macros, heavy generic code)
+- [ ] Design settled with a `D-xx` row, and SPEC §11.8 filled in
+
+**Index and adapter**
+- [ ] Rust as a source: an index of modules, items, `use` dependencies, trait implementations and the generic instantiations in use
+- [ ] The C side as the target: a CMake project scaffold (library and tests), with its diagnostics and tests through Phase 15's C support
+- [ ] bindgen in the manifest, for the façades' declarations
+
+**Rules and checks**
+- [ ] `rust_to_c` pack: module units (leaves first), binaries, tests and retirement, with the mapping of §11.8 as guidance
+- [ ] Post-conditions on every unit: the C builds without warnings (`-Wall -Wextra`), passes clang-tidy's bug-finding checks, and runs every test under AddressSanitizer and UndefinedBehaviorSanitizer; the façade's public Rust API is unchanged (as I-6); `unsafe` only in the façades
+- [ ] The symbol and test maps in the other direction (Rust path → C name, `nextest:` → the C test IDs)
+- [ ] Host-agent support
+
+**Fixtures, benchmark and docs**
+- [ ] A Rust fixture with generics, traits, enums with data, `Result` errors, iterators, closures and a binary; ported whole and replayed from recorded edits
+- [ ] A round trip as an eval: `c-legacy` ported to Rust (Phase 15), then that Rust ported back to C, with the original C tests still passing
+- [ ] Benchmark (M10): a small real crate, ported and measured
+- [ ] Docs: a guide to porting Rust to C, saying what is lost (the borrow checker) and what replaces it (sanitizers, clang-tidy)
+
+### Exit criteria (M10)
+- The fixture ends as a C project built by CMake: every original Rust test maps to a passing C test under AddressSanitizer and UndefinedBehaviorSanitizer, and the branch was green at every commit
+
+---
+
 ## Backlog (unscheduled)
+
+- **Java → C#** (Phase 11, moved here by D-67)
+- **The next legacy language after Phase 16** (D-67), chosen then: Fortran → Rust or C++ (gfortran or flang, with `ISO_C_BINDING` as the bridge), or batch COBOL → Java or C# (GnuCOBOL, which can call C; CICS, DB2 and JCL can't run in a container)
 
 - **CI (GitHub Actions)**, deferred from Phase 0 (D-28):
   - lint, type-check and tests on `ubuntu-latest` and `windows-latest`, Python 3.12 and 3.13

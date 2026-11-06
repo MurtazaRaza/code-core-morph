@@ -7,11 +7,14 @@ languages' names::
     rust = "nextest:calc_rs::rational_test::adds_fractions"
     note = "..."                                       # optional
 
-An entry without a target test needs a ``note`` that says why there is none (a CTest entry that
-only ran a GoogleTest binary, whose cases are mapped one by one; behavior the target language
-can't have). The map is the port's parity: a baseline test passes while it still runs, and so
-does the test mapped to it; once it no longer runs, its target test stands for it.
-Language-neutral: Phase 11 maps Java tests to C# the same way.
+A source test may map to several target tests (``rust = ["...", "..."]``): a coarse C test,
+such as the exit status of ``make test``, splits into the tests that took its checks over
+(D-69). A target test stands for one source test. An entry without a target test needs a
+``note`` that says why there is none (a CTest entry that only ran a GoogleTest binary, whose
+cases are mapped one by one; behavior the target language can't have). The map is the port's
+parity: a baseline test passes while it still runs, and so do the tests mapped to it; once it
+no longer runs, its target tests stand for it. Language-neutral: Phase 11 maps Java tests to
+C# the same way.
 """
 
 from __future__ import annotations
@@ -31,12 +34,13 @@ MAX_SHOWN = 25
 
 @dataclass(frozen=True)
 class TestPair:
-    """One entry: a source test ID, the target test ID that took it over (or None) and why."""
+    """One entry: a source test ID, the target test IDs that took it over (none, one, or
+    several, D-69) and why."""
 
     __test__ = False  # not a pytest test class
 
     source: str
-    target: str | None
+    targets: tuple[str, ...]
     note: str | None
 
 
@@ -64,13 +68,21 @@ def read_test_map(
         if not isinstance(source, str) or not source:
             problems.append(f"entry {number} has no `{source_language}` test ID")
             continue
-        if target is not None and (not isinstance(target, str) or not target):
-            problems.append(f"{source}: `{target_language}` must be one test ID")
+        if target is None:
+            targets: list[object] = []
+        elif isinstance(target, list):
+            targets = cast(list[object], target)
+        else:
+            targets = [target]
+        if (target is not None and not targets) or not all(
+            isinstance(t, str) and t for t in targets
+        ):
+            problems.append(f"{source}: `{target_language}` must be a test ID or a list of them")
             continue
         entries.append(
             TestPair(
                 source=source,
-                target=target if isinstance(target, str) else None,
+                targets=tuple(str(t) for t in targets),
                 note=note if isinstance(note, str) and note.strip() else None,
             )
         )
@@ -97,7 +109,7 @@ def test_map_problems(
     listed = list(entries)
     problems: list[str] = []
     sources = Counter(e.source for e in listed)
-    targets = Counter(e.target for e in listed if e.target is not None)
+    targets = Counter(t for e in listed for t in e.targets)
     for source, count in sorted(sources.items()):
         if count > 1:
             problems.append(f"{source} is mapped {count} times; keep one entry")
@@ -106,17 +118,18 @@ def test_map_problems(
             problems.append(f"{target} stands for {count} tests; map each test to its own")
     wanted = set(required)
     for entry in listed:
-        if entry.target is None:
+        if not entry.targets:
             if entry.note is None:
                 problems.append(f"{entry.source}: name the test that took it over, or say why not")
             continue
         if entry.source not in wanted:
             continue
-        status = statuses.get(entry.target)
-        if status is None:
-            problems.append(f"{entry.source}: its test {entry.target} didn't run")
-        elif status is not TestStatus.PASSED:
-            problems.append(f"{entry.source}: its test {entry.target} {status.value}")
+        for target in entry.targets:
+            status = statuses.get(target)
+            if status is None:
+                problems.append(f"{entry.source}: its test {target} didn't run")
+            elif status is not TestStatus.PASSED:
+                problems.append(f"{entry.source}: its test {target} {status.value}")
     mapped = set(sources)
     for test_id in sorted(wanted - mapped):
         problems.append(f"{test_id} has no entry")
@@ -150,8 +163,8 @@ class Parity:
 def parity(
     passing: Iterable[str], statuses: Mapping[str, TestStatus], pairs: Mapping[str, TestPair]
 ) -> Parity:
-    """Each baseline-passing test passes while it runs, and so does the target test mapped to
-    it; once it no longer runs, its target test stands for it, and an entry without one
+    """Each baseline-passing test passes while it runs, and so do the target tests mapped to
+    it; once it no longer runs, its target tests stand for it, and an entry without one
     retires it (I-5 through the map, D-60)."""
     failing: list[str] = []
     missing: list[str] = []
@@ -172,12 +185,13 @@ def parity(
         pair = pairs.get(test_id)
         if test_id in statuses:
             needs(test_id)
-            if pair is not None and pair.target is not None:
-                needs(pair.target)
+            for target in pair.targets if pair is not None else ():
+                needs(target)
         elif pair is None:
             needs(test_id)
-        elif pair.target is not None:
-            needs(pair.target)
+        elif pair.targets:
+            for target in pair.targets:
+                needs(target)
         else:
             retired.append(test_id)
     return Parity(failing=failing, missing=missing, retired=retired)
@@ -187,11 +201,11 @@ def gone_but_mapped(
     gone: Iterable[str], seen: Collection[str], pairs: Mapping[str, TestPair]
 ) -> list[str]:
     """Of the tests ``gone`` from a run, those the map doesn't account for: unmapped, or mapped
-    to a target test that isn't in the run either (I-3 through the map)."""
+    to target tests that aren't all in the run either (I-3 through the map)."""
     left: list[str] = []
     for test_id in gone:
         pair = pairs.get(test_id)
-        if pair is None or (pair.target is not None and pair.target not in seen):
+        if pair is None or any(t not in seen for t in pair.targets):
             left.append(test_id)
     return left
 
@@ -201,27 +215,33 @@ def weaker_translations(
     sources: Iterable[TestAssertions],
     targets: Iterable[TestAssertions],
 ) -> list[str]:
-    """I-4 across languages: for each pair, a target test that makes fewer checks than its
-    source test, or none at all. Kinds don't translate one to one (``EXPECT_THROW`` becomes an
-    ``assert!`` on a ``Result``), so counts are compared."""
+    """I-4 across languages: for each pair, target tests that make fewer checks together than
+    their source test, or none at all. Kinds don't translate one to one (``EXPECT_THROW``
+    becomes an ``assert!`` on a ``Result``), so counts are compared; a test split into several
+    keeps its checks among them."""
     source_counts = {a.test_id: len(a.assertions) for a in sources}
     target_counts = {a.test_id: len(a.assertions) for a in targets}
     found: list[str] = []
     for pair in pairs:
         before = source_counts.get(pair.source)
-        if pair.target is None:
+        if not pair.targets:
             note = f" ({pair.note})" if pair.note else ""
             found.append(f"{pair.source} has no translation{note}")
             continue
         if before is None:
             continue  # not a case the source adapter reads (a CTest entry): nothing to count
-        after = target_counts.get(pair.target)
-        if after is None:
-            found.append(f"{pair.source}: its test {pair.target} isn't in the sources")
-        elif after < before:
-            found.append(
-                f"{pair.source} made {before} check(s); its test {pair.target} makes {after}"
+        absent = [t for t in pair.targets if t not in target_counts]
+        if absent:
+            found.append(f"{pair.source}: its test {', '.join(absent)} isn't in the sources")
+            continue
+        after = sum(target_counts[t] for t in pair.targets)
+        if after < before:
+            tests = (
+                f"its test {pair.targets[0]} makes"
+                if len(pair.targets) == 1
+                else f"its {len(pair.targets)} tests make"
             )
+            found.append(f"{pair.source} made {before} check(s); {tests} {after}")
     return found
 
 

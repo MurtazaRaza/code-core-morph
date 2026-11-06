@@ -4,10 +4,11 @@ rem POSIX twin: scripts/install-toolchain.sh (same flags, messages and exit code
 setlocal
 
 set "CCM_LIB=%~dp0lib\common.bat"
-rem The Rust release rustup installs, and the cbindgen release cargo builds (D-56). rustup and
-rem cargo verify what they download themselves (SPEC 7.15 rule 1).
+rem The Rust release rustup installs, and the cbindgen (D-56) and bindgen (D-68) releases cargo
+rem builds. rustup and cargo verify what they download themselves (SPEC 7.15 rule 1).
 set "RUST_VERSION=1.99.1"
 set "CBINDGEN_VERSION=0.29.4"
+set "BINDGEN_VERSION=0.73.2"
 rem The Maven artifacts the Java adapter runs offline (D-63): OpenRewrite's plugin and recipes,
 rem and the dependency plugin of its dependency step. Maven downloads them, checking
 rem each against the repository's checksums (-C), into toolchains\java\m2, which builds chain
@@ -215,8 +216,9 @@ call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
 exit /b 1
 
 
-rem :install_rust  -- the C++ toolchain, then Rust through rustup, cargo-nextest, cbindgen and
-rem Corrosion, and rust.env (a superset of cpp.env: every Rust run here is a mixed build).
+rem :install_rust  -- the C++ toolchain, then Rust through rustup, cargo-nextest, cbindgen,
+rem bindgen and Corrosion, and rust.env (a superset of cpp.env: every Rust run here is a mixed
+rem build).
 :install_rust
 if defined CCM_OFFLINE goto install_rust_offline
 call :install_cpp
@@ -235,12 +237,14 @@ set "NEXTEST_VERSION=%CCM_ROW_VERSION%"
 set "NEXTEST_BIN=%CCM_TOOL_BIN_DIR%"
 call :rust_cbindgen
 if errorlevel 1 exit /b %errorlevel%
+call :rust_bindgen
+if errorlevel 1 exit /b %errorlevel%
 call :rust_corrosion
 if errorlevel 1 exit /b %errorlevel%
 call :rust_write_env
 exit /b %errorlevel%
 :install_rust_offline
-call "%CCM_LIB%" :die 2 "--offline doesn't apply to rust: rustup downloads the Rust release and cargo builds cbindgen themselves"
+call "%CCM_LIB%" :die 2 "--offline doesn't apply to rust: rustup downloads the Rust release and cargo builds cbindgen and bindgen themselves"
 exit /b 2
 
 
@@ -298,6 +302,34 @@ if errorlevel 1 goto rust_cbindgen_failed
 exit /b 0
 :rust_cbindgen_failed
 call "%CCM_LIB%" :die 1 "building cbindgen %CBINDGEN_VERSION% failed"
+exit /b 1
+
+
+rem :rust_bindgen  -- build the pinned bindgen (the bindgen-cli crate) with cargo, unless it is
+rem there. Sets BINDGEN_BIN. It loads libclang when it runs; llvm-mingw has no libclang.dll, so
+rem bindgen runs in Docker on Windows for now (D-68).
+:rust_bindgen
+set "BINDGEN_ROOT=%CCM_HOME%\toolchains\bindgen\%BINDGEN_VERSION%"
+set "BINDGEN_BIN=%BINDGEN_ROOT%\bin"
+if "%CCM_FORCE%"=="1" goto rust_bindgen_needed
+if not exist "%BINDGEN_BIN%\bindgen.exe" goto rust_bindgen_needed
+call "%CCM_LIB%" :log "bindgen %BINDGEN_VERSION% is already installed in %BINDGEN_ROOT%"
+exit /b 0
+:rust_bindgen_needed
+if not "%CCM_DRY_RUN%"=="1" goto rust_bindgen_real
+call "%CCM_LIB%" :log "would build bindgen %BINDGEN_VERSION% with cargo install --locked into %BINDGEN_ROOT%"
+exit /b 0
+:rust_bindgen_real
+call "%CCM_LIB%" :log "building bindgen %BINDGEN_VERSION% (cargo install --locked)"
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN=%RUST_VERSION%"
+set "PATH=%LLVM_BIN%;%PATH%"
+"%CARGO_HOME_DIR%\bin\cargo.exe" install bindgen-cli --version %BINDGEN_VERSION% --locked --root "%BINDGEN_ROOT%"
+if errorlevel 1 goto rust_bindgen_failed
+exit /b 0
+:rust_bindgen_failed
+call "%CCM_LIB%" :die 1 "building bindgen %BINDGEN_VERSION% failed"
 exit /b 1
 
 
@@ -360,11 +392,11 @@ if not "%CCM_DRY_RUN%"=="1" goto rust_write_env_real
 call "%CCM_LIB%" :log "would write %ENV_FILE% and %ACTIVATE%"
 exit /b 0
 :rust_write_env_real
-set "RUST_PREPEND=%CARGO_HOME_DIR%\bin;%NEXTEST_BIN%;%CBINDGEN_BIN%;%LLVM_BIN%;%CMAKE_BIN%;%NINJA_BIN%;%EXTRA_BIN%"
+set "RUST_PREPEND=%CARGO_HOME_DIR%\bin;%NEXTEST_BIN%;%CBINDGEN_BIN%;%BINDGEN_BIN%;%LLVM_BIN%;%CMAKE_BIN%;%NINJA_BIN%;%EXTRA_BIN%"
 set "RUST_PREFIXES=%GTEST_PREFIX%;%CORROSION_PREFIX%"
 >"%ENV_FILE%.tmp" echo(# CodeCoreMorph Rust toolchain (with the C++ one), written by install-toolchain.
 if errorlevel 1 goto rust_write_env_failed
->>"%ENV_FILE%.tmp" echo(# Do not edit. rust %RUST_VERSION% (rustup %RUSTUP_VERSION%), cargo-nextest %NEXTEST_VERSION%, cbindgen %CBINDGEN_VERSION%,
+>>"%ENV_FILE%.tmp" echo(# Do not edit. rust %RUST_VERSION% (rustup %RUSTUP_VERSION%), cargo-nextest %NEXTEST_VERSION%, cbindgen %CBINDGEN_VERSION%, bindgen %BINDGEN_VERSION%,
 >>"%ENV_FILE%.tmp" echo(# corrosion %CORROSION_VERSION%, %LLVM_ID%, cmake %CMAKE_VERSION%, ninja %NINJA_VERSION%, googletest %GTEST_VERSION% and %GTEST98_VERSION%
 >>"%ENV_FILE%.tmp" echo(PATH_PREPEND=%RUST_PREPEND%
 >>"%ENV_FILE%.tmp" echo(CC=%CC_PATH%
@@ -716,9 +748,9 @@ echo   cpp   LLVM (clang, clang-tidy, clang-format; llvm-mingw on Windows), CMak
 echo         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
 echo         for projects that build as C++98/03)
 echo   rust  the cpp toolchain, plus Rust (through rustup, with clippy and
-echo         rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
-echo         ports; rustup and cargo download Rust and cbindgen themselves, so
-echo         --offline doesn't apply
+echo         rustfmt), cargo-nextest, cbindgen, bindgen and Corrosion, for C++
+echo         and C to Rust ports; rustup and cargo download Rust, cbindgen and
+echo         bindgen themselves, so --offline doesn't apply
 echo   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
 echo         Spoon jar, and a Maven repository with OpenRewrite and the plugins
 echo         builds run offline; Maven downloads those itself, so --offline

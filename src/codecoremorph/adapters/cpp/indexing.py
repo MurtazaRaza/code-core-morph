@@ -14,6 +14,7 @@ from importlib import resources
 from pathlib import Path
 
 from codecoremorph.adapters.base import AdapterContext
+from codecoremorph.adapters.cpp.makefiles import make_files
 from codecoremorph.adapters.cpp.testing import parse_ctest_listing
 from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
@@ -25,6 +26,7 @@ from codecoremorph.core.models import (
     LineEnding,
     SymbolIndex,
     TargetKind,
+    TestEntry,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.sandbox.executor import full_output
@@ -75,11 +77,15 @@ def line_ending(data: bytes) -> LineEnding:
 
 
 class FileClassifier:
-    def __init__(self, ctx: AdapterContext):
+    """Rows of the index's files table. ``language`` is the project's: a C project's headers
+    are C (D-68), a C++ project's are C++."""
+
+    def __init__(self, ctx: AdapterContext, language: str = "cpp"):
         self.worktree = ctx.worktree
         self.tests = PathMatcher(ctx.lang.test_dirs)
         self.exclude = PathMatcher(ctx.lang.exclude)
         self.public_api = PathMatcher(ctx.lang.public_api)
+        self.language = language
 
     def row(self, path: str, *, c_compatible: bool, language: str | None = None) -> FileRow | None:
         host = self.worktree / path
@@ -93,10 +99,10 @@ class FileClassifier:
             encoding = "binary"
         lowered = path.lower()
         if language is None:
-            language = "c" if lowered.endswith(".c") else "cpp"
+            language = "c" if lowered.endswith(".c") else self.language
         if self.exclude.matches(path):
             role = FileRole.THIRD_PARTY
-        elif language == "cmake":
+        elif language in ("cmake", "make"):
             role = FileRole.BUILD
         elif self.tests.matches(path):
             role = FileRole.TEST
@@ -140,7 +146,16 @@ def code_files(worktree: Path, exclude: PathMatcher) -> list[str]:
     return _walk(worktree, exclude, lambda n: n.lower().endswith(extensions))
 
 
-def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = None) -> SymbolIndex:
+def run_index(
+    ctx: AdapterContext,
+    *,
+    adapter_version: str,
+    language: str = "cpp",
+    build_model: tuple[list[BuildTarget], list[TestEntry]] | None = None,
+    jobs: int | None = None,
+) -> SymbolIndex:
+    """Index the project. ``build_model`` gives a Make build's targets and tests, from its
+    capture (D-68); without it they come from CMake's file API and CTest."""
     compdb = ctx.cache_dir / COMPILE_COMMANDS
     if not compdb.is_file():
         raise SandboxError(
@@ -161,7 +176,7 @@ def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = N
         "exclude": list(ctx.lang.exclude),
         "files": None,
         "jobs": jobs,
-        "cmake_build_dir": ctx.sandbox(ctx.build_dir),
+        "cmake_build_dir": ctx.sandbox(ctx.build_dir) if build_model is None else None,
     }
     request_path = work / "request.json"
     request_path.write_text(json.dumps(request, indent=2), encoding="utf-8")
@@ -183,8 +198,21 @@ def run_index(ctx: AdapterContext, *, adapter_version: str, jobs: int | None = N
         )
 
     started = time.monotonic()
-    index = ingest(ctx, output, adapter_version=adapter_version, helper_s=helper_s)
-    record_test_entries(ctx, index.path)
+    index = ingest(
+        ctx,
+        output,
+        adapter_version=adapter_version,
+        helper_s=helper_s,
+        language=language,
+        make=build_model is not None,
+    )
+    if build_model is None:
+        record_test_entries(ctx, index.path)
+    else:
+        targets, tests = build_model
+        with IndexStore.open(index.path) as store:
+            store.set_build_targets(targets)
+            store.set_test_entries(tests)
     log.info(
         "indexed %s files, %s symbols in %.1f s (%s translation units parsed, %s cached)",
         index.meta.stats.get("files"),
@@ -221,10 +249,16 @@ def record_test_entries(ctx: AdapterContext, index_path: Path) -> None:
 
 
 def ingest(
-    ctx: AdapterContext, output: Path, *, adapter_version: str, helper_s: float = 0.0
+    ctx: AdapterContext,
+    output: Path,
+    *,
+    adapter_version: str,
+    helper_s: float = 0.0,
+    language: str = "cpp",
+    make: bool = False,
 ) -> SymbolIndex:
     started = time.monotonic()
-    classifier = FileClassifier(ctx)
+    classifier = FileClassifier(ctx, language)
     c_files: dict[str, bool] = {}
     symbols: list[SymbolRow] = []
     references: list[ReferenceRow] = []
@@ -257,16 +291,18 @@ def ingest(
         row = classifier.row(path, c_compatible=c_tu and not is_c_source)
         if row is not None:
             files.append(row)
-    for path in build_files(ctx.worktree, classifier.exclude):
-        row = classifier.row(path, c_compatible=False, language="cmake")
+    listed = make_files if make else build_files
+    for path in listed(ctx.worktree, classifier.exclude):
+        row = classifier.row(path, c_compatible=False, language="make" if make else "cmake")
         if row is not None:
             files.append(row)
     # Code no compile command reaches (another platform's sources, disabled targets): builds
-    # and tests can't check changes to it, so units and reports name it (D-42).
+    # and tests can't check changes to it, so units and reports name it (D-42). In a C++
+    # project no C++ rule applies to a C source.
     uncompiled = [
         p
         for p in code_files(ctx.worktree, classifier.exclude)
-        if p not in c_files and not p.lower().endswith(".c")  # C sources: no C++ rule applies
+        if p not in c_files and (language == "c" or not p.lower().endswith(".c"))
     ]
     public = {row[0] for row in files if row[5]}
     symbols = [_with_public_api(row, public) for row in symbols]
@@ -276,7 +312,7 @@ def ingest(
         store.write(files=files, symbols=symbols, references=references, dependencies=dependencies)
         counts = store.counts()
         index_meta = IndexMeta(
-            adapter="cpp",
+            adapter=language,
             adapter_version=adapter_version,
             tool_versions={"libclang": str(meta.get("libclang", "unknown"))},
             stats={

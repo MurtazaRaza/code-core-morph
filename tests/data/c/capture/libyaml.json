@@ -1,0 +1,880 @@
+[
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "parser.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/parser.Tpo",
+   "-c",
+   "parser.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/parser.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "api.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/api.Tpo",
+   "-c",
+   "api.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/api.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "reader.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/reader.Tpo",
+   "-c",
+   "reader.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/reader.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "scanner.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/scanner.Tpo",
+   "-c",
+   "scanner.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/scanner.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "reader.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/reader.Tpo",
+   "-c",
+   "reader.c",
+   "-o",
+   "reader.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "loader.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/loader.Tpo",
+   "-c",
+   "loader.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/loader.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "parser.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/parser.Tpo",
+   "-c",
+   "parser.c",
+   "-o",
+   "parser.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "api.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/api.Tpo",
+   "-c",
+   "api.c",
+   "-o",
+   "api.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "loader.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/loader.Tpo",
+   "-c",
+   "loader.c",
+   "-o",
+   "loader.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "writer.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/writer.Tpo",
+   "-c",
+   "writer.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/writer.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "emitter.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/emitter.Tpo",
+   "-c",
+   "emitter.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/emitter.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "writer.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/writer.Tpo",
+   "-c",
+   "writer.c",
+   "-o",
+   "writer.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "dumper.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/dumper.Tpo",
+   "-c",
+   "dumper.c",
+   "-fPIC",
+   "-DPIC",
+   "-o",
+   ".libs/dumper.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "dumper.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/dumper.Tpo",
+   "-c",
+   "dumper.c",
+   "-o",
+   "dumper.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "scanner.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/scanner.Tpo",
+   "-c",
+   "scanner.c",
+   "-o",
+   "scanner.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "emitter.lo",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/emitter.Tpo",
+   "-c",
+   "emitter.c",
+   "-o",
+   "emitter.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "-shared",
+   "-fPIC",
+   "-DPIC",
+   ".libs/api.o",
+   ".libs/reader.o",
+   ".libs/scanner.o",
+   ".libs/parser.o",
+   ".libs/loader.o",
+   ".libs/writer.o",
+   ".libs/emitter.o",
+   ".libs/dumper.o",
+   "-g",
+   "-O2",
+   "-Wl,-soname",
+   "-Wl,libyaml-0.so.2",
+   "-o",
+   ".libs/libyaml-0.so.2.0.9"
+  ]
+ },
+ {
+  "tool": "ar",
+  "cwd": "/tmp/mirror/libyaml/src",
+  "args": [
+   "cru",
+   ".libs/libyaml.a",
+   "api.o",
+   "reader.o",
+   "scanner.o",
+   "parser.o",
+   "loader.o",
+   "writer.o",
+   "emitter.o",
+   "dumper.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-scanner.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-scanner.Tpo",
+   "-c",
+   "-o",
+   "run-scanner.o",
+   "run-scanner.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-emitter.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-emitter.Tpo",
+   "-c",
+   "-o",
+   "run-emitter.o",
+   "run-emitter.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-loader.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-loader.Tpo",
+   "-c",
+   "-o",
+   "run-loader.o",
+   "run-loader.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-parser.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-parser.Tpo",
+   "-c",
+   "-o",
+   "run-parser.o",
+   "run-parser.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-dumper.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-dumper.Tpo",
+   "-c",
+   "-o",
+   "run-dumper.o",
+   "run-dumper.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "example-reformatter.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/example-reformatter.Tpo",
+   "-c",
+   "-o",
+   "example-reformatter.o",
+   "example-reformatter.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "example-reformatter-alt.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/example-reformatter-alt.Tpo",
+   "-c",
+   "-o",
+   "example-reformatter-alt.o",
+   "example-reformatter-alt.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "example-deconstructor.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/example-deconstructor.Tpo",
+   "-c",
+   "-o",
+   "example-deconstructor.o",
+   "example-deconstructor.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "example-deconstructor-alt.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/example-deconstructor-alt.Tpo",
+   "-c",
+   "-o",
+   "example-deconstructor-alt.o",
+   "example-deconstructor-alt.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-parser-test-suite.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-parser-test-suite.Tpo",
+   "-c",
+   "-o",
+   "run-parser-test-suite.o",
+   "run-parser-test-suite.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "run-emitter-test-suite.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/run-emitter-test-suite.Tpo",
+   "-c",
+   "-o",
+   "run-emitter-test-suite.o",
+   "run-emitter-test-suite.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-scanner",
+   "run-scanner.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-parser",
+   "run-parser.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-loader",
+   "run-loader.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-emitter",
+   "run-emitter.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-dumper",
+   "run-dumper.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/example-reformatter",
+   "example-reformatter.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/example-reformatter-alt",
+   "example-reformatter-alt.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/example-deconstructor",
+   "example-deconstructor.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/example-deconstructor-alt",
+   "example-deconstructor-alt.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-emitter-test-suite",
+   "run-emitter-test-suite.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/run-parser-test-suite",
+   "run-parser-test-suite.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "test-version.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/test-version.Tpo",
+   "-c",
+   "-o",
+   "test-version.o",
+   "test-version.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/test-version",
+   "test-version.o",
+   "../src/.libs/libyaml.so"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-DHAVE_CONFIG_H",
+   "-I.",
+   "-I../include",
+   "-I../include",
+   "-Wall",
+   "-g",
+   "-O2",
+   "-MT",
+   "test-reader.o",
+   "-MD",
+   "-MP",
+   "-MF",
+   ".deps/test-reader.Tpo",
+   "-c",
+   "-o",
+   "test-reader.o",
+   "test-reader.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/libyaml/tests",
+  "args": [
+   "-g",
+   "-O2",
+   "-o",
+   ".libs/test-reader",
+   "test-reader.o",
+   "../src/.libs/libyaml.so"
+  ]
+ }
+]

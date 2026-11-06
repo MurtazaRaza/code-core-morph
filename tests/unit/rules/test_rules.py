@@ -179,7 +179,18 @@ def test_every_built_in_pack_loads_without_problems() -> None:
     only a problem logged: the C# pack's records rule once took the Java pack down (D-66)."""
     registry = RuleRegistry.discover()
     assert registry.problems == []
-    assert {"cpp", "cpp_to_rust", "java", "csharp"} <= set(registry.packs)
+    assert {"cpp", "cpp_to_rust", "c_to_rust", "java", "csharp"} <= set(registry.packs)
+    # C has a pack of its own (D-68): the C++ packs never apply to it.
+    assert sorted(r.rule.id for r in registry.for_language("c")) == [
+        "port_c_executable",
+        "port_c_module",
+        "port_c_tests",
+        "retire_c",
+    ]
+    c_module = registry.get("port_c_module").rule
+    assert (c_module.port_units, c_module.target_language) == ("translation_unit", "rust")
+    assert c_module.codemods[0].options == {"language": "c"}
+    assert "c_abi_kept" in {p.type.value for p in c_module.postconditions}
     csharp = sorted(r.rule.id for r in registry.for_language("csharp"))
     assert csharp == [
         "bump_csharp_version",

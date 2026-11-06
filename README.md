@@ -4,9 +4,9 @@ CodeCoreMorph migrates codebases with LLM agents working inside a compile → te
 Real toolchains decide what's correct: every change is built and tested in a sandbox, and
 only verified changes are committed, to a dedicated branch you review and merge yourself.
 
-The first target is **C++ standard upgrades**: from C++98/03, 11, 14, 17 or 20 to any newer
-standard up to C++23. Java and C# version upgrades come next, then cross-language ports
-(Java → C#, C++ → Rust).
+It upgrades **C++** (C++98/03 up to C++23), **Java** (8 up to 25) and **C#** (7.3 up to 14),
+and ports **C++ to Rust**. The focus is legacy code moving to modern languages: **C → Rust**
+comes next, then Rust → C.
 
 > **Status:** early development. CodeCoreMorph can plan a C++ migration
 > (`codecoremorph plan`) and run a whole migration (`codecoremorph run`), with Claude Code or

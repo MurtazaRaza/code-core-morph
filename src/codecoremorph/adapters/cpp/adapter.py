@@ -49,6 +49,9 @@ from codecoremorph.adapters.cpp.indexing import (
     python_for,
     run_index,
 )
+from codecoremorph.adapters.cpp.make import BUILD_SYSTEM as MAKE
+from codecoremorph.adapters.cpp.make import MakeBuild
+from codecoremorph.adapters.cpp.makefiles import has_make_build, make_files, standards_in
 from codecoremorph.adapters.cpp.paths import PathMapper
 from codecoremorph.adapters.cpp.ports import unported_definitions
 from codecoremorph.adapters.cpp.registration import TARGET as CHARACTERIZATION_TARGET
@@ -107,6 +110,10 @@ INSTALL_HINT = (
     "Install the pinned native toolchain with `codecoremorph toolchain install cpp` "
     "(or scripts/install-toolchain cpp), or use Docker (sandbox.mode: docker)."
 )
+MAKE_INSTALL_HINT = (
+    "Make builds run in Docker for now (D-68): set sandbox.mode to docker, with the "
+    "codecoremorph-cpp image (or codecoremorph-rust for a port)."
+)
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
@@ -143,30 +150,46 @@ class CppAdapter(LanguageAdapter):
         )
 
     def toolchain_requirements(self, lang: LanguageConfig) -> ToolchainSpec:
-        return ToolchainSpec(
-            language="cpp",
-            image="codecoremorph-cpp",
-            tools=[
-                ToolRequirement(name="clang", min_version=MIN_LLVM, purpose="C compiler"),
-                ToolRequirement(name="clang++", min_version=MIN_LLVM, purpose="C++ compiler"),
-                ToolRequirement(name="clang-tidy", min_version=MIN_LLVM, purpose="codemods"),
-                ToolRequirement(
-                    name="clang-format", min_version=MIN_LLVM, purpose="formatting codemod output"
-                ),
+        tools = [
+            ToolRequirement(name="clang", min_version=MIN_LLVM, purpose="C compiler"),
+            ToolRequirement(name="clang++", min_version=MIN_LLVM, purpose="C++ compiler"),
+            ToolRequirement(name="clang-tidy", min_version=MIN_LLVM, purpose="codemods"),
+            ToolRequirement(
+                name="clang-format", min_version=MIN_LLVM, purpose="formatting codemod output"
+            ),
+        ]
+        if lang.build_system == MAKE:
+            tools.append(ToolRequirement(name="make", min_version="3.81", purpose="build system"))
+        else:
+            tools += [
                 ToolRequirement(name="cmake", min_version="3.21", purpose="build system"),
                 ToolRequirement(name="ctest", min_version="3.21", purpose="test runner"),
                 ToolRequirement(name="ninja", min_version="1.10", purpose="build tool"),
-            ],
-            install_hint=INSTALL_HINT,
+            ]
+        return ToolchainSpec(
+            language="cpp",
+            image="codecoremorph-cpp",
+            tools=tools,
+            install_hint=INSTALL_HINT if lang.build_system != MAKE else MAKE_INSTALL_HINT,
         )
 
     # ------------------------------------------------------------------ helpers
 
     def _mapper(self, ctx: AdapterContext) -> PathMapper:
-        native_fold = ctx.executor.kind == "native" and sys.platform in ("win32", "darwin")
         return PathMapper(
-            ctx.sandbox(ctx.worktree), ctx.sandbox(ctx.build_dir), case_insensitive=native_fold
+            ctx.sandbox(ctx.worktree), ctx.sandbox(ctx.build_dir), case_insensitive=_folds(ctx)
         )
+
+    def _make_build(self, ctx: AdapterContext) -> MakeBuild | None:
+        """The Make build of a project the manifest builds with Make (D-68), else None."""
+        if ctx.lang.build_system != MAKE:
+            return None
+        return MakeBuild(ctx, case_insensitive=_folds(ctx))
+
+    def _compdb_dir(self, ctx: AdapterContext) -> Path:
+        """Where ``compile_commands.json`` is for clang-tidy: CMake's build directory, or the
+        cache, where a Make build's capture writes it."""
+        return ctx.cache_dir if ctx.lang.build_system == MAKE else ctx.build_dir
 
     def _compile_commands(self, ctx: AdapterContext) -> list[dict[str, Any]]:
         path = ctx.cache_dir / COMPILE_COMMANDS
@@ -222,12 +245,17 @@ class CppAdapter(LanguageAdapter):
     def configure(self, ctx: AdapterContext) -> BuildResult:
         ctx.build_dir.mkdir(parents=True, exist_ok=True)
         ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        if (make := self._make_build(ctx)) is not None:
+            ctx.cache_dir.mkdir(parents=True, exist_ok=True)
+            return make.configure()
         mapper = self._mapper(ctx)
         build_options = ctx.lang.configure_args
-        standard = cxx_standard_number(ctx.lang.standard)
+        # A C project builds at the standard its CMake files set: no C++ standard applies.
+        standard = cxx_standard_number(ctx.lang.standard) if self.language == "cpp" else None
+        configured = standard or ctx.lang.standard
         ctx.cache_dir.mkdir(parents=True, exist_ok=True)
         script = ctx.cache_dir / "initial-cache.cmake"
-        script.write_text(initial_cache_script(standard), encoding="utf-8")
+        script.write_text(initial_cache_script(standard or ""), encoding="utf-8")
         marker = ctx.cache_dir / "configured-standard"
         previous = marker.read_text(encoding="utf-8").strip() if marker.is_file() else None
         argv = configure_command(
@@ -236,12 +264,12 @@ class CppAdapter(LanguageAdapter):
             standard=standard,
             extra_args=build_options,
             initial_cache=ctx.sandbox(script),
-            fresh=previous is not None and previous != standard,
+            fresh=previous is not None and previous != configured,
         )
         result, output = self._run(ctx, argv, "configure.log", timeout_s=ctx.lang.build_timeout_s)
         if result.ok:
             marker.parent.mkdir(parents=True, exist_ok=True)
-            marker.write_text(standard, encoding="utf-8")
+            marker.write_text(configured, encoding="utf-8")
         diagnostics = parse_cmake_output(output, mapper, ctx.sandbox(ctx.worktree))
         diagnostics += parse_compiler_output(output, mapper)
         success = result.ok
@@ -269,6 +297,8 @@ class CppAdapter(LanguageAdapter):
         )
 
     def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
+        if (make := self._make_build(ctx)) is not None:
+            return make.build(targets)
         mapper = self._mapper(ctx)
         chosen = list(targets) if targets is not None else list(ctx.lang.build_targets)
         argv = build_command(ctx.sandbox(ctx.build_dir), chosen)
@@ -285,6 +315,9 @@ class CppAdapter(LanguageAdapter):
         )
 
     def clean_build(self, ctx: AdapterContext) -> None:
+        if (make := self._make_build(ctx)) is not None:
+            make.clean()
+            return
         # The build tree may be a Docker volume the host can't see, so the sandbox empties it:
         # first the build outputs, then the CMake cache, which makes the next configure fresh.
         build = ctx.sandbox(ctx.build_dir)
@@ -301,6 +334,8 @@ class CppAdapter(LanguageAdapter):
     # ------------------------------------------------------------------ tests
 
     def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
+        if (make := self._make_build(ctx)) is not None:
+            return make.run_tests(selection)
         work = ctx.cache_dir / "tests"
         shutil.rmtree(work, ignore_errors=True)
         gtest_dir = work / "gtest"
@@ -371,22 +406,44 @@ class CppAdapter(LanguageAdapter):
         return detect_project(root, files)
 
     def project_standard(self, ctx: AdapterContext) -> str | None:
-        """The oldest standard the project's own CMake files set (excluded paths don't count)."""
+        """The oldest standard the project's own build files set (excluded paths don't
+        count): CMake's, or the ``-std=`` options of a Make build."""
+        make = ctx.lang.build_system == MAKE
+        listed = make_files if make else build_files
         texts: list[str] = []
-        for rel in build_files(ctx.worktree, PathMatcher(ctx.lang.exclude)):
+        for rel in listed(ctx.worktree, PathMatcher(ctx.lang.exclude)):
             try:
                 texts.append(TextFile.decode((ctx.worktree / rel).read_bytes()).text)
             except BinaryFileError:
-                continue  # not a CMake file after all
+                continue  # not a build file after all
+        if make:
+            return self._lowest_flag_standard(standards_in(texts, cxx=self.language == "cpp"))
         return lowest_standard(texts)
 
+    def _lowest_flag_standard(self, found: list[str]) -> str | None:
+        """The oldest of the standards ``-std=`` options name, among those this adapter knows."""
+        order = StandardOrder(self.language, tuple(self.capabilities().standards))
+        known = [s for s in found if order.known(s)]
+        oldest: str | None = None
+        for standard in known:
+            if oldest is None or order.newer(oldest, standard):
+                oldest = standard
+        return oldest
+
     def builds(self, ctx: AdapterContext) -> bool:
+        if ctx.lang.build_system == MAKE:
+            return has_make_build(ctx.worktree)
         return (ctx.worktree / "CMakeLists.txt").is_file()
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
         # Unchanged translation units come from the helper's cache, so re-indexing after an
         # edit costs only the units that include the edited files (FR-2.4).
-        return run_index(ctx, adapter_version=self.version)
+        make = self._make_build(ctx)
+        if make is None:
+            return run_index(ctx, adapter_version=self.version, language=self.language)
+        return run_index(
+            ctx, adapter_version=self.version, language=self.language, build_model=make.model()
+        )
 
     # ------------------------------------------------------------------ codemods
 
@@ -496,7 +553,7 @@ class CppAdapter(LanguageAdapter):
         argv = [
             "clang-tidy",
             "-p",
-            ctx.sandbox(ctx.build_dir),
+            ctx.sandbox(self._compdb_dir(ctx)),
             f"--checks=-*,{','.join(spec.checks)}",
             f"--header-filter={_header_filter(headers)}",
             f"--export-fixes={ctx.sandbox(fixes_path)}",
@@ -641,6 +698,11 @@ class CppAdapter(LanguageAdapter):
     def register_test_files(
         self, ctx: AdapterContext, test_dir: str, files: list[str], sources: list[str]
     ) -> list[str]:
+        if ctx.lang.build_system == MAKE:
+            raise ConfigError(
+                "characterization tests can't be added to a Make build yet",
+                hint="Set parity.characterization_tests.enabled to false (D-68).",
+            )
         root_file = ctx.worktree / "CMakeLists.txt"
         root = TextFile.decode(root_file.read_bytes())
         directory = PurePosixPath(test_dir.rstrip("/"))
@@ -851,6 +913,13 @@ def find_disabled_tests(path: str, text: str) -> list[str]:
 
 
 _WINDOWS = sys.platform == "win32"
+
+
+def _folds(ctx: AdapterContext) -> bool:
+    """Whether paths in tool output compare without case: native runs on Windows and macOS."""
+    return ctx.executor.kind == "native" and sys.platform in ("win32", "darwin")
+
+
 _OUTPUT_FLAGS_WITH_VALUE = {"-o", "-MF", "-MT", "-MQ"}
 _OUTPUT_FLAGS = {"-c", "-MD", "-MMD", "-M", "-MM"}
 

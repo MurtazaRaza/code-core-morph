@@ -20,9 +20,9 @@ Languages:
         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
         for projects that build as C++98/03)
   rust  the cpp toolchain, plus Rust (through rustup, with clippy and
-        rustfmt), cargo-nextest, cbindgen and Corrosion, for C++ to Rust
-        ports; rustup and cargo download Rust and cbindgen themselves, so
-        --offline doesn't apply
+        rustfmt), cargo-nextest, cbindgen, bindgen and Corrosion, for C++
+        and C to Rust ports; rustup and cargo download Rust, cbindgen and
+        bindgen themselves, so --offline doesn't apply
   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
         Spoon jar, and a Maven repository with OpenRewrite and the plugins
         builds run offline; Maven downloads those itself, so --offline
@@ -268,10 +268,11 @@ install_cpp() {
     cpp_write_env
 }
 
-# The Rust release rustup installs, and the cbindgen release cargo builds (D-56). rustup and
-# cargo verify what they download themselves (SPEC 7.15 rule 1).
+# The Rust release rustup installs, and the cbindgen (D-56) and bindgen (D-68) releases cargo
+# builds. rustup and cargo verify what they download themselves (SPEC 7.15 rule 1).
 RUST_VERSION=1.99.1
 CBINDGEN_VERSION=0.29.4
+BINDGEN_VERSION=0.73.2
 
 # Sets RUST_HOST, RUSTUP_HOME_DIR and CARGO_HOME_DIR, and installs the pinned Rust release.
 rust_install_toolchain() {
@@ -324,6 +325,26 @@ rust_install_cbindgen() {
         RUSTUP_TOOLCHAIN="$RUST_VERSION" "$CARGO_HOME_DIR/bin/cargo$_exe" install cbindgen \
         --version "$CBINDGEN_VERSION" --locked --root "$(ccm_native_path "$_root")" ||
         ccm_die "$CCM_EXIT_DOWNLOAD" "building cbindgen $CBINDGEN_VERSION failed"
+}
+
+# Builds the pinned bindgen (the bindgen-cli crate) with cargo, unless it is already there.
+# Sets BINDGEN_BIN. It loads libclang when it runs (LIBCLANG_PATH in rust.env).
+rust_install_bindgen() {
+    _root="$CCM_HOME/toolchains/bindgen/$BINDGEN_VERSION"
+    BINDGEN_BIN="$_root/bin"
+    if [ "$CCM_FORCE" != 1 ] && [ -x "$BINDGEN_BIN/bindgen$_exe" ]; then
+        ccm_log "bindgen $BINDGEN_VERSION is already installed in $_root"
+        return 0
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would build bindgen $BINDGEN_VERSION with cargo install --locked into $_root"
+        return 0
+    fi
+    ccm_log "building bindgen $BINDGEN_VERSION (cargo install --locked)"
+    PATH="$LLVM_BIN:$PATH" RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" \
+        RUSTUP_TOOLCHAIN="$RUST_VERSION" "$CARGO_HOME_DIR/bin/cargo$_exe" install bindgen-cli \
+        --version "$BINDGEN_VERSION" --locked --root "$(ccm_native_path "$_root")" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "building bindgen $BINDGEN_VERSION failed"
 }
 
 # Installs Corrosion from its source with the pinned CMake. Sets CORROSION_PREFIX.
@@ -383,16 +404,21 @@ rust_write_env() {
     _sep=:
     case $CCM_PLATFORM in windows-*) _sep=';' ;; esac
     _rust_prepend="$(ccm_env_path "$CARGO_HOME_DIR/bin")$_sep$(ccm_env_path "$NEXTEST_BIN")"
-    _rust_prepend="$_rust_prepend$_sep$(ccm_env_path "$CBINDGEN_BIN")"
+    _rust_prepend="$_rust_prepend$_sep$(ccm_env_path "$CBINDGEN_BIN")$_sep$(ccm_env_path "$BINDGEN_BIN")"
+    # bindgen loads libclang from LLVM's lib directory. llvm-mingw has no libclang.dll, so
+    # bindgen runs in Docker on Windows for now (D-68).
+    _libclang=""
+    case $CCM_PLATFORM in windows-*) ;; *) _libclang="${LLVM_BIN%/bin}/lib" ;; esac
     _cpp_prepend="$(ccm_env_path "$LLVM_BIN")$_sep$(ccm_env_path "$CMAKE_BIN")$_sep$(ccm_env_path "$NINJA_BIN")"
     [ -z "$EXTRA_BIN" ] || _cpp_prepend="$_cpp_prepend$_sep$(ccm_env_path "$EXTRA_BIN")"
     _prefixes="$(ccm_env_path "$GTEST_PREFIX")$_sep$(ccm_env_path "$CORROSION_PREFIX")"
-    _sh_path="$CARGO_HOME_DIR/bin:$NEXTEST_BIN:$CBINDGEN_BIN:$LLVM_BIN:$CMAKE_BIN:$NINJA_BIN"
+    _sh_path="$CARGO_HOME_DIR/bin:$NEXTEST_BIN:$CBINDGEN_BIN:$BINDGEN_BIN:$LLVM_BIN:$CMAKE_BIN:$NINJA_BIN"
     [ -z "$EXTRA_BIN" ] || _sh_path="$_sh_path:$EXTRA_BIN"
     if ! {
         printf '# CodeCoreMorph Rust toolchain (with the C++ one), written by install-toolchain.\n'
-        printf '# Do not edit. rust %s (rustup %s), cargo-nextest %s, cbindgen %s,\n' \
-            "$RUST_VERSION" "$RUSTUP_VERSION" "$NEXTEST_VERSION" "$CBINDGEN_VERSION"
+        printf '# Do not edit. rust %s (rustup %s), cargo-nextest %s, cbindgen %s, bindgen %s,\n' \
+            "$RUST_VERSION" "$RUSTUP_VERSION" "$NEXTEST_VERSION" "$CBINDGEN_VERSION" \
+            "$BINDGEN_VERSION"
         printf '# corrosion %s, %s, cmake %s, ninja %s, googletest %s and %s\n' \
             "$CORROSION_VERSION" "$LLVM_ID" "$CMAKE_VERSION" "$NINJA_VERSION" "$GTEST_VERSION" \
             "$GTEST98_VERSION"
@@ -405,6 +431,7 @@ rust_write_env() {
         printf 'RUSTUP_HOME=%s\n' "$(ccm_env_path "$RUSTUP_HOME_DIR")"
         printf 'CARGO_HOME=%s\n' "$(ccm_env_path "$CARGO_HOME_DIR")"
         printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUST_VERSION"
+        [ -z "$_libclang" ] || printf 'LIBCLANG_PATH=%s\n' "$(ccm_env_path "$_libclang")"
         # Builds never reach the network; crates come from the fetch step (SPEC 11.5).
         printf 'CARGO_NET_OFFLINE=true\n'
     } >"$_env.tmp" || ! mv -f "$_env.tmp" "$_env"; then
@@ -422,6 +449,10 @@ rust_write_env() {
         printf 'RUSTUP_HOME="%s"\n' "$(ccm_native_path "$RUSTUP_HOME_DIR")"
         printf 'CARGO_HOME="%s"\n' "$(ccm_native_path "$CARGO_HOME_DIR")"
         printf 'RUSTUP_TOOLCHAIN=%s\n' "$RUST_VERSION"
+        if [ -n "$_libclang" ]; then
+            printf 'LIBCLANG_PATH="%s"\n' "$(ccm_native_path "$_libclang")"
+            printf 'export LIBCLANG_PATH\n'
+        fi
         printf 'export PATH CC CXX CMAKE_GENERATOR CMAKE_PREFIX_PATH RUSTUP_HOME CARGO_HOME'
         printf ' RUSTUP_TOOLCHAIN\n'
     } >"$_activate.tmp" || ! mv -f "$_activate.tmp" "$_activate"; then
@@ -433,13 +464,14 @@ rust_write_env() {
 
 install_rust() {
     [ -z "$CCM_OFFLINE" ] || ccm_die "$CCM_EXIT_USAGE" "--offline doesn't apply to rust: rustup" \
-        "downloads the Rust release and cargo builds cbindgen themselves"
+        "downloads the Rust release and cargo builds cbindgen and bindgen themselves"
     install_cpp
     rust_install_toolchain
     ccm_install_tool rust cargo-nextest
     NEXTEST_VERSION=$CCM_ROW_VERSION
     NEXTEST_BIN=$CCM_TOOL_BIN_DIR
     rust_install_cbindgen
+    rust_install_bindgen
     rust_install_corrosion
     rust_write_env
 }

@@ -1,0 +1,14 @@
+kvconf 0.3.1
+============
+
+A small C library for "key = value" configuration files, with sections,
+typed values (integers, reals, booleans and quoted strings) and comments,
+and kvdump, which prints a file's entries with their types.
+
+    ./configure && make && make check
+
+If there is no configure script yet, run `autoreconf -fi` first.
+
+Copyright (c) 2009 The kvconf authors. Permission is hereby granted, free
+of charge, to any person obtaining a copy of this software, to deal in the
+software without restriction, under the terms of the MIT license.

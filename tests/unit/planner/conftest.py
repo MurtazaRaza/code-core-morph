@@ -71,10 +71,11 @@ class FakeProject:
         kind: str = "function",
         definition: bool = True,
         boundary: str = "none",
+        signature: str | None = None,
     ) -> FakeProject:
         name = symbol_id.rsplit("@", 1)[-1]
         self.symbols.append(
-            (symbol_id, name, name, kind, file, start[0], start[1], end[0], end[1], None,
+            (symbol_id, name, name, kind, file, start[0], start[1], end[0], end[1], signature,
              "none", int(definition), boundary)
         )  # fmt: skip
         return self
@@ -88,11 +89,20 @@ class FakeProject:
         return self
 
     def target(
-        self, name: str, kind: str, files: list[str], dependencies: tuple[str, ...] = ()
+        self,
+        name: str,
+        kind: str,
+        files: list[str],
+        dependencies: tuple[str, ...] = (),
+        artifacts: tuple[str, ...] = (),
     ) -> FakeProject:
         self.targets.append(
             BuildTarget(
-                name=name, kind=TargetKind(kind), files=files, dependencies=list(dependencies)
+                name=name,
+                kind=TargetKind(kind),
+                files=files,
+                dependencies=list(dependencies),
+                artifacts=list(artifacts),
             )
         )
         return self

@@ -1,0 +1,13 @@
+name = string:"kvdump sample"
+debug = bool:false
+server.host = string:"example.org"
+server.port = int:8081
+server.timeout = real:2.5
+server.ratio = real:1e-05
+server.mask = int:31
+server.mode = int:8
+server.ids = string:"08"
+server.greeting = string:"say \"hi\"\tthen go"
+Paths.root = string:"/srv/data"
+Paths.empty = string:""
+# 12 of 12 entries, 3 sections, 6 strings

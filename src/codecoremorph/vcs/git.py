@@ -18,7 +18,7 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +64,9 @@ _HARDENING = (
     "-c",
     "color.ui=false",
 )
+# A checkout as on Linux: the committed bytes, LF for text a .gitattributes normalizes, and
+# whatever eol a .gitattributes sets explicitly; the machine's core.autocrlf doesn't apply.
+LF_CHECKOUT = ("core.autocrlf=false", "core.eol=lf")
 
 
 def git_executable() -> str:
@@ -104,11 +107,15 @@ class GitResult:
 
 
 class Git:
-    """Runs git in one directory. Construct one per repository or worktree."""
+    """Runs git in one directory. Construct one per repository or worktree. ``config``
+    (``key=value`` settings, such as :data:`LF_CHECKOUT`) applies to every command."""
 
-    def __init__(self, cwd: Path, *, timeout_s: float = _DEFAULT_TIMEOUT_S):
+    def __init__(
+        self, cwd: Path, *, timeout_s: float = _DEFAULT_TIMEOUT_S, config: Sequence[str] = ()
+    ):
         self.cwd = cwd
         self.timeout_s = timeout_s
+        self.config = tuple(config)
 
     def run(
         self,
@@ -117,7 +124,8 @@ class Git:
         stdin: bytes | None = None,
         env: Mapping[str, str] | None = None,
     ) -> GitResult:
-        argv = [git_executable(), *_HARDENING, *args]
+        settings = [arg for setting in self.config for arg in ("-c", setting)]
+        argv = [git_executable(), *_HARDENING, *settings, *args]
         child_env = git_environment()
         if env:
             child_env.update(env)

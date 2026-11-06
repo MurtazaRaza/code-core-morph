@@ -39,6 +39,7 @@ codecoremorph = "codecoremorph.cli:main"
 
 # Built-in plugins register like third-party ones (FR-15.1).
 [project.entry-points."codecoremorph.adapters"]
+c = "codecoremorph.adapters.c:CAdapter"
 cpp = "codecoremorph.adapters.cpp:CppAdapter"
 rust = "codecoremorph.adapters.rust:RustAdapter"
 java = "codecoremorph.adapters.java:JavaAdapter"
@@ -47,6 +48,7 @@ csharp = "codecoremorph.adapters.csharp:CSharpAdapter"
 [project.entry-points."codecoremorph.rules"]
 cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
 cpp_to_rust = "codecoremorph.rules.packs.cpp_to_rust:PACK_DIR"
+c_to_rust = "codecoremorph.rules.packs.c_to_rust:PACK_DIR"
 java = "codecoremorph.rules.packs.java:PACK_DIR"
 csharp = "codecoremorph.rules.packs.csharp:PACK_DIR"
 

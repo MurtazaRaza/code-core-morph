@@ -13,6 +13,7 @@ re-indexing a set of files replaces exactly their rows (FR-2.4).
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -50,6 +51,18 @@ SYMBOL_COLUMNS = (
 )  # fmt: skip
 REFERENCE_COLUMNS = ("from_file", "from_symbol", "to_symbol", "kind", "line", "col")
 DEPENDENCY_COLUMNS = ("from_file", "to_file", "kind")
+
+_VA_LIST = re.compile(r"\bva_list\b|\b__builtin_va_list\b|\b__va_list_tag\b")
+
+
+def takes_variable_arguments(symbol: Symbol) -> bool:
+    """A function that takes ``...`` or a ``va_list`` (by its signature, whose arguments end
+    with ``...`` for a variadic one). Stable Rust can define neither, so a C port leaves such a
+    function in C, over the Rust code, until the retirement (D-70)."""
+    if symbol.kind is not SymbolKind.FUNCTION or not symbol.signature:
+        return False
+    return symbol.signature.rstrip().endswith("...)") or bool(_VA_LIST.search(symbol.signature))
+
 
 FileRow = tuple[str, str, str, str, int, int, str, str]
 SymbolRow = tuple[str, str, str, str, str, int, int, int, int, str | None, str, int, str]
@@ -315,12 +328,41 @@ class IndexStore:
         """``(from_file, to_file)`` for every file that references a symbol defined in another
         file. Only definitions count: forward declarations would tie unrelated headers together.
         """
+        return [(a, b) for a, b, _ in self.reference_counts()]
+
+    def reference_counts(self) -> list[tuple[str, str, int]]:
+        """:meth:`reference_edges` with, for each, how many distinct symbols ``from_file`` uses
+        that ``to_file`` defines: what a C port calls through ``extern`` declarations while
+        ``to_file`` is still C (D-68). A C file that defines the symbol itself uses its own:
+        a C type has no linkage, so two files that each define ``struct sink`` define two
+        types, which share one ID (D-70)."""
         rows = self._conn.execute(
-            "SELECT DISTINCT r.from_file, s.file FROM refs r "
+            "SELECT r.from_file, s.file, COUNT(DISTINCT s.id) FROM refs r "
             "JOIN symbols s ON s.id = r.to_symbol AND s.is_definition = 1 "
-            "WHERE s.file != r.from_file ORDER BY r.from_file, s.file"
+            "WHERE s.file != r.from_file AND NOT ("
+            "EXISTS (SELECT 1 FROM files f WHERE f.path = r.from_file AND f.language = 'c') AND "
+            "EXISTS (SELECT 1 FROM symbols own WHERE own.id = s.id AND own.file = r.from_file "
+            "AND own.is_definition = 1)) "
+            "GROUP BY r.from_file, s.file ORDER BY r.from_file, s.file"
         )
-        return [(str(a), str(b)) for a, b in rows]
+        return [(str(a), str(b), _int(n)) for a, b, n in rows]
+
+    def used_elsewhere(self, path: str) -> list[Symbol]:
+        """The symbols ``path`` defines that another file declares or references: in C, what
+        a translation unit exports (D-68)."""
+        rows = self._conn.execute(
+            f"SELECT {', '.join(f's.{c}' for c in SYMBOL_COLUMNS)} FROM symbols s "
+            "WHERE s.file = ? AND s.is_definition = 1 AND ("
+            "EXISTS (SELECT 1 FROM symbols d WHERE d.id = s.id AND d.file != s.file) OR "
+            "EXISTS (SELECT 1 FROM refs r WHERE r.to_symbol = s.id AND r.from_file != s.file)) "
+            "ORDER BY s.start_line, s.start_column, s.id",
+            (path,),
+        )
+        found: dict[str, Symbol] = {}
+        for row in rows:
+            symbol = _symbol(row)
+            found.setdefault(symbol.id, symbol)  # a symbol defined twice in one file is one
+        return list(found.values())
 
     def files_declaring(self, symbol_ids: Iterable[str]) -> list[str]:
         """Files holding a declaration or definition of any of ``symbol_ids``."""

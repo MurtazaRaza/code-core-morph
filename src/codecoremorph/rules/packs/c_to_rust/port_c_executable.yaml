@@ -1,0 +1,24 @@
+id: port_c_executable
+language: c
+target_language: rust
+kind: port
+port_units: executable            # one unit per program, after every unit of its libraries (D-69)
+description: >-
+  Port a C program to a Rust program of the same name, on the Rust API of the library crates.
+  The Make build copies it to the C program's path, so the tests and scripts that run the
+  program run the Rust one.
+detector:
+  type: files                     # each of the program's C files, until it is deleted
+codemods:
+  - tool: rust-bin                # the program's package and its Make rule
+    options: {language: c}
+extra_scope: ['rust/**']          # the Cargo workspace lives here
+llm:
+  guidance: guidance/port_c_executable.md
+postconditions:
+  - {type: detector_empty, severity: error}     # the C sources are gone
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code in the program
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new code
+  - {type: test_map, severity: error}           # the tests that run it are mapped
+skip:
+  - test                          # the C tests stay as they are: they judge the port

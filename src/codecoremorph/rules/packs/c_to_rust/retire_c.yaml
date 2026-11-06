@@ -1,0 +1,21 @@
+id: retire_c
+language: c
+target_language: rust
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-60, D-69)
+description: >-
+  Retire the C: delete what is left of it, the headers, the Make build and the crates' C
+  bridges with their `sys` modules, so the Cargo workspace builds and tests alone.
+detector:
+  type: files                     # each C file, until it is deleted
+codemods:
+  - tool: rust-retire             # deletes the C, the Make build and the bridges
+    options: {language: c}
+extra_scope: ['rust/**']          # the Cargo workspace lives here
+llm:
+  guidance: guidance/retire_c.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no C file left (but a kept API)
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code
+  - {type: lint_clean, severity: error}         # clippy is quiet about every crate

@@ -26,6 +26,7 @@ repos:
         entry: uv run --frozen shellcheck --shell=sh --external-sources
         language: system
         files: \.sh$
+        exclude: ^fixtures/  # deliberately legacy test inputs; never modernize them
       - id: check-manifest
         name: dependency manifest format
         entry: uv run --frozen python scripts/deps/check-manifest.py

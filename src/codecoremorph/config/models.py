@@ -268,6 +268,10 @@ class BuildToolOptions(ConfigModel):
         description="Extra arguments for the configure step, e.g. `-DBUILD_TESTING=ON`",
     )
     build_targets: list[str] = Field(default_factory=list[str], description="Empty means all")
+    test_targets: list[str] = Field(
+        default_factory=list[str],
+        description="Make targets that run the tests; empty means `check`, else `test` (D-68)",
+    )
 
 
 class ModelPrice(ConfigModel):

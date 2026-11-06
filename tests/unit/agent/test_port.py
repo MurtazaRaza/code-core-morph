@@ -8,6 +8,8 @@ import re
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.agent.loop import UnitRunner
 from codecoremorph.core.models import (
@@ -244,3 +246,38 @@ def test_a_failed_build_adds_the_target_diagnostics(world: World) -> None:
     feedback = runner.artifacts.attempt("U-0001", 1).feedback_md.read_text(encoding="utf-8")
     assert "mismatched types: expected `f64`, found `i32`" in feedback
     assert "rust/geo/src/lib.rs" in feedback
+
+
+@pytest.mark.parametrize("exports", [["area"], []])
+def test_a_c_unit_exports_only_its_own_functions(world: World, exports: list[str]) -> None:
+    """A C translation unit's header also declares other units' functions (D-68): only its
+    exports must come from the new code."""
+    from codecoremorph.core.models import PortUnit
+
+    lib = SCAFFOLD + "// export area: double (double, double)\n"
+    runner, _ = _port_runner(world, [reply(submit("s1", *_edits(lib)))])
+    source = runner.adapter
+    assert isinstance(source, SourceAdapter)
+    read = source.c_declarations
+
+    def declarations(ctx: AdapterContext, header: Path) -> dict[str, str]:
+        if header.name != "geo.h":
+            return read(ctx, header)  # the crate's exported header
+        return {"area": "double (double, double)", "perimeter": "double (double, double)"}
+
+    source.c_declarations = declarations  # type: ignore[method-assign]
+    port = PortUnit(
+        build_target="geo",
+        crate="geo",
+        module="geo",
+        c_headers=["include/geo.h"],
+        exports=exports,
+    )
+    runner.settings = replace(runner.settings, max_retry_budget=0)
+    outcome = runner.run(_unit().model_copy(update={"port": port}), [PORT])
+    if exports:
+        assert outcome.succeeded, outcome.reason
+    else:  # a module port's headers are its own: all of them is the interface
+        assert outcome.attempts[0].outcome is AttemptOutcome.INVARIANT_FAILED
+        feedback = runner.artifacts.attempt("U-0001", 1).feedback_md.read_text(encoding="utf-8")
+        assert "`perimeter` isn't exported" in feedback

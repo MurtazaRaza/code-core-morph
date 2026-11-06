@@ -722,8 +722,9 @@ class UnitRunner:
     def _c_abi(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         """``c_abi_kept``: the unit's new code (its changed files under the rule's
         ``extra_scope``) exports every function its kept headers (the reference files, or a
-        module port's C headers) declare, with the same signature. Both sides are read by the
-        source adapter."""
+        module port's C headers) declare, with the same signature; for a C translation unit,
+        every one of its exports those headers declare. Both sides are read by the source
+        adapter."""
         rule_id = loaded.rule.id
         headers = list(unit.port.c_headers if unit.port is not None else unit.reference_files)
         if not headers:
@@ -743,6 +744,10 @@ class UnitRunner:
             expected: dict[str, str] = {}
             for header in headers:
                 expected.update(self.adapter.c_declarations(self.ctx, self.worktree.path / header))
+            if unit.port is not None and unit.port.exports:
+                # A C translation unit's headers also declare other units' functions (D-68).
+                wanted = set(unit.port.exports)
+                expected = {name: sig for name, sig in expected.items() if name in wanted}
             exported: dict[str, str] = {}
             if new_code:
                 for path in self.target_adapter.exported_c_headers(self.target_ctx, new_code):
@@ -812,8 +817,8 @@ class UnitRunner:
 
     def _symbol_map(self, unit: WorkUnit, loaded: LoadedRule) -> str:
         """``symbol_map`` (the mapping steward, D-58): the project's symbol map has an entry
-        for every name the unit's headers declare publicly, each pointing at items the new code
-        has, and no name twice."""
+        for every name the unit's headers declare publicly (a C translation unit: every name it
+        exports), each pointing at items the new code has, and no name twice."""
         rule_id = loaded.rule.id
         if self.target_adapter is None or self.target_ctx is None or self.index_path is None:
             return f"{rule_id}: symbol_map checks a port's map; this isn't a port"
@@ -828,10 +833,21 @@ class UnitRunner:
         entries, problems = read_symbol_map(
             text, self.ctx.lang.language, self.target_ctx.lang.language
         )
-        headers = {f for f in unit.files if (self.worktree.path / f).is_file()}
+        # A port's read-only headers are other units' too: what they declare isn't this unit's
+        # to map. A C translation unit maps what it exports (D-68).
+        headers = {
+            f
+            for f in unit.files
+            if f not in unit.reference_files and (self.worktree.path / f).is_file()
+        }
         with IndexStore.open(self.index_path) as store:
             headers = {f for f in headers if (e := store.file(f)) and e.role is FileRole.HEADER}
             required = required_names(store.symbols(), headers)
+        if unit.port is not None and unit.port.exports:
+            sources = [f for f in unit.files if f not in unit.reference_files and f.endswith(".c")]
+            where = (sources or unit.port.c_headers or [unit.files[0]])[0]
+            for name in unit.port.exports:
+                required.setdefault(name, where)
         with IndexStore.open(target_index.path) as store:
             known = {s.qualified_name for s in store.symbols()}
         problems += symbol_map_problems(entries, required, known)

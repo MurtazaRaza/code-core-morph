@@ -1,0 +1,9 @@
+server.host = string:"example.org"
+server.port = string:"8081"
+server.timeout = string:"2.5"
+server.ratio = string:"1e-5"
+server.mask = string:"0x1f"
+server.mode = string:"010"
+server.ids = string:"08"
+server.greeting = string:"say \"hi\"\tthen go"
+# 8 of 12 entries, 3 sections, 12 strings

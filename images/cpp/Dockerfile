@@ -8,11 +8,13 @@
 # 24.04 no longer ships.
 FROM ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11
 
+# autoconf, automake and libtool regenerate an autotools project's configure script when it
+# doesn't ship one (a C project built with Make, D-68).
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential ca-certificates ccache curl libtinfo5 libxml2 python3 python3-venv \
-        unzip xz-utils \
+        autoconf automake build-essential ca-certificates ccache curl libtinfo5 libtool \
+        libxml2 python3 python3-venv unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # The toolchain, installed by the same script as native installs. Downloads are verified

@@ -1,0 +1,164 @@
+[
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "huffman.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "crctable.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "randtable.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "blocksort.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "compress.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "decompress.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "bzlib.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "bzip2.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-c",
+   "bzip2recover.c"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-o",
+   "bzip2recover",
+   "bzip2recover.o"
+  ]
+ },
+ {
+  "tool": "ar",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "cq",
+   "libbz2.a",
+   "blocksort.o",
+   "huffman.o",
+   "crctable.o",
+   "randtable.o",
+   "compress.o",
+   "decompress.o",
+   "bzlib.o"
+  ]
+ },
+ {
+  "tool": "cc",
+  "cwd": "/tmp/mirror/bzip2",
+  "args": [
+   "-Wall",
+   "-Winline",
+   "-O2",
+   "-g",
+   "-D_FILE_OFFSET_BITS=64",
+   "-o",
+   "bzip2",
+   "bzip2.o",
+   "-L.",
+   "-lbz2"
+  ]
+ }
+]

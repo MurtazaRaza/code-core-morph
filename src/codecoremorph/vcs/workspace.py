@@ -26,7 +26,7 @@ from codecoremorph.core.models.vcs import DirtyState
 from codecoremorph.core.paths import STATE_DIR_NAME, HomeLayout
 from codecoremorph.vcs.lock import RepoLock
 from codecoremorph.vcs.repository import Repository
-from codecoremorph.vcs.worktree import Worktree
+from codecoremorph.vcs.worktree import LineEndings, Worktree
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +54,10 @@ class RunWorkspace:
         *,
         base: str = "HEAD",
         home: HomeLayout | None = None,
+        line_endings: LineEndings = "native",
     ) -> RunWorkspace:
-        """Take the lock and create the run branch and worktree from ``base`` (FR-6.1, 6.2)."""
+        """Take the lock and create the run branch and worktree from ``base`` (FR-6.1, 6.2),
+        checked out with ``line_endings`` (``lf`` for builds in a Linux container, D-68)."""
         validate_run_id(run_id)
         home = home or HomeLayout.resolve()
         repository = Repository.discover(repo_path)
@@ -83,7 +85,7 @@ class RunWorkspace:
                     base_commit[:12],
                 )
             worktree = repository.add_worktree(
-                home.worktree(run_id), run_branch(run_id), base_commit
+                home.worktree(run_id), run_branch(run_id), base_commit, line_endings=line_endings
             )
             missing = repository.populate_submodules(worktree, base_commit)
             if missing:

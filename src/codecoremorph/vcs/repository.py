@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,8 +21,8 @@ from codecoremorph.core.errors import GitCommandError, SafetyViolationError, Vcs
 from codecoremorph.core.ids import BRANCH_PREFIX, is_run_id
 from codecoremorph.core.models.vcs import DirtyState
 from codecoremorph.core.paths import STATE_DIR_NAME
-from codecoremorph.vcs.git import Git
-from codecoremorph.vcs.worktree import Worktree
+from codecoremorph.vcs.git import LF_CHECKOUT, Git
+from codecoremorph.vcs.worktree import LineEndings, Worktree, record_checkout
 
 log = logging.getLogger(__name__)
 
@@ -229,8 +230,11 @@ class Repository:
         log.debug("added %s to %s", EXCLUDE_ENTRY, path)
         return True
 
-    def add_worktree(self, path: Path, branch: str, base_sha: str) -> Worktree:
-        """Create ``branch`` at ``base_sha`` and check it out in a new worktree at ``path``."""
+    def add_worktree(
+        self, path: Path, branch: str, base_sha: str, *, line_endings: LineEndings = "native"
+    ) -> Worktree:
+        """Create ``branch`` at ``base_sha`` and check it out in a new worktree at ``path``,
+        with ``line_endings`` (:data:`LineEndings`)."""
         if not is_run_branch(branch):
             raise SafetyViolationError(f"refusing to create non-CodeCoreMorph branch {branch!r}")
         if not _SHA_RE.match(base_sha):
@@ -244,7 +248,9 @@ class Repository:
         if path.exists() and any(path.iterdir()):
             raise VcsError(f"worktree directory {path} already exists and isn't empty")
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.git.run("worktree", "add", "--quiet", "-b", branch, str(path), base_sha)
+        git = Git(self.root, config=LF_CHECKOUT) if line_endings == "lf" else self.git
+        git.run("worktree", "add", "--quiet", "-b", branch, str(path), base_sha)
+        record_checkout(path, line_endings)
         return Worktree(path, branch)
 
     def submodules_at(self, commit: str) -> list[tuple[str, str]]:
@@ -259,7 +265,7 @@ class Repository:
         Returns the submodule paths that couldn't be populated because the repository doesn't
         have them checked out at a version containing the pinned commit.
         """
-        return _populate(self.root, worktree.path, commit, prefix="")
+        return _populate(self.root, worktree.path, commit, prefix="", config=worktree.git.config)
 
     def remove_worktree(self, path: Path) -> None:
         """Remove a run worktree this repository registered. Never touches other worktrees."""
@@ -297,7 +303,10 @@ def _gitlinks(git: Git, commit: str) -> list[tuple[str, str]]:
     return links
 
 
-def _populate(source_root: Path, target_root: Path, commit: str, *, prefix: str) -> list[str]:
+def _populate(
+    source_root: Path, target_root: Path, commit: str, *, prefix: str, config: Sequence[str]
+) -> list[str]:
+    """``config``: the worktree's checkout settings, which each clone keeps in its own config."""
     missing: list[str] = []
     for path, sha in _gitlinks(Git(source_root), commit):
         name = prefix + path
@@ -314,7 +323,10 @@ def _populate(source_root: Path, target_root: Path, commit: str, *, prefix: str)
             continue  # already populated
         target.mkdir(parents=True, exist_ok=True)
         # --shared borrows the user's objects (read-only) instead of copying them.
-        Git(target).run("clone", "--quiet", "--no-checkout", "--shared", str(source), ".")
-        Git(target).run("checkout", "--quiet", "--detach", sha)
-        missing += _populate(source, target, sha, prefix=f"{name}/")
+        settings = [arg for setting in config for arg in ("--config", setting)]
+        Git(target).run(
+            "clone", "--quiet", "--no-checkout", "--shared", *settings, str(source), "."
+        )
+        Git(target, config=config).run("checkout", "--quiet", "--detach", sha)
+        missing += _populate(source, target, sha, prefix=f"{name}/", config=config)
     return missing

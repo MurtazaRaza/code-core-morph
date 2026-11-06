@@ -36,7 +36,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.graph import ClusterGraph, condense
-from codecoremorph.store.index import IndexStore
+from codecoremorph.store.index import IndexStore, takes_variable_arguments
 
 CODE_ROLES = frozenset({FileRole.SOURCE, FileRole.HEADER, FileRole.TEST})
 
@@ -93,6 +93,10 @@ class ProjectModel:
     uncompiled: list[str] = field(default_factory=list[str])  # in scope, never compiled
     targets: list[BuildTarget] = field(default_factory=list[BuildTarget])  # the build's (D-58)
     tests: list[TestEntry] = field(default_factory=list[TestEntry])  # the build's tests (D-60)
+    # The includes alone, and for each file the files defining what it uses, with how many
+    # distinct symbols: the calls between C translation units (D-68).
+    includes: dict[str, set[str]] = field(default_factory=dict[str, set[str]])
+    calls: dict[str, dict[str, int]] = field(default_factory=dict[str, dict[str, int]])
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -115,21 +119,26 @@ class ProjectModel:
             for dep in store.dependencies():
                 if dep.from_file in files and dep.to_file in files and dep.from_file != dep.to_file:
                     edges[dep.from_file].add(dep.to_file)
-            references = [(a, b) for a, b in store.reference_edges() if a in files and b in files]
+            calls: dict[str, dict[str, int]] = {}
+            for a, b, n in store.reference_counts():
+                if a in files and b in files:
+                    calls.setdefault(a, {})[b] = n
             boundaries = {p: b for p, b in store.boundary_files().items() if p in files}
             meta = store.meta()
             uncompiled = sorted(p for p in (meta.uncompiled if meta else []) if in_scope.matches(p))
             targets = store.build_targets()
             tests = store.test_entries()
+        includes = {path: set(targets) for path, targets in edges.items()}
         partners = pair_headers(files, edges)
         for path, others in partners.items():
             edges[path].update(others)
         structure = condense(files, edges)
         closure = structure.closure()
-        for source, target in references:
-            a, b = structure.cluster_of(source), structure.cluster_of(target)
-            if a != b and not closure[b] >> a & 1:
-                edges[source].add(target)
+        for source, used in sorted(calls.items()):
+            for target in sorted(used):
+                a, b = structure.cluster_of(source), structure.cluster_of(target)
+                if a != b and not closure[b] >> a & 1:
+                    edges[source].add(target)
         return cls(
             worktree=worktree,
             index_path=index_path,
@@ -142,6 +151,8 @@ class ProjectModel:
             uncompiled=uncompiled,
             targets=targets,
             tests=tests,
+            includes=includes,
+            calls=calls,
         )
 
     @property
@@ -224,6 +235,34 @@ class ProjectModel:
                 }
                 found[path] = sorted(headers)
         return found
+
+    def c_exports(self, path: str) -> list[Symbol]:
+        """The functions and variables with C linkage that ``path`` defines and another file
+        declares or uses: what the port of a C translation unit exports (D-68), except what
+        stays C (:meth:`c_variadic`)."""
+        return [s for s in self._c_interface(path) if not takes_variable_arguments(s)]
+
+    def c_variadic(self, path: str) -> list[Symbol]:
+        """The functions of ``path``'s C interface that take ``...`` or a ``va_list``: stable
+        Rust can define neither, so they stay in the C file, over the Rust code (D-70)."""
+        return [s for s in self._c_interface(path) if takes_variable_arguments(s)]
+
+    def _c_interface(self, path: str) -> list[Symbol]:
+        with IndexStore.open(self.index_path) as store:
+            return [
+                s
+                for s in store.used_elsewhere(path)
+                if s.kind in (SymbolKind.FUNCTION, SymbolKind.VARIABLE)
+                and s.boundary is Boundary.C_ABI
+            ]
+
+    def files_declaring(self, symbol_ids: Iterable[str]) -> list[str]:
+        """The files that declare or define one of ``symbol_ids``."""
+        ids = list(symbol_ids)
+        if not ids:
+            return []
+        with IndexStore.open(self.index_path) as store:
+            return store.files_declaring(ids)
 
     def fan_in(self, symbol_ids: Iterable[str]) -> list[str]:
         """Every file that declares, defines or references one of ``symbol_ids``."""

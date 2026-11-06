@@ -86,6 +86,24 @@ MAVEN_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
     "a repository": re.compile(r"<(?:plugin)?[rR]epository>"),
     "an annotation processor": re.compile(r"<annotationProcessor(?:Paths|s)>"),
 }
+# The same in a Make build (D-68): every recipe line is a command, so what counts is what a
+# recipe never needs in a migration: commands that run while make reads the Makefile
+# ($(shell), `!=`), downloads, package installs, and scripts piped into a shell; and in autoconf
+# and m4 input, the macros that run commands when the build files are generated.
+MAKE_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
+    "$(shell ...)": re.compile(r"\$[({]shell\b"),
+    "a shell assignment (!=)": re.compile(r"^\s*[\w.-]+\s*!="),
+    "a download (curl, wget, git clone)": re.compile(
+        r"\b(?:curl|wget)\b|\bgit\s+(?:clone|fetch|pull|submodule)\b"
+    ),
+    "a package install": re.compile(
+        r"\b(?:pip3?|npm|yarn|cargo|go|gem)\s+install\b|\bapt(?:-get)?\s+install\b"
+    ),
+    "a script piped into a shell": re.compile(r"\|\s*(?:ba|da|z)?sh\b"),
+    "m4's esyscmd or syscmd": re.compile(r"\b(?:m4_)?e?syscmd\s*\("),
+}
+_MAKEFILE_NAMES = frozenset({"makefile", "gnumakefile", "makefile.am", "makefile.in"})
+_CONFIGURE_NAMES = frozenset({"configure", "configure.ac", "configure.in"})
 # Maven's own settings in a project (.mvn/): the JVM options and command line of every build.
 MAVEN_SETTINGS_FILES = (".mvn/jvm.config", ".mvn/maven.config")
 # The same in MSBuild files (D-65): tasks that run commands or download, inline tasks (C# that
@@ -563,6 +581,15 @@ def check_suppressions(
     )
 
 
+def _is_make_build_file(file_name: str) -> bool:
+    lowered = file_name.lower()
+    return (
+        lowered in _MAKEFILE_NAMES
+        or lowered in _CONFIGURE_NAMES
+        or lowered.endswith((".mk", ".am", ".m4"))
+    )
+
+
 def check_build_commands(lines: PatchLines) -> InvariantResult:
     """I-12: no new command that runs or downloads at configure or build time. One only moved
     (removed and added again) is not new; neither is one in a comment."""
@@ -584,6 +611,8 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
             patterns.update(MAVEN_BUILD_COMMANDS)
         if file_name.lower().endswith(MSBUILD_SUFFIXES):
             patterns.update(MSBUILD_BUILD_COMMANDS)
+        if _is_make_build_file(file_name):
+            patterns.update(MAKE_BUILD_COMMANDS)
         if file_name.lower() == "global.json":
             patterns["MSBuild SDKs (msbuild-sdks)"] = _MSBUILD_SDKS
         for name, pattern in patterns.items():

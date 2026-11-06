@@ -263,7 +263,8 @@ class _Scanner:
                     name = name_token.text
                 kind = SymbolKind.ALIAS if text == "type" else SymbolKind.VARIABLE
                 if _IDENT.fullmatch(name) and name != "_":
-                    item = self.add(f"{prefix}::{name}", kind, name_token, public)
+                    exported = c_abi and text == "static"  # a C global (D-68)
+                    item = self.add(f"{prefix}::{name}", kind, name_token, public, exported)
                     if scope == "impl":
                         self.impls.append((prefix, owner, item))
                 i = self.skip_to_end(i + 2)

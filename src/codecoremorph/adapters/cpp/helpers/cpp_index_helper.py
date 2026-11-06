@@ -31,7 +31,10 @@ import subprocess
 import sys
 import time
 
-PROTOCOL = 2  # 2: extern "C" blocks no longer show in qualified names (D-58)
+# 2: extern "C" blocks no longer show in qualified names (D-58); 3: a C `static` is on no
+# boundary (D-69); 4: nor is a program's `main`; 5: a variadic function's signature ends
+# with `...` (D-70)
+PROTOCOL = 5
 SOURCE_EXTENSIONS = (".c", ".cc", ".cpp", ".cxx", ".c++", ".cp")
 MAX_TU_PROBLEMS = 3
 
@@ -413,6 +416,8 @@ def _worker_init(workspace_root, exclude, cache_dir, libclang_version):
                "CLASS_TEMPLATE_PARTIAL_SPECIALIZATION")  # fmt: skip
     _STATE["record_kinds"] = {getattr(kinds, n) for n in records if hasattr(kinds, n)}
     _STATE["linkage_spec"] = getattr(kinds, "LINKAGE_SPEC", None)
+    linkage = getattr(cindex, "LinkageKind", None)
+    _STATE["internal_linkage"] = getattr(linkage, "INTERNAL", None) if linkage else None
     _STATE["unexposed_decl"] = kinds.UNEXPOSED_DECL
     access = cindex.AccessSpecifier
     _STATE["access"] = {
@@ -420,6 +425,17 @@ def _worker_init(workspace_root, exclude, cache_dir, libclang_version):
         access.PROTECTED: "protected",
         access.PRIVATE: "private",
     }
+
+
+def _internal(cursor):
+    """Whether the symbol has internal linkage (a C `static`): it is no C interface."""
+    internal = _STATE.get("internal_linkage")
+    if internal is None:
+        return False
+    try:
+        return cursor.linkage == internal
+    except Exception:
+        return False
 
 
 def _is_extern_c(cursor):
@@ -457,10 +473,21 @@ def _qualified(cursor, cache):
     return f"{prefix}::{name}" if prefix else name
 
 
+def _variadic(cursor):
+    """Whether a function takes ``...``: its arguments don't show it."""
+    try:
+        kind = cursor.type.kind
+        return kind.name == "FUNCTIONPROTO" and cursor.type.is_function_variadic()
+    except Exception:
+        return False
+
+
 def _signature(cursor, kind_name, qualified):
     try:
         if kind_name in ("function", "method", "constructor", "destructor", "function_template"):
             args = ", ".join(a.type.spelling for a in cursor.get_arguments())
+            if _variadic(cursor):
+                args = f"{args}, ..." if args else "..."
             result = cursor.result_type.spelling
             text = f"{result} {qualified}({args})".strip()
             if kind_name == "method" and cursor.is_const_method():
@@ -632,7 +659,12 @@ class _Collector:
                 end.column,
             )
         boundary = "none"
-        if kind_name in ("function", "variable") and (extern_c or self.job["lang"] == "c"):
+        if (
+            kind_name in ("function", "variable")
+            and (extern_c or self.job["lang"] == "c")
+            and not _internal(cursor)
+            and not (kind_name == "function" and cursor.spelling == "main")
+        ):
             boundary = "c_abi"
         try:
             is_definition = bool(cursor.is_definition())

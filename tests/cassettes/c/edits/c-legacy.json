@@ -1,0 +1,399 @@
+{
+  "fixture": "c-legacy",
+  "source": "c89",
+  "target": "rust2021",
+  "target_language": "rust",
+  "rules": [
+    "port_c_module",
+    "port_c_executable",
+    "port_c_tests",
+    "retire_c"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 11
+  },
+  "submissions": {
+    "U-0001": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "OBJS = src/sbuf.o src/htab.o src/tok.o src/conf.o src/wf.o",
+            "replace": "OBJS = src/sbuf.o src/htab.o src/tok.o src/wf.o"
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "src/sbuf.o src/htab.o src/tok.o src/conf.o src/wf.o: include/wf.h src/wfint.h",
+            "replace": "src/sbuf.o src/htab.o src/tok.o src/wf.o: include/wf.h src/wfint.h"
+          },
+          {
+            "op": "delete",
+            "path": "src/conf.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/conf.rs",
+            "search": "//! Ported from src/conf.c (CodeCoreMorph, D-68).\n",
+            "replace": "//! Ported from src/conf.c (CodeCoreMorph, D-68): the library's settings. They apply to the\n//! words counted from then on, in every table.\n\nuse std::sync::atomic::Ordering;\n\nuse crate::bridge::conf::{wf_conf_fold_case, wf_conf_min_length};\n\n/// The shortest word counted, in bytes, until it is set.\npub const DEFAULT_MIN_LENGTH: usize = 1;\n\n/// Words shorter than `min` bytes are skipped.\npub fn set_min_length(min: usize) {\n    wf_conf_min_length.store(min, Ordering::Relaxed);\n}\n\n/// The shortest word counted, in bytes.\npub fn min_length() -> usize {\n    wf_conf_min_length.load(Ordering::Relaxed)\n}\n\n/// Whether letters are folded to lower case.\npub fn set_fold_case(fold: bool) {\n    wf_conf_fold_case.store(i32::from(fold), Ordering::Relaxed);\n}\n\n/// Whether letters are folded to lower case.\npub fn fold_case() -> bool {\n    wf_conf_fold_case.load(Ordering::Relaxed) != 0\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/conf.rs",
+            "search": "//! The C functions of src/conf.c, exported under their names over `crate::conf`.\n",
+            "replace": "//! The C functions and globals of src/conf.c, exported under their names over `crate::conf`.\n#![allow(non_upper_case_globals)]\n\nuse std::ffi::c_int;\nuse std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};\n\nuse crate::conf;\n\n/// `extern size_t wf_conf_min_length;` (wfint.h): the setting's storage, which C reads as a\n/// plain `size_t` (an atomic has the same size and layout).\n#[no_mangle]\npub static wf_conf_min_length: AtomicUsize = AtomicUsize::new(conf::DEFAULT_MIN_LENGTH);\n\n/// `extern int wf_conf_fold_case;` (wfint.h): 1 folds letters to lower case, 0 keeps them.\n#[no_mangle]\npub static wf_conf_fold_case: AtomicI32 = AtomicI32::new(1);\n\n#[no_mangle]\npub extern \"C\" fn wf_set_min_length(min: usize) {\n    conf::set_min_length(min);\n}\n\n#[no_mangle]\npub extern \"C\" fn wf_min_length() -> usize {\n    conf::min_length()\n}\n\n#[no_mangle]\npub extern \"C\" fn wf_set_fold_case(fold: c_int) {\n    conf::set_fold_case(fold != 0);\n}\n\n/// The global as C left it (`wf_set_fold_case` stores 0 or 1).\n#[no_mangle]\npub extern \"C\" fn wf_fold_case() -> c_int {\n    wf_conf_fold_case.load(Ordering::Relaxed)\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/mod.rs",
+            "search": "pub mod sys;\nmod conf;",
+            "replace": "pub mod sys;\npub(crate) mod conf;"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "#   note = \"...\"    # optional: behavior the port couldn't keep, or why rust is empty",
+            "replace": "#   note = \"...\"    # optional: behavior the port couldn't keep, or why rust is empty\n\n[[symbol]]\nc = \"wf_conf_min_length\"\nrust = \"wf_rs::bridge::conf::wf_conf_min_length\"\nnote = \"A C global while C reads it (an AtomicUsize); Rust reads it through wf_rs::conf::min_length.\"\n\n[[symbol]]\nc = \"wf_conf_fold_case\"\nrust = \"wf_rs::bridge::conf::wf_conf_fold_case\"\nnote = \"A C global while C reads it (an AtomicI32); Rust reads it through wf_rs::conf::fold_case.\"\n\n[[symbol]]\nc = \"wf_set_min_length\"\nrust = \"wf_rs::conf::set_min_length\"\n\n[[symbol]]\nc = \"wf_min_length\"\nrust = \"wf_rs::conf::min_length\"\n\n[[symbol]]\nc = \"wf_set_fold_case\"\nrust = \"wf_rs::conf::set_fold_case\"\nnote = \"Takes a bool; the C export folds for any nonzero int, as before.\"\n\n[[symbol]]\nc = \"wf_fold_case\"\nrust = \"wf_rs::conf::fold_case\"\nnote = \"Returns a bool; the C export returns the global's int.\""
+          }
+        ],
+        "summary": "Port src/conf.c to wf_rs::conf: the settings' globals stay C data symbols (#[no_mangle] atomics in the bridge, which tok.c still reads), and the four setters and getters are exported under their C names over the safe module.",
+        "review_notes": [
+          "The bridge's conf module is pub(crate): the safe module reads the same storage C does."
+        ]
+      }
+    ],
+    "U-0002": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "OBJS = src/sbuf.o src/htab.o src/tok.o src/wf.o",
+            "replace": "OBJS = src/sbuf.o src/tok.o src/wf.o"
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "src/sbuf.o src/htab.o src/tok.o src/wf.o: include/wf.h src/wfint.h",
+            "replace": "src/sbuf.o src/tok.o src/wf.o: include/wf.h src/wfint.h"
+          },
+          {
+            "op": "delete",
+            "path": "src/htab.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/htab.rs",
+            "search": "//! Ported from src/htab.c (CodeCoreMorph, D-68).\n",
+            "replace": "//! Ported from src/htab.c (CodeCoreMorph, D-68): words and their counts in a hash table with\n//! separate chaining.\n\n/// A table grows past this many entries per bucket.\nconst LOAD: usize = 3;\n\n/// FNV-1a, 32 bits wide.\npub fn hash(bytes: &[u8]) -> u32 {\n    bytes.iter().fold(2_166_136_261_u32, |h, &b| (h ^ u32::from(b)).wrapping_mul(16_777_619))\n}\n\n/// A word and its count. The key is stored with a NUL after it, so its bytes can be handed\n/// out as a C string; they stay where they are as long as the entry is in the table.\n#[derive(Debug)]\npub struct Entry {\n    key: Box<[u8]>,\n    count: u64,\n}\n\nimpl Entry {\n    /// The word.\n    pub fn key(&self) -> &[u8] {\n        &self.key[..self.key.len() - 1]\n    }\n\n    /// The word and a NUL.\n    pub fn key_with_nul(&self) -> &[u8] {\n        &self.key\n    }\n\n    /// How many times it was counted.\n    pub fn count(&self) -> u64 {\n        self.count\n    }\n}\n\n/// A count would go past `u64::MAX`.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct Overflow;\n\n/// Words and their counts, in chains of buckets that double when they get long.\n#[derive(Debug)]\npub struct Table {\n    buckets: Vec<Vec<Entry>>,\n    size: usize,\n}\n\nimpl Table {\n    /// An empty table of `nbuckets` buckets, or `None` for none.\n    pub fn with_buckets(nbuckets: usize) -> Option<Self> {\n        if nbuckets == 0 {\n            return None;\n        }\n        Some(Self { buckets: (0..nbuckets).map(|_| Vec::new()).collect(), size: 0 })\n    }\n\n    /// How many different words it holds.\n    pub fn len(&self) -> usize {\n        self.size\n    }\n\n    pub fn is_empty(&self) -> bool {\n        self.size == 0\n    }\n\n    /// How many buckets it has now.\n    pub fn buckets(&self) -> usize {\n        self.buckets.len()\n    }\n\n    fn slot(&self, key: &[u8]) -> usize {\n        hash(key) as usize % self.buckets.len()\n    }\n\n    /// The entry of `key`, if it has been counted.\n    pub fn find(&self, key: &[u8]) -> Option<&Entry> {\n        self.buckets[self.slot(key)].iter().find(|e| e.key() == key)\n    }\n\n    /// The count of `key`: 0 when it isn't in the table.\n    pub fn get(&self, key: &[u8]) -> u64 {\n        self.find(key).map_or(0, Entry::count)\n    }\n\n    /// Adds `n` to the count of `key`, which a new word starts at. A count that would overflow\n    /// is refused, and the old one stays.\n    pub fn add(&mut self, key: &[u8], n: u64) -> Result<(), Overflow> {\n        let slot = self.slot(key);\n        if let Some(entry) = self.buckets[slot].iter_mut().find(|e| e.key() == key) {\n            entry.count = entry.count.checked_add(n).ok_or(Overflow)?;\n            return Ok(());\n        }\n        let mut stored = Vec::with_capacity(key.len() + 1);\n        stored.extend_from_slice(key);\n        stored.push(0);\n        self.buckets[slot].push(Entry { key: stored.into_boxed_slice(), count: n });\n        self.size += 1;\n        if self.size > self.buckets.len() * LOAD {\n            self.grow();\n        }\n        Ok(())\n    }\n\n    /// Twice the buckets, every entry moved to its new one (the keys' bytes don't move).\n    fn grow(&mut self) {\n        let n = self.buckets.len() * 2;\n        let mut buckets: Vec<Vec<Entry>> = (0..n).map(|_| Vec::new()).collect();\n        for entry in self.buckets.drain(..).flatten() {\n            buckets[hash(entry.key()) as usize % n].push(entry);\n        }\n        self.buckets = buckets;\n    }\n\n    /// Every entry once, in no particular order.\n    pub fn iter(&self) -> impl Iterator<Item = &Entry> {\n        self.buckets.iter().flatten()\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/htab.rs",
+            "search": "//! The C functions of src/htab.c, exported under their names over `crate::htab`.\n",
+            "replace": "//! The C functions of src/htab.c, exported under their names over `crate::htab`. A C `htab`\n//! keeps the fields C reads (`nbuckets`, `size`) up to date; its `buckets` holds the Rust\n//! table, which C never reads through.\n\nuse std::ffi::{c_char, c_ulong, c_void};\nuse std::{ptr, slice};\n\nuse super::{set_errno, sys, EINVAL};\nuse crate::htab::{self, Table};\n\n/// `n` bytes at `s` (none when `n` is 0, whatever `s` is).\nunsafe fn bytes<'a>(s: *const c_char, n: usize) -> &'a [u8] {\n    if n == 0 {\n        &[]\n    } else {\n        slice::from_raw_parts(s.cast::<u8>(), n)\n    }\n}\n\n/// The table behind an initialized `htab`.\nunsafe fn table<'a>(h: *const sys::htab) -> &'a Table {\n    &*(*h).buckets.cast::<Table>()\n}\n\n/// The fields C reads, from the table.\nunsafe fn update(h: *mut sys::htab) {\n    let (nbuckets, size) = {\n        let t = table(h);\n        (t.buckets(), t.len())\n    };\n    (*h).nbuckets = nbuckets;\n    (*h).size = size;\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_hash(s: *const c_char, n: usize) -> c_ulong {\n    c_ulong::from(htab::hash(bytes(s, n)))\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn htab_init(h: *mut sys::htab, nbuckets: usize) -> sys::wf_status {\n    let Some(table) = Table::with_buckets(nbuckets) else {\n        set_errno(EINVAL);\n        return sys::wf_status_WF_EINVAL;\n    };\n    (*h).buckets = Box::into_raw(Box::new(table)).cast::<*mut sys::hentry>();\n    update(h);\n    sys::wf_status_WF_OK\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn htab_add(\n    h: *mut sys::htab,\n    key: *const c_char,\n    len: usize,\n    n: c_ulong,\n) -> sys::wf_status {\n    let added = (*(*h).buckets.cast::<Table>()).add(bytes(key, len), n as u64);\n    update(h);\n    match added {\n        Ok(()) => sys::wf_status_WF_OK,\n        Err(htab::Overflow) => sys::wf_status_WF_ERANGE,\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn htab_get(h: *const sys::htab, key: *const c_char, len: usize) -> c_ulong {\n    table(h).get(bytes(key, len)) as c_ulong\n}\n\n/// Calls `visit` with each word as a C `hentry`, whose `key` stays valid while the word is in\n/// the table (callers keep it); `next` is NULL.\n#[no_mangle]\npub unsafe extern \"C\" fn htab_each(h: *const sys::htab, visit: sys::htab_visit, ctx: *mut c_void) {\n    let Some(visit) = visit else {\n        return;\n    };\n    for entry in table(h).iter() {\n        let e = sys::hentry {\n            key: entry.key_with_nul().as_ptr().cast_mut().cast::<c_char>(),\n            len: entry.key().len(),\n            count: entry.count() as c_ulong,\n            next: ptr::null_mut(),\n        };\n        visit(&e, ctx);\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn htab_free(h: *mut sys::htab) {\n    if !(*h).buckets.is_null() {\n        drop(Box::from_raw((*h).buckets.cast::<Table>()));\n    }\n    (*h).buckets = ptr::null_mut();\n    (*h).nbuckets = 0;\n    (*h).size = 0;\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/mod.rs",
+            "search": "#![allow(clippy::missing_safety_doc)]\n",
+            "replace": "#![allow(clippy::missing_safety_doc)]\n\nuse std::ffi::c_int;\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/mod.rs",
+            "search": "pub(crate) mod conf;\nmod htab;",
+            "replace": "pub(crate) mod conf;\nmod htab;\n\n/// `EINVAL` (Linux's value).\npub(crate) const EINVAL: c_int = 22;\n\nextern \"C\" {\n    fn __errno_location() -> *mut c_int;\n}\n\n/// Sets C's `errno` (glibc's), as the C functions did.\npub(crate) fn set_errno(value: c_int) {\n    // SAFETY: glibc's errno location is valid for the calling thread.\n    unsafe { *__errno_location() = value };\n}"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "note = \"Returns a bool; the C export returns the global's int.\"",
+            "replace": "note = \"Returns a bool; the C export returns the global's int.\"\n\n[[symbol]]\nc = \"wf_hash\"\nrust = \"wf_rs::htab::hash\"\nnote = \"Returns the 32-bit hash as u32; the C export widens it to unsigned long, as before.\"\n\n[[symbol]]\nc = \"htab_init\"\nrust = \"wf_rs::htab::Table::with_buckets\"\nnote = \"None for no buckets; the C export sets errno to EINVAL and returns WF_EINVAL.\"\n\n[[symbol]]\nc = \"htab_add\"\nrust = \"wf_rs::htab::Table::add\"\nnote = \"Counts are u64, as unsigned long is on the Linux build.\"\n\n[[symbol]]\nc = \"htab_get\"\nrust = \"wf_rs::htab::Table::get\"\n\n[[symbol]]\nc = \"htab_each\"\nrust = \"wf_rs::htab::Table::iter\"\nnote = \"The C export passes each entry to the callback as a C hentry with a NULL next.\"\n\n[[symbol]]\nc = \"htab_free\"\nrust = \"wf_rs::htab::Table\"\nnote = \"Dropping the table frees it; the C export also clears the struct's fields.\""
+          }
+        ],
+        "summary": "Port src/htab.c to wf_rs::htab: a safe Table of entries in doubling chains with FNV-1a, its keys stored with a NUL so the C side can hand them out. The C exports keep the htab struct's nbuckets and size current, and pass each entry to htab_each's callback as a C hentry.",
+        "review_notes": [
+          "A C htab's buckets field now holds the Rust table: no C code reads through it (wf.c and the test use the functions and the size, nbuckets and NULL-after-free fields).",
+          "set_errno uses glibc's __errno_location (the Linux build)."
+        ]
+      }
+    ],
+    "U-0003": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "OBJS = src/sbuf.o src/tok.o src/wf.o",
+            "replace": "OBJS = src/tok.o src/wf.o"
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "src/sbuf.o src/tok.o src/wf.o: include/wf.h src/wfint.h",
+            "replace": "src/tok.o src/wf.o: include/wf.h src/wfint.h"
+          },
+          {
+            "op": "delete",
+            "path": "src/sbuf.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/sbuf.rs",
+            "search": "//! Ported from src/sbuf.c (CodeCoreMorph, D-68).\n",
+            "replace": "//! Ported from src/sbuf.c (CodeCoreMorph, D-68): a growable byte buffer.\n\n/// The smallest capacity a buffer grows to.\npub const MIN_CAPACITY: usize = 16;\n\n/// A buffer can't hold that many bytes.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct TooLarge;\n\n/// The capacity a buffer of `len` bytes in `cap` needs for `extra` more and a NUL after them:\n/// `None` when it has room, else `cap` (or `MIN_CAPACITY`) doubled until it does.\npub fn capacity_for(len: usize, cap: usize, extra: usize) -> Result<Option<usize>, TooLarge> {\n    let wanted = len.checked_add(extra).and_then(|n| n.checked_add(1)).ok_or(TooLarge)?;\n    if wanted <= cap {\n        return Ok(None);\n    }\n    let mut grown = if cap == 0 { MIN_CAPACITY } else { cap };\n    while grown < wanted {\n        grown = grown.checked_mul(2).ok_or(TooLarge)?;\n    }\n    Ok(Some(grown))\n}\n\n/// A growable byte buffer that grows as the C one did, by doubling from `MIN_CAPACITY`.\n#[derive(Debug, Default, Clone, PartialEq, Eq)]\npub struct Buffer {\n    bytes: Vec<u8>,\n}\n\nimpl Buffer {\n    /// An empty buffer, with no memory yet.\n    pub fn new() -> Self {\n        Self::default()\n    }\n\n    /// Appends `s`.\n    pub fn append(&mut self, s: &[u8]) -> Result<(), TooLarge> {\n        if let Some(cap) = capacity_for(self.bytes.len(), self.bytes.capacity(), s.len())? {\n            self.bytes.reserve_exact(cap - self.bytes.len());\n        }\n        self.bytes.extend_from_slice(s);\n        Ok(())\n    }\n\n    /// Appends one byte.\n    pub fn push(&mut self, c: u8) -> Result<(), TooLarge> {\n        self.append(&[c])\n    }\n\n    /// Empties the buffer and keeps its memory.\n    pub fn clear(&mut self) {\n        self.bytes.clear();\n    }\n\n    /// Empties the buffer and gives its memory back.\n    pub fn release(&mut self) {\n        self.bytes = Vec::new();\n    }\n\n    /// The bytes.\n    pub fn as_bytes(&self) -> &[u8] {\n        &self.bytes\n    }\n\n    pub fn len(&self) -> usize {\n        self.bytes.len()\n    }\n\n    pub fn is_empty(&self) -> bool {\n        self.bytes.is_empty()\n    }\n\n    /// How many bytes it holds before it grows again.\n    pub fn capacity(&self) -> usize {\n        self.bytes.capacity()\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/sbuf.rs",
+            "search": "//! The C functions of src/sbuf.c, exported under their names over `crate::sbuf`.\n",
+            "replace": "//! The C functions of src/sbuf.c, exported under their names over `crate::sbuf`. A C `sbuf`\n//! keeps its own memory, from C's allocator: C code reads `data` (NUL-terminated once it has\n//! data), `len` and `cap`.\n\nuse std::ffi::{c_char, c_int, c_void};\nuse std::ptr;\n\nuse super::sys;\nuse crate::sbuf::{capacity_for, TooLarge};\n\nextern \"C\" {\n    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void;\n    fn free(ptr: *mut c_void);\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn sbuf_init(b: *mut sys::sbuf) {\n    (*b).data = ptr::null_mut();\n    (*b).len = 0;\n    (*b).cap = 0;\n}\n\n/// Room for `extra` more bytes and a NUL.\nunsafe fn grow(b: &mut sys::sbuf, extra: usize) -> sys::wf_status {\n    match capacity_for(b.len, b.cap, extra) {\n        Err(TooLarge) => sys::wf_status_WF_ERANGE,\n        Ok(None) => sys::wf_status_WF_OK,\n        Ok(Some(cap)) => {\n            let data = realloc(b.data.cast::<c_void>(), cap);\n            if data.is_null() {\n                return sys::wf_status_WF_ENOMEM;\n            }\n            b.data = data.cast::<c_char>();\n            b.cap = cap;\n            sys::wf_status_WF_OK\n        }\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn sbuf_append(\n    b: *mut sys::sbuf,\n    s: *const c_char,\n    n: usize,\n) -> sys::wf_status {\n    let b = &mut *b;\n    let status = grow(b, n);\n    if status != sys::wf_status_WF_OK {\n        return status;\n    }\n    if n > 0 {\n        ptr::copy(s, b.data.add(b.len), n);\n    }\n    b.len += n;\n    *b.data.add(b.len) = 0;\n    sys::wf_status_WF_OK\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn sbuf_putc(b: *mut sys::sbuf, c: c_int) -> sys::wf_status {\n    let ch = c as c_char;\n    sbuf_append(b, &ch, 1)\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn sbuf_reset(b: *mut sys::sbuf) {\n    (*b).len = 0;\n    if !(*b).data.is_null() {\n        *(*b).data = 0;\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn sbuf_free(b: *mut sys::sbuf) {\n    free((*b).data.cast::<c_void>());\n    sbuf_init(b);\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "note = \"Dropping the table frees it; the C export also clears the struct's fields.\"",
+            "replace": "note = \"Dropping the table frees it; the C export also clears the struct's fields.\"\n\n[[symbol]]\nc = \"sbuf_init\"\nrust = \"wf_rs::sbuf::Buffer::new\"\nnote = \"The C export clears a C sbuf, whose memory comes from C's allocator.\"\n\n[[symbol]]\nc = \"sbuf_append\"\nrust = [\"wf_rs::sbuf::Buffer::append\", \"wf_rs::sbuf::capacity_for\"]\nnote = \"Grows as before, doubling from 16. A length past SIZE_MAX is refused (WF_ERANGE) instead of wrapping.\"\n\n[[symbol]]\nc = \"sbuf_putc\"\nrust = \"wf_rs::sbuf::Buffer::push\"\n\n[[symbol]]\nc = \"sbuf_reset\"\nrust = \"wf_rs::sbuf::Buffer::clear\"\n\n[[symbol]]\nc = \"sbuf_free\"\nrust = \"wf_rs::sbuf::Buffer::release\""
+          }
+        ],
+        "summary": "Port src/sbuf.c to wf_rs::sbuf: the growth policy (doubling from 16, room for a NUL) and a safe Buffer for Rust code. The C exports keep a C sbuf's data, len and cap as the C did, with C's allocator, since tok.c, wf.c and the tests read them.",
+        "review_notes": [
+          "A length that would pass SIZE_MAX is now refused with WF_ERANGE; the C wrapped need + 1 to 0 and wrote past the buffer."
+        ]
+      }
+    ],
+    "U-0004": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "OBJS = src/tok.o src/wf.o",
+            "replace": "OBJS = src/wf.o"
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "src/tok.o src/wf.o: include/wf.h src/wfint.h",
+            "replace": "src/wf.o: include/wf.h src/wfint.h"
+          },
+          {
+            "op": "delete",
+            "path": "src/tok.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/tok.rs",
+            "search": "//! Ported from src/tok.c (CodeCoreMorph, D-68).\n",
+            "replace": "//! Ported from src/tok.c (CodeCoreMorph, D-68): splits text into words, runs of letters and\n//! digits with an apostrophe allowed between two letters (\"don't\"). Words shorter than the\n//! minimum length are skipped; letters are folded to lower case when the settings say so.\n\nuse crate::conf;\nuse crate::sbuf::{Buffer, TooLarge};\n\n/// A letter or a digit (ASCII: C's `isalnum` in the C locale).\nfn is_word_char(c: u8) -> bool {\n    c.is_ascii_alphanumeric()\n}\n\n/// The words of a text, one at a time.\n#[derive(Debug, Clone)]\npub struct Tokenizer<'a> {\n    text: &'a [u8],\n    pos: usize,\n}\n\nimpl<'a> Tokenizer<'a> {\n    pub fn new(text: &'a [u8]) -> Self {\n        Self { text, pos: 0 }\n    }\n\n    /// How many bytes of the text it has read.\n    pub fn position(&self) -> usize {\n        self.pos\n    }\n\n    /// The next word into `word`: `Ok(true)`, or `Ok(false)` at the end of the text. A word\n    /// too short to count is skipped (and stays in `word` when the text ends after it).\n    pub fn next_word(&mut self, word: &mut Buffer) -> Result<bool, TooLarge> {\n        let fold = conf::fold_case();\n        let min = conf::min_length();\n        loop {\n            while self.pos < self.text.len() && !is_word_char(self.text[self.pos]) {\n                self.pos += 1;\n            }\n            if self.pos == self.text.len() {\n                return Ok(false);\n            }\n            word.clear();\n            while self.pos < self.text.len() {\n                let c = self.text[self.pos];\n                let inside = c == b'\\''\n                    && !word.is_empty()\n                    && self.text.get(self.pos + 1).is_some_and(u8::is_ascii_alphabetic)\n                    && word.as_bytes().last().is_some_and(u8::is_ascii_alphabetic);\n                if !inside && !is_word_char(c) {\n                    break;\n                }\n                word.push(if fold { c.to_ascii_lowercase() } else { c })?;\n                self.pos += 1;\n            }\n            if word.len() >= min {\n                return Ok(true);\n            }\n        }\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/tok.rs",
+            "search": "//! The C functions of src/tok.c, exported under their names over `crate::tok`.\n",
+            "replace": "//! The C functions of src/tok.c, exported under their names over `crate::tok`. A C\n//! `tokenizer` points into the caller's text; the word goes into the caller's C `sbuf`.\n\nuse std::ffi::{c_char, c_int};\nuse std::slice;\n\nuse super::sbuf::{sbuf_append, sbuf_reset};\nuse super::sys;\nuse crate::sbuf::{Buffer, TooLarge};\nuse crate::tok::Tokenizer;\n\n#[no_mangle]\npub unsafe extern \"C\" fn tok_init(t: *mut sys::tokenizer, text: *const c_char, len: usize) {\n    (*t).p = text;\n    (*t).end = text.wrapping_add(len);\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn tok_next(\n    t: *mut sys::tokenizer,\n    word: *mut sys::sbuf,\n    found: *mut c_int,\n) -> sys::wf_status {\n    let t = &mut *t;\n    let len = t.end as usize - t.p as usize;\n    let text: &[u8] = if len == 0 { &[] } else { slice::from_raw_parts(t.p.cast::<u8>(), len) };\n    let mut tokens = Tokenizer::new(text);\n    let mut buffer = Buffer::new();\n    let result = tokens.next_word(&mut buffer);\n    t.p = t.p.wrapping_add(tokens.position());\n    let more = match result {\n        Err(TooLarge) => return sys::wf_status_WF_ERANGE,\n        Ok(more) => more,\n    };\n    // The C wrote each word it read into `word`, the skipped ones too.\n    if !buffer.is_empty() {\n        sbuf_reset(word);\n        let status = sbuf_append(word, buffer.as_bytes().as_ptr().cast::<c_char>(), buffer.len());\n        if status != sys::wf_status_WF_OK {\n            return status;\n        }\n    }\n    *found = c_int::from(more);\n    sys::wf_status_WF_OK\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "c = \"sbuf_free\"\nrust = \"wf_rs::sbuf::Buffer::release\"",
+            "replace": "c = \"sbuf_free\"\nrust = \"wf_rs::sbuf::Buffer::release\"\n\n[[symbol]]\nc = \"tok_init\"\nrust = \"wf_rs::tok::Tokenizer::new\"\n\n[[symbol]]\nc = \"tok_next\"\nrust = \"wf_rs::tok::Tokenizer::next_word\"\nnote = \"Reads the settings once per word; the C export writes the word into a C sbuf.\""
+          }
+        ],
+        "summary": "Port src/tok.c to wf_rs::tok: a safe Tokenizer over bytes with the C's rules (ASCII letters and digits, an apostrophe between two letters, folding and the minimum length from wf_rs::conf). The C exports keep a C tokenizer's pointers and fill the caller's C sbuf.",
+        "review_notes": []
+      }
+    ],
+    "U-0005": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "OBJS = src/wf.o",
+            "replace": "OBJS ="
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "src/wf.o: include/wf.h src/wfint.h\n",
+            "replace": ""
+          },
+          {
+            "op": "delete",
+            "path": "src/wf.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/wf.rs",
+            "search": "//! Ported from src/wf.c (CodeCoreMorph, D-68).\n",
+            "replace": "//! Ported from src/wf.c (CodeCoreMorph, D-68): the library's interface, tables of counted\n//! words.\n\nuse std::fmt;\n\nuse crate::htab::{self, Table as Counts};\nuse crate::sbuf::Buffer;\nuse crate::tok::Tokenizer;\n\n/// How many buckets a table starts with.\nconst BUCKETS: usize = 64;\n\n/// What went wrong, as the C interface's status codes say it.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum Error {\n    /// Out of memory (the C interface's `WF_ENOMEM`).\n    NoMemory,\n    /// A bad argument (`WF_EINVAL`).\n    InvalidArgument,\n    /// A count would overflow (`WF_ERANGE`).\n    Range,\n}\n\nimpl Error {\n    /// The message the C interface gives for it.\n    pub fn message(self) -> &'static str {\n        match self {\n            Error::NoMemory => \"out of memory\",\n            Error::InvalidArgument => \"invalid argument\",\n            Error::Range => \"count out of range\",\n        }\n    }\n}\n\nimpl fmt::Display for Error {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        f.write_str(self.message())\n    }\n}\n\nimpl std::error::Error for Error {}\n\n/// One counted word of a table.\n#[derive(Debug, Clone, Copy)]\npub struct Word<'a> {\n    entry: &'a htab::Entry,\n}\n\nimpl<'a> Word<'a> {\n    /// The word.\n    pub fn text(&self) -> &'a [u8] {\n        self.entry.key()\n    }\n\n    /// The word and a NUL, as the table keeps it.\n    pub fn text_with_nul(&self) -> &'a [u8] {\n        self.entry.key_with_nul()\n    }\n\n    /// How many times it was counted.\n    pub fn count(&self) -> u64 {\n        self.entry.count()\n    }\n}\n\n/// A table of counted words.\n#[derive(Debug)]\npub struct Table {\n    words: Counts,\n}\n\nimpl Default for Table {\n    fn default() -> Self {\n        Self::new()\n    }\n}\n\nimpl Table {\n    /// An empty table.\n    pub fn new() -> Self {\n        Self { words: Counts::with_buckets(BUCKETS).expect(\"a table has buckets\") }\n    }\n\n    /// Counts every word of `text` with the settings of `crate::conf`. On an error, the words\n    /// before it stay counted.\n    pub fn count_text(&mut self, text: &[u8]) -> Result<(), Error> {\n        let mut tokens = Tokenizer::new(text);\n        let mut word = Buffer::new();\n        while tokens.next_word(&mut word).map_err(|_| Error::Range)? {\n            self.words.add(word.as_bytes(), 1).map_err(|_| Error::Range)?;\n        }\n        Ok(())\n    }\n\n    /// How many different words it holds.\n    pub fn len(&self) -> usize {\n        self.words.len()\n    }\n\n    pub fn is_empty(&self) -> bool {\n        self.words.is_empty()\n    }\n\n    /// How many times `word` was counted.\n    pub fn lookup(&self, word: &[u8]) -> u64 {\n        self.words.get(word)\n    }\n\n    /// The `n` most frequent words (fewer when the table holds fewer), most frequent first,\n    /// ties in byte order.\n    pub fn top(&self, n: usize) -> Vec<Word<'_>> {\n        let mut words: Vec<Word<'_>> = self.words.iter().map(|entry| Word { entry }).collect();\n        words.sort_by(|a, b| b.count().cmp(&a.count()).then_with(|| a.text().cmp(b.text())));\n        words.truncate(n);\n        words\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/bridge/wf.rs",
+            "search": "//! The C functions of src/wf.c, exported under their names over `crate::wf`.\n",
+            "replace": "//! The C functions of src/wf.c, exported under their names over `crate::wf`. A `wf_table *`\n//! is the Rust table, boxed.\n\nuse std::ffi::{c_char, c_ulong, CStr};\nuse std::slice;\n\nuse super::{set_errno, sys, EINVAL};\nuse crate::wf::{Error, Table};\n\nfn status(error: Error) -> sys::wf_status {\n    match error {\n        Error::NoMemory => sys::wf_status_WF_ENOMEM,\n        Error::InvalidArgument => sys::wf_status_WF_EINVAL,\n        Error::Range => sys::wf_status_WF_ERANGE,\n    }\n}\n\n/// The table behind a `wf_table *`, or `None` for NULL.\nunsafe fn table<'a>(table: *const sys::wf_table) -> Option<&'a Table> {\n    table.cast::<Table>().as_ref()\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_table_new(out: *mut *mut sys::wf_table) -> sys::wf_status {\n    if out.is_null() {\n        set_errno(EINVAL);\n        return sys::wf_status_WF_EINVAL;\n    }\n    *out = Box::into_raw(Box::new(Table::new())).cast::<sys::wf_table>();\n    sys::wf_status_WF_OK\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_table_free(table: *mut sys::wf_table) {\n    if !table.is_null() {\n        drop(Box::from_raw(table.cast::<Table>()));\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_count_text(\n    table: *mut sys::wf_table,\n    text: *const c_char,\n    len: usize,\n) -> sys::wf_status {\n    let table = table.cast::<Table>().as_mut();\n    let Some(table) = table.filter(|_| !(text.is_null() && len > 0)) else {\n        set_errno(EINVAL);\n        return sys::wf_status_WF_EINVAL;\n    };\n    let text: &[u8] = if len == 0 { &[] } else { slice::from_raw_parts(text.cast::<u8>(), len) };\n    match table.count_text(text) {\n        Ok(()) => sys::wf_status_WF_OK,\n        Err(error) => status(error),\n    }\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_table_size(table: *const sys::wf_table) -> usize {\n    self::table(table).map_or(0, Table::len)\n}\n\n#[no_mangle]\npub unsafe extern \"C\" fn wf_lookup(table: *const sys::wf_table, word: *const c_char) -> c_ulong {\n    match self::table(table) {\n        Some(table) if !word.is_null() => table.lookup(CStr::from_ptr(word).to_bytes()) as c_ulong,\n        _ => 0,\n    }\n}\n\n/// Writes the top words to `out`; each `text` is the table's, NUL-terminated.\n#[no_mangle]\npub unsafe extern \"C\" fn wf_top(\n    table: *const sys::wf_table,\n    out: *mut sys::wf_word,\n    n: usize,\n) -> usize {\n    let Some(table) = self::table(table).filter(|_| !(out.is_null() && n > 0)) else {\n        set_errno(EINVAL);\n        return 0;\n    };\n    if table.is_empty() || n == 0 {\n        return 0;\n    }\n    let top = table.top(n);\n    for (slot, word) in slice::from_raw_parts_mut(out, top.len()).iter_mut().zip(&top) {\n        *slot = sys::wf_word {\n            text: word.text_with_nul().as_ptr().cast::<c_char>(),\n            len: word.text().len(),\n            count: word.count() as c_ulong,\n        };\n    }\n    top.len()\n}\n\n#[no_mangle]\npub extern \"C\" fn wf_strerror(status: sys::wf_status) -> *const c_char {\n    let message: &'static CStr = match status {\n        sys::wf_status_WF_OK => c\"no error\",\n        sys::wf_status_WF_ENOMEM => c\"out of memory\",\n        sys::wf_status_WF_EINVAL => c\"invalid argument\",\n        sys::wf_status_WF_ERANGE => c\"count out of range\",\n        _ => c\"unknown error\",\n    };\n    message.as_ptr()\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "note = \"Reads the settings once per word; the C export writes the word into a C sbuf.\"",
+            "replace": "note = \"Reads the settings once per word; the C export writes the word into a C sbuf.\"\n\n[[symbol]]\nc = \"wf_table_new\"\nrust = \"wf_rs::wf::Table::new\"\nnote = \"The C export hands out the boxed table as a wf_table *, and refuses a NULL out with EINVAL.\"\n\n[[symbol]]\nc = \"wf_table_free\"\nrust = \"wf_rs::wf::Table\"\nnote = \"Dropping the table frees it; the C export frees the box and ignores NULL.\"\n\n[[symbol]]\nc = \"wf_count_text\"\nrust = \"wf_rs::wf::Table::count_text\"\n\n[[symbol]]\nc = \"wf_table_size\"\nrust = \"wf_rs::wf::Table::len\"\n\n[[symbol]]\nc = \"wf_lookup\"\nrust = \"wf_rs::wf::Table::lookup\"\n\n[[symbol]]\nc = \"wf_top\"\nrust = [\"wf_rs::wf::Table::top\", \"wf_rs::wf::Word\"]\nnote = \"Returns the words instead of filling an array; Rust can't run out of memory into ENOMEM (it aborts).\"\n\n[[symbol]]\nc = \"wf_strerror\"\nrust = \"wf_rs::wf::Error::message\"\nnote = \"The C export also names success (no error) and unknown codes (unknown error).\""
+          }
+        ],
+        "summary": "Port src/wf.c to wf_rs::wf: a safe Table of counted words over the Rust hash table and tokenizer, with top() sorting by count, then bytes, and an Error with the C messages. The C exports hand out the boxed table as a wf_table *, keep the EINVAL checks and errno, and fill wf_word arrays with the table's NUL-terminated words.",
+        "review_notes": [
+          "The library's archive now holds Rust alone: OBJS is empty, and the archive rule folds the crate into an empty archive."
+        ]
+      }
+    ],
+    "U-0006": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "rm -f $(OBJS) libwf.a wordfreq tools/wordfreq.o tests/*.o",
+            "replace": "rm -f $(OBJS) libwf.a wordfreq tests/*.o"
+          },
+          {
+            "op": "replace",
+            "path": "Makefile",
+            "search": "tools/wordfreq.o: include/wf.h\n",
+            "replace": ""
+          },
+          {
+            "op": "delete",
+            "path": "tools/wordfreq.c"
+          },
+          {
+            "op": "replace",
+            "path": "rust/wordfreq_rs/src/main.rs",
+            "search": "//! Ported from tools/wordfreq.c (CodeCoreMorph, D-68).\n#![forbid(unsafe_code)]\n\nfn main() {}\n",
+            "replace": "//! Ported from tools/wordfreq.c (CodeCoreMorph, D-68): prints the most frequent words of its\n//! standard input.\n//!\n//! usage: wordfreq [-k] [-m min] [count]\n//!   -k      keep case (by default words are folded to lower case)\n//!   -m min  skip words shorter than min\n//!   count   how many words to print (default 10)\n#![forbid(unsafe_code)]\n\nuse std::io::{self, Read, Write};\nuse std::process::ExitCode;\n\nuse wf_rs::conf;\nuse wf_rs::wf::{Table, Word};\n\nfn usage() -> ExitCode {\n    eprintln!(\"usage: wordfreq [-k] [-m min] [count]\");\n    ExitCode::from(2)\n}\n\n/// C's `atol`, converted to `size_t` as the C did: blanks, a sign, then the digits up to the\n/// first other byte (0 without any); a negative number wraps.\nfn atol(arg: &[u8]) -> usize {\n    let mut rest = arg\n        .iter()\n        .copied()\n        .skip_while(|c| matches!(c, b' ' | b'\\t' | b'\\n' | b'\\x0b' | b'\\x0c' | b'\\r'))\n        .peekable();\n    let negative = match rest.peek() {\n        Some(b'-') => {\n            rest.next();\n            true\n        }\n        Some(b'+') => {\n            rest.next();\n            false\n        }\n        _ => false,\n    };\n    let mut value: i64 = 0;\n    for c in rest.take_while(u8::is_ascii_digit) {\n        value = value.wrapping_mul(10).wrapping_add(i64::from(c - b'0'));\n    }\n    (if negative { value.wrapping_neg() } else { value }) as usize\n}\n\n/// Each word as `%7lu %s` would print it.\nfn print(words: &[Word<'_>]) -> io::Result<()> {\n    let mut out = io::stdout().lock();\n    for word in words {\n        write!(out, \"{:>7} \", word.count())?;\n        out.write_all(word.text())?;\n        out.write_all(b\"\\n\")?;\n    }\n    out.flush()\n}\n\nfn main() -> ExitCode {\n    let mut count = 10;\n    let mut args = std::env::args_os().skip(1);\n    while let Some(arg) = args.next() {\n        let arg = arg.as_encoded_bytes();\n        if arg == b\"-k\" {\n            conf::set_fold_case(false);\n        } else if arg == b\"-m\" {\n            let Some(min) = args.next() else {\n                return usage();\n            };\n            conf::set_min_length(atol(min.as_encoded_bytes()));\n        } else if arg.first() == Some(&b'-') {\n            return usage();\n        } else {\n            count = atol(arg);\n        }\n    }\n\n    // Read errors end the input, as fread's did.\n    let mut text = Vec::new();\n    io::stdin().lock().read_to_end(&mut text).ok();\n    let mut table = Table::new();\n    if let Err(error) = table.count_text(&text) {\n        eprintln!(\"wordfreq: {error}\");\n        return ExitCode::from(1);\n    }\n    // Like printf's, a failed write doesn't change the exit status.\n    print(&table.top(count)).ok();\n    ExitCode::SUCCESS\n}\n"
+          },
+          {
+            "op": "create",
+            "path": "rust/wordfreq_rs/tests/cli.rs",
+            "content": "//! The program's runs that `make test` compares with files (tests/sample.out and\n//! tests/sample-k.out), against the built program.\n#![forbid(unsafe_code)]\n\nuse std::io::Write;\nuse std::process::{Command, Stdio};\n\nfn data(name: &str) -> Vec<u8> {\n    let path = format!(\"{}/../../tests/{name}\", env!(\"CARGO_MANIFEST_DIR\"));\n    std::fs::read(&path).unwrap_or_else(|e| panic!(\"{path}: {e}\"))\n}\n\n/// The program's output and exit status, for `input` on its standard input.\nfn run(args: &[&str], input: &[u8]) -> (Vec<u8>, Option<i32>) {\n    let mut child = Command::new(env!(\"CARGO_BIN_EXE_wordfreq\"))\n        .args(args)\n        .stdin(Stdio::piped())\n        .stdout(Stdio::piped())\n        .stderr(Stdio::piped())\n        .spawn()\n        .expect(\"the program starts\");\n    child.stdin.take().expect(\"its input\").write_all(input).expect(\"it reads its input\");\n    let output = child.wait_with_output().expect(\"it ends\");\n    (output.stdout, output.status.code())\n}\n\n#[test]\nfn the_three_most_frequent_words() {\n    let (out, code) = run(&[\"3\"], &data(\"sample.txt\"));\n    assert_eq!(code, Some(0));\n    assert_eq!(out, data(\"sample.out\"));\n}\n\n#[test]\nfn case_kept_and_short_words_skipped() {\n    let (out, code) = run(&[\"-k\", \"-m\", \"4\", \"2\"], &data(\"sample.txt\"));\n    assert_eq!(code, Some(0));\n    assert_eq!(out, data(\"sample-k.out\"));\n}\n\n#[test]\nfn an_unknown_option_shows_the_usage() {\n    let (out, code) = run(&[\"-x\"], b\"\");\n    assert_eq!(code, Some(2));\n    assert!(out.is_empty());\n}\n"
+          }
+        ],
+        "summary": "Port tools/wordfreq.c to the Rust program wordfreq: the same options (C's atol included), usage on stderr with status 2, the table counted with wf_rs, and the top words printed as %7lu %s. The Make build copies it to ./wordfreq, so make test's comparisons run it; integration tests compare its output with tests/sample.out and tests/sample-k.out too.",
+        "review_notes": [
+          "A write error (a closed pipe) ends the output with status 0, as printf's did; the C died of SIGPIPE instead, which Rust ignores."
+        ]
+      }
+    ],
+    "U-0007": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/tests/test_htab.rs",
+            "search": "//! Translated from test_htab (CodeCoreMorph, D-68): one test per C test (a TAP point, an automake test), each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+            "replace": "//! Translated from tests/test_htab.c (CodeCoreMorph, D-68): one test per TAP point, each named\n//! in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse wf_rs::htab::{hash, Entry, Overflow, Table};\n\nfn four_buckets() -> Table {\n    Table::with_buckets(4).expect(\"a table of 4 buckets\")\n}\n\n/// The C test's table after its first steps: \"cat\" counted 1, then 2 more times.\nfn with_cat() -> Table {\n    let mut table = four_buckets();\n    table.add(b\"cat\", 1).expect(\"cat is added\");\n    table.add(b\"cat\", 2).expect(\"cat is added again\");\n    table\n}\n\n/// Then w0 to w99, once each.\nfn grown() -> Table {\n    let mut table = with_cat();\n    for i in 0..100 {\n        table.add(format!(\"w{i}\").as_bytes(), 1).expect(\"the word is added\");\n    }\n    table\n}\n\n#[test]\nfn the_hash_of_nothing_is_the_fnv_offset_basis() {\n    assert_eq!(hash(b\"\"), 2_166_136_261);\n}\n\n#[test]\nfn the_fnv_1a_hash_of_a() {\n    assert_eq!(hash(b\"a\"), 0xe40c_292c);\n}\n\n#[test]\nfn no_buckets_is_a_bad_argument() {\n    assert!(Table::with_buckets(0).is_none());\n}\n\n#[test]\nfn a_new_table_is_empty() {\n    let table = four_buckets();\n    assert!(table.is_empty());\n    assert_eq!(table.len(), 0);\n}\n\n#[test]\nfn add_a_word() {\n    let mut table = four_buckets();\n    assert_eq!(table.add(b\"cat\", 1), Ok(()));\n    assert_eq!(table.get(b\"cat\"), 1);\n}\n\n#[test]\nfn adding_again_adds_to_its_count() {\n    let mut table = four_buckets();\n    table.add(b\"cat\", 1).expect(\"cat is added\");\n    assert_eq!(table.add(b\"cat\", 2), Ok(()));\n    assert_eq!(table.get(b\"cat\"), 3);\n    assert_eq!(table.len(), 1);\n}\n\n#[test]\nfn missing_words_count_0() {\n    let table = with_cat();\n    assert_eq!(table.get(b\"ca\"), 0);\n    assert_eq!(table.get(b\"dog\"), 0);\n}\n\n#[test]\nfn the_table_grows() {\n    let mut table = with_cat();\n    let all = (0..100).all(|i| table.add(format!(\"w{i}\").as_bytes(), 1).is_ok());\n    assert!(all);\n    assert_eq!(table.len(), 101);\n    assert!(table.buckets() > 4);\n}\n\n#[test]\nfn growing_keeps_every_word() {\n    let table = grown();\n    assert_eq!(table.get(b\"w42\"), 1);\n    assert_eq!(table.get(b\"cat\"), 3);\n}\n\n#[test]\nfn each_visits_every_word_once() {\n    let table = grown();\n    assert_eq!(table.iter().map(Entry::count).sum::<u64>(), 103);\n    assert_eq!(table.iter().count(), table.len());\n}\n\n#[test]\nfn an_overflowing_count_is_refused() {\n    let mut table = grown();\n    assert_eq!(table.add(b\"cat\", u64::MAX), Err(Overflow));\n    assert_eq!(table.get(b\"cat\"), 3);\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n",
+            "replace": "#   note = \"...\"    # optional: behavior the port couldn't keep; without `rust`, why there is none\n\n[[test]]\nc = \"tap:tests/test_htab/the hash of nothing is the FNV offset basis\"\nrust = \"nextest:wf_rs::test_htab::the_hash_of_nothing_is_the_fnv_offset_basis\"\n\n[[test]]\nc = \"tap:tests/test_htab/the FNV-1a hash of \\\"a\\\"\"\nrust = \"nextest:wf_rs::test_htab::the_fnv_1a_hash_of_a\"\n\n[[test]]\nc = \"tap:tests/test_htab/no buckets is a bad argument\"\nrust = \"nextest:wf_rs::test_htab::no_buckets_is_a_bad_argument\"\nnote = \"errno (EINVAL) is the C interface's; with_buckets returns None.\"\n\n[[test]]\nc = \"tap:tests/test_htab/a new table is empty\"\nrust = \"nextest:wf_rs::test_htab::a_new_table_is_empty\"\n\n[[test]]\nc = \"tap:tests/test_htab/add a word\"\nrust = \"nextest:wf_rs::test_htab::add_a_word\"\n\n[[test]]\nc = \"tap:tests/test_htab/adding again adds to its count\"\nrust = \"nextest:wf_rs::test_htab::adding_again_adds_to_its_count\"\n\n[[test]]\nc = \"tap:tests/test_htab/missing words count 0\"\nrust = \"nextest:wf_rs::test_htab::missing_words_count_0\"\n\n[[test]]\nc = \"tap:tests/test_htab/the table grows\"\nrust = \"nextest:wf_rs::test_htab::the_table_grows\"\n\n[[test]]\nc = \"tap:tests/test_htab/growing keeps every word\"\nrust = \"nextest:wf_rs::test_htab::growing_keeps_every_word\"\n\n[[test]]\nc = \"tap:tests/test_htab/each visits every word once\"\nrust = \"nextest:wf_rs::test_htab::each_visits_every_word_once\"\n\n[[test]]\nc = \"tap:tests/test_htab/an overflowing count is refused\"\nrust = \"nextest:wf_rs::test_htab::an_overflowing_count_is_refused\"\n\n[[test]]\nc = \"tap:tests/test_htab/free empties the table\"\nnote = \"Rust frees a table when it is dropped: nothing is left to check.\"\n"
+          }
+        ],
+        "summary": "Translate tests/test_htab.c into Rust tests of wf_rs::htab, one per TAP point, mapped in rust/test-map.toml. Freeing a table has no Rust counterpart (dropping it frees it), so its point is mapped with a note.",
+        "review_notes": []
+      }
+    ],
+    "U-0008": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/tests/test_sbuf.rs",
+            "search": "//! Translated from test_sbuf (CodeCoreMorph, D-68): one test per C test (a TAP point, an automake test), each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+            "replace": "//! Translated from tests/test_sbuf.c (CodeCoreMorph, D-68): one test per TAP point, each named\n//! in rust/test-map.toml.\n#![forbid(unsafe_code)]\n\nuse wf_rs::sbuf::Buffer;\n\n/// The C test's buffer after \"abc\" and 'd'.\nfn abcd() -> Buffer {\n    let mut buffer = Buffer::new();\n    buffer.append(b\"abc\").expect(\"abc is appended\");\n    buffer.push(b'd').expect(\"d is appended\");\n    buffer\n}\n\n/// Then 1000 more bytes.\nfn grown() -> Buffer {\n    let mut buffer = abcd();\n    for _ in 0..1000 {\n        buffer.push(b'x').expect(\"x is appended\");\n    }\n    buffer\n}\n\n#[test]\nfn a_new_buffer_is_empty() {\n    let buffer = Buffer::new();\n    assert!(buffer.is_empty());\n    assert_eq!(buffer.len(), 0);\n    assert_eq!(buffer.capacity(), 0);\n}\n\n#[test]\nfn append_succeeds() {\n    assert_eq!(Buffer::new().append(b\"abc\"), Ok(()));\n}\n\n#[test]\nfn append_keeps_the_text_nul_terminated() {\n    let mut buffer = Buffer::new();\n    buffer.append(b\"abc\").expect(\"abc is appended\");\n    assert_eq!(buffer.len(), 3);\n    assert_eq!(buffer.as_bytes(), b\"abc\");\n}\n\n#[test]\nfn putc_adds_one_byte() {\n    let mut buffer = Buffer::new();\n    buffer.append(b\"abc\").expect(\"abc is appended\");\n    assert_eq!(buffer.push(b'd'), Ok(()));\n    assert_eq!(buffer.as_bytes(), b\"abcd\");\n}\n\n#[test]\nfn the_buffer_grows_as_needed() {\n    let mut buffer = abcd();\n    let all = (0..1000).all(|_| buffer.push(b'x').is_ok());\n    assert!(all);\n    assert_eq!(buffer.len(), 1004);\n    assert!(buffer.capacity() > 1004);\n}\n\n#[test]\nfn reset_empties_but_keeps_the_memory() {\n    let mut buffer = grown();\n    buffer.clear();\n    assert_eq!(buffer.len(), 0);\n    assert!(buffer.as_bytes().is_empty());\n    assert!(buffer.capacity() > 0);\n}\n\n#[test]\nfn appending_nothing_is_fine() {\n    let mut buffer = grown();\n    buffer.clear();\n    assert_eq!(buffer.append(b\"\"), Ok(()));\n    assert_eq!(buffer.len(), 0);\n}\n\n#[test]\nfn free_releases_everything() {\n    let mut buffer = grown();\n    buffer.release();\n    assert!(buffer.is_empty());\n    assert_eq!(buffer.capacity(), 0);\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "note = \"Rust frees a table when it is dropped: nothing is left to check.\"\n",
+            "replace": "note = \"Rust frees a table when it is dropped: nothing is left to check.\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/a new buffer is empty\"\nrust = \"nextest:wf_rs::test_sbuf::a_new_buffer_is_empty\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/append succeeds\"\nrust = \"nextest:wf_rs::test_sbuf::append_succeeds\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/append keeps the text NUL-terminated\"\nrust = \"nextest:wf_rs::test_sbuf::append_keeps_the_text_nul_terminated\"\nnote = \"A Rust buffer holds the bytes alone; the NUL is the C interface's (the C test keeps checking it until the C is retired).\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/putc adds one byte\"\nrust = \"nextest:wf_rs::test_sbuf::putc_adds_one_byte\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/the buffer grows as needed\"\nrust = \"nextest:wf_rs::test_sbuf::the_buffer_grows_as_needed\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/reset empties but keeps the memory\"\nrust = \"nextest:wf_rs::test_sbuf::reset_empties_but_keeps_the_memory\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/appending nothing is fine\"\nrust = \"nextest:wf_rs::test_sbuf::appending_nothing_is_fine\"\n\n[[test]]\nc = \"tap:tests/test_sbuf/free releases everything\"\nrust = \"nextest:wf_rs::test_sbuf::free_releases_everything\"\n"
+          }
+        ],
+        "summary": "Translate tests/test_sbuf.c into Rust tests of wf_rs::sbuf::Buffer, one per TAP point, mapped in rust/test-map.toml.",
+        "review_notes": []
+      }
+    ],
+    "U-0009": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/tests/test_tok.rs",
+            "search": "//! Translated from test_tok (CodeCoreMorph, D-68): one test per C test (a TAP point, an automake test), each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+            "replace": "//! Translated from tests/test_tok.c (CodeCoreMorph, D-68): one test per TAP point, each named\n//! in rust/test-map.toml. The settings are global, so each test sets the ones it needs.\n#![forbid(unsafe_code)]\n\nuse wf_rs::conf;\nuse wf_rs::sbuf::Buffer;\nuse wf_rs::tok::Tokenizer;\n\nfn settings(fold: bool, min: usize) {\n    conf::set_fold_case(fold);\n    conf::set_min_length(min);\n}\n\n/// The words of `text`, joined by \"|\".\nfn words(text: &str) -> String {\n    let mut tokens = Tokenizer::new(text.as_bytes());\n    let mut word = Buffer::new();\n    let mut found = Vec::new();\n    while tokens.next_word(&mut word).expect(\"the words fit\") {\n        found.push(String::from_utf8_lossy(word.as_bytes()).into_owned());\n    }\n    found.join(\"|\")\n}\n\n#[test]\nfn words_are_split_at_punctuation_and_folded() {\n    settings(true, 1);\n    assert_eq!(words(\"The cat, the HAT.\"), \"the|cat|the|hat\");\n}\n\n#[test]\nfn blank_text_has_no_words() {\n    settings(true, 1);\n    assert_eq!(words(\"  \\t\\n \"), \"\");\n}\n\n#[test]\nfn an_apostrophe_inside_a_word_belongs_to_it() {\n    settings(true, 1);\n    assert_eq!(words(\"don't stop 'til\"), \"don't|stop|til\");\n}\n\n#[test]\nfn digits_are_word_characters() {\n    settings(true, 1);\n    assert_eq!(words(\"route 66, 3rd\"), \"route|66|3rd\");\n}\n\n#[test]\nfn case_is_kept_when_folding_is_off() {\n    settings(false, 1);\n    assert_eq!(words(\"The Cat\"), \"The|Cat\");\n}\n\n#[test]\nfn short_words_are_skipped() {\n    settings(true, 3);\n    assert_eq!(words(\"a an the cats\"), \"the|cats\");\n}\n\n#[test]\nfn the_settings_read_back() {\n    settings(true, 3);\n    assert_eq!(conf::min_length(), 3);\n    assert!(conf::fold_case());\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "rust = \"nextest:wf_rs::test_sbuf::free_releases_everything\"\n",
+            "replace": "rust = \"nextest:wf_rs::test_sbuf::free_releases_everything\"\n\n[[test]]\nc = \"tap:tests/test_tok/words are split at punctuation and folded\"\nrust = \"nextest:wf_rs::test_tok::words_are_split_at_punctuation_and_folded\"\n\n[[test]]\nc = \"tap:tests/test_tok/blank text has no words\"\nrust = \"nextest:wf_rs::test_tok::blank_text_has_no_words\"\n\n[[test]]\nc = \"tap:tests/test_tok/an apostrophe inside a word belongs to it\"\nrust = \"nextest:wf_rs::test_tok::an_apostrophe_inside_a_word_belongs_to_it\"\n\n[[test]]\nc = \"tap:tests/test_tok/digits are word characters\"\nrust = \"nextest:wf_rs::test_tok::digits_are_word_characters\"\n\n[[test]]\nc = \"tap:tests/test_tok/case is kept when folding is off\"\nrust = \"nextest:wf_rs::test_tok::case_is_kept_when_folding_is_off\"\n\n[[test]]\nc = \"tap:tests/test_tok/short words are skipped\"\nrust = \"nextest:wf_rs::test_tok::short_words_are_skipped\"\n\n[[test]]\nc = \"tap:tests/test_tok/the settings read back\"\nrust = \"nextest:wf_rs::test_tok::the_settings_read_back\"\n"
+          }
+        ],
+        "summary": "Translate tests/test_tok.c into Rust tests of wf_rs::tok::Tokenizer and wf_rs::conf, one per TAP point, mapped in rust/test-map.toml; each test sets the settings it needs.",
+        "review_notes": []
+      }
+    ],
+    "U-0010": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/tests/test_wf.rs",
+            "search": "//! Translated from test_wf (CodeCoreMorph, D-68): one test per C test (a TAP point, an automake test), each named in rust/test-map.toml.\n#![forbid(unsafe_code)]\n",
+            "replace": "//! Translated from tests/test_wf.c (CodeCoreMorph, D-68): one test per TAP point, each named\n//! in rust/test-map.toml (the ones about NULL pointers have notes there instead).\n#![forbid(unsafe_code)]\n\nuse wf_rs::conf;\nuse wf_rs::wf::{Error, Table};\n\nconst TEXT: &[u8] = b\"b a c b a b, A! c d\";\n\n/// A table of TEXT's words, with the default settings.\nfn counted() -> Table {\n    conf::set_fold_case(true);\n    conf::set_min_length(1);\n    let mut table = Table::new();\n    table.count_text(TEXT).expect(\"the text is counted\");\n    table\n}\n\n#[test]\nfn a_new_table_is_empty() {\n    let table = Table::new();\n    assert!(table.is_empty());\n    assert_eq!(table.len(), 0);\n}\n\n#[test]\nfn counting_succeeds() {\n    conf::set_fold_case(true);\n    conf::set_min_length(1);\n    assert_eq!(Table::new().count_text(TEXT), Ok(()));\n}\n\n#[test]\nfn four_different_words() {\n    assert_eq!(counted().len(), 4);\n}\n\n#[test]\nfn lookup_counts_folded_words() {\n    let table = counted();\n    assert_eq!(table.lookup(b\"a\"), 3);\n    assert_eq!(table.lookup(b\"b\"), 3);\n    assert_eq!(table.lookup(b\"z\"), 0);\n}\n\n#[test]\nfn top_returns_as_many_as_asked() {\n    assert_eq!(counted().top(3).len(), 3);\n}\n\n#[test]\nfn ties_are_in_byte_order() {\n    let table = counted();\n    let top = table.top(3);\n    assert_eq!(top[0].text(), b\"a\");\n    assert_eq!(top[0].count(), 3);\n    assert_eq!(top[1].text(), b\"b\");\n}\n\n#[test]\nfn then_the_next_most_frequent() {\n    let table = counted();\n    let top = table.top(3);\n    assert_eq!(top[2].text(), b\"c\");\n    assert_eq!(top[2].count(), 2);\n    assert_eq!(top[2].text().len(), 1);\n}\n\n#[test]\nfn top_returns_no_more_than_the_table_has() {\n    assert_eq!(counted().top(8).len(), 4);\n}\n\n#[test]\nfn counting_nothing_changes_nothing() {\n    let mut table = counted();\n    assert_eq!(table.count_text(b\"\"), Ok(()));\n    assert_eq!(table.len(), 4);\n}\n\n#[test]\nfn error_messages() {\n    assert_eq!(Error::NoMemory.message(), \"out of memory\");\n    assert_eq!(Error::InvalidArgument.message(), \"invalid argument\");\n    assert_eq!(Error::Range.to_string(), \"count out of range\");\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "rust = \"nextest:wf_rs::test_tok::the_settings_read_back\"\n",
+            "replace": "rust = \"nextest:wf_rs::test_tok::the_settings_read_back\"\n\n[[test]]\nc = \"tap:tests/test_wf/a new table is empty\"\nrust = \"nextest:wf_rs::test_wf::a_new_table_is_empty\"\n\n[[test]]\nc = \"tap:tests/test_wf/counting succeeds\"\nrust = \"nextest:wf_rs::test_wf::counting_succeeds\"\n\n[[test]]\nc = \"tap:tests/test_wf/four different words\"\nrust = \"nextest:wf_rs::test_wf::four_different_words\"\n\n[[test]]\nc = \"tap:tests/test_wf/lookup counts folded words\"\nrust = \"nextest:wf_rs::test_wf::lookup_counts_folded_words\"\n\n[[test]]\nc = \"tap:tests/test_wf/top returns as many as asked\"\nrust = \"nextest:wf_rs::test_wf::top_returns_as_many_as_asked\"\n\n[[test]]\nc = \"tap:tests/test_wf/ties are in byte order\"\nrust = \"nextest:wf_rs::test_wf::ties_are_in_byte_order\"\n\n[[test]]\nc = \"tap:tests/test_wf/then the next most frequent\"\nrust = \"nextest:wf_rs::test_wf::then_the_next_most_frequent\"\n\n[[test]]\nc = \"tap:tests/test_wf/top returns no more than the table has\"\nrust = \"nextest:wf_rs::test_wf::top_returns_no_more_than_the_table_has\"\n\n[[test]]\nc = \"tap:tests/test_wf/counting nothing changes nothing\"\nrust = \"nextest:wf_rs::test_wf::counting_nothing_changes_nothing\"\n\n[[test]]\nc = \"tap:tests/test_wf/error messages\"\nrust = \"nextest:wf_rs::test_wf::error_messages\"\nnote = \"Rust has no status code outside the Error enum, so no unknown one.\"\n\n[[test]]\nc = \"tap:tests/test_wf/a table needs somewhere to go\"\nnote = \"Table::new returns the table: there is no NULL out parameter to refuse (the C interface's wf_table_new still does, with EINVAL).\"\n\n[[test]]\nc = \"tap:tests/test_wf/NULL text is refused\"\nnote = \"A Rust slice is never NULL; the C interface's wf_count_text still refuses NULL text with EINVAL.\"\n\n[[test]]\nc = \"tap:tests/test_wf/freeing NULL is fine\"\nnote = \"Rust frees a table when it is dropped; there is no NULL table.\"\n"
+          }
+        ],
+        "summary": "Translate tests/test_wf.c into Rust tests of wf_rs::wf, one per TAP point, mapped in rust/test-map.toml. The three points about NULL pointers have no Rust counterpart and are mapped with notes.",
+        "review_notes": []
+      }
+    ],
+    "U-0011": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/wf_rs/src/conf.rs",
+            "search": "use std::sync::atomic::Ordering;\n\nuse crate::bridge::conf::{wf_conf_fold_case, wf_conf_min_length};\n\n/// The shortest word counted, in bytes, until it is set.\npub const DEFAULT_MIN_LENGTH: usize = 1;\n\n/// Words shorter than `min` bytes are skipped.\npub fn set_min_length(min: usize) {\n    wf_conf_min_length.store(min, Ordering::Relaxed);\n}\n\n/// The shortest word counted, in bytes.\npub fn min_length() -> usize {\n    wf_conf_min_length.load(Ordering::Relaxed)\n}\n\n/// Whether letters are folded to lower case.\npub fn set_fold_case(fold: bool) {\n    wf_conf_fold_case.store(i32::from(fold), Ordering::Relaxed);\n}\n\n/// Whether letters are folded to lower case.\npub fn fold_case() -> bool {\n    wf_conf_fold_case.load(Ordering::Relaxed) != 0\n}\n",
+            "replace": "use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};\n\n/// The shortest word counted, in bytes, until it is set.\npub const DEFAULT_MIN_LENGTH: usize = 1;\n\nstatic MIN_LENGTH: AtomicUsize = AtomicUsize::new(DEFAULT_MIN_LENGTH);\nstatic FOLD_CASE: AtomicBool = AtomicBool::new(true);\n\n/// Words shorter than `min` bytes are skipped.\npub fn set_min_length(min: usize) {\n    MIN_LENGTH.store(min, Ordering::Relaxed);\n}\n\n/// The shortest word counted, in bytes.\npub fn min_length() -> usize {\n    MIN_LENGTH.load(Ordering::Relaxed)\n}\n\n/// Whether letters are folded to lower case.\npub fn set_fold_case(fold: bool) {\n    FOLD_CASE.store(fold, Ordering::Relaxed);\n}\n\n/// Whether letters are folded to lower case.\npub fn fold_case() -> bool {\n    FOLD_CASE.load(Ordering::Relaxed)\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "[[symbol]]\nc = \"wf_conf_min_length\"\nrust = \"wf_rs::bridge::conf::wf_conf_min_length\"\nnote = \"A C global while C reads it (an AtomicUsize); Rust reads it through wf_rs::conf::min_length.\"\n\n[[symbol]]\nc = \"wf_conf_fold_case\"\nrust = \"wf_rs::bridge::conf::wf_conf_fold_case\"\nnote = \"A C global while C reads it (an AtomicI32); Rust reads it through wf_rs::conf::fold_case.\"",
+            "replace": "[[symbol]]\nc = \"wf_conf_min_length\"\nrust = \"wf_rs::conf::min_length\"\nnote = \"The C global went with the C interface; the setting is private to wf_rs::conf.\"\n\n[[symbol]]\nc = \"wf_conf_fold_case\"\nrust = \"wf_rs::conf::fold_case\"\nnote = \"The C global went with the C interface; the setting is private to wf_rs::conf.\""
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "note = \"Rust frees a table when it is dropped; there is no NULL table.\"\n",
+            "replace": "note = \"Rust frees a table when it is dropped; there is no NULL table.\"\n\n[[test]]\nc = \"make:test\"\nrust = [\n    \"nextest:wordfreq_rs::cli::the_three_most_frequent_words\",\n    \"nextest:wordfreq_rs::cli::case_kept_and_short_words_skipped\",\n]\nnote = \"The test target ran the four TAP programs, mapped point by point above, and compared the program's output with tests/sample.out and tests/sample-k.out, which these two tests do.\"\n"
+          }
+        ],
+        "summary": "Finish retiring the C: wf_rs::conf keeps its settings in its own atomics now that the C globals are gone, the symbol map points their entries at the getters, and make:test maps to the program's output comparisons.",
+        "review_notes": []
+      }
+    ]
+  },
+  "recorded_from": "host-agent run 20261106-125410-f568"
+}

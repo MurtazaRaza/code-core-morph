@@ -17,7 +17,8 @@ always give the same plan, byte for byte (FR-5.6).
   module, leaves first, behind façades (``port_units: module``, D-58); then, to finish a port
   (D-60), one unit per executable (``executable``), one per test source (``tests``), each
   needing the module units of what it includes, and one last unit that retires the source
-  language (``retirement``), needing every other port unit.
+  language (``retirement``), needing every other port unit. A C port cuts one unit per
+  source file of a library instead, ordered by calls (``translation_unit``, D-68).
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from codecoremorph.core.models import (
     RuleKind,
     RuleSite,
     SkipCondition,
+    SymbolKind,
     TargetKind,
     UnitFlag,
     UnitStatus,
@@ -48,6 +50,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.llm.catalog import ModelInfo
 from codecoremorph.planner.estimate import FALLBACK_CONTEXT_WINDOW, Estimator
+from codecoremorph.planner.graph import condense
 from codecoremorph.planner.project import ProjectModel
 from codecoremorph.planner.sites import RuleScan
 
@@ -55,6 +58,7 @@ DEFAULT_MAX_UNIT_FILES = 20  # NFR-1.3 sizes incremental re-indexing for units o
 DEFAULT_MERGE_TOKENS = 40_000  # small clusters merge up to this much context
 
 _ABI_BOUNDARIES = frozenset({Boundary.C_ABI, Boundary.JNI, Boundary.PINVOKE})
+_LANGUAGE_NAMES = {"cpp": "C++", "c": "C", "csharp": "C#", "java": "Java", "rust": "Rust"}
 _SKIP_FLAGS = {
     SkipCondition.C_COMPATIBLE: UnitFlag.C_COMPATIBLE,
     SkipCondition.PUBLIC_API: UnitFlag.PUBLIC_API,
@@ -129,6 +133,7 @@ class _Former:
         keep_source_api: bool = False,
         mapped_tests: Collection[str] = (),
         new_code: Collection[str] = (),
+        language: str = "cpp",
     ):
         self.project = project
         self.settings = settings
@@ -142,6 +147,7 @@ class _Former:
         # A port's new code (its rules' extra_scope: the crates, and the C++ glue headers of a
         # module port's bridge) is no source code to port (D-60).
         self.new_code = PathMatcher(list(new_code)) if new_code else None
+        self.language = language  # the source's
         self.module_drafts: dict[str, _Draft] = {}  # file -> the module unit that ports it
         self.port_drafts: list[_Draft] = []
 
@@ -454,6 +460,153 @@ class _Former:
         self.port_drafts += drafts
         return drafts
 
+    def translation_units(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        """One unit per C source file a library target compiles (D-68), with the headers only
+        it includes, ordered leaves first by the calls between the sources rather than by
+        includes: old C often has one internal header that declares every module's functions.
+        The headers it includes that other files include too stay as they are (read-only
+        references) until the retirement; those that declare what it exports are its C
+        headers. A call cycle is broken where it costs least (:meth:`_call_order`). A program's
+        sources are the executable rule's, and a source no target compiles is skipped."""
+        project = self.project
+        library_of: dict[str, str] = {}
+        archive_of: dict[str, str] = {}
+        executable: set[str] = set()
+        for build in sorted(project.targets, key=lambda t: t.name):
+            if build.kind is TargetKind.LIBRARY:
+                archive = next((a for a in build.artifacts if a.endswith(".a")), None)
+                if archive is not None:
+                    archive_of.setdefault(build.name, archive)
+            for path in build.files:
+                if build.kind is TargetKind.LIBRARY:
+                    library_of.setdefault(path, build.name)
+                elif build.kind is TargetKind.EXECUTABLE:
+                    executable.add(path)
+        sources: list[str] = []
+        drafts: list[_Draft] = []
+        for path in files:
+            if project.files[path].role is not FileRole.SOURCE or self.is_new_code(path):
+                continue  # headers stay until the retirement
+            if path in library_of:
+                sources.append(path)
+            elif path in executable:
+                if PortUnits.EXECUTABLE not in self.planned_ports:
+                    note = "skipped: a program's code stays C until a port_executable rule"
+                    drafts.append(self._skipped(scan, [path], note))
+            else:
+                note = "skipped: no library target of the build compiles it"
+                drafts.append(self._skipped(scan, [path], note))
+        order = self._call_order(sources)
+        later = {path: set(order[i + 1 :]) for i, path in enumerate(order)}
+        taken: dict[str, set[str]] = {}
+        for source in order:
+            library = library_of[source]
+            own = self._own_headers(source)
+            kept = sorted(self._included(source) - set(own))
+            exports = project.c_exports(source)
+            declaring = set(project.files_declaring([s.id for s in exports]))
+            unit_files = {source, *own}
+            callers = sorted(set(project.fan_in([s.id for s in exports])) - unit_files - set(kept))
+            stem = source.rsplit("/", 1)[-1].split(".", 1)[0]
+            package, module = self.names(library, stem, taken.setdefault(library, set()))
+            taken[library].add(module)
+            port = PortUnit(
+                build_target=library,
+                crate=package,
+                module=module,
+                callers=callers,
+                c_headers=[h for h in kept if h in declaring],
+                exports=[s.name for s in exports],
+                sys_headers=kept,
+                archive=archive_of.get(library),
+            )
+            functions = sum(s.kind is SymbolKind.FUNCTION for s in exports)
+            exported = " and ".join(
+                f"{n} {word}{'' if n == 1 else 's'}"
+                for n, word in ((functions, "function"), (len(exports) - functions, "variable"))
+                if n
+            )
+            note = f"ports {source} to {target} ({package}::{module})"
+            if exported:
+                note += f", exporting {exported}"
+            if own:
+                note += f" with {', '.join(own)}, which only it includes"
+            if kept:
+                note += f"; keeps {', '.join(kept)}"
+            still_c = sorted(set(project.calls.get(source, {})) & later[source])
+            if still_c:
+                note += f"; calls {', '.join(still_c)} while they are still C (a call cycle)"
+            variadic = [s.name for s in project.c_variadic(source)]
+            if variadic:
+                # Stable Rust defines neither `...` nor `va_list` functions (D-70).
+                note += (
+                    f"; {' and '.join(variadic)} stay{'s' if len(variadic) == 1 else ''} C in "
+                    f"{source}, over the Rust code: they take `...` or a `va_list`"
+                )
+            if callers:
+                note += f"; {len(callers)} C files keep calling it through its headers"
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({*unit_files, *kept, *project.build_files}),
+                sites=self.site_counts(scan, sorted(unit_files)),
+                references=kept,
+                note=note,
+                port=port,
+            )
+            for path in unit_files:
+                self.module_drafts.setdefault(path, draft)
+            drafts.append(draft)
+            self.port_drafts.append(draft)
+        return drafts
+
+    def _call_order(self, sources: Sequence[str]) -> list[str]:
+        """``sources`` leaves first by the calls between them, ties by path. Within a call
+        cycle, the source that calls the fewest functions of the others still in C goes first,
+        since Rust calls those through ``extern`` declarations until their own units (D-68)."""
+        members = set(sources)
+        calls = {
+            s: {t: n for t, n in self.project.calls.get(s, {}).items() if t in members and t != s}
+            for s in sources
+        }
+        order: list[str] = []
+        for cluster in condense(sources, calls).clusters:
+            left = set(cluster)
+            while left:
+                costs = sorted((sum(n for t, n in calls[f].items() if t in left), f) for f in left)
+                order.append(costs[0][1])
+                left.discard(costs[0][1])
+        return order
+
+    def _included(self, source: str) -> set[str]:
+        """The project headers ``source`` includes, directly or through other headers."""
+        found: set[str] = set()
+        todo = [source]
+        while todo:
+            for path in sorted(self.project.includes.get(todo.pop(), set())):
+                entry = self.project.files.get(path)
+                if path not in found and entry is not None and entry.role is FileRole.HEADER:
+                    found.add(path)
+                    todo.append(path)
+        return found
+
+    def _own_headers(self, source: str) -> list[str]:
+        """The headers only ``source`` includes (directly, or through headers only it includes)
+        and that aren't public API: they go with its port (D-68)."""
+        includers: dict[str, set[str]] = {}
+        for path, targets in self.project.includes.items():
+            for header in targets:
+                includers.setdefault(header, set()).add(path)
+        members = {source}
+        changed = True
+        while changed:
+            changed = False
+            for path in sorted(self._included(source) - members):
+                entry = self.project.files[path]
+                if not entry.public_api and includers.get(path, set()) <= members:
+                    members.add(path)
+                    changed = True
+        return sorted(members - {source})
+
     # ------------------------------------------------------------------ finishing a port (D-60)
 
     def _retired_later(self, users: Sequence[str]) -> bool:
@@ -556,7 +709,19 @@ class _Former:
                 bin=build.name,
                 dependencies=sorted({self._crate_of(lib) for lib in libraries}),
                 tests=tests,
+                artifact=next(iter(build.artifacts), None),
             )
+            needs = self._needed_modules(own)
+            # A Rust program links the library crates, not the C archive: in a C port it needs
+            # every translation unit of the libraries it links (D-69).
+            needs += [
+                d
+                for d in self.port_drafts
+                if d.port is not None
+                and d.port.archive is not None
+                and d.port.build_target in libraries
+                and d not in needs
+            ]
             runs = f"; {len(tests)} CTest entries run it" if tests else ""
             draft = _Draft(
                 rule=scan.rule_id,
@@ -565,7 +730,7 @@ class _Former:
                 note=f"ports {build.name} ({', '.join(sources)}) to a {target} program, "
                 f"{crate} (bin {build.name}){runs}",
                 port=port,
-                needs=self._needed_modules(own),
+                needs=needs,
             )
             drafts.append((min(project.cluster_index(f) for f in own), draft))
         placed = [d for _, d in sorted(drafts, key=lambda pd: pd[0])]
@@ -619,7 +784,9 @@ class _Former:
                 sorted(
                     e.test_id
                     for e in project.tests
-                    if e.runs == test_target and e.test_id not in self.mapped_tests
+                    if e.runs == test_target
+                    and e.test_id not in self.mapped_tests
+                    and e.test_id not in cases  # a C test's entries are its cases (D-69)
                 )
                 if last[test_target] == path
                 else []
@@ -639,7 +806,8 @@ class _Former:
                     files=references,
                     sites=self.site_counts(scan, [path]),
                     references=references,
-                    note=f"translates {path} ({len(cases)} tests) to {target}: "
+                    note=f"translates {path} ({len(cases)} test{'' if len(cases) == 1 else 's'}) "
+                    f"to {target}: "
                     f"{crate}/tests/{module}.rs{maps}",
                     port=port,
                     needs=modules,
@@ -687,15 +855,17 @@ class _Former:
         if not retired and not build:
             return []
         needs = [d for d in self.port_drafts if d.blocking]
+        language = _LANGUAGE_NAMES.get(self.language, self.language)
+        system = "CMake" if any(f.endswith("CMakeLists.txt") for f in build) else "Make"
         if self.keep_source_api:
             note = (
-                f"retires the C++ the public API doesn't need: deletes {len(retired)} files, "
-                f"keeps {len(kept)} for outside C++ consumers"
+                f"retires the {language} the public API doesn't need: deletes {len(retired)} "
+                f"files, keeps {len(kept)} for outside {language} consumers"
             )
         else:
             note = (
-                f"retires the C++: deletes {len(retired)} files and the CMake build; the "
-                f"{target} workspace then builds alone"
+                f"retires the {language}: deletes {len(retired)} files and the {system} build; "
+                f"the {target} workspace then builds alone"
             )
         draft = _Draft(
             rule=scan.rule_id,
@@ -740,6 +910,8 @@ class _Former:
             drafts = self.executable_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.TESTS:
             drafts = self.test_units(scan, files, rule.target_language or target)
+        elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.TRANSLATION_UNIT:
+            drafts = self.translation_units(scan, files, rule.target_language or target)
         elif rule.retirement:
             drafts = self.retirement_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT:
@@ -824,6 +996,7 @@ def build_plan(
         keep_source_api=keep_source_api,
         mapped_tests=mapped_tests,
         new_code=sorted({g for r in port_rules for g in r.extra_scope}),
+        language=language,
     )
     drafts: list[_Draft] = []
     plan_rules: list[PlanRule] = []

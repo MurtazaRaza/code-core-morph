@@ -77,6 +77,27 @@ class PortUnit(CoreModel):
         description="The unit's headers that declare functions with C linkage: the new code "
         "exports them (c_abi_kept)",
     )
+    exports: list[str] = Field(
+        default_factory=list[str],
+        description="A C translation unit's (D-68): the functions and variables it defines that "
+        "other files use. The new code exports them under these names, and c_abi_kept compares "
+        "only these, since a shared header also declares other units' functions",
+    )
+    sys_headers: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath],
+        description="A C translation unit's: the headers it keeps, whose types, constants and "
+        "functions still in C the crate's `sys` module covers (D-68)",
+    )
+    archive: str | None = Field(
+        default=None,
+        description="A C translation unit's: the library's static archive, relative to the "
+        "build directory, which the build folds the crate into (D-68)",
+    )
+    artifact: str | None = Field(
+        default=None,
+        description="An executable's unit: the program the build makes, relative to the build "
+        "directory; a C port's Make build copies the Rust program there (D-68)",
+    )
 
     tests: list[str] = Field(
         default_factory=list[str],
@@ -104,6 +125,12 @@ class PortUnit(CoreModel):
             options["dependencies"] = ",".join(self.dependencies)
         if self.wrappers:
             options["wrappers"] = ",".join(self.wrappers)
+        if self.sys_headers:
+            options["headers"] = ",".join(self.sys_headers)
+        if self.archive is not None:
+            options["archive"] = self.archive
+        if self.artifact is not None:
+            options["artifact"] = self.artifact
         return options
 
 
