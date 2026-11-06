@@ -1,0 +1,6 @@
+# The built-in C# rule pack (SPEC §11.3, D-65).
+name: csharp
+language: csharp
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
+version: "1"
+description: C# language-version upgrades from C# 7.3 up to C# 14, and modernization.

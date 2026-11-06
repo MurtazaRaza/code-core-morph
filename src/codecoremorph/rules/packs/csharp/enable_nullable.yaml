@@ -1,0 +1,18 @@
+id: enable_nullable
+language: csharp
+kind: api_preserving
+description: >-
+  Turn on nullable reference types file by file: #nullable enable at the top of the file, and
+  the annotations (string?) and null checks that leave it without nullable warnings, without
+  changing what the code does.
+applies_to: {min_target_standard: csharp8}
+detector:
+  # Files without a nullable context, and the nullable warnings (CS86xx) the last build gave
+  # in them. Test files have no sites: their nulls are often what a test checks.
+  type: adapter_query
+  query: nullable_disabled
+llm:
+  guidance: guidance/enable_nullable.md
+  examples: examples/enable_nullable
+postconditions:
+  - {type: detector_empty, severity: error}

@@ -49,6 +49,14 @@ up to C++23, for CMake projects.
   `use_try_with_resources`, `use_var`, `use_switch_expressions` and `use_records`.
 - An agent may submit no edits when what is left should stay as it is; the unit is verified as
   it is.
+- C# language-version upgrades for MSBuild projects (D-65, D-66), from C# 7.3 up to C# 14: the
+  .NET 10 SDK with the .NET 8 and 6 runtimes beside it (`codecoremorph toolchain install csharp`,
+  or `scripts/build-image csharp`), `dotnet build` and `dotnet test` (NUnit, xUnit, MSTest) with
+  each test project on its framework's runtime, a Roslyn index, and the `csharp` rule pack:
+  `bump_csharp_version` (the language version and the target framework, then the agent) and
+  `use_file_scoped_namespaces`, `use_pattern_matching`, `convert_switch_statements`,
+  `use_using_declarations`, `use_target_typed_new`, `use_collection_expressions` (each through
+  `dotnet format`'s fixers), `use_record_types` and `enable_nullable`.
 
 ### Security
 

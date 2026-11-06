@@ -1,0 +1,21 @@
+id: use_target_typed_new
+language: csharp
+kind: api_preserving
+description: >-
+  Drop the type from a constructor call whose target already names it
+  (List<int> numbers = new(); for List<int> numbers = new List<int>();).
+applies_to: {min_target_standard: csharp9}
+detector:
+  type: pattern
+  # T x = new T(...); or T x = new T { ... }: the new expression is the whole initializer
+  patterns: ['\b([A-Z][\w.]*(<[^;=()]*>)?)\s+\w+\s*=\s*new\s+\1\s*(\([^()]*\))?\s*[;{]']
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0090]
+    options: {csharp_style_implicit_object_creation_when_type_is_apparent: "true"}
+llm:
+  guidance: guidance/use_target_typed_new.md
+  examples: examples/use_target_typed_new
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}

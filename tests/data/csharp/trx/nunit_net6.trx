@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e1d48158-8333-4188-a857-703647f655eb" name="builder@BUILDHOST 2026-11-05 22:25:30" runUser="BUILDHOST\builder" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-05T22:25:30.0606904+04:00" queuing="2026-11-05T22:25:30.0606907+04:00" start="2026-11-05T22:25:29.4142170+04:00" finish="2026-11-05T22:25:30.0650325+04:00" />
+  <TestSettings name="default" id="1ead2beb-3732-4966-8f87-97b163f7e93e">
+    <Deployment runDeploymentRoot="builder_BUILDHOST_2026-11-05_22_25_30" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="523909fd-ab07-4efb-b0f4-3da6adfd19af" testId="a63fd1c3-b30c-b7e3-8081-c276fbdaf797" testName="EqualAmountsAreEqual" computerName="BUILDHOST" duration="00:00:00.0080560" startTime="2026-11-05T22:25:29.9613508+04:00" endTime="2026-11-05T22:25:29.9692853+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="523909fd-ab07-4efb-b0f4-3da6adfd19af" />
+    <UnitTestResult executionId="85c933f3-5996-46fa-8f89-2408b222b657" testId="046c6afc-c86b-73d7-834d-b8bdfa8181ac" testName="FinalStatuses(Shipped,True)" computerName="BUILDHOST" duration="00:00:00.0000060" startTime="2026-11-05T22:25:29.9724322+04:00" endTime="2026-11-05T22:25:29.9724381+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="85c933f3-5996-46fa-8f89-2408b222b657" />
+    <UnitTestResult executionId="0646532a-78d1-4e89-a8bf-8f4f510367f0" testId="05ed0e75-6db4-90c6-a99c-c831d675a9f8" testName="FinalStatuses(Paid,False)" computerName="BUILDHOST" duration="00:00:00.0000150" startTime="2026-11-05T22:25:29.9724142+04:00" endTime="2026-11-05T22:25:29.9724295+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0646532a-78d1-4e89-a8bf-8f4f510367f0" />
+    <UnitTestResult executionId="24db60a4-1fa9-4a17-a85c-c98919e36844" testId="d5eae64f-3281-a1a8-ddeb-0bc079fe7637" testName="AnEmptyOrderHasNoTotal" computerName="BUILDHOST" duration="00:00:00.0003350" startTime="2026-11-05T22:25:29.9717108+04:00" endTime="2026-11-05T22:25:29.9720456+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="24db60a4-1fa9-4a17-a85c-c98919e36844" />
+    <UnitTestResult executionId="13ee38b7-d8b2-4e60-81b6-84998698f126" testId="51315e55-44a7-6d57-c15e-72a73128a6c7" testName="FinalStatuses(Cancelled,True)" computerName="BUILDHOST" duration="00:00:00.0000080" startTime="2026-11-05T22:25:29.9724400+04:00" endTime="2026-11-05T22:25:29.9724481+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="13ee38b7-d8b2-4e60-81b6-84998698f126" />
+    <UnitTestResult executionId="4d8ee69b-6890-46f1-b146-6a45cef370b4" testId="a5fa0086-bd2e-b01f-458f-031f8c362d8d" testName="FinalStatuses(Open,False)" computerName="BUILDHOST" duration="00:00:00.0002760" startTime="2026-11-05T22:25:29.9721305+04:00" endTime="2026-11-05T22:25:29.9724069+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4d8ee69b-6890-46f1-b146-6a45cef370b4" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="FinalStatuses(Open,False)" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="a5fa0086-bd2e-b01f-458f-031f8c362d8d">
+      <Execution id="4d8ee69b-6890-46f1-b146-6a45cef370b4" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.ReportTests" name="FinalStatuses(Open,False)" />
+    </UnitTest>
+    <UnitTest name="FinalStatuses(Cancelled,True)" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="51315e55-44a7-6d57-c15e-72a73128a6c7">
+      <Execution id="13ee38b7-d8b2-4e60-81b6-84998698f126" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.ReportTests" name="FinalStatuses(Cancelled,True)" />
+    </UnitTest>
+    <UnitTest name="FinalStatuses(Shipped,True)" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="046c6afc-c86b-73d7-834d-b8bdfa8181ac">
+      <Execution id="85c933f3-5996-46fa-8f89-2408b222b657" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.ReportTests" name="FinalStatuses(Shipped,True)" />
+    </UnitTest>
+    <UnitTest name="EqualAmountsAreEqual" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="a63fd1c3-b30c-b7e3-8081-c276fbdaf797">
+      <Execution id="523909fd-ab07-4efb-b0f4-3da6adfd19af" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.MoneyTests" name="EqualAmountsAreEqual" />
+    </UnitTest>
+    <UnitTest name="FinalStatuses(Paid,False)" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="05ed0e75-6db4-90c6-a99c-c831d675a9f8">
+      <Execution id="0646532a-78d1-4e89-a8bf-8f4f510367f0" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.ReportTests" name="FinalStatuses(Paid,False)" />
+    </UnitTest>
+    <UnitTest name="AnEmptyOrderHasNoTotal" storage="C:\work\tests\orderbook.tests\bin\debug\net6.0\orderbook.tests.dll" id="d5eae64f-3281-a1a8-ddeb-0bc079fe7637">
+      <Execution id="24db60a4-1fa9-4a17-a85c-c98919e36844" />
+      <TestMethod codeBase="C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll" adapterTypeName="executor://nunit3testexecutor/" className="OrderBook.Tests.OrderTests" name="AnEmptyOrderHasNoTotal" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="a63fd1c3-b30c-b7e3-8081-c276fbdaf797" executionId="523909fd-ab07-4efb-b0f4-3da6adfd19af" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="046c6afc-c86b-73d7-834d-b8bdfa8181ac" executionId="85c933f3-5996-46fa-8f89-2408b222b657" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="05ed0e75-6db4-90c6-a99c-c831d675a9f8" executionId="0646532a-78d1-4e89-a8bf-8f4f510367f0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d5eae64f-3281-a1a8-ddeb-0bc079fe7637" executionId="24db60a4-1fa9-4a17-a85c-c98919e36844" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="51315e55-44a7-6d57-c15e-72a73128a6c7" executionId="13ee38b7-d8b2-4e60-81b6-84998698f126" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a5fa0086-bd2e-b01f-458f-031f8c362d8d" executionId="4d8ee69b-6890-46f1-b146-6a45cef370b4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="6" executed="6" passed="6" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>NUnit Adapter 4.5.0.0: Test execution started&#xD;
+Running selected tests in C:\work\tests\OrderBook.Tests\bin\Debug\net6.0\OrderBook.Tests.dll&#xD;
+   NUnit3TestExecutor discovered 6 of 6 NUnit test cases using Current Discovery mode, Non-Explicit run&#xD;
+NUnit Adapter 4.5.0.0: Test execution complete&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

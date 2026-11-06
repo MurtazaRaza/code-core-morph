@@ -88,6 +88,25 @@ MAVEN_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
 }
 # Maven's own settings in a project (.mvn/): the JVM options and command line of every build.
 MAVEN_SETTINGS_FILES = (".mvn/jvm.config", ".mvn/maven.config")
+# The same in MSBuild files (D-65): tasks that run commands or download, inline tasks (C# that
+# MSBuild compiles and runs), new targets and imports, MSBuild SDKs other than .NET's (NuGet
+# packages of targets), analyzers (code the compiler runs), and restore sources.
+MSBUILD_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
+    "an Exec task": re.compile(r"<Exec\b", re.IGNORECASE),
+    "an inline task (UsingTask)": re.compile(r"<UsingTask\b", re.IGNORECASE),
+    "a DownloadFile task": re.compile(r"<DownloadFile\b", re.IGNORECASE),
+    "a target": re.compile(r"<Target\b", re.IGNORECASE),
+    "an import": re.compile(r"<Import\b", re.IGNORECASE),
+    "an MSBuild SDK": re.compile(
+        r"<Sdk\b|\bSdk\s*=\s*\"(?!Microsoft\.NET\.Sdk(?:\.\w+)*\")", re.IGNORECASE
+    ),
+    "an analyzer": re.compile(r"<Analyzer\b", re.IGNORECASE),
+    "a restore source": re.compile(r"<Restore(?:Additional)?(?:Project)?Sources\b", re.IGNORECASE),
+}
+MSBUILD_SUFFIXES = (".csproj", ".vbproj", ".fsproj", ".proj", ".props", ".targets")
+# Files whose every line is a setting of NuGet (package sources) or of MSBuild's command line.
+DOTNET_SETTINGS_FILES = ("nuget.config", "directory.build.rsp", "msbuild.rsp")
+_MSBUILD_SDKS = re.compile(r"\"msbuild-sdks\"")
 
 # Symbols whose signature is an interface others depend on (I-6). Macros have no signature in
 # the index, and a typedef rewritten as an alias declaration keeps its signature.
@@ -563,6 +582,10 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
             patterns.update(CARGO_BUILD_COMMANDS)
         if file_name == "pom.xml":
             patterns.update(MAVEN_BUILD_COMMANDS)
+        if file_name.lower().endswith(MSBUILD_SUFFIXES):
+            patterns.update(MSBUILD_BUILD_COMMANDS)
+        if file_name.lower() == "global.json":
+            patterns["MSBuild SDKs (msbuild-sdks)"] = _MSBUILD_SDKS
         for name, pattern in patterns.items():
             plus = count(pattern, lines.added.get(path, []))
             if plus > count(pattern, lines.removed.get(path, [])):
@@ -574,6 +597,10 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
             added.append(f"Maven core extensions ({path})")
         if path.endswith(MAVEN_SETTINGS_FILES) and lines.added.get(path):
             added.append(f"Maven settings in {path}")
+        if file_name.lower() in DOTNET_SETTINGS_FILES and any(
+            t.strip() and not t.lstrip().startswith("<!--") for t in lines.added.get(path, [])
+        ):
+            added.append(f"NuGet or MSBuild settings in {path}")
     if not added:
         return _ok("I-12")
     return InvariantResult(

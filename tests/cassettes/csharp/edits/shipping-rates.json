@@ -1,0 +1,122 @@
+{
+ "fixture": "shipping-rates",
+ "source": "csharp7.3",
+ "target": "csharp12",
+ "rules": [
+  "use_file_scoped_namespaces",
+  "use_pattern_matching",
+  "convert_switch_statements",
+  "use_using_declarations",
+  "use_target_typed_new",
+  "use_collection_expressions",
+  "use_record_types",
+  "enable_nullable"
+ ],
+ "status": "completed",
+ "unit_counts": {
+  "committed": 9
+ },
+ "submissions": {
+  "U-0005": [
+   {
+    "summary": "Make Quoter.QuoteAll's StringReader a using declaration: only the return follows its block, and disposing a StringReader there changes nothing.",
+    "review_notes": [],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "src/Rates.App/Quoter.cs",
+      "search": "        using (StringReader reader = new StringReader(batch))\n        {\n            string line;\n            while ((line = reader.ReadLine()) != null)\n            {\n                if (line.Trim().Length == 0)\n                {\n                    continue;\n                }\n                quotes.Add(QuoteLine(line));\n            }\n        }\n        return quotes;\n",
+      "replace": "        using StringReader reader = new StringReader(batch);\n        string line;\n        while ((line = reader.ReadLine()) != null)\n        {\n            if (line.Trim().Length == 0)\n            {\n                continue;\n            }\n            quotes.Add(QuoteLine(line));\n        }\n        return quotes;\n"
+     }
+    ]
+   }
+  ],
+  "U-0008": [
+   {
+    "summary": "Make Parcel a record: its Equals compared both fields, which the record's generated Equals does; the constructor with its validation, the properties and GetHashCode stay.",
+    "review_notes": [
+     "Rates.Core targets netstandard2.0, so Parcel stays a record with an explicit constructor rather than a positional one, whose init-only properties need IsExternalInit."
+    ],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/Parcel.cs",
+      "search": "public sealed class Parcel\n",
+      "replace": "public sealed record Parcel\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/Parcel.cs",
+      "search": "    public override bool Equals(object obj)\n    {\n        if (obj is not Parcel other)\n        {\n            return false;\n        }\n        return grams == other.grams && zone == other.zone;\n    }\n\n",
+      "replace": ""
+     }
+    ]
+   }
+  ],
+  "U-0009": [
+   {
+    "summary": "Enable nullable reference types in the library and the app: a Quote's Reference and Problem can be null (Problem is, for every priced parcel), and so can the lines TryGetValue and ReadLine give back; nothing else was null.",
+    "review_notes": [
+     "Quote.Reference is null until QuoteLine sets it; it stays nullable rather than gaining a default value, which would change what a new Quote() holds."
+    ],
+    "edits": [
+     {
+      "op": "replace",
+      "path": "src/Rates.App/Quoter.cs",
+      "search": "using System;\nusing System.Collections.Generic;\nusing System.Globalization;\n",
+      "replace": "#nullable enable\nusing System;\nusing System.Collections.Generic;\nusing System.Globalization;\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.App/Quoter.cs",
+      "search": "    public string Reference { get; set; }\n",
+      "replace": "    public string? Reference { get; set; }\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.App/Quoter.cs",
+      "search": "    public string Problem { get; set; }\n",
+      "replace": "    public string? Problem { get; set; }\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.App/Quoter.cs",
+      "search": "        string line;\n",
+      "replace": "        string? line;\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/Parcel.cs",
+      "search": "using System;\n\nnamespace Rates;\n",
+      "replace": "#nullable enable\nusing System;\n\nnamespace Rates;\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/RateTable.cs",
+      "search": "using System;\nusing System.Collections.Generic;\n",
+      "replace": "#nullable enable\nusing System;\nusing System.Collections.Generic;\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/RateTable.cs",
+      "search": "        List<Band> list;\n        if (!bands.TryGetValue(zone, out list))\n",
+      "replace": "        List<Band>? list;\n        if (!bands.TryGetValue(zone, out list))\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/RateTable.cs",
+      "search": "        List<Band> list;\n        if (!bands.TryGetValue(parcel.Zone, out list))\n",
+      "replace": "        List<Band>? list;\n        if (!bands.TryGetValue(parcel.Zone, out list))\n"
+     },
+     {
+      "op": "replace",
+      "path": "src/Rates.Core/Zone.cs",
+      "search": "namespace Rates;\n",
+      "replace": "#nullable enable\nnamespace Rates;\n"
+     }
+    ]
+   }
+  ]
+ },
+ "recorded_from": "host-agent run 20261105-185212-dd34"
+}

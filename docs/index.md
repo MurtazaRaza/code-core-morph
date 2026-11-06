@@ -9,7 +9,8 @@ own, for you to review.
 It upgrades **C++** from C++98/03, 11, 14, 17 or 20 to any newer standard up to C++23, with
 modern idioms (alias declarations, smart pointers, concepts, and more); ports **C++ to Rust**,
 module by module, to a pure Cargo workspace; and upgrades **Java** from Java 8, 11, 17 or 21 up
-to Java 25 (records, lambdas, switch expressions, and more). C# upgrades and Java to C# come
+to Java 25 (records, lambdas, switch expressions, and more); and upgrades **C#** from C# 7.3 up
+to C# 14 (nullable reference types, records, pattern matching, and more). Java to C# comes
 next.
 
 ## How a migration runs
@@ -19,7 +20,7 @@ next.
    units with an estimate of time and cost. You approve the plan.
 2. **Characterize.** Code that no test reaches gets *characterization tests* first, which record
    what it does now.
-3. **Migrate.** For each unit: codemods (clang-tidy for C++, OpenRewrite for Java) make the mechanical changes; the
+3. **Migrate.** For each unit: codemods (clang-tidy for C++, OpenRewrite for Java, `dotnet format` for C#) make the mechanical changes; the
    agent does the rest, with read-only tools and a single way to propose edits; CodeCoreMorph
    applies them, builds, runs the tests and checks the invariants, and sends failures back to
    the agent. A unit that can't be made green is rolled back and reported.
@@ -33,12 +34,13 @@ Your working tree is never touched: everything happens in a worktree on the bran
 
 - [Getting started](getting-started.md): install, write a manifest, plan and run a migration.
 - [Migrating with Claude Code](claude-code.md): Claude Code as the agent, on your Claude plan.
-- [Porting C++ to Rust](porting-to-rust.md) and [Upgrading Java](upgrading-java.md).
+- [Porting C++ to Rust](porting-to-rust.md), [Upgrading Java](upgrading-java.md) and
+  [Upgrading C#](upgrading-csharp.md).
 - [Concepts](concepts.md): units, rules, gates, invariants and the report.
 - [Configuration reference](reference/configuration.md) and [CLI reference](reference/cli.md).
 - [Security](security.md): what CodeCoreMorph protects against, and what it doesn't.
 
 !!! note "Status"
     CodeCoreMorph is in early development. It migrates C++ projects built with CMake and tested
-    with GoogleTest (or anything CTest runs), and Java projects built with Maven and tested with
-    JUnit.
+    with GoogleTest (or anything CTest runs), Java projects built with Maven and tested with
+    JUnit, and C# projects built with MSBuild and tested with NUnit, xUnit or MSTest.

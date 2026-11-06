@@ -1,0 +1,17 @@
+id: use_record_types
+language: csharp
+kind: api_changing
+description: >-
+  Turn immutable value classes (read-only fields or get-only properties set once by the
+  constructor, Equals and GetHashCode over them, no base class and no subclass) into records,
+  keeping their members' names so callers don't change. Classes in the public API stay
+  classes.
+applies_to: {min_target_standard: csharp9}
+detector:
+  type: adapter_query
+  query: record_candidates
+llm:
+  guidance: guidance/use_record_types.md
+  examples: examples/use_record_types
+skip:
+  - public_api

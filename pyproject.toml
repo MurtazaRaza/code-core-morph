@@ -42,11 +42,13 @@ codecoremorph = "codecoremorph.cli:main"
 cpp = "codecoremorph.adapters.cpp:CppAdapter"
 rust = "codecoremorph.adapters.rust:RustAdapter"
 java = "codecoremorph.adapters.java:JavaAdapter"
+csharp = "codecoremorph.adapters.csharp:CSharpAdapter"
 
 [project.entry-points."codecoremorph.rules"]
 cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
 cpp_to_rust = "codecoremorph.rules.packs.cpp_to_rust:PACK_DIR"
 java = "codecoremorph.rules.packs.java:PACK_DIR"
+csharp = "codecoremorph.rules.packs.csharp:PACK_DIR"
 
 [project.entry-points."codecoremorph.providers"]
 anthropic = "codecoremorph.llm.anthropic:AnthropicProvider"

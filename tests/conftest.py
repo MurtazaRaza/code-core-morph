@@ -130,6 +130,16 @@ def java_toolchain_env() -> Path:
     return env
 
 
+@pytest.fixture
+def csharp_toolchain_env() -> Path:
+    """The installed native C# toolchain's environment file (D-65); skips when there is
+    none."""
+    env = REAL_HOME / "toolchains" / "csharp.env"
+    if not env.is_file():
+        pytest.skip(f"no native C# toolchain at {env}; run: codecoremorph toolchain install csharp")
+    return env
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--record-cassettes",

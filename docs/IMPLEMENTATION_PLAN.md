@@ -470,20 +470,44 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Goal:** the third language. C# projects can be indexed, built and tested, and modernized to a newer language version.
 
-**Prerequisites:** Phase 9 (Phase 5 at minimum).
+**Prerequisites:** Phase 9 (Phase 5 at minimum). Like Java, adding C# must not touch `orchestrator/` (NFR-3.1).
 
 ### Tasks
-- [ ] `images/dotnet/`: pinned .NET SDK, Roslyn-based indexer tool
-- [ ] `csharp` rows in the manifest and `install-toolchain csharp` (.NET SDK archive, Roslyn indexer)
-- [ ] Roslyn indexer helper (symbols, references, `DllImport`/`LibraryImport` as P/Invoke boundaries)
-- [ ] `dotnet build` driver plus MSBuild diagnostic parser; `dotnet test --logger trx` parsing (NUnit, xUnit, MSTest); `fetch_only` restore step
-- [ ] Roslyn analyzer and `dotnet format` codemod runner; disabled-test and assertion extraction
-- [ ] C# fixtures (older language-version style, SDK-style projects)
-- [ ] C# modernization rule pack: `bump_lang_version` (project), nullable reference types, file-scoped namespaces, pattern matching, records where safe, collection expressions where applicable
+**Strategy**
+- [x] Spike on a small SDK-style project (a `net6.0` library at C# 7.3 and its NUnit tests) on Windows: one .NET SDK for every build (its Roslyn compiles every language version), the runtime of each test project's target framework beside it, `bin/` and `obj/` kept out of the worktree, every build offline after a `fetch_only` restore step, `dotnet format` limited to a unit's files, a Roslyn index helper with no download of its own (D-65, on Windows: SDK 10.0.403 with the 8.0.33 and 6.0.36 runtimes in one root; the tests passed on .NET 6 with `BinaryFormatter`, and retargeted to `net8.0` the build failed at `SYSLIB0011`; `netcoreapp3.1` tests ran on .NET 6 with `DOTNET_ROLL_FORWARD=Major` and not without; `dotnet format style --include FILE --diagnostics IDE0161 IDE0090` changed only that file and only those rules, given the styles in `.editorconfig`; the helper compiled in 0.6 s with the SDK's `csc` against the SDK's own Roslyn 5.9. The spike is in `E:/codecoremorph-trials/csharp-spike`)
+- [x] Design settled with a `D-xx` row, and SPEC §11.3 filled in: standards, toolchain, build, tests and test IDs, index, codemods, the rule pack, I-12 for MSBuild (D-65)
+
+**Toolchain**
+- [x] `csharp` rows in the manifest: the .NET SDK and the older LTS runtimes, for every platform (D-66: SDK 10.0.403, runtimes 8.0.33 and 6.0.36, 21 rows; SHA-256 computed from the files, since Microsoft publishes SHA-512)
+- [x] `install-toolchain csharp` (`.bat` and `.sh`): the SDK and runtimes in one `dotnet` root, NuGet's config with nuget.org alone, `csharp.env` (the runtimes copied into the SDK's `shared/`; `--offline` works; `all` installs C# too)
+- [x] `images/csharp/` and `scripts/build-image csharp`; `codecoremorph toolchain install|download csharp` (the image is 1.29 GB)
+
+**Adapter**
+- [x] `codecoremorph.adapters.csharp`: MSBuild projects in a mirror of the worktree (`bin/` and `obj/` stay out of it), the entry point (the top solution or project, or a solution the adapter writes), `dotnet build` offline with MSBuild and compiler diagnostics, `detect_project` and `project_standard` from the project files, `builds`, `clean_build`; the dotnet environment isolated (its home, NuGet's packages and config, no build servers) (`shipping-rates` has no solution: the adapter's `codecoremorph.slnx` lists its projects)
+- [x] The restore step (configure, `fetch_only`): `dotnet restore` with the network on, only when the MSBuild files changed, refused when they gain code-running constructs the run's first configure didn't see
+- [x] Tests: `dotnet test --logger trx` (NUnit, xUnit, MSTest), stable test IDs, selection by `--filter`, each test project on its framework's runtime
+- [x] Roslyn index helper: types, members, references, `using`s and type uses as file dependencies, `DllImport`/`LibraryImport` as P/Invoke boundaries, `project.public_api` files (`CsIndexHelper.cs`; the symbol kinds gain property, event and delegate)
+- [x] Codemods: `dotnet format style` with the rule's diagnostics and styles, applied to the unit's files only; the project files' language version and target framework bump (D-66: `dotnet format` runs again while a pass changes the unit's files; the bump does `Directory.Build.props` first)
+- [x] Tests' sources: `detect_disabled_tests` (`[Ignore]`, `Skip =`, `[Explicit]`, `Assert.Ignore`, `Assert.Inconclusive`), `extract_assertions` (I-4), the `test_cases` query
+- [x] I-12 for MSBuild: `Exec`, `UsingTask`, `DownloadFile`, new targets and imports, other MSBuild SDKs, analyzers, package sources, response files
+
+**Rules**
+- [x] `csharp` rule pack: `bump_csharp_version` (project: the language version and target framework, then the agent fixes what breaks), `use_file_scoped_namespaces`, `use_pattern_matching`, `convert_switch_statements`, `use_using_declarations`, `use_target_typed_new`, `use_collection_expressions`, `use_record_types` (where safe), `enable_nullable`, each with `dotnet format` diagnostics where they exist, guidance, examples and post-conditions (D-66: rule IDs are global, so the records and switch rules are `use_record_types` and `convert_switch_statements`; `enable_nullable` finds no sites in test files)
+
+**Fixtures and evals**
+- [x] C# fixtures (SDK-style, old language-version style): a `net6.0` library at C# 7.3 with NUnit, and a `netstandard2.0` library, a program on it and xUnit tests on `netcoreapp3.1` (`fixtures/csharp/order-book`: `BinaryFormatter`, value classes, casts, switch statements, `using` blocks, null returns, a `DllImport`, 30 NUnit 3 tests; `fixtures/csharp/shipping-rates`: `LangVersion` in `Directory.Build.props`, no solution, 22 xUnit tests; the program targets `netcoreapp3.1` too, since a `netcoreapp3.1` test project can't reference a `net6.0` one)
+- [x] Each fixture's migration whole through `run --host-agent`, replayed from recorded edits natively and in Docker (`order-book` to C# 14 in 10 of 10 units, `shipping-rates` to C# 12 in 9 of 9; `tests/integration/test_csharp_e2e.py`, `tests/cassettes/csharp/`)
 - [ ] Live evals on C# fixtures
+
+### Tests
+- Unit: MSBuild and compiler diagnostics, TRX, the project files' standard and its bump, test scanning (cases, assertions, disabled tests), I-12 on MSBuild files
+- Integration (`toolchain`, `docker`): a fixture's build, tests and index, and a `dotnet format` pass
+- End to end: each fixture's migration replays from recorded host-agent edits, natively and in Docker
+- NFR-3.1: nothing under `orchestrator/` changed
 
 ### Exit criteria (M4)
 - C# fixtures migrate end to end, branch green; no orchestrator-graph changes needed
+- Met on Windows, natively and in Docker: `order-book` (C# 7.3 on .NET 6 to C# 14 on .NET 10) and `shipping-rates` (C# 7.3 on .NET Standard 2.0 and .NET Core 3.1 to C# 12 on .NET 8) migrated whole through `codecoremorph run --host-agent` (every unit committed, every commit green, the final clean build and tests passing) and replay from the recorded edits; nothing under `orchestrator/`, `planner/` or `agent/` changed. Open: live evals, characterization tests for C#; Linux and macOS wait for CI (D-28)
 
 ---
 

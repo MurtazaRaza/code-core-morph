@@ -1,0 +1,24 @@
+id: bump_csharp_version
+language: csharp
+kind: project
+description: >-
+  Raise the language version and the target framework in the project files to the migration's
+  target (net and netcoreapp frameworks become the target's .NET; netstandard keeps its own),
+  then fix the code that no longer compiles or behaves the same there: APIs the new framework
+  made obsolete as errors (BinaryFormatter from .NET 8), behavior it changed, and the
+  language's own breaking changes.
+# Runs first, automatically, whenever the target standard is newer than the source (D-38).
+applies_to: {standard_bump: true, min_target_standard: csharp8}
+detector:
+  type: pattern
+  # What the target's framework refuses to compile or run, whatever the language version.
+  patterns:
+    - {pattern: '\bBinaryFormatter\b', min_target_standard: csharp12}
+codemods:
+  - tool: msbuild-lang-version              # TargetFramework(s) and LangVersion
+llm:
+  guidance: guidance/bump_csharp_version.md
+  examples: examples/bump_csharp_version
+postconditions:
+  - {type: builds_cleanly, severity: error}
+  - {type: detector_empty, severity: error}

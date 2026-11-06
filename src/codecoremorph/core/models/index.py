@@ -60,6 +60,9 @@ class SymbolKind(StrEnum):
     CONSTRUCTOR = "constructor"
     DESTRUCTOR = "destructor"
     FIELD = "field"
+    PROPERTY = "property"  # C# (D-65)
+    EVENT = "event"
+    DELEGATE = "delegate"
     VARIABLE = "variable"
     TYPEDEF = "typedef"
     ALIAS = "alias"

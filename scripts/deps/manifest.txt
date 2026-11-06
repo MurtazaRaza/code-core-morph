@@ -100,3 +100,25 @@ java|jdk25|25.0.5+8|macos-arm64|https://github.com/adoptium/temurin25-binaries/r
 java|jdk25|25.0.5+8|macos-x64|https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5+8/OpenJDK25U-jdk_x64_mac_hotspot_25.0.5_8.tar.gz|32cd4d2151c91aa00d0fc911edfd05245ed40fa6b1aa894d5f35c928cd67a59d|tar.gz|jdk-25.0.5+8/Contents/Home/bin
 java|maven|3.9.16|any|https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.zip|5af3b743dd8b876b5c45da33b676251e5f1687712644abb4ee519ca56e1d89ce|zip|apache-maven-3.9.16/bin
 java|spoon|11.5.0|any|https://repo1.maven.org/maven2/fr/inria/gforge/spoon/spoon-core/11.5.0/spoon-core-11.5.0-jar-with-dependencies.jar|ae7f38a745961b53b2d533cc58ddf9f0e10e5899342bd809ad323f646d3d320e|file|.
+
+# csharp: the native .NET toolchain installed by scripts/install-toolchain csharp (SPEC 11.3,
+# D-65). One .NET SDK builds every framework and language version; the .NET 8 and 6 runtimes are
+# extracted into the SDK's dotnet root beside its own .NET 10, so a test project runs on its
+# framework's runtime (the others roll forward to the next one). Microsoft's release metadata
+# (builds.dotnet.microsoft.com/dotnet/release-metadata) gives SHA-512; these are SHA-256 of the
+# same files. dotnet format and the Roslyn assemblies the index helper uses come with the SDK.
+csharp|dotnet-sdk|10.0.403|windows-x64|https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-win-x64.zip|f398979a9cac2dba760771c4e01f16e431dcd6bcfb2213e3e8f5b3d354095cc0|zip|.
+csharp|dotnet-sdk|10.0.403|linux-x64|https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-linux-x64.tar.gz|cd7224fe8e8ba57c15f1601439ff8785a1a72b54ae5c89dd5302a32dcfbddf18|tar.gz|.
+csharp|dotnet-sdk|10.0.403|linux-arm64|https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-linux-arm64.tar.gz|21fe1a0963984206bfaeb19968da07e7a61d30c9bc4621b7372a762a30c88679|tar.gz|.
+csharp|dotnet-sdk|10.0.403|macos-arm64|https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-osx-arm64.tar.gz|826d7ff91fa83b16bccd7edd7822581fe32b5228a4501aabe61d864168129d73|tar.gz|.
+csharp|dotnet-sdk|10.0.403|macos-x64|https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-osx-x64.tar.gz|cccca37f1ce3a69f99982b80c9546019d149dd2ad26c4ecc01b3b3ab87abeb0e|tar.gz|.
+csharp|dotnet-runtime8|8.0.33|windows-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.33/dotnet-runtime-8.0.33-win-x64.zip|d88b9624950fd33ffd561462f4a23d7ef6d4173ddef55d198adab07016bc5b8c|zip|.
+csharp|dotnet-runtime8|8.0.33|linux-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.33/dotnet-runtime-8.0.33-linux-x64.tar.gz|73e6b84de92cc8442229ea991e677cc1376a0a05e3e39f878cf98ebd756861b6|tar.gz|.
+csharp|dotnet-runtime8|8.0.33|linux-arm64|https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.33/dotnet-runtime-8.0.33-linux-arm64.tar.gz|b899b5b764da6b1d5cf10e97adb0204939c5f456068f657a6138cd2d97f8a8c1|tar.gz|.
+csharp|dotnet-runtime8|8.0.33|macos-arm64|https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.33/dotnet-runtime-8.0.33-osx-arm64.tar.gz|bb673780acf815e0e37e373397bc362cd4330f3f95e6b6d87f284c7c3739deae|tar.gz|.
+csharp|dotnet-runtime8|8.0.33|macos-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.33/dotnet-runtime-8.0.33-osx-x64.tar.gz|015bf2e14f3034a41205ed85796182df37b678bd396e29372c8308363a6a2b79|tar.gz|.
+csharp|dotnet-runtime6|6.0.36|windows-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-win-x64.zip|c077ccc342c5571ceb7a3c06d1dfbc99b989ed5a6e0f3a0b0b450531c1259615|zip|.
+csharp|dotnet-runtime6|6.0.36|linux-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-linux-x64.tar.gz|18f90612188f34d95af8c87557554a156e24dbf83d2878320e3a217e02f5453d|tar.gz|.
+csharp|dotnet-runtime6|6.0.36|linux-arm64|https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-linux-arm64.tar.gz|f018afed27c47a4e4a8bc38317b1bcd931cc38d3154cbd8ff89d243f05af614c|tar.gz|.
+csharp|dotnet-runtime6|6.0.36|macos-arm64|https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-osx-arm64.tar.gz|c4ea0b90326de8d90ee7d821f722add96a2f7c35f02c67f3ae0b697764290a4e|tar.gz|.
+csharp|dotnet-runtime6|6.0.36|macos-x64|https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-osx-x64.tar.gz|4aa499f1e10e941bde250e1493bb4156791186790a34fb89c219e7765a9b97cd|tar.gz|.

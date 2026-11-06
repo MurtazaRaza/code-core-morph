@@ -16,6 +16,9 @@ set "REWRITE_PLUGIN=org.openrewrite.maven:rewrite-maven-plugin:6.46.1"
 set "REWRITE_RECIPES=org.openrewrite.recipe:rewrite-migrate-java:3.42.1,org.openrewrite.recipe:rewrite-static-analysis:2.41.1"
 set "DEPENDENCY_PLUGIN=org.apache.maven.plugins:maven-dependency-plugin:3.11.0"
 set "JAVA_STANDARDS=8 11 17 21 25"
+rem The .NET runtimes installed beside the SDK's own (D-65): a test project runs on its
+rem framework's runtime, and one without rolls forward to the next.
+set "CSHARP_RUNTIMES=8 6"
 
 call "%CCM_LIB%" :parse_args %*
 if errorlevel 1 exit /b %errorlevel%
@@ -27,9 +30,9 @@ if not "%LANGUAGE_COUNT%"=="1" goto expected_one_language
 if "%LANGUAGE%"=="cpp" goto language_ok
 if "%LANGUAGE%"=="rust" goto language_ok
 if "%LANGUAGE%"=="java" goto language_ok
+if "%LANGUAGE%"=="csharp" goto language_ok
 if "%LANGUAGE%"=="all" goto language_ok
-if "%LANGUAGE%"=="csharp" goto language_later
-call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, rust, java, all"
+call "%CCM_LIB%" :die 2 "unknown language '%LANGUAGE%'; available: cpp, rust, java, csharp, all"
 exit /b 2
 
 :language_ok
@@ -37,12 +40,17 @@ call "%CCM_LIB%" :setup
 if errorlevel 1 exit /b %errorlevel%
 if "%LANGUAGE%"=="cpp" goto language_cpp
 if "%LANGUAGE%"=="java" goto language_java
+if "%LANGUAGE%"=="csharp" goto language_csharp
 rem rust and all: the Rust toolchain includes the C++ one.
 call :install_rust
 if errorlevel 1 exit /b %errorlevel%
 if not "%LANGUAGE%"=="all" goto language_done
 :language_java
 call :install_java
+if errorlevel 1 exit /b %errorlevel%
+if not "%LANGUAGE%"=="all" goto language_done
+:language_csharp
+call :install_csharp
 if errorlevel 1 exit /b %errorlevel%
 goto language_done
 :language_cpp
@@ -555,12 +563,145 @@ call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
 exit /b 1
 
 
-:language_later
-call "%CCM_LIB%" :die 2 "the %LANGUAGE% toolchain is not available yet; available: cpp, rust, java"
-exit /b 2
+:install_csharp
+call "%CCM_LIB%" :install_tool csharp dotnet-sdk
+if errorlevel 1 exit /b %errorlevel%
+set "SDK_VERSION=%CCM_ROW_VERSION%"
+set "SDK_DIR=%CCM_TOOL_DIR%"
+set "RUNTIME_IDS="
+rem The loop's calls stop at the first failure, so start from errorlevel 0.
+ver >nul
+for %%n in (%CSHARP_RUNTIMES%) do call :csharp_runtime %%n
+if errorlevel 1 exit /b %errorlevel%
+set "RUNTIME_IDS=%RUNTIME_IDS:~0,-1%"
+call :csharp_write_nuget_config
+if errorlevel 1 exit /b %errorlevel%
+call :csharp_write_env
+exit /b %errorlevel%
+
+
+rem :csharp_runtime N  -- install the .NET N runtime and copy it into the SDK's dotnet root
+rem (SDK_DIR), where the dotnet host looks for it, unless it is there already.
+:csharp_runtime
+if errorlevel 1 exit /b %errorlevel%
+call "%CCM_LIB%" :install_tool csharp dotnet-runtime%~1
+if errorlevel 1 exit /b %errorlevel%
+set "RUNTIME_IDS=%RUNTIME_IDS% dotnet-runtime%~1 %CCM_ROW_VERSION%,"
+set "RT_SRC=%CCM_TOOL_DIR%\shared\Microsoft.NETCore.App\%CCM_ROW_VERSION%"
+set "RT_DST=%SDK_DIR%\shared\Microsoft.NETCore.App\%CCM_ROW_VERSION%"
+if "%CCM_FORCE%"=="1" goto csharp_runtime_needed
+if exist "%RT_DST%\.installed" exit /b 0
+:csharp_runtime_needed
+if not "%CCM_DRY_RUN%"=="1" goto csharp_runtime_real
+call "%CCM_LIB%" :log "would add the .NET %CCM_ROW_VERSION% runtime to %SDK_DIR%"
+exit /b 0
+:csharp_runtime_real
+if not exist "%RT_SRC%" goto csharp_runtime_missing
+if exist "%RT_DST%.tmp" rmdir /s /q "%RT_DST%.tmp"
+xcopy "%RT_SRC%" "%RT_DST%.tmp\" /e /i /q /y >nul
+if errorlevel 1 goto csharp_runtime_failed
+>"%RT_DST%.tmp\.installed" echo(%CCM_ROW_VERSION%
+if errorlevel 1 goto csharp_runtime_failed
+if exist "%RT_DST%" rmdir /s /q "%RT_DST%"
+move "%RT_DST%.tmp" "%RT_DST%" >nul
+if errorlevel 1 goto csharp_runtime_failed
+call "%CCM_LIB%" :log "added the .NET %CCM_ROW_VERSION% runtime to %SDK_DIR%"
+exit /b 0
+:csharp_runtime_missing
+call "%CCM_LIB%" :die 1 "the .NET %CCM_ROW_VERSION% runtime archive has no %RT_SRC%"
+exit /b 1
+:csharp_runtime_failed
+if exist "%RT_DST%.tmp" rmdir /s /q "%RT_DST%.tmp"
+call "%CCM_LIB%" :die 1 "could not copy the .NET %CCM_ROW_VERSION% runtime into %SDK_DIR%"
+exit /b 1
+
+
+rem :csharp_write_nuget_config  -- NuGet's config for restores (nuget.org alone; the user's
+rem NuGet config is never read). Sets NUGET_CONFIG.
+:csharp_write_nuget_config
+set "CSHARP_ROOT=%CCM_HOME%\toolchains\csharp"
+set "NUGET_CONFIG=%CSHARP_ROOT%\nuget.config"
+if not "%CCM_DRY_RUN%"=="1" goto csharp_nuget_real
+call "%CCM_LIB%" :log "would write %NUGET_CONFIG%"
+exit /b 0
+:csharp_nuget_real
+if not exist "%CSHARP_ROOT%" mkdir "%CSHARP_ROOT%"
+if not exist "%CSHARP_ROOT%" goto csharp_nuget_mkdir_failed
+>"%NUGET_CONFIG%.tmp" echo(^<?xml version="1.0" encoding="utf-8"?^>
+if errorlevel 1 goto csharp_nuget_failed
+>>"%NUGET_CONFIG%.tmp" echo(^<!-- CodeCoreMorph restores use this config instead of the user's NuGet config.
+>>"%NUGET_CONFIG%.tmp" echo(     Written by install-toolchain. Do not edit. --^>
+>>"%NUGET_CONFIG%.tmp" echo(^<configuration^>
+>>"%NUGET_CONFIG%.tmp" echo(  ^<packageSources^>
+>>"%NUGET_CONFIG%.tmp" echo(    ^<clear /^>
+>>"%NUGET_CONFIG%.tmp" echo(    ^<add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" /^>
+>>"%NUGET_CONFIG%.tmp" echo(  ^</packageSources^>
+>>"%NUGET_CONFIG%.tmp" echo(^</configuration^>
+move /y "%NUGET_CONFIG%.tmp" "%NUGET_CONFIG%" >nul
+if errorlevel 1 goto csharp_nuget_failed
+exit /b 0
+:csharp_nuget_mkdir_failed
+call "%CCM_LIB%" :die 1 "could not create %CSHARP_ROOT%"
+exit /b 1
+:csharp_nuget_failed
+call "%CCM_LIB%" :die 1 "could not write %NUGET_CONFIG%"
+exit /b 1
+
+
+:csharp_write_env
+set "ENV_FILE=%CCM_HOME%\toolchains\csharp.env"
+set "ACTIVATE=%CCM_HOME%\toolchains\activate-csharp.bat"
+if not "%CCM_DRY_RUN%"=="1" goto csharp_write_env_real
+call "%CCM_LIB%" :log "would write %ENV_FILE% and %ACTIVATE%"
+exit /b 0
+:csharp_write_env_real
+set "REF_PACK="
+for /d %%d in ("%SDK_DIR%\packs\Microsoft.NETCore.App.Ref\*") do for /d %%r in ("%%~fd\ref\net*") do set "REF_PACK=%%~fr"
+if not defined REF_PACK goto csharp_no_ref_pack
+>"%ENV_FILE%.tmp" echo(# CodeCoreMorph C# toolchain, written by install-toolchain. Do not edit.
+if errorlevel 1 goto csharp_write_env_failed
+>>"%ENV_FILE%.tmp" echo(# dotnet-sdk %SDK_VERSION%,%RUNTIME_IDS%
+>>"%ENV_FILE%.tmp" echo(PATH_PREPEND=%SDK_DIR%
+>>"%ENV_FILE%.tmp" echo(DOTNET_ROOT=%SDK_DIR%
+>>"%ENV_FILE%.tmp" echo(DOTNET_MULTILEVEL_LOOKUP=0
+>>"%ENV_FILE%.tmp" echo(DOTNET_CLI_TELEMETRY_OPTOUT=1
+>>"%ENV_FILE%.tmp" echo(DOTNET_NOLOGO=1
+>>"%ENV_FILE%.tmp" echo(DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
+>>"%ENV_FILE%.tmp" echo(DOTNET_GENERATE_ASPNET_CERTIFICATE=false
+>>"%ENV_FILE%.tmp" echo(DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false
+>>"%ENV_FILE%.tmp" echo(DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1
+rem The adapter compiles its index helper with the SDK's csc and Roslyn, against this pack.
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_DOTNET=%SDK_DIR%\dotnet.exe
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_DOTNET_SDK=%SDK_DIR%\sdk\%SDK_VERSION%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_DOTNET_REF_PACK=%REF_PACK%
+>>"%ENV_FILE%.tmp" echo(CODECOREMORPH_NUGET_CONFIG=%NUGET_CONFIG%
+move /y "%ENV_FILE%.tmp" "%ENV_FILE%" >nul
+if errorlevel 1 goto csharp_write_env_failed
+>"%ACTIVATE%.tmp" echo(@echo off
+if errorlevel 1 goto csharp_write_activate_failed
+>>"%ACTIVATE%.tmp" echo(rem Use the CodeCoreMorph C# toolchain in this cmd.exe window:  call "%ACTIVATE%"
+>>"%ACTIVATE%.tmp" echo(set "PATH=%SDK_DIR%;%%PATH%%"
+>>"%ACTIVATE%.tmp" echo(set "DOTNET_ROOT=%SDK_DIR%"
+>>"%ACTIVATE%.tmp" echo(set "DOTNET_MULTILEVEL_LOOKUP=0"
+>>"%ACTIVATE%.tmp" echo(set "DOTNET_CLI_TELEMETRY_OPTOUT=1"
+move /y "%ACTIVATE%.tmp" "%ACTIVATE%" >nul
+if errorlevel 1 goto csharp_write_activate_failed
+call "%CCM_LIB%" :log "wrote %ENV_FILE%"
+echo(codecoremorph: to use the toolchain in your own shell, run: call "%ACTIVATE%"
+exit /b 0
+:csharp_no_ref_pack
+call "%CCM_LIB%" :die 1 "the .NET SDK in %SDK_DIR% has no reference pack"
+exit /b 1
+:csharp_write_env_failed
+call "%CCM_LIB%" :die 1 "could not write %ENV_FILE%"
+exit /b 1
+:csharp_write_activate_failed
+call "%CCM_LIB%" :die 1 "could not write %ACTIVATE%"
+exit /b 1
+
 
 :expected_one_language
-call "%CCM_LIB%" :die 2 "expected one language: cpp, rust, java or all (see --help)"
+call "%CCM_LIB%" :die 2 "expected one language: cpp, rust, java, csharp or all (see --help)"
 exit /b 2
 
 :usage
@@ -582,7 +723,10 @@ echo   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, th
 echo         Spoon jar, and a Maven repository with OpenRewrite and the plugins
 echo         builds run offline; Maven downloads those itself, so --offline
 echo         doesn't apply
-echo   all   every available language (cpp, rust and java)
+echo   csharp
+echo         the .NET SDK (with dotnet format and Roslyn) and the .NET 8 and 6
+echo         runtimes beside its own, so tests run on their framework's runtime
+echo   all   every available language (cpp, rust, java and csharp)
 echo.
 echo Options:
 echo   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)

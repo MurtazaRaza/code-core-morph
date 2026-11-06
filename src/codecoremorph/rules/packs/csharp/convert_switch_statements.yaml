@@ -1,0 +1,20 @@
+id: convert_switch_statements
+language: csharp
+kind: api_preserving
+description: >-
+  Replace switch statements whose every case returns a value or assigns the same variable with
+  switch expressions (value switch { 0 => "zero", _ => "many" }).
+applies_to: {min_target_standard: csharp8}
+detector:
+  type: pattern
+  patterns: ['^[ \t]*case[ \t]+[^:\n]+:\s*return\b']   # case X: return ...
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0066]
+    options: {csharp_style_prefer_switch_expression: "true"}
+llm:
+  guidance: guidance/convert_switch_statements.md
+  examples: examples/convert_switch_statements
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # a case with statements before its return stays

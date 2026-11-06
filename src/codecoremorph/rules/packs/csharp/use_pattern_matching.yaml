@@ -1,0 +1,29 @@
+id: use_pattern_matching
+language: csharp
+kind: api_preserving
+description: >-
+  Replace type checks followed by casts, as-casts followed by null checks, negated is checks
+  and chains of comparisons with patterns: value is Item item, value is not int,
+  n is 1 or 2 or 3.
+applies_to: {min_target_standard: csharp9}
+detector:
+  type: pattern
+  patterns:
+    - '=\s*[\w.]+\s+as\s+[A-Z][\w.]*(<[^;()]*>)?\s*;'   # T x = y as T;
+    - '\bis\s+[A-Z][\w.]*(<[^;()]*>)?\s*\)'            # (x is T) without a name
+    - '!\s*\(\s*[\w.]+\s+is\b'                          # !(x is T)
+    - '\bis\s+not\s+[A-Z][\w.]*(<[^;()]*>)?\s*\)'      # (x is not T), often a cast after it
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0019, IDE0020, IDE0038, IDE0078, IDE0083, IDE0260]
+    options:
+      csharp_style_pattern_matching_over_as_with_null_check: "true"
+      csharp_style_pattern_matching_over_is_with_cast_check: "true"
+      csharp_style_prefer_pattern_matching: "true"
+      csharp_style_prefer_not_pattern: "true"
+llm:
+  guidance: guidance/use_pattern_matching.md
+  examples: examples/use_pattern_matching
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # a type check with no cast after it stays

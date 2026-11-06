@@ -151,9 +151,8 @@ def test_bat_and_sh_print_the_same_help(name: str) -> None:
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        ([], "expected one language: cpp, rust, java or all"),
-        (["cpp", "all"], "expected one language: cpp, rust, java or all"),
-        (["csharp"], "the csharp toolchain is not available yet"),
+        ([], "expected one language: cpp, rust, java, csharp or all"),
+        (["cpp", "all"], "expected one language: cpp, rust, java, csharp or all"),
         (["java", "--offline", "."], "--offline doesn't apply to java"),
         (["cobol"], "unknown language 'cobol'"),
     ],
@@ -232,6 +231,31 @@ def test_install_toolchain_rust_dry_run(flavor: Flavor, tmp_path: Path) -> None:
     ):
         assert line in result.stdout
     assert "rust.env" in result.stdout
+    assert not prefix.exists()
+
+
+@pytest.mark.parametrize("flavor", FLAVORS)
+def test_install_toolchain_csharp_dry_run(flavor: Flavor, tmp_path: Path) -> None:
+    """The C# toolchain (D-65): the .NET SDK, the .NET 8 and 6 runtimes added to its dotnet
+    root, NuGet's config and csharp.env."""
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "CODECOREMORPH_MANIFEST"}
+    prefix = tmp_path / "home"
+    result = _script(
+        flavor, "install-toolchain", ["--dry-run", "--prefix", str(prefix), "csharp"], env
+    )
+    assert result.returncode == 0, result.stderr
+    for line in (
+        "would install dotnet-sdk 10.0.403",
+        "would install dotnet-runtime8 8.0.33",
+        "would add the .NET 8.0.33 runtime to",
+        "would install dotnet-runtime6 6.0.36",
+        "would add the .NET 6.0.36 runtime to",
+        "nuget.config",
+        "csharp.env",
+    ):
+        assert line in result.stdout
     assert not prefix.exists()
 
 

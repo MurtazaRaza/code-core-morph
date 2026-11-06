@@ -1,0 +1,21 @@
+id: use_file_scoped_namespaces
+language: csharp
+kind: api_preserving
+description: >-
+  Replace a file's block namespace (namespace X { ... }) with a file-scoped namespace
+  declaration (namespace X;), one indentation level less, where the file declares one
+  namespace.
+applies_to: {min_target_standard: csharp10}
+detector:
+  type: pattern
+  patterns: ['^[ \t]*namespace[ \t]+[\w.]+\s*\{']   # namespace X {
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0161]
+    options: {csharp_style_namespace_declarations: file_scoped}
+llm:
+  guidance: guidance/use_file_scoped_namespaces.md
+  examples: examples/use_file_scoped_namespaces
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # a file with two namespaces keeps its blocks

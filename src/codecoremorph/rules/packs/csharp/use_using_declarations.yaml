@@ -1,0 +1,21 @@
+id: use_using_declarations
+language: csharp
+kind: api_preserving
+description: >-
+  Replace using statements whose block runs to the end of the enclosing block with using
+  declarations (using var reader = ...;), where disposing at the end of the block keeps the
+  same order.
+applies_to: {min_target_standard: csharp8}
+detector:
+  type: pattern
+  patterns: ['\busing\s*\(\s*(var|[A-Z][\w.]*(<[^;()]*>)?)\s+\w+\s*=']   # using (T x = ...)
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0063]
+    options: {csharp_prefer_simple_using_statement: "true"}
+llm:
+  guidance: guidance/use_using_declarations.md
+  examples: examples/use_using_declarations
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # a using whose scope ends early stays

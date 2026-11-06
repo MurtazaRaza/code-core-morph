@@ -1,0 +1,25 @@
+id: use_collection_expressions
+language: csharp
+kind: api_preserving
+description: >-
+  Replace collection and array creation whose target type is the collection's own with
+  collection expressions ([], [1, 2, 3], [.. values]), where the type stays exactly the same.
+applies_to: {min_target_standard: csharp12}
+detector:
+  type: pattern
+  patterns:
+    - '=\s*new\s+(List|HashSet)<[^;=()]*>\s*\(\s*\)\s*;'   # = new List<T>();
+    - '\bnew\s+[\w.]+\s*\[\s*\]\s*\{'                      # new T[] { ... }
+    - '\bnew\s+[\w.]+\s*\[\s*0\s*\]'                        # new T[0]
+    - '\bArray\.Empty\s*<'                                 # Array.Empty<T>()
+codemods:
+  - tool: dotnet-format
+    checks: [IDE0028, IDE0300, IDE0301, IDE0302, IDE0303, IDE0304, IDE0305]
+    # true: only where the types match exactly, so no collection changes its runtime type.
+    options: {dotnet_style_prefer_collection_expression: "true"}
+llm:
+  guidance: guidance/use_collection_expressions.md
+  examples: examples/use_collection_expressions
+postconditions:
+  - {type: codemod_clean, severity: error}
+  - {type: detector_empty, severity: warning}   # var x = new List<T>() has no target type

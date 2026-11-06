@@ -1,0 +1,6 @@
+"""The built-in C# rule pack (SPEC §11.3), registered through the codecoremorph.rules entry
+point."""
+
+from pathlib import Path
+
+PACK_DIR = Path(__file__).resolve().parent

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="3197e259-2c67-45e8-8cb9-b1417b398cd0" name="builder@BUILDHOST 2026-11-05 22:26:28" runUser="BUILDHOST\builder" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-11-05T22:26:28.1465381+04:00" queuing="2026-11-05T22:26:28.1465382+04:00" start="2026-11-05T22:26:27.3845499+04:00" finish="2026-11-05T22:26:28.1510684+04:00" />
+  <TestSettings name="default" id="705ec3da-0351-4021-885e-0c99bacb9d48">
+    <Deployment runDeploymentRoot="builder_BUILDHOST_2026-11-05_22_26_28" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="809312e5-917e-4b8a-a711-d5e513eb34b7" testId="b44a3e65-51f0-4816-d196-7b261d6db264" testName="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,500&quot;, problem: &quot;expected reference,grams,zone&quot;)" computerName="BUILDHOST" duration="00:00:00.0040159" startTime="2026-11-05T22:26:28.0672075+04:00" endTime="2026-11-05T22:26:28.0672075+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="809312e5-917e-4b8a-a711-d5e513eb34b7" />
+    <UnitTestResult executionId="c1e31d1e-566c-4299-af11-0357c83b74a5" testId="6a213dd9-c2cd-2645-b4c9-6a36dd208bbe" testName="Rates.Tests.RateTableTests+Parcels.AParcelWeighsSomething" computerName="BUILDHOST" duration="00:00:00.0016043" startTime="2026-11-05T22:26:28.0646643+04:00" endTime="2026-11-05T22:26:28.0646824+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c1e31d1e-566c-4299-af11-0357c83b74a5" />
+    <UnitTestResult executionId="16a26e60-2052-40a1-bb90-c6b90a2d7011" testId="0a6fd4f1-1104-75dd-ebac-e83278923c18" testName="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,9000,W&quot;, problem: &quot;too heavy for W&quot;)" computerName="BUILDHOST" duration="00:00:00.0003287" startTime="2026-11-05T22:26:28.0672669+04:00" endTime="2026-11-05T22:26:28.0672669+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="16a26e60-2052-40a1-bb90-c6b90a2d7011" />
+    <UnitTestResult executionId="b48f2292-0f39-4834-9a37-c19965db9293" testId="286408c2-2003-3ba0-5431-f504d5eb92ad" testName="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,-5,D&quot;, problem: &quot;bad weight -5&quot;)" computerName="BUILDHOST" duration="00:00:00.0000065" startTime="2026-11-05T22:26:28.0672784+04:00" endTime="2026-11-05T22:26:28.0672784+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b48f2292-0f39-4834-9a37-c19965db9293" />
+    <UnitTestResult executionId="cfb29434-012f-4b28-bbcf-40c945ae3459" testId="0e26ee80-1a7c-29a8-cbbd-9218e209f9d2" testName="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,500,MARS&quot;, problem: &quot;unknown zone code MARS&quot;)" computerName="BUILDHOST" duration="00:00:00.0000369" startTime="2026-11-05T22:26:28.0672986+04:00" endTime="2026-11-05T22:26:28.0672986+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cfb29434-012f-4b28-bbcf-40c945ae3459" />
+    <UnitTestResult executionId="3ebb9813-d058-455c-b2a5-e84757249d92" testId="40b1d9a0-f1ae-ea1f-9eb1-713ed3524a4a" testName="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,abc,D&quot;, problem: &quot;bad weight abc&quot;)" computerName="BUILDHOST" duration="00:00:00.0000022" startTime="2026-11-05T22:26:28.0672885+04:00" endTime="2026-11-05T22:26:28.0672886+04:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3ebb9813-d058-455c-b2a5-e84757249d92" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,500&quot;, problem: &quot;expected reference,grams,zone&quot;)" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="b44a3e65-51f0-4816-d196-7b261d6db264">
+      <Execution id="809312e5-917e-4b8a-a711-d5e513eb34b7" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.QuoterTests" name="ExplainsWhatItCantPrice" />
+    </UnitTest>
+    <UnitTest name="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,-5,D&quot;, problem: &quot;bad weight -5&quot;)" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="286408c2-2003-3ba0-5431-f504d5eb92ad">
+      <Execution id="b48f2292-0f39-4834-9a37-c19965db9293" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.QuoterTests" name="ExplainsWhatItCantPrice" />
+    </UnitTest>
+    <UnitTest name="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,9000,W&quot;, problem: &quot;too heavy for W&quot;)" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="0a6fd4f1-1104-75dd-ebac-e83278923c18">
+      <Execution id="16a26e60-2052-40a1-bb90-c6b90a2d7011" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.QuoterTests" name="ExplainsWhatItCantPrice" />
+    </UnitTest>
+    <UnitTest name="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,500,MARS&quot;, problem: &quot;unknown zone code MARS&quot;)" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="0e26ee80-1a7c-29a8-cbbd-9218e209f9d2">
+      <Execution id="cfb29434-012f-4b28-bbcf-40c945ae3459" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.QuoterTests" name="ExplainsWhatItCantPrice" />
+    </UnitTest>
+    <UnitTest name="Rates.Tests.QuoterTests.ExplainsWhatItCantPrice(line: &quot;p1,abc,D&quot;, problem: &quot;bad weight abc&quot;)" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="40b1d9a0-f1ae-ea1f-9eb1-713ed3524a4a">
+      <Execution id="3ebb9813-d058-455c-b2a5-e84757249d92" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.QuoterTests" name="ExplainsWhatItCantPrice" />
+    </UnitTest>
+    <UnitTest name="Rates.Tests.RateTableTests+Parcels.AParcelWeighsSomething" storage="C:\work\tests\rates.tests\bin\debug\netcoreapp3.1\rates.tests.dll" id="6a213dd9-c2cd-2645-b4c9-6a36dd208bbe">
+      <Execution id="c1e31d1e-566c-4299-af11-0357c83b74a5" />
+      <TestMethod codeBase="C:\work\tests\Rates.Tests\bin\Debug\netcoreapp3.1\Rates.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="Rates.Tests.RateTableTests+Parcels" name="AParcelWeighsSomething" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="b44a3e65-51f0-4816-d196-7b261d6db264" executionId="809312e5-917e-4b8a-a711-d5e513eb34b7" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6a213dd9-c2cd-2645-b4c9-6a36dd208bbe" executionId="c1e31d1e-566c-4299-af11-0357c83b74a5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0a6fd4f1-1104-75dd-ebac-e83278923c18" executionId="16a26e60-2052-40a1-bb90-c6b90a2d7011" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="286408c2-2003-3ba0-5431-f504d5eb92ad" executionId="b48f2292-0f39-4834-9a37-c19965db9293" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0e26ee80-1a7c-29a8-cbbd-9218e209f9d2" executionId="cfb29434-012f-4b28-bbcf-40c945ae3459" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="40b1d9a0-f1ae-ea1f-9eb1-713ed3524a4a" executionId="3ebb9813-d058-455c-b2a5-e84757249d92" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="6" executed="6" passed="6" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.4.5+1caef2f33e (64-bit .NET 6.0.36)&#xD;
+[xUnit.net 00:00:00.23]   Discovering: Rates.Tests&#xD;
+[xUnit.net 00:00:00.26]   Discovered:  Rates.Tests&#xD;
+[xUnit.net 00:00:00.26]   Starting:    Rates.Tests&#xD;
+[xUnit.net 00:00:00.31]   Finished:    Rates.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

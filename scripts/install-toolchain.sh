@@ -27,7 +27,10 @@ Languages:
         Spoon jar, and a Maven repository with OpenRewrite and the plugins
         builds run offline; Maven downloads those itself, so --offline
         doesn't apply
-  all   every available language (cpp, rust and java)
+  csharp
+        the .NET SDK (with dotnet format and Roslyn) and the .NET 8 and 6
+        runtimes beside its own, so tests run on their framework's runtime
+  all   every available language (cpp, rust, java and csharp)
 
 Options:
   --prefix DIR   install under DIR (default: CODECOREMORPH_HOME)
@@ -607,6 +610,140 @@ install_java() {
     java_write_env
 }
 
+# The .NET runtimes installed beside the SDK's own (D-65): a test project runs on its
+# framework's runtime, and one without rolls forward to the next.
+CSHARP_RUNTIMES="8 6"
+
+# csharp_add_runtime DIR VERSION: copy the runtime installed in DIR into the SDK's dotnet root
+# (SDK_DIR), where the dotnet host looks for it, unless it is there already.
+csharp_add_runtime() {
+    _src="$1/shared/Microsoft.NETCore.App/$2"
+    _dst="$SDK_DIR/shared/Microsoft.NETCore.App/$2"
+    if [ "$CCM_FORCE" != 1 ] && [ -f "$_dst/.installed" ]; then
+        return 0
+    fi
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would add the .NET $2 runtime to $SDK_DIR"
+        return 0
+    fi
+    [ -d "$_src" ] || ccm_die "$CCM_EXIT_DOWNLOAD" "the .NET $2 runtime archive has no $_src"
+    rm -rf "$_dst.tmp"
+    if ! cp -R "$_src" "$_dst.tmp" || ! printf '%s\n' "$2" >"$_dst.tmp/.installed"; then
+        rm -rf "$_dst.tmp"
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not copy the .NET $2 runtime into $SDK_DIR"
+    fi
+    rm -rf "$_dst"
+    mv "$_dst.tmp" "$_dst" ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not copy the .NET $2 runtime into $SDK_DIR"
+    ccm_log "added the .NET $2 runtime to $SDK_DIR"
+}
+
+# Writes NuGet's config for restores (nuget.org alone; the user's NuGet config is never read).
+# Sets NUGET_CONFIG.
+csharp_write_nuget_config() {
+    NUGET_CONFIG="$CCM_HOME/toolchains/csharp/nuget.config"
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would write $NUGET_CONFIG"
+        return 0
+    fi
+    mkdir -p "${NUGET_CONFIG%/*}" 2>/dev/null ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not create ${NUGET_CONFIG%/*}"
+    if ! {
+        printf '<?xml version="1.0" encoding="utf-8"?>\n'
+        printf '<!-- CodeCoreMorph restores use this config instead of the user'"'"'s NuGet config.\n'
+        printf '     Written by install-toolchain. Do not edit. -->\n'
+        printf '<configuration>\n'
+        printf '  <packageSources>\n'
+        printf '    <clear />\n'
+        printf '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />\n'
+        printf '  </packageSources>\n'
+        printf '</configuration>\n'
+    } >"$NUGET_CONFIG.tmp" || ! mv -f "$NUGET_CONFIG.tmp" "$NUGET_CONFIG"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $NUGET_CONFIG"
+    fi
+}
+
+csharp_write_env() {
+    _env="$CCM_HOME/toolchains/csharp.env"
+    _activate="$CCM_HOME/toolchains/activate-csharp.sh"
+    if [ "$CCM_DRY_RUN" = 1 ]; then
+        ccm_log "would write $_env and $_activate"
+        return 0
+    fi
+    _dotnet="$SDK_DIR/dotnet"
+    case $CCM_PLATFORM in windows-*) _dotnet="$SDK_DIR/dotnet.exe" ;; esac
+    _ref=""
+    for _dir in "$SDK_DIR"/packs/Microsoft.NETCore.App.Ref/*/ref/net*; do
+        [ -d "$_dir" ] && _ref=$_dir
+    done
+    [ -n "$_ref" ] || ccm_die "$CCM_EXIT_DOWNLOAD" "the .NET SDK in $SDK_DIR has no reference pack"
+    if ! {
+        printf '# CodeCoreMorph C# toolchain, written by install-toolchain. Do not edit.\n'
+        printf '# dotnet-sdk %s,%s\n' "$SDK_VERSION" "$RUNTIME_IDS"
+        printf 'PATH_PREPEND=%s\n' "$(ccm_env_path "$SDK_DIR")"
+        printf 'DOTNET_ROOT=%s\n' "$(ccm_env_path "$SDK_DIR")"
+        printf 'DOTNET_MULTILEVEL_LOOKUP=0\n'
+        printf 'DOTNET_CLI_TELEMETRY_OPTOUT=1\n'
+        printf 'DOTNET_NOLOGO=1\n'
+        printf 'DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1\n'
+        printf 'DOTNET_GENERATE_ASPNET_CERTIFICATE=false\n'
+        printf 'DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false\n'
+        printf 'DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1\n'
+        # The adapter compiles its index helper with the SDK's csc and Roslyn, against this pack.
+        printf 'CODECOREMORPH_DOTNET=%s\n' "$(ccm_env_path "$_dotnet")"
+        printf 'CODECOREMORPH_DOTNET_SDK=%s\n' "$(ccm_env_path "$SDK_DIR/sdk/$SDK_VERSION")"
+        printf 'CODECOREMORPH_DOTNET_REF_PACK=%s\n' "$(ccm_env_path "$_ref")"
+        printf 'CODECOREMORPH_NUGET_CONFIG=%s\n' "$(ccm_env_path "$NUGET_CONFIG")"
+    } >"$_env.tmp" || ! mv -f "$_env.tmp" "$_env"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_env"
+    fi
+    if ! {
+        printf '# Use the CodeCoreMorph C# toolchain in this shell:  . "%s"\n' "$_activate"
+        # shellcheck disable=SC2016 # $PATH expands when the activation script runs
+        printf 'PATH="%s:$PATH"\n' "$SDK_DIR"
+        printf 'DOTNET_ROOT="%s"\n' "$(ccm_native_path "$SDK_DIR")"
+        printf 'DOTNET_MULTILEVEL_LOOKUP=0\n'
+        printf 'DOTNET_CLI_TELEMETRY_OPTOUT=1\n'
+        printf 'export PATH DOTNET_ROOT DOTNET_MULTILEVEL_LOOKUP DOTNET_CLI_TELEMETRY_OPTOUT\n'
+    } >"$_activate.tmp" || ! mv -f "$_activate.tmp" "$_activate"; then
+        ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_activate"
+    fi
+    case $CCM_PLATFORM in
+        windows-*)
+            # Keep the cmd.exe activation script in step (install-toolchain.bat writes the same).
+            _bat="$CCM_HOME/toolchains/activate-csharp.bat"
+            if ! {
+                printf '@echo off\r\n'
+                printf 'rem Use the CodeCoreMorph C# toolchain in this cmd.exe window:  call "%s"\r\n' \
+                    "$(ccm_env_path "$_bat")"
+                printf 'set "PATH=%s;%%PATH%%"\r\n' "$(ccm_env_path "$SDK_DIR")"
+                printf 'set "DOTNET_ROOT=%s"\r\n' "$(ccm_env_path "$SDK_DIR")"
+                printf 'set "DOTNET_MULTILEVEL_LOOKUP=0"\r\n'
+                printf 'set "DOTNET_CLI_TELEMETRY_OPTOUT=1"\r\n'
+            } >"$_bat.tmp" || ! mv -f "$_bat.tmp" "$_bat"; then
+                ccm_die "$CCM_EXIT_DOWNLOAD" "could not write $_bat"
+            fi
+            ;;
+    esac
+    ccm_log "wrote $_env"
+    ccm_log "to use the toolchain in your own shell, run: . \"$_activate\""
+}
+
+install_csharp() {
+    ccm_install_tool csharp dotnet-sdk
+    SDK_VERSION=$CCM_ROW_VERSION
+    SDK_DIR=$CCM_TOOL_DIR
+    RUNTIME_IDS=""
+    for _n in $CSHARP_RUNTIMES; do
+        ccm_install_tool csharp "dotnet-runtime$_n"
+        csharp_add_runtime "$CCM_TOOL_DIR" "$CCM_ROW_VERSION"
+        RUNTIME_IDS="$RUNTIME_IDS dotnet-runtime$_n $CCM_ROW_VERSION,"
+    done
+    RUNTIME_IDS=${RUNTIME_IDS%,}
+    csharp_write_nuget_config
+    csharp_write_env
+}
+
 ccm_parse_args "$@"
 if [ "$CCM_HELP" = 1 ]; then
     usage
@@ -614,25 +751,26 @@ if [ "$CCM_HELP" = 1 ]; then
 fi
 # shellcheck disable=SC2086 # split the positional arguments into words
 set -- $CCM_POSITIONAL
-[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp, rust, java or all (see" \
-    "--help)"
+[ $# -eq 1 ] || ccm_die "$CCM_EXIT_USAGE" "expected one language: cpp, rust, java, csharp or" \
+    "all (see --help)"
 language=$1
 case $language in
-    cpp | rust | java | all) ;;
-    csharp)
-        ccm_die "$CCM_EXIT_USAGE" "the $language toolchain is not available yet; available:" \
-            "cpp, rust, java"
+    cpp | rust | java | csharp | all) ;;
+    *)
+        ccm_die "$CCM_EXIT_USAGE" "unknown language '$language'; available: cpp, rust, java," \
+            "csharp, all"
         ;;
-    *) ccm_die "$CCM_EXIT_USAGE" "unknown language '$language'; available: cpp, rust, java, all" ;;
 esac
 ccm_setup
 case $language in
     cpp) install_cpp ;;
     rust) install_rust ;; # the Rust toolchain includes the C++ one
     java) install_java ;;
+    csharp) install_csharp ;;
     *)
         install_rust
         install_java
+        install_csharp
         ;;
 esac
 ccm_log "done"

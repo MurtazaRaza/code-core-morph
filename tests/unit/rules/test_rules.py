@@ -174,6 +174,27 @@ def test_duplicate_rule_ids_are_errors(tmp_path: Path) -> None:
         RuleRegistry.discover([tmp_path / "one", tmp_path / "two"], eps=[])
 
 
+def test_every_built_in_pack_loads_without_problems() -> None:
+    """Rule IDs are global, and a built-in pack that clashes with another one is left out with
+    only a problem logged: the C# pack's records rule once took the Java pack down (D-66)."""
+    registry = RuleRegistry.discover()
+    assert registry.problems == []
+    assert {"cpp", "cpp_to_rust", "java", "csharp"} <= set(registry.packs)
+    csharp = sorted(r.rule.id for r in registry.for_language("csharp"))
+    assert csharp == [
+        "bump_csharp_version",
+        "convert_switch_statements",
+        "enable_nullable",
+        "use_collection_expressions",
+        "use_file_scoped_namespaces",
+        "use_pattern_matching",
+        "use_record_types",
+        "use_target_typed_new",
+        "use_using_declarations",
+    ]
+    assert registry.get("use_records").pack == "java"
+
+
 def test_entry_point_packs() -> None:
     registry = RuleRegistry.discover()
     assert "cpp" in registry.packs
