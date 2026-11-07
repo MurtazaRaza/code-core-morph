@@ -35,6 +35,7 @@ from codecoremorph.core.models import (
     SourceRange,
     Symbol,
     SymbolKind,
+    TargetKind,
     TestEntry,
     Visibility,
 )
@@ -226,6 +227,22 @@ class IndexStore:
     def set_test_entries(self, entries: Sequence[TestEntry]) -> None:
         """The tests the build registers and what they run (D-60)."""
         self.set_value("test_entries", "[" + ",".join(e.model_dump_json() for e in entries) + "]")
+
+    def clear_program_boundaries(self) -> None:
+        """Take what a source file only programs compile defines off the C ABI boundary: no
+        code links against a program, so its functions and globals are no ABI (D-71;
+        bzip2recover.c's file-scope globals, M9). A declaration in a header stays on it."""
+        targets = self.build_targets()
+        libraries = {f for t in targets if t.kind is TargetKind.LIBRARY for f in t.files}
+        programs = {f for t in targets if t.kind is TargetKind.EXECUTABLE for f in t.files}
+        with self._transaction():
+            self._conn.executemany(
+                "UPDATE symbols SET boundary = ? WHERE file = ? AND boundary = ?",
+                [
+                    (Boundary.NONE.value, path, Boundary.C_ABI.value)
+                    for path in sorted(programs - libraries)
+                ],
+            )
 
     # ------------------------------------------------------------------ reading
 

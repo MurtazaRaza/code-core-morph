@@ -34,6 +34,7 @@ from codecoremorph.invariants.checks import (
     comparable_signature,
     diff_size,
     patch_lines,
+    still_declared,
 )
 
 PATCH = """\
@@ -158,6 +159,29 @@ def test_api_changes_ignore_moves_and_additions() -> None:
     assert "changed from `double geo::area(double, double)`" in change.describe()
     (removed,) = api_changes(old, [], files=["include/api.h"])
     assert "was removed" in removed.describe()
+
+
+def test_an_unchanged_header_no_file_parses_still_declares() -> None:
+    """bzip2's last library file in C (M9): once decompress.c is Rust, no C file includes
+    bzlib_private.h, so the new index lacks its declaration of BZ2_decompress; the header
+    didn't change, so the function wasn't removed. A header still parsed counts as parsed."""
+    signature = "Int32 BZ2_decompress(DState *)"
+    c_abi = {"boundary": Boundary.C_ABI}
+    before = [
+        symbol("BZ2_decompress", signature, file="decompress.c", **c_abi),
+        symbol("BZ2_decompress", signature, file="bzlib_private.h", **c_abi),
+    ]
+    files = ["decompress.c"]
+    assert [c.describe() for c in api_changes(before, [], files=files)] == [
+        "BZ2_decompress (decompress.c) was removed"
+    ]
+    kept = still_declared(before, changed=files, parsed=["bzip2.c", "bzlib.h"])
+    assert [s.file for s in kept] == ["bzlib_private.h"]
+    assert api_changes(before, kept, files=files) == []
+    # Still parsed: the new index says what it declares.
+    assert still_declared(before, changed=files, parsed=["bzlib_private.h"]) == []
+    # Changed: its own symbols are compared.
+    assert still_declared(before, changed=[*files, "bzlib_private.h"], parsed=[]) == []
 
 
 def test_sfinae_that_became_a_requires_clause_is_no_api_change() -> None:

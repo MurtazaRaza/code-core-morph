@@ -6,7 +6,7 @@ Writes a manifest for the pinned project (bench/fetch.py) next to its clone, run
 (baseline, index, graph, units; no code changes), and records units, estimates and timings in
 bench/results/. The pin names the migration: bench/pin.json (M1) names none, so leveldb goes
 C++11 -> C++20 with the rules of examples/cpp11-to-cpp20.yaml; bench/port-pin.json (M8) ports
-snappy to Rust.
+snappy to Rust, and bench/c-port-pin.json (M9) ports bzip2, a C library built with Make.
 """
 
 from __future__ import annotations
@@ -47,10 +47,25 @@ def migration(pin: dict[str, Any]) -> dict[str, Any]:
     return found if isinstance(found, dict) else UPGRADE
 
 
+def source(pin: dict[str, Any]) -> dict[str, str]:
+    """The project's language, standard and build system; a bare standard is C++ with CMake."""
+    found = migration(pin)["source"]
+    if isinstance(found, dict):
+        return {str(k): str(v) for k, v in found.items()}
+    return {"language": "cpp", "standard": str(found), "build_system": "cmake"}
+
+
 def describe(pin: dict[str, Any]) -> str:
     """The migration in a few words, as the results record it: ``cpp11 -> rust2021``."""
-    found = migration(pin)
-    return f"{found['source']} -> {found['target']['standard']}"
+    return f"{source(pin)['standard']} -> {migration(pin)['target']['standard']}"
+
+
+def _build(pin: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    """The pin's build options by build system: its ``build``, else CMake's configure_args."""
+    found = pin.get("build")
+    if isinstance(found, dict):
+        return found
+    return {"cmake": {"configure_args": list(pin.get("configure_args", []))}}
 
 
 def manifest(pin: dict[str, Any], root: Path, sandbox: str) -> str:
@@ -59,6 +74,11 @@ def manifest(pin: dict[str, Any], root: Path, sandbox: str) -> str:
 
     found = migration(pin)
     target = found["target"]
+    src = source(pin)
+    build = "".join(
+        f"  {system}:\n" + "".join(f"    {k}: [{items(v)}]\n" for k, v in options.items())
+        for system, options in _build(pin).items()
+    )
     return f"""\
 version: "1.0"
 project:
@@ -68,15 +88,14 @@ project:
   exclude: [{items(pin["exclude"])}]
   public_api: [{items(pin["public_api"])}]
 migration:
-  source: {{language: cpp, standard: {found["source"]}, build_system: cmake}}
+  source: {{language: {src["language"]}, standard: {src["standard"]}, \
+build_system: {src["build_system"]}}}
   target:
     language: {target["language"]}
     standard: {target["standard"]}
     rules: [{", ".join(target["rules"])}]
 build:
-  cmake:
-    configure_args: [{items(pin["configure_args"])}]
-guardrails: {{build_timeout_s: 3600, test_timeout_s: 3600}}
+{build}guardrails: {{build_timeout_s: 3600, test_timeout_s: 3600}}
 sandbox: {{mode: {sandbox}}}
 """
 

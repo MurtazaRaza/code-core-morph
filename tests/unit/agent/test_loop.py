@@ -122,6 +122,35 @@ def test_a_build_failure_is_fed_back_and_fixed(world: World) -> None:
     assert "BROKEN" in feedback_file.read_text()
 
 
+def test_a_fixed_unit_keeps_the_first_attempts_summary_and_notes(world: World) -> None:
+    # The fixer adds to the editor's edits; the unit is both (D-71).
+    alias = "DECLARE now writes an alias declaration."
+    runner, _ = world.runner(
+        [
+            reply(
+                submit(
+                    "s1",
+                    replace_edit("include/geo.h", MACRO, BROKEN_MACRO),
+                    summary="Use alias declarations.",
+                    notes=(alias,),
+                )
+            ),
+            reply(
+                submit(
+                    "s2",
+                    replace_edit("include/geo.h", "using N = BROKEN", "using N = T"),
+                    summary="Fix the alias's type.",
+                    notes=(alias, "Check DECLARE's callers."),
+                )
+            ),
+        ]
+    )
+    outcome = runner.run(unit("include/geo.h"), [TYPEDEFS])
+    assert outcome.succeeded, outcome.reason
+    assert outcome.summary == "Use alias declarations. Attempt 2: Fix the alias's type."
+    assert outcome.review_notes == [alias, "Check DECLARE's callers."]
+
+
 def test_rejected_edits_get_immediate_feedback(world: World) -> None:
     runner, scripted = world.runner(
         [
@@ -161,6 +190,29 @@ def test_an_exhausted_budget_rolls_back(world: World) -> None:
     assert "retry budget (1) ran out" in outcome.reason
     assert world.read("include/geo.h") == before  # codemod changes rolled back too
     assert not world.worktree.has_changes()
+
+
+def test_a_test_the_attempt_adds_must_pass(world: World) -> None:
+    """The M9 benchmark committed a Rust test of crctable.c that asserted a wrong entry: only
+    baseline-passing tests counted, and every later unit excused it as failing before (D-71).
+    A test new in the attempt must pass; one that failed in the baseline stays excused."""
+    runner, scripted = world.runner(
+        [
+            reply(submit("s1", replace_edit("include/geo.h", MACRO, FIXED + " // NEWTEST_FAIL"))),
+            reply(submit("s2", replace_edit("include/geo.h", "NEWTEST_FAIL", "NEWTEST_PASS"))),
+        ]
+    )
+    outcome = runner.run(unit("include/geo.h"), [TYPEDEFS])
+    assert outcome.succeeded, outcome.reason
+    assert [a.outcome for a in outcome.attempts] == [
+        AttemptOutcome.TESTS_FAILED,
+        AttemptOutcome.SUCCEEDED,
+    ]
+    assert outcome.attempts[0].regressions == ["gtest:Geo.New"]  # not Geo.Flaky
+    feedback = scripted.requests[1].messages[-1].content[1]
+    assert isinstance(feedback, TextBlock)
+    assert "1 test(s) new in this attempt don't pass" in feedback.text
+    assert "expected 0x690ce0ee, got 0xc5a92679" in feedback.text
 
 
 def test_refusal_and_no_submission_fail_the_unit(world: World) -> None:

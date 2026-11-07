@@ -34,7 +34,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from codecoremorph.agent.context import host_document
-from codecoremorph.agent.loop import UnitRunner, first_build
+from codecoremorph.agent.loop import UnitRunner, first_build, unit_review_notes, unit_summary
 from codecoremorph.core.errors import UsageError, VcsError
 from codecoremorph.core.models import (
     Attempt,
@@ -253,7 +253,8 @@ class HostUnit:
             state = self._update(
                 state, warnings=verification.warnings, approvals=verification.approvals
             )
-            step = self._succeed(state, batch.summary, list(batch.review_notes))
+            summary = unit_summary(state.attempts) or batch.summary
+            step = self._succeed(state, summary, unit_review_notes(state.attempts))
             step.warnings[:0] = warnings
             return step
         store.feedback_md.write_text(verification.feedback, encoding="utf-8")

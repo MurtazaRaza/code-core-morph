@@ -188,6 +188,37 @@ def test_a_failed_build_is_fed_back_and_fixed(world: World, git: GitRunner) -> N
     assert FIXED in world.read("include/geo.h")
 
 
+def test_a_retried_unit_keeps_what_each_applied_attempt_said(world: World, git: GitRunner) -> None:
+    # A retry adds to the failed attempt's edits, so its summary says only what it added:
+    # bzip2's compress.c port was reported as "Fix the one-block test" (D-71).
+    snapshot = world.worktree.head()
+    host = _host(world, budget=2, edit_retries=0)
+    state = _start(host, "include/geo.h").state
+    broken = "#define DECLARE(T, N) using N = BROKEN"
+    alias = "DECLARE now writes an alias declaration."
+    state = _submit(
+        host, state, replace_edit("include/geo.h", MACRO, broken), review_notes=[alias]
+    ).state
+    state = _submit(host, state, replace_edit("src/other.cpp", "return 1", "return 2")).state
+    assert [a.outcome for a in state.attempts] == [
+        AttemptOutcome.BUILD_FAILED,
+        AttemptOutcome.EDITS_REJECTED,  # nothing applied: its "summary" is the feedback
+    ]
+    done = _submit(
+        host,
+        state,
+        replace_edit("include/geo.h", "using N = BROKEN", "using N = T"),
+        summary="Fix the alias's type.",
+        review_notes=[alias, "Check DECLARE's callers."],
+    )
+    final = done.state
+    assert final.status is HostStatus.SUCCEEDED, done.message
+    assert final.summary == "Use alias declarations. Attempt 3: Fix the alias's type."
+    assert final.review_notes == [alias, "Check DECLARE's callers."]
+    (message,) = _commits(git, world, snapshot)
+    assert "Use alias declarations. Attempt 3: Fix the alias's type." in message
+
+
 def test_rejections_stay_in_the_attempt_until_its_retries_run_out(world: World) -> None:
     host = _host(world, edit_retries=1)
     state = _start(host, "include/geo.h").state

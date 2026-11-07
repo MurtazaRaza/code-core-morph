@@ -213,6 +213,9 @@ def run_index(
         with IndexStore.open(index.path) as store:
             store.set_build_targets(targets)
             store.set_test_entries(tests)
+    if language == "c":
+        with IndexStore.open(index.path) as store:
+            store.clear_program_boundaries()
     log.info(
         "indexed %s files, %s symbols in %.1f s (%s translation units parsed, %s cached)",
         index.meta.stats.get("files"),

@@ -38,7 +38,12 @@ from pydantic import ValidationError
 
 from codecoremorph.adapters.base import AdapterContext, AdapterNotSupportedError, LanguageAdapter
 from codecoremorph.agent.context import UnitContext, build_context, read_text
-from codecoremorph.agent.feedback import compiler_feedback, regression_feedback, sites_feedback
+from codecoremorph.agent.feedback import (
+    compiler_feedback,
+    new_test_feedback,
+    regression_feedback,
+    sites_feedback,
+)
 from codecoremorph.agent.tools import ToolBox
 from codecoremorph.agent.unverified import (
     echo_feedback,
@@ -91,6 +96,7 @@ from codecoremorph.invariants.symbol_map import (
 from codecoremorph.invariants.test_map import (
     TestPair,
     by_source,
+    new_failures,
     parity,
     read_test_map,
     test_map_feedback,
@@ -218,6 +224,42 @@ class UnitOutcome:
     invariant_results: list[InvariantResult] = field(default_factory=list[InvariantResult])
     codemods: CodemodResult | None = None
     prompts_version: str = PROMPTS_VERSION
+
+
+# The attempts whose edits were applied. A failed one's stay in the files for the next attempt,
+# which adds to them, so a committed unit keeps the edits of every one of these.
+_APPLIED = frozenset(
+    {
+        AttemptOutcome.SUCCEEDED,
+        AttemptOutcome.BUILD_FAILED,
+        AttemptOutcome.TESTS_FAILED,
+        AttemptOutcome.INVARIANT_FAILED,
+    }
+)
+
+
+def unit_summary(attempts: Sequence[Attempt]) -> str | None:
+    """A committed unit's summary: its applied attempts' summaries in order, each after the
+    first marked with its number. A retry's summary says only what it added ("fix the test"),
+    so the first one's describes the unit."""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for attempt in attempts:
+        text = (attempt.summary or "").strip()
+        if attempt.outcome not in _APPLIED or not text or text in seen:
+            continue
+        seen.add(text)
+        parts.append(text if not parts else f"Attempt {attempt.number}: {text}")
+    return " ".join(parts) or None
+
+
+def unit_review_notes(attempts: Sequence[Attempt]) -> list[str]:
+    """A committed unit's review notes: those of every applied attempt, whose edits it keeps."""
+    notes: list[str] = []
+    for attempt in attempts:
+        if attempt.outcome in _APPLIED:
+            notes += [n for n in attempt.review_notes if n not in notes]
+    return notes
 
 
 @dataclass
@@ -590,6 +632,25 @@ class UnitRunner:
                         invariant="I-5",
                         passed=False,
                         message=f"{len(regressions)} baseline-passing test(s) don't pass",
+                    )
+                ],
+            )
+        known = self.baseline.tests
+        added = new_failures(
+            {*known.passing, *known.failing, *known.flaky, *known.skipped}, report.cases
+        )
+        if added:
+            return Verification(
+                ok=False,
+                stage="tests",
+                feedback=new_test_feedback(added, roots=self._roots(ctx)),
+                regressions=[c.test_id for c in added],
+                sites=sites,
+                invariant_results=[
+                    InvariantResult(
+                        invariant="I-5",
+                        passed=False,
+                        message=f"{len(added)} test(s) new in the attempt don't pass",
                     )
                 ],
             )
@@ -1153,8 +1214,8 @@ class UnitRunner:
                     attempt.model_copy(update={"outcome": AttemptOutcome.SUCCEEDED})
                 )
                 outcome.succeeded = True
-                outcome.summary = end.batch.summary
-                outcome.review_notes = list(end.batch.review_notes)
+                outcome.summary = unit_summary(outcome.attempts) or end.batch.summary
+                outcome.review_notes = unit_review_notes(outcome.attempts)
                 outcome.warnings = verification.warnings
                 outcome.approvals = verification.approvals
                 outcome.invariant_results = verification.invariant_results

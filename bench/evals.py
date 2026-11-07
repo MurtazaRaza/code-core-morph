@@ -54,7 +54,7 @@ from codecoremorph.store.layout import StateDir
 BENCH = Path(__file__).resolve().parent
 ROOT = BENCH.parent
 FIXTURES = ROOT / "fixtures" / "cpp"
-CLAUDE_TOOLS = ["Skill", "Bash(codecoremorph:*)", "Read", "Write", "Glob", "Grep"]
+CLAUDE_TOOLS = ["Skill", "Bash(codecoremorph:*)", "Read", "Write", "Edit", "Glob", "Grep"]
 CLAUDE_PROMPT = """\
 Use the codecoremorph skill to migrate one work unit of this C++ project from {source} to \
 {target}.

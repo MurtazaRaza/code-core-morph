@@ -535,16 +535,19 @@ class _Former:
                 note += f"; keeps {', '.join(kept)}"
             still_c = sorted(set(project.calls.get(source, {})) & later[source])
             if still_c:
-                note += f"; calls {', '.join(still_c)} while they are still C (a call cycle)"
+                they = "it is" if len(still_c) == 1 else "they are"
+                note += f"; calls {', '.join(still_c)} while {they} still C (a call cycle)"
             variadic = [s.name for s in project.c_variadic(source)]
             if variadic:
                 # Stable Rust defines neither `...` nor `va_list` functions (D-70).
+                one = len(variadic) == 1
                 note += (
-                    f"; {' and '.join(variadic)} stay{'s' if len(variadic) == 1 else ''} C in "
-                    f"{source}, over the Rust code: they take `...` or a `va_list`"
+                    f"; {' and '.join(variadic)} stay{'s' if one else ''} C in {source}, over "
+                    f"the Rust code: {'it takes' if one else 'they take'} `...` or a `va_list`"
                 )
             if callers:
-                note += f"; {len(callers)} C files keep calling it through its headers"
+                keep = "C file keeps" if len(callers) == 1 else "C files keep"
+                note += f"; {len(callers)} {keep} calling it through its headers"
             draft = _Draft(
                 rule=scan.rule_id,
                 files=sorted({*unit_files, *kept, *project.build_files}),

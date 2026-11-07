@@ -1,4 +1,4 @@
-"""Migrate the benchmark project end to end with Claude Code as the agent (M1, M8).
+"""Migrate the benchmark project end to end with Claude Code as the agent (M1, M8, M9).
 
 Usage: uv run python bench/run.py [--pin FILE] [--project DIR] [--sandbox docker|native]
                                   [--claude PATH] [--claude-model MODEL] [--max-turns N]
@@ -7,13 +7,14 @@ Usage: uv run python bench/run.py [--pin FILE] [--project DIR] [--sandbox docker
 Headless Claude Code (``claude -p``), with the codecoremorph skill installed in the pinned
 project (bench/fetch.py), runs the pin's migration through ``codecoremorph run --host-agent``
 (D-44): bench/pin.json (M1) migrates leveldb C++11 -> C++20 with the rules of
-examples/cpp11-to-cpp20.yaml, bench/port-pin.json (M8) ports snappy whole to Rust. It runs on
+examples/cpp11-to-cpp20.yaml, bench/port-pin.json (M8) ports snappy whole to Rust and
+bench/c-port-pin.json (M9) ports bzip2, C with a Makefile, whole to Rust. It runs on
 the Claude plan Claude Code is logged in with: no API key and no per-token bill, but a whole
 run uses a good part of the plan's limits. The migration happens on the run's own branch; the
 project's checkout isn't changed.
 
 The run's status, every unit's outcome, the final verification, a port's summary (maps,
-deviations, unsafe code, C++ left), the time taken against the work the plan held
+deviations, unsafe code, C or C++ left), the time taken against the work the plan held
 (bench/work.py) and Claude Code's usage go to
 bench/results/<date>-<milestone>-<project>-<system>-<sandbox>-claude-code.json.
 
@@ -38,7 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from plan import PIN, describe, load_pin, manifest, migration
+from plan import PIN, describe, load_pin, manifest, migration, source
 from work import measure
 
 from codecoremorph.cli.skill import install_skill
@@ -48,12 +49,15 @@ from codecoremorph.orchestrator.lifecycle import RunPlace, abort_run
 from codecoremorph.prompts import PROMPTS_VERSION
 
 BENCH = Path(__file__).resolve().parent
-CLAUDE_TOOLS = ["Skill", "Bash(codecoremorph:*)", "Read", "Write", "Glob", "Grep"]
+# Edit too: an agent that fixes its edits file in place is refused without it, and headless
+# Claude Code can't ask (the M9 run's first attempt stopped there).
+CLAUDE_TOOLS = ["Skill", "Bash(codecoremorph:*)", "Read", "Write", "Edit", "Glob", "Grep"]
 CLAUDE_PROMPT = """\
 Use the codecoremorph skill to {task}: the whole {kind}, every unit of the plan, in one run.
 
 The manifest is {manifest}, outside this directory, and the codecoremorph command is on the \
-PATH; pass `-c "{manifest}"` to every codecoremorph command. Work on your own without asking \
+PATH; pass it to every codecoremorph command, as the argument of `run`, `plan`, `validate` and \
+`doctor` and as `-c "{manifest}"` to the others. Work on your own without asking \
 questions: I have asked for the whole {kind}, so approve the plan yourself. Stop when the \
 run has ended, then summarize its report.
 """
@@ -63,12 +67,13 @@ parked where an earlier session stopped. Continue it to its end, every unit left
 describes (`codecoremorph status`, `codecoremorph resume` and the unit commands).
 
 The manifest is {manifest}, outside this directory, and the codecoremorph command is on the \
-PATH; pass `-c "{manifest}"` to every codecoremorph command. Work on your own without asking \
+PATH; pass it to every codecoremorph command, as the argument of `run`, `plan`, `validate` and \
+`doctor` and as `-c "{manifest}"` to the others. Work on your own without asking \
 questions. Stop when the run has ended, then summarize its report.
 """
 # Claude Code's reply when the Claude plan's usage limit stops it: the run stays parked.
 USAGE_LIMIT = re.compile(r"hit your .{0,40}limit|usage limit", re.IGNORECASE)
-LANGUAGES = {"cpp": "C++", "rust": "Rust"}
+LANGUAGES = {"c": "C", "cpp": "C++", "rust": "Rust"}
 
 
 def _standard(name: str) -> str:
@@ -85,8 +90,11 @@ def task(pin: dict[str, Any]) -> tuple[str, str]:
             f"{_standard(target['standard'])}",
             "migration",
         )
-    return f"port this C++ project to {LANGUAGES.get(target['language'], target['language'])}", (
-        "port"
+    language = source(pin)["language"]
+    return (
+        f"port this {LANGUAGES.get(language, language)} project to "
+        f"{LANGUAGES.get(target['language'], target['language'])}",
+        "port",
     )
 
 

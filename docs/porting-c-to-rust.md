@@ -132,10 +132,53 @@ The report's Port section lists the symbol map, the tests without a counterpart,
 the port kept differently (from the maps' notes) and any `unsafe` code. The branch is yours to
 review with `git diff`.
 
+## A real project: bzip2
+
+The benchmark of `bench/c-port-pin.json` is bzip2 1.0.8, 7.7k lines of C89 with a plain
+Makefile. Its manifest:
+
+```yaml
+project:
+  name: bzip2
+  test_dirs: []
+  exclude: [dlltest.c, mk251.c, spewG.c, unzcrash.c]
+  public_api: [bzlib.h]
+migration:
+  source: {language: c, standard: c89, build_system: make}
+  target:
+    language: rust
+    standard: rust2021
+    rules: [port_c_module, port_c_executable, port_c_tests, retire_c]
+build:
+  make:
+    build_targets: [libbz2.a, bzip2, bzip2recover]
+```
+
+- bzip2's default target runs its tests too, so `build_targets` names what to build.
+- The test tools the Makefile never builds stay out of the port through `exclude`.
+- bzip2 has no C test files: `make check` compresses and decompresses three samples and compares
+  them with reference files, one test. Each unit's agent wrote Rust tests for the code it ported,
+  and the retirement mapped `make check` to the six that make the same comparisons.
+
+The port took 10 units: the five library files leaves first, `bzlib.c` (the 26 public functions)
+and `decompress.c` (a call cycle with `bzlib.c`), the programs `bzip2recover` and `bzip2`, and
+the retirement. Claude Code ran it in 87 minutes, every unit committed and 2 of them on a second
+attempt, ending with 38 Rust tests and no `unsafe`. The Rust `bzip2` writes byte-identical
+`.bz2` files to the C build's.
+
+The notes say what changed: `bzip2` no longer catches signals (safe Rust with no crates can't),
+compression ignores a caller's `bzalloc`, and the programs build on Unix only, as the Makefile
+did.
+
 ## Limits
 
 - Make builds run in Docker only; native Windows builds come later.
 - A static automake library (`lib_LIBRARIES`) hands Rust's native libraries only to the links in
   its own `Makefile.am`; a program in another directory that links it needs them added by hand.
 - Keeping the C headers as the public API of a Rust library (`keep_source_api`) isn't ready for
-  C yet.
+  C yet, so a library's C API ends with the retirement.
+- Characterization tests aren't written for C yet: a project with few tests gets only the tests
+  the agent writes for each file it ports.
+- The retirement deletes the Makefile but not other platforms' build files (bzip2's
+  `makefile.msc`, `Makefile-libbz2_so`), and the symbol map still names the deleted bridge's
+  functions. Review both.

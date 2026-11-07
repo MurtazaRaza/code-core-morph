@@ -158,9 +158,10 @@ def test_exports_and_callers(fake_project: FakeProject) -> None:
     assert ports["conf"].exports == ["min_length", "wf_set_min"]
     assert ports["conf"].c_headers == ["include/wf.h", "src/wfint.h"]
     assert ports["wf"].callers == ["tools/wordfreq.c"]
-    conf = next(u for u in plan.units if u.port and u.port.module == "conf")
-    assert conf.note is not None
-    assert "exporting 1 function and 1 variable" in conf.note
+    notes = {u.port.module: u.note or "" for u in plan.units if u.port}
+    assert "exporting 1 function and 1 variable" in notes["conf"]
+    assert "; 1 C file keeps calling it through its headers" in notes["wf"]
+    assert "; 3 C files keep calling it through its headers" in notes["sbuf"]
 
 
 def test_variadic_functions_stay_c(fake_project: FakeProject) -> None:
@@ -190,7 +191,7 @@ def test_variadic_functions_stay_c(fake_project: FakeProject) -> None:
     assert unit.port is not None
     assert unit.port.exports == ["k_write"]
     assert unit.note is not None
-    assert "k_log and k_vlog stay C in src/log.c, over the Rust code" in unit.note
+    assert "k_log and k_vlog stay C in src/log.c, over the Rust code: they take" in unit.note
 
 
 def test_a_program_and_an_uncompiled_source_are_skipped(fake_project: FakeProject) -> None:
@@ -224,4 +225,4 @@ def test_a_call_cycle_breaks_where_it_costs_least(fake_project: FakeProject) -> 
     ported = [u for u in plan.units if u.port is not None]
     assert [u.port.module for u in ported if u.port] == ["b", "a"]
     assert ported[0].note is not None
-    assert "calls src/a.c while they are still C (a call cycle)" in ported[0].note
+    assert "calls src/a.c while it is still C (a call cycle)" in ported[0].note

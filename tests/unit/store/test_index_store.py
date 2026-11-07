@@ -7,7 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from codecoremorph.core.models import FileRole, IndexMeta, ReferenceKind, SymbolKind
+from codecoremorph.core.models import (
+    Boundary,
+    BuildTarget,
+    FileRole,
+    IndexMeta,
+    ReferenceKind,
+    SymbolKind,
+    TargetKind,
+)
 from codecoremorph.store.index import INDEX_SCHEMA_VERSION, IndexStore, SymbolRow
 
 
@@ -152,3 +160,45 @@ def test_c_files_defining_the_same_type_do_not_use_each_other(tmp_path: Path) ->
             ],
         )
         assert store.reference_counts() == [("a.cpp", "b.cpp", 1)]
+
+
+def test_a_programs_definitions_are_off_the_c_abi_boundary(tmp_path: Path) -> None:
+    """bzip2recover.c's file-scope globals (M9, D-71): nothing links against a program, so
+    what only programs compile is no ABI. The library's files and the header stay on it."""
+
+    def symbol(name: str, file: str, kind: str = "variable") -> SymbolRow:
+        return (f"c:@{name}", name, name, kind, file, 1, 1, 1, 9, None, "none", 1, "c_abi")
+
+    with IndexStore.open(tmp_path / "index.sqlite") as store:
+        store.write(
+            files=[
+                (path, "c", f"{n}" * 64, "source", 0, 0, "utf-8", "lf")
+                for n, path in enumerate(("bzlib.c", "bzlib.h", "bzip2recover.c", "shared.c"))
+            ],
+            symbols=[
+                symbol("BZ2_bzlibVersion", "bzlib.c", "function"),
+                symbol("BZ2_bzlibVersion", "bzlib.h", "function"),
+                symbol("bStart", "bzip2recover.c"),
+                symbol("tooManyBlocks", "bzip2recover.c", "function"),
+                symbol("shared", "shared.c"),
+            ],
+            references=[],
+        )
+        store.set_build_targets(
+            [
+                BuildTarget(name="bz2", kind=TargetKind.LIBRARY, files=["bzlib.c", "shared.c"]),
+                BuildTarget(
+                    name="bzip2recover",
+                    kind=TargetKind.EXECUTABLE,
+                    files=["bzip2recover.c", "shared.c"],
+                ),
+            ]
+        )
+        store.clear_program_boundaries()
+        assert {s.file: s.boundary for s in store.symbols()} == {
+            "bzlib.c": Boundary.C_ABI,
+            "bzlib.h": Boundary.C_ABI,
+            "bzip2recover.c": Boundary.NONE,
+            "shared.c": Boundary.C_ABI,  # a library compiles it too
+        }
+        assert set(store.boundary_files()) == {"bzlib.c", "bzlib.h", "shared.c"}

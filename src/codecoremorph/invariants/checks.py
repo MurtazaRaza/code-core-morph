@@ -512,6 +512,17 @@ def api_changes(
     return changes
 
 
+def still_declared(
+    before: Iterable[Symbol], *, changed: Iterable[str], parsed: Iterable[str]
+) -> list[Symbol]:
+    """The snapshot's symbols in files the attempt left as they were and the new index no
+    longer parses: a file that didn't change declares what it declared. A C port's private
+    header drops out of the index once every file that included it is Rust (bzip2's
+    ``bzlib_private.h``, M9), yet it still declares the functions the Rust exports."""
+    gone = set(changed) | set(parsed)
+    return [s for s in before if s.file not in gone]
+
+
 def check_api(
     changes: Sequence[ApiChange],
     *,

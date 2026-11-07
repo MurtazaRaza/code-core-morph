@@ -1,0 +1,533 @@
+{
+  "date": "2026-11-06T21:30:30+00:00",
+  "project": "bzip2 bzip2-1.0.8 (6a8690fc8d26)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+  "seconds": 5297.9,
+  "runs_started": 1,
+  "run_id": "20261106-200254-ede2",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 10
+    },
+    "success_rate": 1.0,
+    "agent_units": 10,
+    "attempts_per_agent_unit": 1.2,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "f6f6e005186dd0bd8d3ca52cc1b11e1096185b8a",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 38,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 6.2
+    },
+    "port": {
+      "symbols": 35,
+      "tests_mapped": 1,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "BZ2_crc32Table: An exported C global, read-only; Rust code uses crctable::CRC32_TABLE through update_crc().",
+        "BZ2_rNums: An exported C global, read-only; Rust code uses randtable::R_NUMS through Randomiser.",
+        "BZ2_blockSort: Takes the block as a slice and fills ptr; it sorts in its own buffers, so arr2 past the block and ftab are left as they were instead of destroyed.",
+        "BZ2_compressBlock: Keeps the MTF values, coding tables and selectors in its own buffers instead of EState's arr1, mtfFreq, len, code, rfreq, len_pack and selector fields, which nothing else reads; s->origPtr is no longer set.",
+        "BZ2_bzCompressInit: The encoder's buffers are Rust allocations; strm->bzalloc and bzfree are still defaulted when NULL but not called for compression.",
+        "BZ2_bzCompressEnd: Dropping the encoder frees it.",
+        "BZ2_bzDecompressInit: The bridge allocates and sets up the C DState with strm->bzalloc, because decompress.c still uses it.",
+        "BZ2_bzDecompress: The bridge alternates BZ2_decompress (still C) with the Rust output stage over the C DState.",
+        "BZ2_bzDecompressEnd: Only frees the C DState and its arrays through strm->bzfree, in the bridge; there is no Rust state to drop until decompress.c is ported.",
+        "BZ2_bzopen: Opening the C FILE (fopen, or stdin/stdout for an empty path) stays in the bridge.",
+        "BZ2_bzdopen: fdopen stays in the bridge.",
+        "BZ2_bzflush: Does nothing and returns 0, as in the C.",
+        "BZ2_bzclose: Closing the C FILE afterwards stays in the bridge.",
+        "BZ2_decompress: The decoder keeps its block arrays in a BlockStore: Rust vectors for DecodeStream, or the C DState's bzalloc'd tt, ll16 and ll4 for the exported function, which copies the rest of the DState in and out of a Rust Decoder on each call.",
+        "make:check: make check ran bzip2 -1/-2/-3 on sample1-3.ref and bzip2 -d/-d/-ds on sample1-3.bz2 through stdin and stdout, and compared the results with the reference files; these integration tests run the same six comparisons."
+      ],
+      "unsafe": [],
+      "source_left": [
+        "dlltest.c (1 file, which project.exclude keeps out of the port)",
+        "mk251.c (1 file, which project.exclude keeps out of the port)",
+        "spewG.c (1 file, which project.exclude keeps out of the port)",
+        "unzcrash.c (1 file, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 7,
+        "committed": 7,
+        "planned_sites": 35,
+        "converted_sites": 35
+      },
+      {
+        "id": "port_c_executable",
+        "units": 2,
+        "committed": 2,
+        "planned_sites": 2,
+        "converted_sites": 2
+      },
+      {
+        "id": "port_c_tests",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 11,
+        "converted_sites": 11
+      }
+    ],
+    "review_items": 29,
+    "duration_s": 5227.6,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 238.8,
+        "changed_files": 12,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 84.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 738.8,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 195.3,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 455.5,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 1942.6,
+        "changed_files": 11,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 626.7,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 205.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 642.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 63.4,
+        "changed_files": 19,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\bzip2\\.codecoremorph\\runs\\20261106-200254-ede2\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 11,
+      "project_lines": 7726,
+      "units": 10,
+      "rule_sites": {
+        "port_c_module": 35,
+        "port_c_executable": 11,
+        "retire_c": 11
+      },
+      "sites": 57,
+      "files": 12,
+      "lines": 7726,
+      "expected_agent_attempts": 9.0,
+      "verify_s": 0.5,
+      "estimated_s": 4736.3,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 10
+      },
+      "agent_units": 10,
+      "agent_attempts": 12,
+      "changed_files": 32,
+      "lines_added": 6854,
+      "lines_deleted": 7943
+    },
+    "time": {
+      "run_s": 5227.6,
+      "phases_s": {
+        "baselining": 2.2,
+        "indexing": 1.4,
+        "planning": 0.1,
+        "awaiting_plan_approval": 18.3,
+        "migrating": 5199.3,
+        "verifying": 6.3
+      },
+      "migrating_s": 5199.3,
+      "agent_s": 4653.8,
+      "unit_gates_s": 0.0,
+      "tools_s": 545.5,
+      "unit_s": {
+        "mean": 519.8,
+        "median": 347.9,
+        "max": 1943.1
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 1.1,
+      "agent_attempts_over_expected": 1.33,
+      "agent_s_per_attempt": 387.8,
+      "migrating_s_per_unit": 519.9,
+      "migrating_s_per_site": 91.2,
+      "migrating_s_per_changed_line": 0.35,
+      "run_min_per_1k_project_lines": 11.28
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 104,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 361.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 239.9,
+        "agent_s": 162.5,
+        "gate_s": 0.0,
+        "tools_s": 77.4,
+        "lines_changed": 964
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 84,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 354.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 84.5,
+        "agent_s": 49.8,
+        "gate_s": 0.0,
+        "tools_s": 34.8,
+        "lines_changed": 233
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 1094,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 681.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 739.2,
+        "agent_s": 689.2,
+        "gate_s": 0.0,
+        "tools_s": 50.0,
+        "lines_changed": 2079
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 205,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 393.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 195.8,
+        "agent_s": 151.1,
+        "gate_s": 0.0,
+        "tools_s": 44.6,
+        "lines_changed": 593
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 672,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 545.2,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 455.9,
+        "agent_s": 347.8,
+        "gate_s": 0.0,
+        "tools_s": 108.1,
+        "lines_changed": 1443
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 1572,
+        "sites": 26,
+        "expected_attempts": 0.9,
+        "estimated_s": 836.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 1943.1,
+        "agent_s": 1873.6,
+        "gate_s": 0.0,
+        "tools_s": 69.4,
+        "lines_changed": 3954
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 652,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 538.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 627.0,
+        "agent_s": 571.1,
+        "gate_s": 0.0,
+        "tools_s": 55.9,
+        "lines_changed": 2041
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_c_executable"
+        ],
+        "files": 2,
+        "lines": 516,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 238.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 205.4,
+        "agent_s": 173.2,
+        "gate_s": 0.0,
+        "tools_s": 32.2,
+        "lines_changed": 975
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_c_executable"
+        ],
+        "files": 2,
+        "lines": 2036,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 730.9,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 643.1,
+        "agent_s": 590.5,
+        "gate_s": 0.0,
+        "tools_s": 52.6,
+        "lines_changed": 3736
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 12,
+        "lines": 7726,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 54.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 63.7,
+        "agent_s": 45.0,
+        "gate_s": 0.0,
+        "tools_s": 18.7,
+        "lines_changed": 2899
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 103,
+    "duration_ms": 5295761,
+    "total_cost_usd_equivalent": 22.393014900000015,
+    "usage": {
+      "input_tokens": 166,
+      "cache_creation_input_tokens": 675017,
+      "cache_read_input_tokens": 28503123,
+      "output_tokens": 564572,
+      "output_tokens_details": {
+        "thinking_tokens": 395708
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 675017,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 2110,
+          "cache_read_input_tokens": 696279,
+          "cache_creation_input_tokens": 6013,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 6013
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port finished: all 10 units are committed on `codecoremorph/20261106-200254-ede2`, and the final verification (a clean build and all 38 tests) passed. The bzip2 C sources are now a Rust workspace under `rust/`, with no `unsafe` code. The full report is at `E:\\codecoremorph-home\\bench\\bzip2\\.codecoremorph\\runs\\20261106-200254-ede2\\report.md`.\n\n| Unit | What it ported | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `crctable.c` \u2192 `bz2_rs::crctable` | 1 | `a2af03a` |\n| U-0002 | `randtable.c` \u2192 `bz2_rs::randtable` | 1 | `13944a2` |\n| U-0003 | `blocksort.c` \u2192 `bz2_rs::blocksort` | 1 | `ce54ba6` |\n| U-0004 | `huffman.c` \u2192 `bz2_rs::huffman` | 1 | `86e4ea5` |\n| U-0005 | `compress.c` \u2192 `bz2_rs::compress` | 2 (one of my new tests had a wrong assertion) | `1ac16af` |\n| U-0006 | `bzlib.c` \u2192 `bz2_rs::bzlib` (all 26 public functions) | 1 | `07532ae` |\n| U-0007 | `decompress.c` \u2192 `bz2_rs::decompress` | 1 | `f75eb5a` |\n| U-0008 | `bzip2recover` program | 1 | `1a64776` |\n| U-0009 | `bzip2` program | 2 (one clippy lint) | `b6aa0bc` |\n| U-0010 | deletes the C, the headers, the Makefile and the C bridges | 1 | `f6f6e00` |\n\nThe report shows only the second attempt's summary for U-0005 and U-0009 (\"fix the test\", \"fix a lint\"). The actual work of those units is in the table above.\n\n**Behaviour that changed:**\n- **Signals:** `bzip2` no longer catches Ctrl-C, SIGTERM, SIGHUP or crash signals, because safe Rust with no outside crates can't install handlers. An interrupted file-to-file run now leaves its partial output file behind. This note was lost from the report with U-0009's second attempt.\n- **Allocators:** compression ignores a caller's custom `bzalloc`/`bzfree` and uses Rust memory instead. Running out of memory still reports `BZ_MEM_ERROR`.\n- **Error edge cases:** a few C quirks around error paths, `errno` and `fclose` failures are gone. The report's Review section lists them per unit.\n- **Unix only:** both programs keep file names as raw bytes, so they build only on Unix, like the original Makefile build.\n\n**What the verification did not cover:**\n- **Tests:** none were excused. Before the port there was only one test, `make check` (three compressions and three decompressions of the sample files). It is now six Rust integration tests running the same comparisons, listed in `rust/test-map.toml`.\n- **Headers:** `bzlib.h` and `bzlib_private.h` are flagged as unverified because no build compiles them. Their only change is that they were deleted.\n- **No C-API library any more:** the C interface was only kept during the transition, so the result is a Rust crate plus two programs. `make install`, installation of the `bzgrep`/`bzmore`/`bzdiff` scripts, the manual targets and the shared-library makefile no longer have a build. You build with `cargo build --release --manifest-path rust/Cargo.toml`.\n- **Leftover C programs:** `dlltest.c`, `mk251.c`, `spewG.c` and `unzcrash.c` were kept out of the port by the manifest. They still refer to the deleted `bzlib.h`, so they no longer build.\n- **Stale notes:** a few notes in `rust/symbol-map.toml` (and in the report's Port section) still describe the temporary bridge that let C call Rust during the port.\n- **Nothing left out:** no units were skipped or excluded. The plan's only warning is that there were no C test files, so the \"port the tests\" rule had nothing to do.\n\nTo review: `git diff 6a8690f codecoremorph/20261106-200254-ede2`, or `git log` on that branch. Nothing has been merged.\n\nI can also turn this summary into a shareable page if you want one."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 103,
+      "duration_ms": 5295761,
+      "total_cost_usd_equivalent": 22.393014900000015,
+      "usage": {
+        "input_tokens": 166,
+        "cache_creation_input_tokens": 675017,
+        "cache_read_input_tokens": 28503123,
+        "output_tokens": 564572,
+        "output_tokens_details": {
+          "thinking_tokens": 395708
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 675017,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2110,
+            "cache_read_input_tokens": 696279,
+            "cache_creation_input_tokens": 6013,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 6013
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port finished: all 10 units are committed on `codecoremorph/20261106-200254-ede2`, and the final verification (a clean build and all 38 tests) passed. The bzip2 C sources are now a Rust workspace under `rust/`, with no `unsafe` code. The full report is at `E:\\codecoremorph-home\\bench\\bzip2\\.codecoremorph\\runs\\20261106-200254-ede2\\report.md`.\n\n| Unit | What it ported | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `crctable.c` \u2192 `bz2_rs::crctable` | 1 | `a2af03a` |\n| U-0002 | `randtable.c` \u2192 `bz2_rs::randtable` | 1 | `13944a2` |\n| U-0003 | `blocksort.c` \u2192 `bz2_rs::blocksort` | 1 | `ce54ba6` |\n| U-0004 | `huffman.c` \u2192 `bz2_rs::huffman` | 1 | `86e4ea5` |\n| U-0005 | `compress.c` \u2192 `bz2_rs::compress` | 2 (one of my new tests had a wrong assertion) | `1ac16af` |\n| U-0006 | `bzlib.c` \u2192 `bz2_rs::bzlib` (all 26 public functions) | 1 | `07532ae` |\n| U-0007 | `decompress.c` \u2192 `bz2_rs::decompress` | 1 | `f75eb5a` |\n| U-0008 | `bzip2recover` program | 1 | `1a64776` |\n| U-0009 | `bzip2` program | 2 (one clippy lint) | `b6aa0bc` |\n| U-0010 | deletes the C, the headers, the Makefile and the C bridges | 1 | `f6f6e00` |\n\nThe report shows only the second attempt's summary for U-0005 and U-0009 (\"fix the test\", \"fix a lint\"). The actual work of those units is in the table above.\n\n**Behaviour that changed:**\n- **Signals:** `bzip2` no longer catches Ctrl-C, SIGTERM, SIGHUP or crash signals, because safe Rust with no outside crates can't install handlers. An interrupted file-to-file run now leaves its partial output file behind. This note was lost from the report with U-0009's second attempt.\n- **Allocators:** compression ignores a caller's custom `bzalloc`/`bzfree` and uses Rust memory instead. Running out of memory still reports `BZ_MEM_ERROR`.\n- **Error edge cases:** a few C quirks around error paths, `errno` and `fclose` failures are gone. The report's Review section lists them per unit.\n- **Unix only:** both programs keep file names as raw bytes, so they build only on Unix, like the original Makefile build.\n\n**What the verification did not cover:**\n- **Tests:** none were excused. Before the port there was only one test, `make check` (three compressions and three decompressions of the sample files). It is now six Rust integration tests running the same comparisons, listed in `rust/test-map.toml`.\n- **Headers:** `bzlib.h` and `bzlib_private.h` are flagged as unverified because no build compiles them. Their only change is that they were deleted.\n- **No C-API library any more:** the C interface was only kept during the transition, so the result is a Rust crate plus two programs. `make install`, installation of the `bzgrep`/`bzmore`/`bzdiff` scripts, the manual targets and the shared-library makefile no longer have a build. You build with `cargo build --release --manifest-path rust/Cargo.toml`.\n- **Leftover C programs:** `dlltest.c`, `mk251.c`, `spewG.c` and `unzcrash.c` were kept out of the port by the manifest. They still refer to the deleted `bzlib.h`, so they no longer build.\n- **Stale notes:** a few notes in `rust/symbol-map.toml` (and in the report's Port section) still describe the temporary bridge that let C call Rust during the port.\n- **Nothing left out:** no units were skipped or excluded. The plan's only warning is that there were no C test files, so the \"port the tests\" rule had nothing to do.\n\nTo review: `git diff 6a8690f codecoremorph/20261106-200254-ede2`, or `git log` on that branch. Nothing has been merged.\n\nI can also turn this summary into a shareable page if you want one."
+    }
+  ]
+}

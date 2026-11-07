@@ -3,7 +3,7 @@
 Usage: uv run python bench/fetch.py [--pin FILE] [DEST]
 
 Clones the pin's repository (default bench/pin.json, M1's leveldb; bench/port-pin.json is M8's
-snappy) at its pinned commit, with submodules, into DEST (default:
+snappy, bench/c-port-pin.json M9's bzip2) at its pinned commit, with submodules, into DEST (default:
 <CODECOREMORPH_HOME>/bench/<project>), then checks that every commit matches the pin. Git
 verifies content by commit hash, so the pin is the checksum. An existing clone at the right
 commits is left alone.

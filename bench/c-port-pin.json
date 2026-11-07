@@ -1,0 +1,30 @@
+{
+  "project": "bzip2",
+  "url": "https://sourceware.org/git/bzip2.git",
+  "tag": "bzip2-1.0.8",
+  "commit": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+  "license": "bzip2-1.0.6",
+  "milestone": "m9",
+  "migration": {
+    "source": {"language": "c", "standard": "c89", "build_system": "make"},
+    "target": {
+      "language": "rust",
+      "standard": "rust2021",
+      "rules": ["port_c_module", "port_c_executable", "port_c_tests", "retire_c"]
+    }
+  },
+  "build": {
+    "make": {"build_targets": ["libbz2.a", "bzip2", "bzip2recover"]}
+  },
+  "exclude": [
+    "dlltest.c",
+    "mk251.c",
+    "spewG.c",
+    "unzcrash.c"
+  ],
+  "test_dirs": [],
+  "public_api": [
+    "bzlib.h"
+  ],
+  "build_note": "The M9 port benchmark. The Makefile's default target also runs the tests, so the build names its targets; `make check` compresses and decompresses the three samples with bzip2 and compares them with the reference files. dlltest.c (Windows), mk251.c, spewG.c and unzcrash.c are test tools the Makefile doesn't build, so they stay out of the port."
+}

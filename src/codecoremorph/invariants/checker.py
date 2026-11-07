@@ -51,6 +51,7 @@ from codecoremorph.invariants.checks import (
     check_warnings,
     diff_size,
     patch_lines,
+    still_declared,
 )
 from codecoremorph.invariants.test_map import (
     TestPair,
@@ -419,7 +420,9 @@ class InvariantChecker:
         index = self.adapter.index(ctx)  # brings the touched files up to date
         with IndexStore.open(index.path) as store:
             now = api_symbols(store.symbols())
-        changes = api_changes(snapshot.symbols, now, files=touched)
+            parsed = [e.path for e in store.files()]
+        kept = still_declared(snapshot.symbols, changed=changed, parsed=parsed)
+        changes = api_changes(snapshot.symbols, [*now, *kept], files=touched)
         api_changing = any(r.rule.kind is RuleKind.API_CHANGING for r in rules)
         unit_files = set(unit.files)
 

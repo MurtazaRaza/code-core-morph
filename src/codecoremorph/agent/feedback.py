@@ -207,6 +207,20 @@ def compiler_feedback(
     return "\n\n".join([header, *sections])
 
 
+def _failed_cases(cases: Sequence[TestCaseResult], roots: Sequence[str]) -> list[str]:
+    lines: list[str] = []
+    for case in cases[:MAX_ITEMS]:
+        lines.append(f"\n### {case.test_id}: {case.status.value}")
+        if case.message:
+            lines.append(scrub_paths(case.message.strip(), roots)[:MAX_TEST_MESSAGE])
+        if case.stack:
+            stack = scrub_paths(case.stack.strip(), roots)[:MAX_TEST_MESSAGE]
+            lines.append(f"```\n{stack}\n```")
+    if len(cases) > MAX_ITEMS:
+        lines.append(f"\n[{len(cases) - MAX_ITEMS} more failing tests]")
+    return lines
+
+
 def regression_feedback(
     regressions: Sequence[TestCaseResult],
     *,
@@ -215,20 +229,24 @@ def regression_feedback(
 ) -> str:
     lines = [
         f"{len(regressions) + len(missing)} test(s) that passed before the migration fail now. "
-        "Fix the code, not the tests."
+        "Fix the code, not the tests.",
+        *_failed_cases(regressions, roots),
     ]
-    for case in regressions[:MAX_ITEMS]:
-        lines.append(f"\n### {case.test_id}: {case.status.value}")
-        if case.message:
-            lines.append(scrub_paths(case.message.strip(), roots)[:MAX_TEST_MESSAGE])
-        if case.stack:
-            stack = scrub_paths(case.stack.strip(), roots)[:MAX_TEST_MESSAGE]
-            lines.append(f"```\n{stack}\n```")
-    if len(regressions) > MAX_ITEMS:
-        lines.append(f"\n[{len(regressions) - MAX_ITEMS} more failing tests]")
     if missing:
         lines.append("\n### No longer run: " + ", ".join(sorted(missing)[:MAX_ITEMS]))
     return "\n".join(lines)
+
+
+def new_test_feedback(cases: Sequence[TestCaseResult], *, roots: Sequence[str] = ()) -> str:
+    """Tests new in the attempt that don't pass (D-71)."""
+    return "\n".join(
+        [
+            f"{len(cases)} test(s) new in this attempt don't pass. A test the unit adds must "
+            "pass before it is committed: fix the code, or the test where what it expects is "
+            "wrong (check the expected values against the original code).",
+            *_failed_cases(cases, roots),
+        ]
+    )
 
 
 def sites_feedback(rule_id: str, sites: Sequence[RuleSite]) -> str:

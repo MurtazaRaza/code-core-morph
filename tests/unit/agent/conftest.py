@@ -79,8 +79,9 @@ _SIMPLE_TYPEDEF = re.compile(r"^typedef (\w+) (\w+);$", re.MULTILINE)
 
 
 class FakeAdapter(LanguageAdapter):
-    """The build fails on a line containing BROKEN; the test fails on REGRESS; the codemod
-    rewrites simple `typedef T N;` lines."""
+    """The build fails on a line containing BROKEN; the test fails on REGRESS; NEWTEST_PASS or
+    NEWTEST_FAIL adds a test the baseline doesn't have; the codemod rewrites simple
+    `typedef T N;` lines."""
 
     language = "cpp"
 
@@ -132,6 +133,17 @@ class FakeAdapter(LanguageAdapter):
                            message="expected 4, got 5" if regress else None),
             TestCaseResult(test_id="gtest:Geo.Flaky", status=TestStatus.FAILED, duration_s=0),
         ]  # fmt: skip
+        text = "\n".join(self._files(ctx).values())
+        if "NEWTEST_" in text:
+            fails = "NEWTEST_FAIL" in text
+            cases.append(
+                TestCaseResult(
+                    test_id="gtest:Geo.New",
+                    status=TestStatus.FAILED if fails else TestStatus.PASSED,
+                    duration_s=0,
+                    message="expected 0x690ce0ee, got 0xc5a92679" if fails else None,
+                )
+            )
         return TestReport(cases=cases, duration_s=0, log_path=ctx.log_dir / "test.log")
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
@@ -168,8 +180,12 @@ def call(name: str, call_id: str, **arguments: Any) -> ToolCall:
     return ToolCall(id=call_id, name=name, arguments=arguments)
 
 
-def submit(call_id: str, *edits: dict[str, str], summary: str = "Done.") -> ToolCall:
-    return call("submit_edits", call_id, edits=list(edits), summary=summary, review_notes=[])
+def submit(
+    call_id: str, *edits: dict[str, str], summary: str = "Done.", notes: tuple[str, ...] = ()
+) -> ToolCall:
+    return call(
+        "submit_edits", call_id, edits=list(edits), summary=summary, review_notes=list(notes)
+    )
 
 
 def replace_edit(path: str, search: str, new: str) -> dict[str, str]:

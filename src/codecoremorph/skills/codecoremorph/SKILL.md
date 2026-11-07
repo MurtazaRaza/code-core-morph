@@ -20,7 +20,7 @@ You never need an API key: CodeCoreMorph makes no model calls in this mode. You 
 3. Run `codecoremorph validate` and `codecoremorph doctor migration_config.yaml`. Model-provider checks (Anthropic credentials, Ollama) don't matter for this workflow; the toolchain and Docker checks do.
 4. The manifest's `sandbox.mode` decides where builds and tests run: `auto` uses Docker when it is available, `docker` and `native` force one. In native mode they run directly on this machine, including the code you write. If Docker is needed but missing, say so and let the user choose `--sandbox native`.
 
-Run every command from the repository root, where `migration_config.yaml` is; each command also takes `-c PATH` for a manifest elsewhere.
+Run every command from the repository root, where `migration_config.yaml` is. For a manifest elsewhere, `run`, `plan`, `validate` and `doctor` take its path as their argument (`codecoremorph run PATH`); the other commands take `-c PATH`.
 
 ## 2. Choose the workflow
 

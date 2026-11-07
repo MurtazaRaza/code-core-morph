@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import cast
 
 from codecoremorph.adapters.base import AdapterNotSupportedError, LanguageAdapter
-from codecoremorph.core.models import TestAssertions, TestStatus
+from codecoremorph.core.models import TestAssertions, TestCaseResult, TestStatus
 
 MAX_SHOWN = 25
 
@@ -195,6 +195,17 @@ def parity(
         else:
             retired.append(test_id)
     return Parity(failing=failing, missing=missing, retired=retired)
+
+
+def new_failures(known: Collection[str], cases: Iterable[TestCaseResult]) -> list[TestCaseResult]:
+    """The cases of a run its baseline doesn't know that didn't pass (nor skip): a test the
+    attempt adds must pass, or the commit carries it failing and every later unit excuses it as
+    failing before (I-5, D-71; M9's Rust test of crctable.c asserted a wrong entry)."""
+    return [
+        c
+        for c in cases
+        if c.test_id not in known and c.status not in (TestStatus.PASSED, TestStatus.SKIPPED)
+    ]
 
 
 def gone_but_mapped(
