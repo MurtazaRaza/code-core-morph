@@ -6,7 +6,8 @@ Writes a manifest for the pinned project (bench/fetch.py) next to its clone, run
 (baseline, index, graph, units; no code changes), and records units, estimates and timings in
 bench/results/. The pin names the migration: bench/pin.json (M1) names none, so leveldb goes
 C++11 -> C++20 with the rules of examples/cpp11-to-cpp20.yaml; bench/port-pin.json (M8) ports
-snappy to Rust, and bench/c-port-pin.json (M9) ports bzip2, a C library built with Make.
+snappy to Rust, bench/c-port-pin.json (M9) ports bzip2, a C library built with Make, and
+bench/rust-port-pin.json (M10) ports shlex, a Rust crate, to C.
 """
 
 from __future__ import annotations
@@ -79,6 +80,7 @@ def manifest(pin: dict[str, Any], root: Path, sandbox: str) -> str:
         f"  {system}:\n" + "".join(f"    {k}: [{items(v)}]\n" for k, v in options.items())
         for system, options in _build(pin).items()
     )
+    build_block = f"build:\n{build}" if build else ""  # a Cargo crate needs no options
     return f"""\
 version: "1.0"
 project:
@@ -94,8 +96,7 @@ build_system: {src["build_system"]}}}
     language: {target["language"]}
     standard: {target["standard"]}
     rules: [{", ".join(target["rules"])}]
-build:
-{build}guardrails: {{build_timeout_s: 3600, test_timeout_s: 3600}}
+{build_block}guardrails: {{build_timeout_s: 3600, test_timeout_s: 3600}}
 sandbox: {{mode: {sandbox}}}
 """
 

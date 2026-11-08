@@ -31,7 +31,7 @@ from codecoremorph.sandbox.executor import Executor
 BENCH = Path(__file__).resolve().parent
 NFR_LINES = 100_000
 NFR_SECONDS = 60.0
-CODE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
+CODE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp", ".rs")
 
 
 def count_lines(root: Path, exclude: list[str]) -> int:

@@ -1,4 +1,4 @@
-"""Migrate the benchmark project end to end with Claude Code as the agent (M1, M8, M9).
+"""Migrate the benchmark project end to end with Claude Code as the agent (M1, M8-M10).
 
 Usage: uv run python bench/run.py [--pin FILE] [--project DIR] [--sandbox docker|native]
                                   [--claude PATH] [--claude-model MODEL] [--max-turns N]
@@ -8,7 +8,8 @@ Headless Claude Code (``claude -p``), with the codecoremorph skill installed in 
 project (bench/fetch.py), runs the pin's migration through ``codecoremorph run --host-agent``
 (D-44): bench/pin.json (M1) migrates leveldb C++11 -> C++20 with the rules of
 examples/cpp11-to-cpp20.yaml, bench/port-pin.json (M8) ports snappy whole to Rust and
-bench/c-port-pin.json (M9) ports bzip2, C with a Makefile, whole to Rust. It runs on
+bench/c-port-pin.json (M9) ports bzip2, C with a Makefile, whole to Rust, and
+bench/rust-port-pin.json (M10) ports shlex, a Rust crate, whole to C. It runs on
 the Claude plan Claude Code is logged in with: no API key and no per-token bill, but a whole
 run uses a good part of the plan's limits. The migration happens on the run's own branch; the
 project's checkout isn't changed.

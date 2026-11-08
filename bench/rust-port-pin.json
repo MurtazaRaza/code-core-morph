@@ -1,0 +1,24 @@
+{
+  "project": "shlex",
+  "url": "https://github.com/comex/rust-shlex.git",
+  "tag": "1.3.0",
+  "commit": "4a0724b0b62ef715467875b040a890ce75a8a829",
+  "license": "MIT OR Apache-2.0",
+  "milestone": "m10",
+  "migration": {
+    "source": {"language": "rust", "standard": "rust2015", "build_system": "cargo"},
+    "target": {
+      "language": "c",
+      "standard": "c99",
+      "rules": ["port_rust_module", "port_rust_program", "port_rust_tests", "retire_rust"]
+    }
+  },
+  "build": {},
+  "lockfile": "generate",
+  "exclude": [
+    "fuzz/**"
+  ],
+  "test_dirs": [],
+  "public_api": [],
+  "build_note": "The M10 port benchmark: shlex 1.3.0, the release the crates that split and quote shell words depend on, a library of two modules (src/bytes.rs and the crate root, src/lib.rs) whose unit tests are in both. It has no dependencies and doesn't commit its Cargo.lock, so bench/fetch.py commits one on top of the pinned commit (\"lockfile\": \"generate\"). fuzz/ is a separate cargo-fuzz workspace that needs libfuzzer-sys, so it stays out of the port. Edition 2015, as its manifest names none."
+}
