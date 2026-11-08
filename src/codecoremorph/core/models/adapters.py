@@ -57,10 +57,24 @@ class LanguageConfig(CoreModel):
     target_standard: str | None = Field(
         default=None, description="The migration's target standard (for the standard bump)"
     )
+    port_target: str | None = Field(
+        default=None,
+        description="A port's source: the language it goes to. The source adapter indexes "
+        "what the planner needs to order a port (a Rust source's references, D-75)",
+    )
+    port_source: str | None = Field(
+        default=None,
+        description="A port's target: the language it comes from. The run uses the target's "
+        "toolchain, so a target whose own image lacks the source's tools names one that has "
+        "them (a C target of a Rust port: the Rust image, D-75)",
+    )
     build_system: str | None = None
     configure_args: list[str] = Field(default_factory=list[str])
     build_targets: list[str] = Field(default_factory=list[str])
     test_targets: list[str] = Field(default_factory=list[str])
+    junit_reports: list[str] = Field(
+        default_factory=list[str], description="Globs of the JUnit XML reports tests write"
+    )
     source_dirs: list[str] = Field(default_factory=lambda: ["."])
     test_dirs: list[str] = Field(default_factory=list[str])
     exclude: list[str] = Field(default_factory=list[str])

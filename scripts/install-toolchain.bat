@@ -260,7 +260,7 @@ for /f "tokens=2" %%v in ('""%RUSTC%" --version" 2^>nul') do set "RUST_HAVE=%%v"
 set "RUSTUP_TOOLCHAIN="
 if not "%RUST_HAVE%"=="%RUST_VERSION%" goto rust_toolchain_needed
 call "%CCM_LIB%" :log "Rust %RUST_VERSION% is already installed in %CCM_HOME%\toolchains\rust"
-exit /b 0
+goto rust_components
 :rust_toolchain_needed
 if not "%CCM_DRY_RUN%"=="1" goto rust_toolchain_real
 call "%CCM_LIB%" :log "would install Rust %RUST_VERSION% with rustup %RUSTUP_VERSION% into %CCM_HOME%\toolchains\rust"
@@ -271,11 +271,25 @@ set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
 set "CARGO_HOME=%CARGO_HOME_DIR%"
 set "RUSTUP_TOOLCHAIN="
 rem The gnullvm host links with llvm-mingw, so no Visual Studio is needed (D-32).
-"%RUST_INIT%" -y --no-modify-path --profile minimal --default-toolchain %RUST_VERSION% -c clippy -c rustfmt --default-host x86_64-pc-windows-gnullvm
+"%RUST_INIT%" -y --no-modify-path --profile minimal --default-toolchain %RUST_VERSION% -c clippy -c rustfmt -c rust-analyzer -c rust-src --default-host x86_64-pc-windows-gnullvm
 if errorlevel 1 goto rust_toolchain_failed
 exit /b 0
 :rust_toolchain_failed
 call "%CCM_LIB%" :die 1 "rustup-init failed to install Rust %RUST_VERSION%"
+exit /b 1
+rem Adds the components an older install of the pinned release may lack (rust-analyzer, a Rust
+rem source's index, D-75, with rust-src, the standard library it reads). rustup adds only
+rem what is missing, and verifies it.
+:rust_components
+if "%CCM_DRY_RUN%"=="1" exit /b 0
+set "RUSTUP_HOME=%RUSTUP_HOME_DIR%"
+set "CARGO_HOME=%CARGO_HOME_DIR%"
+set "RUSTUP_TOOLCHAIN="
+"%CARGO_HOME_DIR%\bin\rustup.exe" component add --toolchain %RUST_VERSION% clippy rustfmt rust-analyzer rust-src
+if errorlevel 1 goto rust_components_failed
+exit /b 0
+:rust_components_failed
+call "%CCM_LIB%" :die 1 "rustup couldn't add clippy, rustfmt, rust-analyzer and rust-src to Rust %RUST_VERSION%"
 exit /b 1
 
 
@@ -747,10 +761,11 @@ echo Languages:
 echo   cpp   LLVM (clang, clang-tidy, clang-format; llvm-mingw on Windows), CMake,
 echo         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
 echo         for projects that build as C++98/03)
-echo   rust  the cpp toolchain, plus Rust (through rustup, with clippy and
-echo         rustfmt), cargo-nextest, cbindgen, bindgen and Corrosion, for C++
-echo         and C to Rust ports; rustup and cargo download Rust, cbindgen and
-echo         bindgen themselves, so --offline doesn't apply
+echo   rust  the cpp toolchain, plus Rust (through rustup, with clippy, rustfmt,
+echo         rust-analyzer and rust-src), cargo-nextest, cbindgen, bindgen and
+echo         Corrosion, for ports between C or C++ and Rust; rustup and cargo
+echo         download Rust, cbindgen and bindgen themselves, so --offline doesn't
+echo         apply
 echo   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
 echo         Spoon jar, and a Maven repository with OpenRewrite and the plugins
 echo         builds run offline; Maven downloads those itself, so --offline

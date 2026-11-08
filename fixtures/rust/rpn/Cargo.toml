@@ -1,0 +1,15 @@
+[package]
+name = "rpn"
+version = "0.2.0"
+authors = ["CodeCoreMorph fixtures"]
+edition = "2018"
+description = "A reverse Polish notation calculator, with reductions over lists of numbers"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "rpn"
+path = "src/main.rs"

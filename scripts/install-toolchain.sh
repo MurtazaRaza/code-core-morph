@@ -19,10 +19,11 @@ Languages:
   cpp   LLVM (clang, clang-tidy, clang-format; llvm-mingw on Windows), CMake,
         Ninja, and GoogleTest built with that compiler (1.12.1, plus 1.8.1
         for projects that build as C++98/03)
-  rust  the cpp toolchain, plus Rust (through rustup, with clippy and
-        rustfmt), cargo-nextest, cbindgen, bindgen and Corrosion, for C++
-        and C to Rust ports; rustup and cargo download Rust, cbindgen and
-        bindgen themselves, so --offline doesn't apply
+  rust  the cpp toolchain, plus Rust (through rustup, with clippy, rustfmt,
+        rust-analyzer and rust-src), cargo-nextest, cbindgen, bindgen and
+        Corrosion, for ports between C or C++ and Rust; rustup and cargo
+        download Rust, cbindgen and bindgen themselves, so --offline doesn't
+        apply
   java  a Temurin JDK for each Java standard (8, 11, 17, 21, 25), Maven, the
         Spoon jar, and a Maven repository with OpenRewrite and the plugins
         builds run offline; Maven downloads those itself, so --offline
@@ -291,6 +292,7 @@ rust_install_toolchain() {
             RUSTUP_TOOLCHAIN="$RUST_VERSION" "$_rustc" --version 2>/dev/null |
         grep -q "^rustc $RUST_VERSION "; then
         ccm_log "Rust $RUST_VERSION is already installed in $CCM_HOME/toolchains/rust"
+        rust_add_components
         return 0
     fi
     if [ "$CCM_DRY_RUN" = 1 ]; then
@@ -300,12 +302,23 @@ rust_install_toolchain() {
     fi
     chmod +x "$_init" 2>/dev/null || true
     set -- -y --no-modify-path --profile minimal --default-toolchain "$RUST_VERSION" \
-        -c clippy -c rustfmt
+        -c clippy -c rustfmt -c rust-analyzer -c rust-src
     [ -z "$RUST_HOST" ] || set -- "$@" --default-host "$RUST_HOST"
     ccm_log "installing Rust $RUST_VERSION with rustup $RUSTUP_VERSION (rustup downloads and" \
         "verifies it)"
     RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" "$_init" "$@" ||
         ccm_die "$CCM_EXIT_DOWNLOAD" "rustup-init failed to install Rust $RUST_VERSION"
+}
+
+# Adds the components an older install of the pinned release may lack (rust-analyzer, a Rust
+# source's index, D-75, with rust-src, the standard library it reads). rustup adds only what
+# is missing, and verifies it.
+rust_add_components() {
+    [ "$CCM_DRY_RUN" != 1 ] || return 0
+    RUSTUP_HOME="$(ccm_native_path "$RUSTUP_HOME_DIR")" CARGO_HOME="$(ccm_native_path "$CARGO_HOME_DIR")" \
+        "$CARGO_HOME_DIR/bin/rustup$_exe" component add --toolchain "$RUST_VERSION" \
+        clippy rustfmt rust-analyzer rust-src ||
+        ccm_die "$CCM_EXIT_DOWNLOAD" "rustup couldn't add clippy, rustfmt, rust-analyzer and rust-src to Rust $RUST_VERSION"
 }
 
 # Builds the pinned cbindgen with cargo, unless it is already there. Sets CBINDGEN_BIN.

@@ -131,6 +131,8 @@ class PortUnit(CoreModel):
             options["archive"] = self.archive
         if self.artifact is not None:
             options["artifact"] = self.artifact
+        if self.tests:
+            options["tests"] = ",".join(self.tests)
         return options
 
 
@@ -157,6 +159,11 @@ class WorkUnit(CoreModel):
     needs: list[UnitId] = Field(
         default_factory=list[UnitId],
         description="Units that must commit first; the run skips this one otherwise (D-60)",
+    )
+    kept_api: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath],
+        description="A C port's retirement with keep_source_api: the public headers it keeps, "
+        "whose functions the crates must go on exporting, checked whole by c_abi_kept (D-72)",
     )
 
     @field_validator("flags")

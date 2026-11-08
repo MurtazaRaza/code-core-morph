@@ -31,6 +31,7 @@ from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.ids import unit_id
 from codecoremorph.core.models import (
     Boundary,
+    BuildTarget,
     FileEntry,
     FileRole,
     Plan,
@@ -112,6 +113,7 @@ class _Draft:
     needs: list[_Draft] = field(default_factory=list["_Draft"])  # units that must commit first
     blocking: bool = True  # whether a port's retirement needs it (a skip-list unit doesn't)
     counted: list[str] | None = None  # the files its estimate counts, when not all of them
+    kept_api: list[str] = field(default_factory=list[str])  # a C retirement's kept headers
 
 
 def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
@@ -827,32 +829,9 @@ class _Former:
         project = self.project
         code = sorted(f for f in files if f in project.files)
         kept: set[str] = set()
+        variadic: dict[str, list[str]] = {}
         if self.keep_source_api:
-            kept = {f for f in code if project.files[f].public_api}
-            grew = True
-            while grew:
-                before = len(kept)
-                kept |= {d for f in kept for d in project.edges.get(f, set()) if d in project.files}
-                kept |= {
-                    f
-                    for draft in self.module_drafts.values()
-                    if kept & set(draft.files)
-                    for f in draft.files
-                    if f in project.files
-                }
-                grew = len(kept) > before
-
-            def uses_kept_only(path: str) -> bool:
-                return all(
-                    d in kept or project.files[d].role is FileRole.TEST
-                    for d in project.edges.get(path, set())
-                    if d in project.files
-                )
-
-            tests = {
-                f for f in code if project.files[f].role is FileRole.TEST and uses_kept_only(f)
-            }
-            kept |= tests
+            kept, variadic = self._kept(code)
         retired = [f for f in code if f not in kept]
         build = [] if self.keep_source_api else list(project.build_files)
         if not retired and not build:
@@ -860,11 +839,29 @@ class _Former:
         needs = [d for d in self.port_drafts if d.blocking]
         language = _LANGUAGE_NAMES.get(self.language, self.language)
         system = "CMake" if any(f.endswith("CMakeLists.txt") for f in build) else "Make"
+        # A C library's kept headers are what its outside users compile against: the crates go
+        # on exporting their functions, checked whole (D-72).
+        api = sorted(
+            f
+            for f in kept
+            if self.language == "c"
+            and project.files[f].public_api
+            and project.files[f].role is FileRole.HEADER
+        )
         if self.keep_source_api:
             note = (
                 f"retires the {language} the public API doesn't need: deletes {len(retired)} "
                 f"files, keeps {len(kept)} for outside {language} consumers"
             )
+            if api:
+                note += f"; the crates keep exporting what {', '.join(api)} declare"
+                note += f"{'s' if len(api) == 1 else ''}, and the build stays"
+            for source, names in sorted(variadic.items()):
+                one = len(names) == 1
+                note += (
+                    f"; {source} stays for {' and '.join(names)}, which "
+                    f"take{'s' if one else ''} `...` or a `va_list`"
+                )
         else:
             note = (
                 f"retires the {language}: deletes {len(retired)} files and the {system} build; "
@@ -872,14 +869,357 @@ class _Former:
             )
         draft = _Draft(
             rule=scan.rule_id,
-            files=sorted({*retired, *build}),
+            files=sorted({*retired, *build, *api}),
             sites=self.site_counts(scan, retired),
             note=note,
             sized=False,
+            references=api,
             needs=needs,
             counted=[],
+            kept_api=api,
         )
         return [draft]
+
+    def _kept(self, code: Sequence[str]) -> tuple[set[str], dict[str, list[str]]]:
+        """What a port's retirement keeps with ``keep_source_api`` (D-60, D-72), and the C
+        sources it keeps for their functions that take ``...`` or a ``va_list``, with those
+        functions' names. It keeps the public headers and the project headers they include; in
+        C++ the sources behind them (the module units' files); in C, where every unit names
+        the shared headers, only the sources that still define what a kept header declares:
+        those functions, which stable Rust can't define, stayed C. Then the tests that use
+        only kept files, with the test helpers they include. In C that is by includes alone: a
+        test calls functions whose ported sources are gone, through a kept header."""
+        project = self.project
+        links = project.includes if self.language == "c" else project.edges
+
+        def included(paths: Iterable[str]) -> set[str]:
+            return {d for f in paths for d in links.get(f, set()) if d in project.files}
+
+        declared: dict[str, tuple[list[str], set[str]]] = {}
+        if self.language == "c":
+            for source in code:
+                if project.files[source].role is not FileRole.SOURCE:
+                    continue
+                symbols = project.c_variadic(source)
+                if symbols:
+                    names = [s.name for s in symbols]
+                    declared[source] = (
+                        names,
+                        set(project.files_declaring([s.id for s in symbols])),
+                    )
+        kept = {f for f in code if project.files[f].public_api}
+        variadic: dict[str, list[str]] = {}
+        grew = True
+        while grew:
+            before = len(kept)
+            kept |= included(kept)
+            if self.language == "c":
+                for source, (names, headers) in declared.items():
+                    if source not in kept and kept & headers:
+                        kept.add(source)
+                        variadic[source] = names
+            else:
+                kept |= {
+                    f
+                    for draft in self.module_drafts.values()
+                    if kept & set(draft.files)
+                    for f in draft.files
+                    if f in project.files
+                }
+            grew = len(kept) > before
+
+        def uses_kept_only(path: str) -> bool:
+            return all(
+                d in kept or project.files[d].role is FileRole.TEST
+                for d in links.get(path, set())
+                if d in project.files
+            )
+
+        tests = {f for f in code if project.files[f].role is FileRole.TEST and uses_kept_only(f)}
+        return kept | tests | included(tests), variadic
+
+    # ------------------------------------------------------------------ a Rust source (D-75)
+
+    def rust_units(
+        self, scan: RuleScan, files: list[str], cut: PortUnits | None, target: str
+    ) -> list[_Draft]:
+        """A port of a Rust crate (to C, D-75): its modules leaves first, its programs, its test
+        files, and the retirement. The crate is the worktree's one library package: the root
+        package, or a workspace's member beside program-only packages that use it."""
+        target = _LANGUAGE_NAMES.get(target, target)  # for the notes: "to C"
+        libraries = [t for t in self.project.targets if t.kind is TargetKind.LIBRARY]
+        if len(libraries) != 1:
+            why = "has no library" if not libraries else "has several libraries"
+            return [self._skipped(scan, files, f"skipped: the project {why}; a port from Rust "
+                                  "takes one library crate for now (D-75)")]  # fmt: skip
+        library = libraries[0]
+        manifests = [self.project.text(f) or "" for f in self.project.build_files]
+        if any(re.search(r"(?m)^\s*proc-macro\s*=\s*true\b", text) for text in manifests):
+            return [self._skipped(scan, files, "skipped: the crate is a procedural macro "
+                                  "crate, which a port from Rust doesn't take (D-75)")]  # fmt: skip
+        if cut is PortUnits.RUST_MODULE:
+            return self._rust_modules(scan, files, library, target)
+        if cut is PortUnits.EXECUTABLE:
+            return self._rust_programs(scan, files, library, target)
+        if cut is PortUnits.TESTS:
+            return self._rust_tests(scan, files, library, target)
+        if cut is PortUnits.RETIREMENT:
+            return self._rust_retirement(scan, files, target)
+        return [self._skipped(scan, files, f"skipped: a port from Rust doesn't cut {cut} units")]
+
+    @staticmethod
+    def _rust_stem(path: str, crate: str) -> tuple[str, str]:
+        """``(C stem, Rust module path)`` of a library file: ``src/geo/shapes.rs`` and
+        ``src/geo/shapes/mod.rs`` are ``geo_shapes`` and ``crate::geo::shapes``, the crate root
+        is the crate's name (by Cargo's layout, without reading the code)."""
+        inner = path.split("src/", 1)[-1].removesuffix(".rs").split("/")
+        if inner[-1] == "mod":
+            inner = inner[:-1]
+        if inner in (["lib"], []):
+            return crate, crate
+        return "_".join(inner), "::".join([crate, *inner])
+
+    _GENERIC = re.compile(r"\bpub(?:\([^)]*\))?\s+(?:fn|struct|enum|trait|union)\s+(\w+)\s*<")
+    _ASYNC = re.compile(r"\basync\s+(?:fn|move\b|\{)")
+    # A bound the façade can turn into one concrete argument: an iteration over a given item, a
+    # conversion, a closure.
+    _CONVERTED = re.compile(
+        r":.*\b(?:(?:Into)?Iterator\s*<\s*Item\s*=|AsRef\s*<|Into\s*<|Borrow\s*<|Fn(?:Mut|Once)?\s*\()"
+    )
+
+    @classmethod
+    def _generic_items(cls, text: str) -> dict[str, list[str]]:
+        """Each public generic item's parameters (an item named twice, as a method and a
+        function, has both lists), split at their top-level commas."""
+        found: dict[str, list[str]] = {}
+        for match in cls._GENERIC.finditer(text):
+            depth, i = 1, match.end()
+            params: list[str] = []
+            current = ""
+            while i < len(text) and depth:
+                ch = text[i]
+                if ch in "<([":
+                    depth += 1
+                elif ch in ")]" or (ch == ">" and text[i - 1] != "-"):
+                    depth -= 1
+                if depth == 1 and ch == ",":
+                    params.append(current.strip())
+                    current = ""
+                elif depth:
+                    current += ch
+                i += 1
+            params.append(current.strip())
+            found.setdefault(match.group(1), []).extend(p for p in params if p)
+        return found
+
+    @classmethod
+    def _type_generic(cls, params: str) -> bool:
+        """Whether generic parameters take a type the C must handle, or a constant, so that
+        each instantiation is a C function: a lifetime (``Word<'a>``) doesn't, nor does a type
+        bound by an iteration over a given item, a conversion or a closure (``I:
+        IntoIterator<Item = &'a [u8]>``), whose argument the façade converts for one C
+        function."""
+        return any(cls._data_param(p) for p in cls._generic_items(f"pub fn f<{params}>()")["f"])
+
+    @classmethod
+    def _data_param(cls, param: str) -> bool:
+        if param.startswith("'"):
+            return False
+        return param.startswith("const ") or not cls._CONVERTED.search(param)
+
+    def _rust_modules(
+        self, scan: RuleScan, files: list[str], library: BuildTarget, target: str
+    ) -> list[_Draft]:
+        project = self.project
+        crate = library.name.replace("-", "_")
+        candidates = [
+            f
+            for f in files
+            if f in library.files
+            and project.files[f].role is FileRole.SOURCE
+            and not self.is_new_code(f)
+        ]
+        modules: list[str] = []
+        drafts: list[_Draft] = []
+        roots: list[str] = []
+        for path in candidates:
+            if path.endswith("src/lib.rs") and not project.public_items(path):
+                # The crate root only declares the modules: it goes at the retirement, and is
+                # in each module's unit for its crate attributes (a #![forbid(unsafe_code)]
+                # no façade could override).
+                roots.append(path)
+                continue
+            modules.append(path)
+        for path in self._call_order(modules):
+            stem, module = self._rust_stem(path, crate)
+            text = project.text(path) or ""
+            if self._ASYNC.search(text):
+                note = f"skipped: {path} has async code, which a port to {target} doesn't take"
+                drafts.append(self._skipped(scan, [path], note + " yet (D-75)"))
+                continue
+            items = project.public_items(path)
+            generics = self._generic_items(text)
+            generic = sorted(n for n, ps in generics.items() if any(map(self._data_param, ps)))
+            converted = sorted(
+                n
+                for n, ps in generics.items()
+                if n not in generic and any(not p.startswith("'") for p in ps)
+            )
+            by_name = {s.name: s for s in items}
+            sites = {
+                name: project.call_sites(by_name[name].id) for name in generic if name in by_name
+            }
+            unused = sorted(name for name in generic if not sites.get(name))
+            if unused:
+                note = (
+                    f"skipped: {path} has public generic items nothing in the crate uses "
+                    f"({', '.join(unused)}): each instantiation in use becomes a C function, and "
+                    "these have none (D-75)"
+                )
+                drafts.append(self._skipped(scan, [path], note))
+                continue
+            callers = sorted(set(project.fan_in([s.id for s in items])) - {path})
+            port = PortUnit(
+                build_target=library.name,
+                crate=crate,
+                module=stem,
+                callers=callers,
+                exports=sorted({s.qualified_name for s in items}),
+            )
+            note = (
+                f"ports {path} ({module}) to {target}: c/src/{stem}.c and "
+                f"c/include/{crate}/{stem}.h, with {path} a Rust façade over them; "
+                f"{len(items)} public item{'' if len(items) == 1 else 's'}"
+            )
+            for name, used in sorted(sites.items()):
+                # Where other files use it says which types it takes; its own file's uses are
+                # mostly its implementation, and count only when nothing else uses it.
+                used = [s for s in used if s[0] != path] or used
+                where = ", ".join(f"{f}:{line}" for f, line in used[:6])
+                more = f" and {len(used) - 6} more" if len(used) > 6 else ""
+                note += f"; {name} is generic, used at {where}{more}: one C function per type"
+            if converted:
+                takes = "takes" if len(converted) == 1 else "take"
+                note += (
+                    f"; {', '.join(converted)} {takes} an iterator, a conversion or a closure: "
+                    "the façade converts the argument and calls one C function"
+                )
+            if callers:
+                keep = "file keeps" if len(callers) == 1 else "files keep"
+                note += f"; {len(callers)} {keep} using it through the façade"
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({path, *roots, *project.build_files}),
+                sites=self.site_counts(scan, [path]),
+                note=note,
+                port=port,
+            )
+            self.module_drafts[path] = draft
+            drafts.append(draft)
+            self.port_drafts.append(draft)
+        return drafts
+
+    def _rust_needs(self, paths: Iterable[str]) -> list[_Draft]:
+        """The module units of the files ``paths`` use, and of ``paths`` themselves."""
+        found: list[_Draft] = []
+        for path in paths:
+            for used in [path, *sorted(self.project.calls.get(path, {}))]:
+                draft = self.module_drafts.get(used)
+                if draft is not None and draft not in found:
+                    found.append(draft)
+        return found
+
+    def _rust_programs(
+        self, scan: RuleScan, files: list[str], library: BuildTarget, target: str
+    ) -> list[_Draft]:
+        project = self.project
+        crate = library.name.replace("-", "_")
+        wanted = set(files)
+        drafts: list[_Draft] = []
+        for build in sorted(project.targets, key=lambda t: t.name):
+            if build.kind is not TargetKind.EXECUTABLE or "::bin/" not in build.name:
+                continue
+            sources = [f for f in build.files if f in wanted]
+            if not sources:
+                continue
+            program = next(iter(build.artifacts), build.name.rsplit("/", 1)[-1])
+            stem = re.sub(r"\W", "_", program)
+            port = PortUnit(build_target=library.name, crate=crate, module=stem, bin=program)
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({*sources, *project.build_files}),
+                sites=self.site_counts(scan, sources),
+                note=f"ports the program {program} ({', '.join(sources)}) to {target}: "
+                f"{crate}_{stem}_main in c/src/{stem}.c, which the Rust program calls until the "
+                f"retirement, and a CMake program {program}",
+                port=port,
+                needs=self._rust_needs(sources),
+            )
+            drafts.append(draft)
+            self.port_drafts.append(draft)
+        return drafts
+
+    def _rust_tests(
+        self, scan: RuleScan, files: list[str], library: BuildTarget, target: str
+    ) -> list[_Draft]:
+        project = self.project
+        crate = library.name.replace("-", "_")
+        wanted = set(files)
+        by_file: dict[str, list[str]] = {}
+        for entry in project.tests:
+            if entry.file in wanted and entry.test_id not in self.mapped_tests:
+                by_file.setdefault(entry.file, []).append(entry.test_id)
+        drafts: list[_Draft] = []
+        taken: set[str] = set()
+        # A module's own tests first, then the integration tests, each after what it uses.
+        order = sorted(by_file, key=lambda f: (project.files[f].role is FileRole.TEST, f))
+        for path in order:
+            cases = sorted(by_file[path])
+            stem, _ = self._rust_stem(path, crate)
+            if project.files[path].role is FileRole.TEST:
+                stem = path.rsplit("/", 1)[-1].removesuffix(".rs")
+                if stem == "main":
+                    stem = path.rsplit("/", 2)[-2]
+            stem = re.sub(r"\W", "_", stem)
+            # tests/test_htab.rs is test_htab, not test_test_htab; a name another package's
+            # tests took gets its package's name.
+            program = stem if stem.startswith("test_") else f"test_{stem}"
+            if program in taken:
+                package = re.sub(r"\W", "_", cases[0].removeprefix("nextest:").split("::")[0])
+                program = f"test_{package}_{program.removeprefix('test_')}"
+            taken.add(program)
+            port = PortUnit(build_target=library.name, crate=crate, module=program, tests=cases)
+            draft = _Draft(
+                rule=scan.rule_id,
+                files=sorted({path, *project.build_files}),
+                sites=self.site_counts(scan, [path]),
+                note=f"translates the {len(cases)} test{'' if len(cases) == 1 else 's'} of "
+                f"{path} to {target}: c/tests/{program}.c, each case a CTest test named as "
+                "its Rust test",
+                port=port,
+                needs=self._rust_needs([path]),
+            )
+            drafts.append(draft)
+            self.port_drafts.append(draft)
+        return drafts
+
+    def _rust_retirement(self, scan: RuleScan, files: list[str], target: str) -> list[_Draft]:
+        project = self.project
+        code = sorted(f for f in files if f in project.files)
+        if not code:
+            return []
+        return [
+            _Draft(
+                rule=scan.rule_id,
+                files=sorted({*code, *project.build_files}),
+                sites=self.site_counts(scan, code),
+                note=f"retires the Rust: deletes {len(code)} files, the Cargo manifests and the "
+                f"build script; the CMake build then builds and tests the {target} alone",
+                sized=False,
+                needs=[d for d in self.port_drafts if d.blocking],
+                counted=[],
+            )
+        ]
 
     def _skipped(self, scan: RuleScan, files: list[str], note: str) -> _Draft:
         return _Draft(
@@ -907,6 +1247,8 @@ class _Former:
                 skipped.setdefault(condition, []).append(path)
         if rule.kind is RuleKind.PROJECT:
             drafts = self.project_units(scan, files, target)
+        elif rule.kind is RuleKind.PORT and self.language == "rust":
+            drafts = self.rust_units(scan, files, rule.port_units, rule.target_language or target)
         elif rule.module_port:
             drafts = self.module_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.EXECUTABLE:
@@ -1061,6 +1403,7 @@ def build_plan(
                 note=draft.note,
                 port=draft.port,
                 needs=sorted(ids[id(n)] for n in draft.needs if id(n) in ids),
+                kept_api=draft.kept_api,
             )
         )
     pending = [u.estimate for u in units if u.status is UnitStatus.PENDING and u.estimate]

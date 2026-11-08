@@ -62,7 +62,13 @@ def takes_variable_arguments(symbol: Symbol) -> bool:
     function in C, over the Rust code, until the retirement (D-70)."""
     if symbol.kind is not SymbolKind.FUNCTION or not symbol.signature:
         return False
-    return symbol.signature.rstrip().endswith("...)") or bool(_VA_LIST.search(symbol.signature))
+    return variadic_signature(symbol.signature)
+
+
+def variadic_signature(signature: str) -> bool:
+    """Whether a C function's signature (``int (const char *, ...)``) takes ``...`` or a
+    ``va_list``, in any of the spellings libclang gives its canonical type."""
+    return signature.rstrip().endswith("...)") or bool(_VA_LIST.search(signature))
 
 
 FileRow = tuple[str, str, str, str, int, int, str, str]

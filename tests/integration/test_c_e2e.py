@@ -39,7 +39,8 @@ EDITS = CASSETTES / "edits"
 pytestmark = [pytest.mark.docker, pytest.mark.usefixtures("restore_logging", "isolated_home")]
 
 
-def _manifest(name: str, source: str, target: str, rules: list[str]) -> str:
+def _manifest(name: str, source: str, target: str, rules: list[str], keep: bool) -> str:
+    kept = ", keep_source_api: true" if keep else ""
     return f"""\
 version: "1.0"
 project:
@@ -49,7 +50,7 @@ project:
   public_api: ["include/**"]
 migration:
   source: {{language: c, standard: {source}, build_system: make}}
-  target: {{language: rust, standard: {target}, rules: [{", ".join(rules)}]}}
+  target: {{language: rust, standard: {target}, rules: [{", ".join(rules)}]{kept}}}
 parity: {{baseline_runs: 1, characterization_tests: {{enabled: false}}}}
 sandbox: {{mode: docker}}
 approvals: {{plan: auto}}
@@ -67,17 +68,21 @@ def test_every_unit_of_a_c_fixture(
 ) -> None:
     """The fixture's port to pure Rust: every unit committed as recorded, in plan order, the
     user's checkout untouched, and the final verification a clean Cargo build whose tests pass.
-    No C and no Makefile are left on the branch, and no unsafe code. Nothing under
-    orchestrator/ knows C (NFR-3.1)."""
+    No C and no Makefile are left on the branch, and no unsafe code. With ``keep_source_api``
+    (an edits file's ``kept``, D-72), the library keeps its public headers, its Make build and
+    the C tests of its API, its crates keep their bridges, and the final verification runs
+    both builds. Nothing under orchestrator/ knows C (NFR-3.1)."""
     data: dict[str, Any] = json.loads((EDITS / f"{fixture}.json").read_text(encoding="utf-8"))
+    kept: list[str] = data.get("kept", [])
     root = tmp_path / fixture
-    shutil.copytree(FIXTURES / fixture, root)
+    shutil.copytree(FIXTURES / data.get("source_fixture", fixture), root)
     git(root.parent, "init", "--quiet", str(root))
     git(root, "add", "--all")
     git(root, "commit", "--quiet", "-m", "legacy")
     config = root / "migration_config.yaml"
     config.write_text(
-        _manifest(fixture, data["source"], data["target"], data["rules"]), encoding="utf-8"
+        _manifest(fixture, data["source"], data["target"], data["rules"], bool(kept)),
+        encoding="utf-8",
     )
     git(root, "add", "migration_config.yaml")
     git(root, "commit", "--quiet", "-m", "manifest")
@@ -127,14 +132,23 @@ def test_every_unit_of_a_c_fixture(
         for c in commits
     ]
     assert units == sorted(u.unit_id for u in report.units if u.commit is not None)
-    # The branch is pure Rust: no C and no Make build; the report finds no unsafe code.
     tracked = git(root, "ls-tree", "-r", "--name-only", result.branch).split()
     make = ("Makefile", "Makefile.am", "Makefile.in", "configure", "configure.ac")
-    assert not [f for f in tracked if f.endswith((".c", ".h")) or f.rsplit("/", 1)[-1] in make]
     assert "rust/Cargo.toml" in tracked
     assert report.port is not None
-    assert report.port.unsafe == []
     roots = [f for f in tracked if f.startswith("rust/") and f.endswith("/src/lib.rs")]
     assert roots
+    if kept:
+        # Exactly the kept C is left, with its build; unsafe code only in the bridges.
+        c_left = [f for f in tracked if f.endswith((".c", ".h")) or f.rsplit("/", 1)[-1] in make]
+        assert c_left == kept
+        assert report.port.unsafe
+        assert all("/src/bridge/" in u for u in report.port.unsafe), report.port.unsafe
+        for lib in roots:
+            assert "#![deny(unsafe_code)]" in git(root, "show", f"{result.branch}:{lib}"), lib
+        return
+    # The branch is pure Rust: no C and no Make build; the report finds no unsafe code.
+    assert not [f for f in tracked if f.endswith((".c", ".h")) or f.rsplit("/", 1)[-1] in make]
+    assert report.port.unsafe == []
     for lib in roots:
         assert "#![forbid(unsafe_code)]" in git(root, "show", f"{result.branch}:{lib}"), lib

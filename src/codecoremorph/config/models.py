@@ -233,6 +233,11 @@ class TargetSpec(ConfigModel):
         "public headers as a thin library over the new code, with the tests that use only "
         "them, for outside consumers (D-60)",
     )
+    build_system: Identifier | None = Field(
+        default=None,
+        description="For a port, the new code's build system; the default is the target "
+        "language's (`cargo` for Rust, `cmake` for a C target, D-75)",
+    )
 
     @field_validator("rules")
     @classmethod
@@ -271,6 +276,11 @@ class BuildToolOptions(ConfigModel):
     test_targets: list[str] = Field(
         default_factory=list[str],
         description="Make targets that run the tests; empty means `check`, else `test` (D-68)",
+    )
+    junit_reports: list[str] = Field(
+        default_factory=list[str],
+        description="Make: globs, from the top of the build, of the JUnit XML reports the "
+        "tests write, such as `test-results/*.xml` (D-73)",
     )
 
 

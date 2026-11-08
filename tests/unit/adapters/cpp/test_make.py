@@ -318,6 +318,41 @@ def test_without_a_harness_the_exit_status_is_one_test(
     assert (case.test_id, case.status) == ("make:test", status)
 
 
+def test_junit_reports_the_tests_write(tmp_path: Path) -> None:
+    """``build.make.junit_reports`` (D-73): each test case of the reports the test run wrote is
+    a test, beside the target's exit status; a stale report is gone first, a project file the
+    glob matches is no report, and an unreadable one fails loudly."""
+
+    def script(argv: list[str], env: Mapping[str, str], cwd: Path) -> tuple[int, str]:
+        results = cwd / "results"
+        results.mkdir(exist_ok=True)
+        (results / "htab.xml").write_text(
+            '<testsuites><testsuite name="htab"><testcase name="grows"/>'
+            '<testcase name="finds"><failure message="0 != 1"/></testcase>'
+            "</testsuite></testsuites>",
+            encoding="utf-8",
+        )
+        (results / "broken.xml").write_text("<testsuite>", encoding="utf-8")
+        return 2, ""
+
+    ctx, make = _with_makefile(tmp_path, PLAIN, script, junit_reports=["results/*.xml"])
+    (ctx.worktree / "results").mkdir()
+    (ctx.worktree / "results" / "expected.xml").write_text("<x/>", encoding="utf-8")
+    make.mirror.sync()
+    stale = make.mirror.root / "results" / "old.xml"
+    stale.write_text('<testsuite name="old"><testcase name="t"/></testsuite>', encoding="utf-8")
+    cases = {c.test_id: c for c in make.run_tests().cases}
+    assert {k: c.status for k, c in cases.items()} == {
+        "make:test": TestStatus.FAILED,
+        "junit:htab#grows": TestStatus.PASSED,
+        "junit:htab#finds": TestStatus.FAILED,
+        "junit:(unreadable report)": TestStatus.ERROR,
+    }
+    assert cases["junit:htab#finds"].message == "0 != 1"
+    assert "broken.xml: not XML" in (cases["junit:(unreadable report)"].message or "")
+    assert (ctx.worktree / "results" / "expected.xml").exists()
+
+
 def test_a_project_without_a_test_target_has_no_tests(tmp_path: Path) -> None:
     _, make = _with_makefile(tmp_path, b"all:\n")
     assert make.run_tests().cases == []
@@ -398,6 +433,11 @@ PROGRAMS = {"./tests/test_sbuf": "tests/test_sbuf", "./tests/test_htab": "tests/
 
 def test_tap_points_belong_to_the_program_make_ran() -> None:
     cases = {c.test_id: c.status for c in parse_tap_output(TAP_RUN, PROGRAMS, "test")}
+    failed = next(c for c in parse_tap_output(TAP_RUN, PROGRAMS, "test") if c.message)
+    assert (failed.test_id, failed.message) == (
+        "tap:tests/test_sbuf/append succeeds",
+        "at tests/test_sbuf.c line 14",  # the diagnostics after the failed point
+    )
     assert cases == {
         "tap:tests/test_sbuf/a new buffer is empty": TestStatus.PASSED,
         "tap:tests/test_sbuf/append succeeds": TestStatus.FAILED,

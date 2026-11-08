@@ -33,6 +33,7 @@ from codecoremorph.core.models import (
     Symbol,
     SymbolKind,
     TestEntry,
+    Visibility,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.graph import ClusterGraph, condense
@@ -255,6 +256,24 @@ class ProjectModel:
                 if s.kind in (SymbolKind.FUNCTION, SymbolKind.VARIABLE)
                 and s.boundary is Boundary.C_ABI
             ]
+
+    def public_items(self, path: str) -> list[Symbol]:
+        """The public items ``path`` defines, modules left out: what a port of a module from a
+        language without headers keeps as its façade's API (a Rust module, D-75)."""
+        with IndexStore.open(self.index_path) as store:
+            return [
+                s
+                for s in store.symbols(file=path)
+                if s.kind is not SymbolKind.NAMESPACE
+                and s.visibility is Visibility.PUBLIC
+                and s.is_definition
+            ]
+
+    def call_sites(self, symbol_id: str) -> list[tuple[str, int]]:
+        """Where ``symbol_id`` is used, ``(file, line)``: a generic item's instantiations are
+        read there, since the index records no type arguments (D-75)."""
+        with IndexStore.open(self.index_path) as store:
+            return sorted({(r.from_file, r.line) for r in store.references_to(symbol_id)})
 
     def files_declaring(self, symbol_ids: Iterable[str]) -> list[str]:
         """The files that declare or define one of ``symbol_ids``."""

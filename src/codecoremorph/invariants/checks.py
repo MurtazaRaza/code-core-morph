@@ -72,6 +72,45 @@ CARGO_BUILD_COMMANDS: dict[str, re.Pattern[str]] = {
     "[build-dependencies]": re.compile(r"^\s*\[\s*(?:target\.[^\]]*\.)?build-dependencies\s*\]"),
     "a procedural macro crate": re.compile(r"^\s*proc-macro\s*=\s*true\b"),
 }
+# The one Cargo build script I-12 accepts (D-75), word for word: the C adapter writes it into a
+# crate being ported to C, and it links the C that CMake builds before Cargo. It runs no
+# command and reads only c/cargo-link and one variable. Any other build script, or a change to
+# this one, counts as new.
+RUST_C_LINK_SCRIPT = """\
+// Written by CodeCoreMorph for a Rust → C port (D-75): links the C under c/, which CMake
+// builds before Cargo. It runs no command. c/cargo-link, in the crate's directory or the
+// nearest one above it, lists the libraries, one per line; CODECOREMORPH_C_LIB_DIR names the
+// directory CMake put them in (default: build/lib beside c/).
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
+fn main() {
+    let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets it"));
+    let root = manifest
+        .ancestors()
+        .find(|dir| dir.join("c").join("cargo-link").is_file())
+        .expect("c/cargo-link lists the C libraries")
+        .to_path_buf();
+    let dir = env::var_os("CODECOREMORPH_C_LIB_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("build").join("lib"));
+    let list = root.join("c").join("cargo-link");
+    println!("cargo:rerun-if-env-changed=CODECOREMORPH_C_LIB_DIR");
+    println!("cargo:rerun-if-changed={}", list.display());
+    println!("cargo:rustc-link-search=native={}", dir.display());
+    let text = fs::read_to_string(&list).expect("c/cargo-link lists the C libraries");
+    for line in text.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("static=") {
+            println!("cargo:rerun-if-changed={}", dir.join(format!("lib{name}.a")).display());
+        }
+        println!("cargo:rustc-link-lib={line}");
+    }
+}
+"""
 # The same in a Maven POM (D-63): plugins that run commands or scripts or download tools, build
 # extensions (Maven loads them while it reads the POM, before the dependency step turns the
 # network off), new repositories, and annotation processors, which run inside javac.
@@ -631,8 +670,11 @@ def check_build_commands(lines: PatchLines) -> InvariantResult:
             if plus > count(pattern, lines.removed.get(path, [])):
                 added.append(f"{name} in {path}")
         new_file = bool(lines.added.get(path)) and not lines.removed.get(path)
-        if file_name == "build.rs" and new_file:
-            added.append(f"a new Cargo build script {path}")
+        if file_name == "build.rs" and lines.added.get(path):
+            if not new_file:
+                added.append(f"a change to the Cargo build script {path}")
+            elif lines.added[path] != RUST_C_LINK_SCRIPT.splitlines():
+                added.append(f"a new Cargo build script {path}")
         if path.endswith(".mvn/extensions.xml") and new_file:
             added.append(f"Maven core extensions ({path})")
         if path.endswith(MAVEN_SETTINGS_FILES) and lines.added.get(path):

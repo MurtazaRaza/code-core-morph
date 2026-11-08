@@ -140,3 +140,72 @@ def test_a_clean_build_starts_over(ctx: AdapterContext) -> None:
     assert not (ctx.cache_dir / "make-mirror").exists()
     assert adapter.configure(ctx).success
     assert adapter.build(ctx).success
+
+
+CHARACTERIZATION = """\
+#include "codecoremorph_tap.h"
+#include "wf.h"
+
+static void wf_strerror_names_success(void)
+{
+    CCM_CHECK_STR(wf_strerror(WF_OK), "no error");
+    CCM_CHECK(wf_strerror(WF_ENOMEM) != NULL);
+}
+
+static void wf_min_length_is_ninety_nine(void)
+{
+    CCM_CHECK_UINT(wf_min_length(), 99);
+}
+
+int main(void)
+{
+    CCM_RUN(wf_strerror_names_success);
+    CCM_RUN(wf_min_length_is_ninety_nine);
+    return ccm_done();
+}
+"""
+
+
+def test_a_characterization_test_runs_in_the_make_build(ctx: AdapterContext) -> None:
+    """D-74: a TAP program over CodeCoreMorph's helper, built by the Makefile's marked block
+    against the library's archive and run before the project's tests, whose IDs are known
+    before it runs; a failed check says what it got; a dropped case is gone; unregistering
+    gives the Makefile back."""
+    adapter = CAdapter()
+    makefile = (ctx.worktree / "Makefile").read_bytes()
+    assert adapter.configure(ctx).success
+    assert adapter.build(ctx).success
+    adapter.run_tests(ctx)
+    adapter.index(ctx)
+    directory = "tests/codecoremorph_characterization"
+    test = adapter.characterization_test_file(directory, "wf")
+    (ctx.worktree / test).parent.mkdir(parents=True)
+    (ctx.worktree / test).write_text(CHARACTERIZATION, encoding="utf-8")
+    ids = [a.test_id for a in adapter.extract_assertions(ctx, [test])]
+    program = f"tap:{directory}/wf_test"
+    assert ids == [
+        f"{program}/wf_strerror_names_success",
+        f"{program}/wf_min_length_is_ninety_nine",
+    ]
+    assert adapter.check_determinism(ctx, [test]) == []
+    adapter.register_test_files(ctx, directory, [test], ["src/wf.c", "src/conf.c"])
+    assert adapter.configure(ctx).success
+    built = adapter.build(ctx)
+    assert built.success, built.diagnostics
+    report = adapter.run_tests(ctx, adapter.characterization_tests(ids))
+    cases = {c.test_id: c for c in report.cases}
+    assert cases[ids[0]].status is TestStatus.PASSED
+    failed = cases[ids[1]]
+    assert failed.status is TestStatus.FAILED
+    assert "wf_min_length(): got 1, expected 99" in (failed.message or "")
+    # The project's own tests still ran, after it, and pass.
+    everything = {c.test_id: c.status for c in adapter.run_tests(ctx).cases}
+    assert everything["make:test"] is TestStatus.PASSED
+    assert everything["tap:tests/test_htab/the table grows"] is TestStatus.PASSED
+    assert adapter.drop_tests(ctx, test, [ids[1]]) == 1
+    assert adapter.build(ctx).success  # the build brings the worktree's change to the mirror
+    again = {c.test_id for c in adapter.run_tests(ctx).cases}
+    assert ids[0] in again
+    assert ids[1] not in again
+    adapter.register_test_files(ctx, directory, [], [])
+    assert (ctx.worktree / "Makefile").read_bytes() == makefile

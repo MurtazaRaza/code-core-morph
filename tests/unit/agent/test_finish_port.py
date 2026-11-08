@@ -183,7 +183,10 @@ def test_a_test_files_unit_maps_every_test(world: World) -> None:
     )
     outcome = runner.run(_tests_unit(), [TESTS])
     assert outcome.succeeded, outcome.reason
-    assert target.options == [{"crate": "geo_rs", "module": "geo_test", "build_target": "geo"}]
+    # The scaffold learns the unit's tests too (a Rust → C test file's names come from them).
+    assert target.options == [
+        {"crate": "geo_rs", "module": "geo_test", "build_target": "geo", "tests": "gtest:Geo.Area"}
+    ]
     feedback = runner.artifacts.attempt("U-0001", 1).feedback_md.read_text(encoding="utf-8")
     assert "port_tests: the test map rust/test-map.toml isn't whole yet" in feedback
     assert "gtest:Geo.Area has no entry" in feedback

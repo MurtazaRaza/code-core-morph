@@ -12,6 +12,8 @@ DEFAULT_BUILD_SYSTEMS = {
     "java": "maven",
     "csharp": "dotnet",
 }
+# A port's new code: C written from Rust builds with CMake (D-75).
+PORT_TARGET_BUILD_SYSTEMS = {"c": "cmake"}
 
 
 def is_port(config: MigrationConfig) -> bool:
@@ -28,7 +30,10 @@ def target_language_config(config: MigrationConfig) -> LanguageConfig:
         language=target.language,
         standard=target.standard,
         target_standard=target.standard,
-        build_system=DEFAULT_BUILD_SYSTEMS.get(target.language),
+        port_source=config.migration.source.language,
+        build_system=target.build_system
+        or PORT_TARGET_BUILD_SYSTEMS.get(target.language)
+        or DEFAULT_BUILD_SYSTEMS.get(target.language),
         source_dirs=list(project.source_dirs),
         test_dirs=config.test_dirs,
         exclude=list(project.exclude),
@@ -49,10 +54,12 @@ def language_config(config: MigrationConfig, *, standard: str | None = None) -> 
         standard=standard or source.standard,
         # A port's target standard is the other language's; the source keeps its own.
         target_standard=None if target.language != source.language else target.standard,
+        port_target=target.language if target.language != source.language else None,
         build_system=build_system,
         configure_args=list(options.configure_args),
         build_targets=list(options.build_targets),
         test_targets=list(options.test_targets),
+        junit_reports=list(options.junit_reports),
         source_dirs=list(project.source_dirs),
         test_dirs=config.test_dirs,
         exclude=list(project.exclude),

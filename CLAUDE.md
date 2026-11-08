@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. It does C++ standard upgrades (C++98/03 to C++23), C++ → Rust ports, and Java and C# version upgrades. The focus now is legacy code to modern languages (D-67): C → Rust (Phase 15, in progress), then Rust → C (Phase 16). Java → C# is in the Backlog.
+CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. It does C++ standard upgrades (C++98/03 to C++23), C++ → Rust, C → Rust and Rust → C ports, and Java and C# version upgrades. The focus is legacy code to modern languages (D-67): C → Rust (Phase 15) and Rust → C (Phase 16) are done. Java → C# is in the Backlog.
 
 ## Read first
 
@@ -11,7 +11,7 @@ CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents 
 
 ## Current status
 
-Phases 0–7, 9, 10, 12, 13 and 14 are done (Windows, native and Docker). Their details are in the plan and the decision log (D-xx), not here. Where the code lives:
+Phases 0–7, 9, 10 and 12–16 are done (Windows, native and Docker; Phases 15 and 16 in Docker). Their details are in the plan and the decision log (D-xx), not here. Where the code lives:
 
 - **Run graph:** `orchestrator/run.py`; all LangGraph calls are in `orchestrator/graph.py`.
 - **Adapters:** `adapters/{cpp,rust,java,csharp,c}/`. Rule packs are registered by entry point (`cpp_to_rust`, `java`, `csharp`, `c_to_rust`, …). Rule IDs are global across packs.
@@ -21,7 +21,9 @@ Phases 0–7, 9, 10, 12, 13 and 14 are done (Windows, native and Docker). Their 
 
 **Phase 8 (M2, v0.1.0 release) is on hold** until the Rust work is done (D-55, D-67). Open: PyPI registration and publishing, SPEC §16 Q6–Q8, image publishing and signing (CI), the clean-machine exit criteria on macOS and Linux. CI is deferred (Backlog, D-28), so Linux and macOS runs wait.
 
-**Phase 15 (M9, D-67 to D-70): C → Rust, in progress.** Done: C as a language (`adapters/c/`), Make as a build backend shared with C++ (`adapters/cpp/{make,capture,makefiles}.py`), Linux checkouts for Docker runs, translation units ordered by calls (`port_units: translation_unit`), the `c_to_rust` pack (`port_c_module`, `port_c_executable`, `port_c_tests`, `retire_c`), and the Rust side of a C port (`adapters/rust/cports.py`: Makefiles, and automake with libtool). Functions that take `...` or a `va_list` stay C until the retirement. `c-legacy` (a Makefile) and `c-autotools` (automake, libtool) each ported whole to pure Rust in one host-agent run (11 of 11 units) and replay in Docker. The M9 benchmark, bzip2 1.0.8, ported whole with headless Claude Code (10 of 10 units, D-71). Open: JUnit XML, the TAP side of I-3 and I-4, characterization tests for C, `keep_source_api` for C, a full rebuild of the images.
+**Phase 15 (M9, D-67 to D-74): C → Rust, done in Docker.** C as a language (`adapters/c/`), Make as a build backend shared with C++ (`adapters/cpp/{make,capture,makefiles}.py`), Linux checkouts for Docker runs, translation units ordered by calls (`port_units: translation_unit`), the `c_to_rust` pack (`port_c_module`, `port_c_executable`, `port_c_tests`, `retire_c`), and the Rust side of a C port (`adapters/rust/cports.py`: Makefiles, and automake with libtool). Functions that take `...` or a `va_list` stay C until the retirement. `c-legacy` (a Makefile) and `c-autotools` (automake, libtool) each ported whole to pure Rust in one host-agent run (11 of 11 units) and replay in Docker. The M9 benchmark, bzip2 1.0.8, ported whole with headless Claude Code (10 of 10 units, D-71). `keep_source_api` for C keeps the public headers, the Make build and the bridges (D-72, `c-legacy-keep` replays in Docker); JUnit XML and the C side of I-3 and I-4 (D-73); C characterization tests are TAP programs in the Makefile (D-74). Open: characterization for automake and CMake C projects, native Windows for Make projects.
+
+**Phase 16 (M10, D-75, D-76): Rust → C, done in Docker; D-75 and D-76 await the user's review.** The Rust source index from rust-analyzer's SCIP output (`adapters/rust/{scip,source}.py`); the C side of the port (`adapters/c/rustports.py`: a top-level CMake build with sanitizers, the constant build script I-12 accepts, the façades' bindgen `sys`, translated TAP tests as CTest tests); the `rust_to_c` pack. The crate is the root package or a workspace member (D-76). `fixtures/rust/rpn` ported whole in one host-agent run (11 of 11 units); the round trip (`tests/integration/test_round_trip.py`: c-legacy → Rust → C, its original C tests passing through both test maps); the M10 benchmark, shlex 1.3.0 ported whole with headless Claude Code (5 of 5 units, byte for byte with the crate over 30,000 inputs). All replay or ran in Docker. Open: the planner's time estimate for ports from Rust (2.7 times low on shlex).
 
 Other open items: Ollama model that completes an agent unit (`qwen3:4b` didn't); characterization tests for Java and C#; Gradle; live evals with a fresh Claude Code for ports, Java and C#.
 

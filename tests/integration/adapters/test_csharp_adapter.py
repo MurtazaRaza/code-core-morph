@@ -36,6 +36,8 @@ from codecoremorph.store.index import IndexStore
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "fixtures" / "csharp"
 BUMP = [CodemodSpec(tool="msbuild-lang-version")]
+# An IDE's C# extension builds the fixtures in place; its output isn't part of them.
+BUILD_OUTPUT = shutil.ignore_patterns("bin", "obj")
 
 MakeContext = Callable[[str, str], AdapterContext]
 
@@ -63,7 +65,7 @@ def make_context(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Mak
 
     def make(fixture: str, target: str) -> AdapterContext:
         work = tmp_path / fixture
-        shutil.copytree(FIXTURES / fixture, work)
+        shutil.copytree(FIXTURES / fixture, work, ignore=BUILD_OUTPUT)
         cache = short / "cache"
         for path in (tmp_path / "build", cache, tmp_path / "logs"):
             path.mkdir(exist_ok=True)

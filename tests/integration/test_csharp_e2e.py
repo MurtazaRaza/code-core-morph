@@ -38,6 +38,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "csharp"
 CASSETTES = ROOT / "tests" / "cassettes" / "csharp"
 EDITS = CASSETTES / "edits"
+# An IDE's C# extension builds the fixtures in place; its output isn't part of them.
+BUILD_OUTPUT = shutil.ignore_patterns("bin", "obj")
 
 pytestmark = pytest.mark.usefixtures("restore_logging")
 
@@ -106,7 +108,7 @@ def test_every_unit_of_a_csharp_fixture(
     tests pass. Nothing under orchestrator/ knows C# (NFR-3.1)."""
     data: dict[str, Any] = json.loads((EDITS / f"{fixture}.json").read_text(encoding="utf-8"))
     root = tmp_path / fixture
-    shutil.copytree(FIXTURES / fixture, root)
+    shutil.copytree(FIXTURES / fixture, root, ignore=BUILD_OUTPUT)
     git(root.parent, "init", "--quiet", str(root))
     git(root, "add", "--all")
     git(root, "commit", "--quiet", "-m", "legacy")

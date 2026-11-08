@@ -158,6 +158,9 @@ class PortUnits(StrEnum):
     EXECUTABLE = "executable"
     TESTS = "tests"
     RETIREMENT = "retirement"
+    # Phase 16 (D-75): one unit per module file of a Rust crate, leaves first by the
+    # references between them, the module kept as a Rust façade over the C that takes it over.
+    RUST_MODULE = "rust_module"
     # C (D-68): one unit per source file of a library, ordered leaves first by the calls
     # between them; the headers stay as they are, and the new code exports the functions.
     TRANSLATION_UNIT = "translation_unit"

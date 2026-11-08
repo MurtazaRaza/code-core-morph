@@ -36,8 +36,8 @@ def test_the_adapter_is_registered_as_c() -> None:
     assert adapter.capabilities().standards == list(C_STANDARDS) == [
         "c89", "c99", "c11", "c17", "c23",
     ]  # fmt: skip
-    # Characterization tests of a C project are Rust tests in its port, not C build entries.
-    assert not adapter.capabilities().register_test_files
+    # Characterization tests of a C project are TAP programs in its Make build (D-74).
+    assert adapter.capabilities().register_test_files
 
 
 def test_a_make_project(tmp_path: Path) -> None:
@@ -247,3 +247,75 @@ def test_a_c_test_file_s_cases_come_from_the_last_test_run(tmp_path: Path) -> No
         ("tests/t1.c", 7, "tap:tests/t1/b works"),
     ]
     assert test_cases(index, ["tests/helper.c"]) == []
+
+
+def test_a_c_test_s_checks_by_the_ids_of_the_last_run(tmp_path: Path) -> None:
+    """I-4 for C (D-73): a TAP point's check is the call that prints it; a program automake's
+    harness ran whole has every check of its files; a make target's exit status, none."""
+    from codecoremorph.core.models import BuildTarget, TargetKind, TestEntry
+    from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore
+
+    ctx = _context(tmp_path, "make")
+    write(
+        ctx.worktree,
+        {
+            "tests/t1.c": (
+                '#include "tap.h"\nint main(void)\n{\n    ok(f() == 1, "f is one");\n'
+                '    ok(g() == 2, "g is %d", 2);\n    return done();\n}\n'
+            ),
+            "tests/t2.c": (
+                '#include "check.h"\nint main(void)\n{\n    CHECK(f() == 1);\n'
+                '    CHECK_STR(name(), "x");\n#if 0\n    CHECK(later());\n#endif\n'
+                '    return check_done("t2");\n}\n'
+            ),
+        },
+    )
+    main = ("c:@F@main", "main", "main", "function")
+    with IndexStore.open(ctx.cache_dir / INDEX_FILE_NAME) as store:
+        store.write(
+            files=[
+                (f, "c", str(n) * 64, "test", 1, 0, "utf-8", "lf")
+                for n, f in enumerate(("tests/t1.c", "tests/t2.c"))
+            ],
+            symbols=[
+                (*main, f, 2, 1, 7, 1, None, "none", 1, "c_abi")
+                for f in ("tests/t1.c", "tests/t2.c")
+            ],
+            references=[],
+            dependencies=[],
+        )
+        store.set_build_targets(
+            [
+                BuildTarget(name="t1", kind=TargetKind.EXECUTABLE, files=["tests/t1.c"]),
+                BuildTarget(name="t2", kind=TargetKind.EXECUTABLE, files=["tests/t2.c"]),
+            ]
+        )
+        store.set_test_entries(
+            [
+                TestEntry(test_id="tap:tests/t1/f is one", runs="t1"),
+                TestEntry(test_id="tap:tests/t1/g is 2", runs="t1"),  # formatted: no call
+                TestEntry(test_id="make:tests/t2", runs="t2"),
+                TestEntry(test_id="make:test", runs=None),
+            ]
+        )
+    adapter = CAdapter()
+    found = adapter.extract_assertions(ctx, ["tests/t1.c", "tests/t2.c"])
+    assert [(a.test_id, a.line, a.assertions) for a in found] == [
+        ("tap:tests/t1/f is one", 4, ['ok(f() == 1, "f is one")']),
+        ("make:tests/t2", 2, ["CHECK(f() == 1)", 'CHECK_STR(name(), "x")', "CHECK(later())"]),
+    ]
+    assert adapter.detect_disabled_tests(ctx, ["tests/t2.c"]) == ["tests/t2.c:6: #if 0"]
+
+
+def test_c_disable_markers_are_read_in_c_files_only(tmp_path: Path) -> None:
+    """A port's Rust program skips an iterator's first item: that is no TAP skip (D-73)."""
+    ctx = _context(tmp_path, "make")
+    write(
+        ctx.worktree,
+        {
+            "rust/wordfreq_rs/src/main.rs": "fn main() { let a = std::env::args().skip(1); }\n",
+            "tests/t.c": 'int main(void) { skip(1, "later"); return 0; }\n',
+        },
+    )
+    found = CAdapter().detect_disabled_tests(ctx, ["rust/wordfreq_rs/src/main.rs", "tests/t.c"])
+    assert found == ["tests/t.c:1: skip(...)"]

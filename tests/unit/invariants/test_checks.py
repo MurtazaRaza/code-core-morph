@@ -20,6 +20,7 @@ from codecoremorph.core.models import (
     Visibility,
 )
 from codecoremorph.invariants.checks import (
+    RUST_C_LINK_SCRIPT,
     InvariantOutcome,
     api_changes,
     api_symbols,
@@ -368,6 +369,41 @@ def test_cargo_build_commands() -> None:
     ):
         assert found in result.message
     assert "lib.rs" not in result.message  # the manifest patterns only apply to Cargo.toml
+
+
+def _new_file(path: str, text: str) -> str:
+    lines = text.splitlines()
+    added = "".join(f"+{line}\n" for line in lines)
+    return (
+        f"diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"
+        f"@@ -0,0 +1,{len(lines)} @@\n{added}"
+    )
+
+
+def test_the_c_link_script_of_a_rust_to_c_port_is_the_one_build_script_allowed() -> None:
+    """D-75: CMake builds the C before Cargo, and the crate links it through CodeCoreMorph's
+    build script, which runs nothing. Another script, even one line apart, is new; and so is
+    any change to a build script that is already there."""
+    assert check_build_commands(patch_lines(_new_file("build.rs", RUST_C_LINK_SCRIPT))).passed
+    tampered = RUST_C_LINK_SCRIPT.replace(
+        "fn main() {", 'fn main() {\n    std::process::Command::new("sh").status().unwrap();'
+    )
+    result = check_build_commands(patch_lines(_new_file("build.rs", tampered)))
+    assert not result.passed
+    assert "a new Cargo build script build.rs" in result.message
+    changed = (
+        "diff --git a/build.rs b/build.rs\n--- a/build.rs\n+++ b/build.rs\n@@ -1,2 +1,2 @@\n"
+        ' fn main() {\n-    println!("cargo:rustc-link-lib=m");\n'
+        '+    std::process::Command::new("curl").status().unwrap();\n'
+    )
+    result = check_build_commands(patch_lines(changed))
+    assert not result.passed
+    assert "a change to the Cargo build script build.rs" in result.message
+    deleted = (
+        "diff --git a/build.rs b/build.rs\ndeleted file mode 100644\n--- a/build.rs\n"
+        "+++ /dev/null\n@@ -1 +0,0 @@\n-fn main() {}\n"
+    )
+    assert check_build_commands(patch_lines(deleted)).passed  # the retirement deletes it
 
 
 MAVEN_PATCH = """\

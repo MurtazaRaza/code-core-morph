@@ -1,0 +1,20 @@
+id: port_rust_tests
+language: rust
+target_language: c
+kind: port
+port_units: tests                 # one unit per file with tests, after what it tests (D-75)
+description: >-
+  Translate the tests of one Rust file (an integration test, or a module's #[cfg(test)]
+  tests) into a C program over codecoremorph_tap.h, one case per Rust test, each case a CTest
+  test named as the Rust test and mapped in the project's test map.
+detector:
+  type: adapter_query
+  query: test_cases               # the file's tests, by their nextest IDs
+codemods:
+  - tool: c-tests                 # the test program, its CMake file and the TAP helper
+extra_scope: ['c/**', 'CMakeLists.txt', 'build.rs', '**/src/**/sys.rs']
+llm:
+  guidance: guidance/port_rust_tests.md
+postconditions:
+  - {type: test_map, severity: error}           # every test mapped to a passing C test
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's bug checks quiet

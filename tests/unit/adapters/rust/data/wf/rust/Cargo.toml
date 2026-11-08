@@ -1,0 +1,3 @@
+[workspace]
+members = ["wf_rs", "wordfreq_rs"]
+resolver = "2"

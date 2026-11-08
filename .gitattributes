@@ -13,3 +13,6 @@ scripts/deps/manifest.txt text eol=lf
 # (line endings, encodings, BOMs) so preservation tests mean something.
 fixtures/** -text
 tests/data/** -text
+
+# rust-analyzer's SCIP indexes (protobuf), test data for the Rust index (D-75).
+*.scip binary

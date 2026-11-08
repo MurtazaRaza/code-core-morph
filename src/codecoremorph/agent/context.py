@@ -33,6 +33,7 @@ from codecoremorph.core.models import (
     SystemBlock,
     ToolSpec,
     WorkUnit,
+    owned_files,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.planner.estimate import estimate_tokens
@@ -165,6 +166,7 @@ def unit_message(
     port: bool = False,
     port_units: PortUnits | None = None,
     c_port: bool = False,
+    rust_port: bool = False,
 ) -> str:
     """The unit's first message: its files in full, signatures, codemods, sites, build.
 
@@ -187,7 +189,9 @@ def unit_message(
         shown.append(f"[{len(signatures) - MAX_SIGNATURES} more; use {find_symbol}]")
         signatures = shown
     note = f"{unit.note}\n\n" if unit.note else ""
-    if port_units is PortUnits.RETIREMENT:
+    if rust_port:
+        note += rust_port_note(unit, port_units)
+    elif port_units is PortUnits.RETIREMENT:
         note += c_retirement_note(unit) if c_port else retirement_note(unit)
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE and c_port:
         note += c_executable_note(unit.port)
@@ -392,7 +396,27 @@ def c_tests_note(unit: WorkUnit, port: PortUnit) -> str:
 
 
 def c_retirement_note(unit: WorkUnit) -> str:
-    """A C port's retirement (D-68): what went, and what is left to do."""
+    """A C port's retirement (D-68): what went, and what is left to do; with the public API
+    kept, what stays (D-72)."""
+    if unit.kept_api:
+        api = ", ".join(unit.kept_api)
+        one = len(unit.kept_api) == 1
+        it, they = ("it", "it") if one else ("they", "them")
+        return (
+            f"The codemod deleted the {len(owned_files(unit))} C files the kept C interface "
+            f"doesn't need (keep_source_api). {api} {'stays' if one else 'stay'} exactly as "
+            f"{it} {'is' if one else 'are'}, with the headers {it} "
+            f"{'includes' if one else 'include'}, the Make build, each crate's bridge with its "
+            f"`sys` module, the C that still defines what {it} "
+            f"{'declares' if one else 'declare'} and the C tests that use only {they}. Keep "
+            "exporting every function the kept headers "
+            "declare (c_abi_kept checks every crate), remove the exports and bridge code only a "
+            "deleted header needed, take what the deleted files needed out of the Makefile, and "
+            "give every baseline test an entry in rust/test-map.toml: a coarse one, such as "
+            "`make:test` (the test target's exit status), maps to the Rust tests that took over "
+            "what it checked beyond the tests mapped one by one (`rust = [...]`), with a note."
+            "\n\n"
+        )
     return (
         f"The codemod retired the C: it deleted {len(unit.files)} C and Make files and the "
         "crates' C bridges with their `sys` modules, so the Cargo workspace now builds and "
@@ -412,6 +436,51 @@ def retirement_note(unit: WorkUnit) -> str:
         "pass and lint clean on its own (code only the bridge used, docs that describe the "
         "C++), and give every baseline test an entry in rust/test-map.toml.\n\n"
     )
+
+
+def rust_port_note(unit: WorkUnit, port_units: PortUnits | None) -> str:
+    """A port from Rust (to C, D-75): where the unit's C goes, and what stays Rust."""
+    port = unit.port
+    if port_units is PortUnits.RETIREMENT or port is None:
+        return (
+            "The codemod retired the Rust: it deleted the Cargo manifests and lock files, the "
+            "build script, the link list and every Rust file, so the CMake build now builds and "
+            "tests the C alone. Make it build and pass on its own, with every warning and "
+            "clang-tidy finding gone, and give every baseline test an entry in "
+            "c/test-map.toml.\n\n"
+        )
+    crate, stem = port.crate, port.module
+    if port_units is PortUnits.TESTS:
+        tests = "\n".join(f"- {t}" for t in port.tests)
+        return (
+            f"Translate these Rust tests to cases of c/tests/{stem}.c, each a `static void` "
+            "function named as the Rust test and run with CCM_RUN, so its CTest test has the "
+            f"Rust test's name:\n{tests}\n\nThen delete the Rust tests, and map each in "
+            "c/test-map.toml.\n\n"
+        )
+    if port_units is PortUnits.EXECUTABLE:
+        return (
+            f"Port the program {port.bin or stem} to `int {crate}_{stem}_main(int argc, char "
+            f"**argv)` in c/src/{stem}.c (declared in c/include/{crate}/{stem}.h), with the "
+            "same output and exit status, and make the Rust program a façade that calls it "
+            "with its arguments and exits with its status.\n\n"
+        )
+    callers = ", ".join(port.callers) or "none"
+    exports = "\n".join(f"- {e}" for e in port.exports) or "- (none)"
+    return (
+        f"Port the module to C in c/src/{stem}.c, with its interface in "
+        f"c/include/{crate}/{stem}.h, and make the module a Rust façade over it: each public "
+        "item keeps its signature and calls the C through `sys` (bindgen writes "
+        "src/.../sys.rs from the header before each build; don't edit it), the one place "
+        f"unsafe code may go. These files keep using the module through its Rust API and "
+        f"don't change: {callers}. Map each public item in c/symbol-map.toml (read it first: "
+        f"it also says where earlier modules went):\n{exports}\n\n"
+    )
+
+
+def _rust_port(rules: Sequence[LoadedRule]) -> bool:
+    """Whether the unit ports Rust (to C, D-75)."""
+    return any(r.rule.kind is RuleKind.PORT and r.rule.language == "rust" for r in rules)
 
 
 def _c_port(rules: Sequence[LoadedRule]) -> bool:
@@ -452,6 +521,7 @@ def build_context(
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
         port_units=_port_units(rules),
         c_port=_c_port(rules),
+        rust_port=_rust_port(rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -503,6 +573,7 @@ def host_document(
         port=any(r.rule.kind is RuleKind.PORT for r in rules),
         port_units=_port_units(rules),
         c_port=_c_port(rules),
+        rust_port=_rust_port(rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]

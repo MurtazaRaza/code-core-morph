@@ -1,0 +1,19 @@
+id: retire_rust
+language: rust
+target_language: c
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-75)
+description: >-
+  Retire the Rust: delete the crate's manifest, its build script and every Rust file, so the
+  CMake build builds and tests the C alone.
+detector:
+  type: files                     # each Rust file, until it is deleted
+codemods:
+  - tool: c-retire                # deletes the Rust and its build
+extra_scope: ['c/**', 'CMakeLists.txt', 'build.rs', '**/src/**/sys.rs']
+llm:
+  guidance: guidance/retire_rust.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no Rust file left
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's bug checks quiet

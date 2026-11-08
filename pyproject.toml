@@ -49,6 +49,7 @@ csharp = "codecoremorph.adapters.csharp:CSharpAdapter"
 cpp = "codecoremorph.rules.packs.cpp:PACK_DIR"
 cpp_to_rust = "codecoremorph.rules.packs.cpp_to_rust:PACK_DIR"
 c_to_rust = "codecoremorph.rules.packs.c_to_rust:PACK_DIR"
+rust_to_c = "codecoremorph.rules.packs.rust_to_c:PACK_DIR"
 java = "codecoremorph.rules.packs.java:PACK_DIR"
 csharp = "codecoremorph.rules.packs.csharp:PACK_DIR"
 

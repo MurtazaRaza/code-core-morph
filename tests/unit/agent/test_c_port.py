@@ -99,3 +99,31 @@ def test_a_whole_automake_test_program_maps_to_several_rust_tests() -> None:
     )
     tap = port.model_copy(update={"tests": ["tap:tests/test_sbuf/grows"]})
     assert "whole program" not in c_tests_note(unit, tap)
+
+
+def test_the_note_of_a_c_retirement() -> None:
+    from codecoremorph.agent.context import c_retirement_note
+
+    files = ["include/wf.h", "src/wfint.h", "tests/test_htab.c"]
+    whole = WorkUnit(id="U-0011", seq=11, rules=["retire_c"], files=["Makefile", *files])
+    assert c_retirement_note(whole).startswith(
+        "The codemod retired the C: it deleted 4 C and Make files and the crates' C bridges"
+    )
+    # Keeping the public API (D-72): the header stays, read-only, and so do the build and the
+    # bridge, which must go on exporting the header's functions.
+    kept = WorkUnit(
+        id="U-0011",
+        seq=11,
+        rules=["retire_c"],
+        files=files,
+        reference_files=["include/wf.h"],
+        kept_api=["include/wf.h"],
+    )
+    note = c_retirement_note(kept)
+    assert note.startswith(
+        "The codemod deleted the 2 C files the kept C interface doesn't need (keep_source_api). "
+        "include/wf.h stays exactly as it is, with the headers it includes, the Make build"
+    )
+    assert "the C tests that use only it." in note
+    assert "Keep exporting every function the kept headers declare (c_abi_kept" in note
+    assert "take what the deleted files needed out of the Makefile" in note

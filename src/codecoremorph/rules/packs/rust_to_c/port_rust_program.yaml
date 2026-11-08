@@ -1,0 +1,22 @@
+id: port_rust_program
+language: rust
+target_language: c
+kind: port
+port_units: executable            # one unit per program, after the modules it uses (D-75)
+description: >-
+  Port a Rust program to C: its code becomes a function of the C library that the Rust
+  program calls until the retirement, so the tests that run the program run the C, and a
+  CMake program of the same name calls it.
+detector:
+  type: adapter_query
+  query: rust_programs            # each program's root file
+codemods:
+  - tool: c-program               # the program's C, its entry point and its CMake program
+extra_scope: ['c/**', 'CMakeLists.txt', 'build.rs', '**/src/**/sys.rs']
+llm:
+  guidance: guidance/port_rust_program.md
+postconditions:
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's bug checks quiet
+skip:
+  - test
+allow_suppressions: ['**/src/**/*.rs']

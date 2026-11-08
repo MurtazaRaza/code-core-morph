@@ -14,7 +14,9 @@ build targets, which CMake's file API gives for a CMake project (D-59).
 - **build**: ``make -j`` with the wrappers; every build adds to the log.
 - **tests**: the test target (``check``, else ``test``, or the manifest's ``test_targets``).
   Automake's harness leaves a ``.trs`` file per test, which gives ``make:<test>`` IDs;
-  otherwise the target's exit status is one test, ``make:<target>``.
+  otherwise the TAP the programs print gives ``tap:<program>/<point>`` IDs, and the target's
+  exit status is one test, ``make:<target>``. JUnit XML reports the tests write
+  (``build.make.junit_reports``) give ``junit:<suite>#<case>`` IDs beside either (D-73).
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ from codecoremorph.adapters.cpp.makefiles import (
     is_configure_input,
 )
 from codecoremorph.adapters.cpp.paths import PathMapper
+from codecoremorph.adapters.junitxml import read_reports
 from codecoremorph.adapters.mirror import Mirror
 from codecoremorph.core.models import (
     BuildResult,
@@ -170,13 +173,20 @@ def parse_tap_output(text: str, programs: Mapping[str, str], fallback: str) -> l
     echoed last (``programs`` maps each program's command forms, ``./tests/t`` and
     ``tests/t``, to its path); points before any, to ``fallback``. Each point is a test
     ``tap:<program>/<description>`` (``/#<n>`` without one); ``# SKIP`` skips, ``# TODO``
-    excuses a failure, and a plan that ran short or a ``Bail out!`` is an error."""
+    excuses a failure, and a plan that ran short or a ``Bail out!`` is an error. The ``#``
+    lines right after a failed point are its message (TAP's diagnostics)."""
     cases: list[TestCaseResult] = []
     current = fallback
     seen: dict[str, int] = {}
     planned: dict[str, int] = {}
+    notes: list[str] | None = None  # the diagnostics of the failed point just read
     for raw in text.splitlines():
         line = raw.strip()
+        if notes is not None and line.startswith("#"):
+            notes.append(line.lstrip("#").strip())
+            cases[-1] = cases[-1].model_copy(update={"message": "\n".join(notes)[:2000]})
+            continue
+        notes = None
         first = line.split(" ", 1)[0] if line else ""
         if first in programs:
             current = programs[first]
@@ -210,6 +220,8 @@ def parse_tap_output(text: str, programs: Mapping[str, str], fallback: str) -> l
         else:
             status = TestStatus.PASSED
         cases.append(TestCaseResult(test_id=test_id, status=status, duration_s=0.0))
+        if status is TestStatus.FAILED:
+            notes = []
     for program, count in sorted(planned.items()):
         if seen.get(program, 0) < count:
             cases.append(
@@ -521,11 +533,12 @@ class MakeBuild:
         log_path = ctx.log_dir / "test.log"
         if not targets:
             return TestReport(cases=[], duration_s=0.0, log_path=log_path)
-        for stale in self._trs_files():
+        for stale in [*self._trs_files(), *self._junit_files()]:
             stale.unlink(missing_ok=True)
         timeout = ctx.lang.test_timeout_s
         result, output = self._make(targets, "test.log", timeout_s=timeout + 60)
         self.record_model()  # the test programs compile during the test run
+        junit, unreadable = read_reports(self._junit_files())
         cases: list[TestCaseResult] = []
         for trs in self._trs_files():
             rel = trs.relative_to(self.mirror.root).as_posix().removesuffix(".trs")
@@ -561,6 +574,18 @@ class MakeBuild:
                     message=f"the test run exceeded {int(timeout)} s",
                 )
             )
+        # The JUnit XML reports the tests wrote (build.make.junit_reports, D-73): a test each.
+        known = {c.test_id for c in cases}
+        cases += [c for c in junit if c.test_id not in known]
+        if unreadable:
+            cases.append(
+                TestCaseResult(
+                    test_id="junit:(unreadable report)",
+                    status=TestStatus.ERROR,
+                    duration_s=0.0,
+                    message="; ".join(unreadable)[:2000],
+                )
+            )
         _write_json(ctx.cache_dir / TESTS_FILE, sorted(c.test_id for c in cases))
         if selection is not None and selection.test_ids is not None:
             wanted = set(selection.test_ids)
@@ -584,6 +609,20 @@ class MakeBuild:
         if not self.mirror.root.is_dir():
             return []
         return sorted(self.mirror.root.rglob("*.trs"))
+
+    def _junit_files(self) -> list[Path]:
+        """The reports ``build.make.junit_reports`` names, in the build: those the tests
+        wrote, not files of the project's own that a glob happens to match."""
+        root = self.mirror.root
+        if not root.is_dir():
+            return []
+        found: set[Path] = set()
+        for pattern in self.ctx.lang.junit_reports:
+            for path in root.glob(pattern):
+                rel = path.relative_to(root)
+                if path.is_file() and not (self.ctx.worktree / rel).exists():
+                    found.add(path)
+        return sorted(found)
 
 
 def _write_json(path: Path, data: object) -> None:

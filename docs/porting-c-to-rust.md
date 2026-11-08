@@ -17,8 +17,9 @@ Any C89 or newer project works. Make builds are the usual case for old C: a plai
 
 - A project whose `make` builds a static library and whose test target (`make check` or
   `make test`) passes, as for any migration. Tests that print TAP (`ok 1 - ...`) give one test
-  per point; automake's test harness gives one per program; otherwise the test target's exit
-  status counts as one test.
+  per point; automake's test harness gives one per program; JUnit XML reports the tests write
+  give one per test case, when `build.make.junit_reports` names them (`[test-results/*.xml]`);
+  and the test target's exit status counts as one test.
 - Docker, and the Rust image: `scripts/build-image rust` (`.bat` on Windows). It holds the C
   toolchain, Rust, cbindgen and bindgen.
 
@@ -67,6 +68,17 @@ the program each test runs.
 
 The code goes to a Cargo workspace beside the C project, one crate per library
 (`rust/<library>_rs/`).
+
+## Characterization tests
+
+Old C has few tests, so before the first unit CodeCoreMorph has tests written for the code no
+test covers, and keeps those that pass on the C three times in a row. Each is a small C
+program in `tests/codecoremorph_characterization/` that prints TAP through a helper
+CodeCoreMorph writes beside it, `codecoremorph_tap.h`: one `static void` function per case,
+`CCM_CHECK_INT(got, expected)` and its kin as checks, `CCM_RUN(case)` in `main`. A marked block
+at the end of the Makefile builds each program against the library and runs it before the test
+target's own recipe. From then on they are tests like the project's own: they run beside the
+ported code, and the test file units translate them to Rust.
 
 ## Source file units
 
@@ -126,6 +138,35 @@ changes. A project that commits its own `configure` keeps using it until then.
   workspace then builds and tests alone. A coarse test such as `make:test` maps to the Rust
   tests that took over its checks.
 
+## Keeping the C API
+
+A library with outside users can keep its C interface and be Rust inside:
+
+```yaml
+migration:
+  target:
+    language: rust
+    standard: rust2021
+    rules: [port_c_module, port_c_executable, port_c_tests, retire_c]
+    keep_source_api: true
+```
+
+The retirement then keeps:
+
+- the public headers (`project.public_api`), exactly as they are, and the project headers they
+  include;
+- the Make build, which goes on folding the crates into the library's archive (and, with
+  libtool, into its shared library), so `make` and `make install` work as before;
+- each crate's bridge, which exports the headers' functions under their C names;
+- the C files that still define a function the headers declare (one that takes `...` or a
+  `va_list`, which stays C);
+- the C tests that include only kept headers. They go on testing the library through its C
+  interface, beside their Rust translations.
+
+It deletes the other headers and the C tests that used them, and takes them out of the build.
+`c_abi_kept` checks that the crates export every function the kept headers declare, with the
+same signature.
+
 ## Reviewing the result
 
 The report's Port section lists the symbol map, the tests without a counterpart, the behavior
@@ -175,10 +216,7 @@ did.
 - Make builds run in Docker only; native Windows builds come later.
 - A static automake library (`lib_LIBRARIES`) hands Rust's native libraries only to the links in
   its own `Makefile.am`; a program in another directory that links it needs them added by hand.
-- Keeping the C headers as the public API of a Rust library (`keep_source_api`) isn't ready for
-  C yet, so a library's C API ends with the retirement.
-- Characterization tests aren't written for C yet: a project with few tests gets only the tests
-  the agent writes for each file it ports.
+- Characterization tests are written only for a plain Makefile build so far; an automake or
+  CMake C project turns them off (`parity.characterization_tests.enabled: false`).
 - The retirement deletes the Makefile but not other platforms' build files (bzip2's
-  `makefile.msc`, `Makefile-libbz2_so`), and the symbol map still names the deleted bridge's
-  functions. Review both.
+  `makefile.msc`, `Makefile-libbz2_so`). Review them.

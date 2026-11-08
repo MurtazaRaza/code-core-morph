@@ -123,11 +123,23 @@ def manifest_library(manifest: str) -> str | None:
 
 def with_headers(manifest: str, headers: Collection[str]) -> str:
     """The crate manifest naming ``headers`` too (a later unit keeps more of them)."""
+    return _set_headers(manifest, {*manifest_headers(manifest), *headers})
+
+
+def without_headers(manifest: str, gone: Collection[str]) -> str:
+    """The crate manifest no longer naming ``gone`` (a retirement that keeps the public API
+    deletes the other headers, D-72)."""
+    return _set_headers(manifest, set(manifest_headers(manifest)) - set(gone))
+
+
+def _set_headers(manifest: str, headers: Collection[str]) -> str:
     match = _HEADERS.search(manifest)
     if match is None:
         return manifest
-    merged = _toml_list({*manifest_headers(manifest), *headers})
-    return manifest[: match.start()] + match.group(1) + merged + manifest[match.end() :]
+    listed = _toml_list(headers)
+    if match.group(2).strip() and listed == _toml_list(manifest_headers(manifest)):
+        return manifest  # the same list: keep its spelling
+    return manifest[: match.start()] + match.group(1) + listed + manifest[match.end() :]
 
 
 def lib_rs(library: str) -> str:

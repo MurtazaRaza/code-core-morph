@@ -1,0 +1,6 @@
+# The built-in Rust to C port pack (SPEC §11.8, D-75).
+name: rust_to_c
+language: rust
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
+version: "1"
+description: Port a Rust crate to C, one module at a time, behind its own Rust API.

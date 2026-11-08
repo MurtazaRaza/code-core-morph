@@ -1,0 +1,24 @@
+id: port_rust_module
+language: rust
+target_language: c
+kind: port
+port_units: rust_module           # one unit per module file, leaves first by references (D-75)
+description: >-
+  Port one module of a Rust crate to C, leaves first by the references between the modules.
+  The module keeps its Rust API as a façade over the C, so the rest of the crate and the
+  crate's own tests keep using it unchanged, and they decide whether the port is right; the
+  C runs under AddressSanitizer and UndefinedBehaviorSanitizer in every test.
+detector:
+  type: adapter_query
+  query: rust_modules             # each module file of the library
+codemods:
+  - tool: c-module                # the C library, the module's header and source, build.rs
+extra_scope: ['c/**', 'CMakeLists.txt', 'build.rs', '**/src/**/sys.rs']   # the C, and bindgen's sys
+llm:
+  guidance: guidance/port_rust_module.md
+postconditions:
+  - {type: symbol_map, severity: error}         # every public item mapped to the C
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's bug checks quiet
+skip:
+  - test                          # the integration tests stay Rust: they judge the port
+allow_suppressions: ['**/src/**/*.rs']             # the façade's attributes on bindgen's sys

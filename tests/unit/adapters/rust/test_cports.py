@@ -25,6 +25,10 @@ def test_the_manifest_keeps_more_headers() -> None:
     wider = cports.with_headers(manifest, ["include/wf.h", "src/wfint.h"])
     assert cports.manifest_headers(wider) == ["include/wf.h", "src/wfint.h"]
     assert cports.with_headers(wider, ["src/wfint.h"]) == wider
+    # A retirement that keeps the public API deletes the other headers (D-72).
+    narrower = cports.without_headers(wider, ["src/wfint.h", "tests/tap.h"])
+    assert cports.manifest_headers(narrower) == ["include/wf.h"]
+    assert cports.without_headers(narrower, ["src/wfint.h"]) == narrower
 
 
 def test_the_workspace_has_the_release_profile() -> None:
@@ -236,6 +240,57 @@ def test_the_c_retirement(tmp_path: Path) -> None:
     assert 'name = "wordfreq"' in program
     workspace = (work / "rust/Cargo.toml").read_text(encoding="utf-8")
     assert workspace.startswith("# The Rust port of this project (CodeCoreMorph, D-68).\n")
+
+
+def test_the_c_retirement_that_keeps_the_api(tmp_path: Path) -> None:
+    """With ``keep`` (D-72): only the unit's files go (the planner leaves the public headers,
+    the build and the tests of the kept API out of it); the bridge stays, and the crate stops
+    naming the headers that went, so ``sys`` is written from the kept ones."""
+    from codecoremorph.adapters.base import AdapterContext
+    from codecoremorph.adapters.rust import RustAdapter
+    from codecoremorph.core.models import CodemodSpec, LanguageConfig
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    work = tmp_path / "work"
+    manifest = cports.package_manifest(
+        "wf_rs", "2021", "wf", "libwf.a", ["include/wf.h", "src/wfint.h"]
+    )
+    files = {
+        "Makefile": "all:\n",
+        "src/wfint.h": "int y;\n",
+        "include/wf.h": "int x;\n",
+        "tests/test_htab.c": "int main(void) { return 0; }\n",
+        "rust/Cargo.toml": cports.workspace_manifest(["wf_rs"]),
+        "rust/wf_rs/Cargo.toml": manifest,
+        "rust/wf_rs/src/lib.rs": cports.lib_rs("wf"),
+        "rust/wf_rs/src/bridge/mod.rs": cports.bridge_mod_rs(),
+        "rust/wf_rs/src/bridge/sys.rs": cports.placeholder_sys(),
+    }
+    for rel, text in files.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_bytes(text.encode("utf-8"))
+    ctx = AdapterContext(
+        worktree=work,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(language="rust", standard="rust2021", target_standard="rust2021"),
+    )
+    spec = CodemodSpec(tool="rust-retire", options={"language": "c", "keep": "true"})
+    result = RustAdapter().run_codemods(ctx, [spec], ["src/wfint.h", "tests/test_htab.c"])
+    assert sorted(c.file for c in result.changes) == [
+        "rust/wf_rs/Cargo.toml",
+        "src/wfint.h",
+        "tests/test_htab.c",
+    ]
+    assert (work / "Makefile").exists()
+    assert (work / "include/wf.h").exists()
+    assert (work / "rust/wf_rs/src/bridge/sys.rs").exists()
+    assert (work / "rust/wf_rs/src/lib.rs").read_text(encoding="utf-8") == cports.lib_rs("wf")
+    kept = (work / "rust/wf_rs/Cargo.toml").read_text(encoding="utf-8")
+    assert cports.manifest_headers(kept) == ["include/wf.h"]
+    assert 'crate-type = ["staticlib", "rlib"]' in kept
 
 
 # --------------------------------------------------------------------------- automake (D-70)

@@ -1,0 +1,12 @@
+[package]
+name = "wordfreq_rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "wordfreq"
+path = "src/main.rs"
+
+[dependencies]
+wf_rs = { path = "../wf_rs" }

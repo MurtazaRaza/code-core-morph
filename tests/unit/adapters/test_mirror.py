@@ -76,6 +76,43 @@ def test_an_unchanged_file_keeps_its_time_and_a_changed_one_is_newer(tmp_path: P
     assert other.stat().st_mtime == 1_000_000
 
 
+def test_a_reverted_file_is_newer_than_what_the_attempt_built(tmp_path: Path) -> None:
+    """A rollback, or a resume after a crash, resets the worktree to the branch head: make
+    must rebuild from the restored file, not keep the failed attempt's object."""
+    work = _worktree(tmp_path)
+    mirror = Mirror(work, tmp_path / "mirror")
+    mirror.sync()
+    (work / "src" / "a.c").write_bytes(b"int a = 1;\n")  # the attempt's edit
+    mirror.sync()
+    built = tmp_path / "mirror" / "src" / "a.o"
+    built.write_bytes(b"\x7fELF attempt")
+    os.utime(tmp_path / "mirror" / "src" / "a.c", (1_000_000, 1_000_000))
+    os.utime(built, (2_000_000, 2_000_000))
+    (work / "src" / "a.c").write_bytes(b"int a;\n")  # the branch head's version again
+    assert mirror.sync() == ["src/a.c"]
+    assert (tmp_path / "mirror" / "src" / "a.c").read_bytes() == b"int a;\n"
+    assert (tmp_path / "mirror" / "src" / "a.c").stat().st_mtime > built.stat().st_mtime
+
+
+def test_a_sync_cut_short_copies_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The manifest is written after the copies, so a sync killed midway leaves the next one
+    to copy everything it hadn't recorded."""
+    work = _worktree(tmp_path)
+    mirror = Mirror(work, tmp_path / "mirror")
+    mirror.sync()
+    (work / "src" / "a.c").write_bytes(b"int a = 1;\n")
+
+    def killed(manifest: dict[str, str]) -> None:
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(mirror, "_save", killed)
+        with pytest.raises(KeyboardInterrupt):
+            mirror.sync()
+    assert mirror.sync() == ["src/a.c"]
+    assert mirror.sync() == []
+
+
 def test_skipped_directories_and_the_manifest(tmp_path: Path) -> None:
     work = _worktree(tmp_path)
     (work / "build").mkdir()

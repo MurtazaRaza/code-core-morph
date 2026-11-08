@@ -26,6 +26,7 @@ from codecoremorph.core.models import (
     LanguageConfig,
     LlmGuidance,
     LoadedRule,
+    PortUnits,
     Postcondition,
     PostconditionType,
     Rule,
@@ -281,3 +282,70 @@ def test_a_c_unit_exports_only_its_own_functions(world: World, exports: list[str
         assert outcome.attempts[0].outcome is AttemptOutcome.INVARIANT_FAILED
         feedback = runner.artifacts.attempt("U-0001", 1).feedback_md.read_text(encoding="utf-8")
         assert "`perimeter` isn't exported" in feedback
+
+
+RETIRE = LoadedRule(
+    rule=Rule(
+        id="retire_geo",
+        language="cpp",
+        kind=RuleKind.PORT,
+        target_language="rust",
+        description="Retire the C.",
+        port_units=PortUnits.RETIREMENT,
+        detector=Detector(type=DetectorType.FILES),
+        extra_scope=["rust/**"],
+    ),
+    pack="test",
+    source=Path("rules/retire_geo.yaml"),
+)
+
+
+def _kept_api_retirement(world: World, export: str) -> tuple[UnitRunner, WorkUnit]:
+    """A crate the earlier units committed, and a kept public header that declares ``area``
+    and a variadic logger, which stays C (D-72)."""
+    root = world.worktree.path
+    (root / "include" / "api.h").write_text(
+        "abi area: double (double, double)\nabi geo_log: void (const char *, ...)\n",
+        encoding="utf-8",
+    )
+    lib = root / "rust" / "geo" / "src" / "lib.rs"
+    lib.parent.mkdir(parents=True)
+    lib.write_text(SCAFFOLD + export, encoding="utf-8")
+    (root / "rust" / "geo" / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+    world.worktree.commit("the port so far")
+    runner, _ = _port_runner(world, [])
+    runner.keep_source_api = True
+    unit = WorkUnit(
+        id="U-0009",
+        seq=9,
+        rules=["retire_geo"],
+        files=["include/api.h", "src/geo.cpp"],
+        reference_files=["include/api.h"],
+        kept_api=["include/api.h"],
+    )
+    return runner, unit
+
+
+def test_a_kept_api_is_checked_against_every_crate(world: World) -> None:
+    # The retirement changed no crate: the crates the earlier units wrote still count.
+    runner, unit = _kept_api_retirement(world, "// export area: double (double, double)\n")
+    problems, _, _ = runner.postconditions(unit, [RETIRE], {})
+    assert problems == []  # geo_log takes `...`: it stays C, so no crate exports it
+
+
+def test_a_kept_api_needs_each_of_its_functions(world: World) -> None:
+    runner, unit = _kept_api_retirement(world, "// export other: void (void)\n")
+    problems, _, _ = runner.postconditions(unit, [RETIRE], {})
+    [problem] = problems
+    assert "retire_geo: the new code must export the C interface of include/api.h" in problem
+    assert "`area` isn't exported" in problem
+    assert "geo_log" not in problem
+
+
+def test_a_kept_api_retirement_may_edit_the_build(world: World) -> None:
+    runner, unit = _kept_api_retirement(world, "")
+    assert runner.allowed("CMakeLists.txt", unit, [RETIRE])  # the kept build names the C
+    assert runner.allowed("src/geo.cpp", unit, [RETIRE])
+    assert not runner.allowed("include/api.h", unit, [RETIRE])  # the kept API is read-only
+    runner.keep_source_api = False
+    assert not runner.allowed("CMakeLists.txt", unit, [RETIRE])

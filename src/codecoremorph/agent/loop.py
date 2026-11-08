@@ -111,7 +111,7 @@ from codecoremorph.planner.estimate import unit_token_limit
 from codecoremorph.planner.sites import find_sites, load_hook
 from codecoremorph.prompts import PROMPTS_VERSION, render
 from codecoremorph.rules.applicability import StandardOrder, codemod_applies
-from codecoremorph.store.index import IndexStore
+from codecoremorph.store.index import IndexStore, variadic_signature
 from codecoremorph.store.layout import AttemptArtifacts, RunArtifacts
 from codecoremorph.vcs.worktree import Worktree
 
@@ -784,10 +784,15 @@ class UnitRunner:
         """``c_abi_kept``: the unit's new code (its changed files under the rule's
         ``extra_scope``) exports every function its kept headers (the reference files, or a
         module port's C headers) declare, with the same signature; for a C translation unit,
-        every one of its exports those headers declare. Both sides are read by the source
+        every one of its exports those headers declare. A C retirement that keeps the public
+        API compares all of the crates' code with its kept headers, but for the functions that
+        take ``...`` or a ``va_list``, which stay C (D-72). Both sides are read by the source
         adapter."""
         rule_id = loaded.rule.id
-        headers = list(unit.port.c_headers if unit.port is not None else unit.reference_files)
+        if unit.port is not None:
+            headers = list(unit.port.c_headers)
+        else:
+            headers = list(unit.kept_api or unit.reference_files)
         if not headers:
             return ""
         if self.target_adapter is None or self.target_ctx is None:
@@ -796,10 +801,12 @@ class UnitRunner:
                 "and this migration isn't a port (migration.target.language is the source's)"
             )
         scope = PathMatcher(loaded.rule.extra_scope)
+        candidates = [f.path for f in self.worktree.diff(self.worktree.head()).files]
+        if unit.kept_api:
+            # The retirement may leave a crate as it was: every crate's exports count.
+            candidates += self.worktree.tracked_files()
         new_code = sorted(
-            f.path
-            for f in self.worktree.diff(self.worktree.head()).files
-            if scope.matches(f.path) and (self.worktree.path / f.path).is_file()
+            {f for f in candidates if scope.matches(f) and (self.worktree.path / f).is_file()}
         )
         try:
             expected: dict[str, str] = {}
@@ -809,6 +816,8 @@ class UnitRunner:
                 # A C translation unit's headers also declare other units' functions (D-68).
                 wanted = set(unit.port.exports)
                 expected = {name: sig for name, sig in expected.items() if name in wanted}
+            if unit.kept_api:
+                expected = {n: s for n, s in expected.items() if not variadic_signature(s)}
             exported: dict[str, str] = {}
             if new_code:
                 for path in self.target_adapter.exported_c_headers(self.target_ctx, new_code):
@@ -903,12 +912,15 @@ class UnitRunner:
         }
         with IndexStore.open(self.index_path) as store:
             headers = {f for f in headers if (e := store.file(f)) and e.role is FileRole.HEADER}
-            required = required_names(store.symbols(), headers)
+            symbols = store.symbols()
+            required = required_names(symbols, headers)
         if unit.port is not None and unit.port.exports:
             sources = [f for f in unit.files if f not in unit.reference_files and f.endswith(".c")]
             where = (sources or unit.port.c_headers or [unit.files[0]])[0]
+            # Where each export is defined, when the index says (a Rust module's item, D-75).
+            defined = {s.qualified_name: s.file for s in symbols if s.file in unit.files}
             for name in unit.port.exports:
-                required.setdefault(name, where)
+                required.setdefault(name, defined.get(name, where) if not sources else where)
         with IndexStore.open(target_index.path) as store:
             known = {s.qualified_name for s in store.symbols()}
         problems += symbol_map_problems(entries, required, known)
@@ -1097,6 +1109,13 @@ class UnitRunner:
             if path in unit.reference_files:
                 return False
             if path in unit.files:
+                return True
+            if (
+                self.keep_source_api
+                and path in self.build_files
+                and any(p.retirement for p in ports)
+            ):
+                # The kept API keeps the build, which still names the C the unit deletes (D-72).
                 return True
             return PathMatcher([g for r in ports for g in r.extra_scope]).matches(path)
         if path in unit.files:

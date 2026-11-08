@@ -85,6 +85,12 @@ def find_packages(worktree: Path, exclude: Sequence[str] = ()) -> list[str]:
     return [d for d, text in _manifests(worktree, exclude) if _PACKAGE.search(text)]
 
 
+def nested_manifest_dirs(worktree: Path, package: str) -> list[str]:
+    """The directories below a package's that have a manifest of their own (another package or
+    workspace, excluded ones too): their files aren't the package's."""
+    return [d for d, _ in _manifests(worktree, ()) if d != package and _inside(d, package)]
+
+
 # --------------------------------------------------------------------------- diagnostics
 
 _LEVELS = {

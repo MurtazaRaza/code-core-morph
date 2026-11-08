@@ -147,7 +147,7 @@ def scan_tests(text: str) -> list[RustTest]:
     return tests
 
 
-def _bin_names(manifest: str, package: str) -> dict[str, str]:
+def bin_names(manifest: str, package: str) -> dict[str, str]:
     """Program source files (relative to the package) and their names, from ``[[bin]]``
     entries and Cargo's defaults."""
     names = {"src/main.rs": package}
@@ -179,7 +179,7 @@ def test_binary(package: str, manifest: str, rel_to_package: str) -> tuple[str, 
         if len(parts) == 3 and parts[2] == "main.rs":
             return f"{package}::{parts[1]}", ""
         return None
-    bins = _bin_names(manifest, package)
+    bins = bin_names(manifest, package)
     if rel_to_package in bins:
         return f"{package}::bin/{bins[rel_to_package]}", ""
     if len(parts) == 3 and parts[:2] == ("src", "bin"):
