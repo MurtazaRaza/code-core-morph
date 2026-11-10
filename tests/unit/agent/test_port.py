@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
+from codecoremorph.agent.context import unit_message
 from codecoremorph.agent.loop import UnitRunner
 from codecoremorph.core.models import (
     AdapterCapabilities,
@@ -26,6 +27,7 @@ from codecoremorph.core.models import (
     LanguageConfig,
     LlmGuidance,
     LoadedRule,
+    PortUnit,
     PortUnits,
     Postcondition,
     PostconditionType,
@@ -349,3 +351,96 @@ def test_a_kept_api_retirement_may_edit_the_build(world: World) -> None:
     assert not runner.allowed("include/api.h", unit, [RETIRE])  # the kept API is read-only
     runner.keep_source_api = False
     assert not runner.allowed("CMakeLists.txt", unit, [RETIRE])
+
+
+class LintedTarget(TargetAdapter):
+    """Its linter reports each line that says LINT, in any file of the worktree."""
+
+    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+        return [
+            Diagnostic(
+                file_path=path.relative_to(ctx.worktree).as_posix(),
+                line=n,
+                severity=Severity.WARNING,
+                message="a finding",
+                origin=DiagnosticOrigin.ANALYZER,
+            )
+            for path in sorted(ctx.worktree.rglob("*.c"))
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+            if "LINT" in line
+        ]
+
+
+def test_the_retirement_lints_all_of_the_new_code_whatever_its_language(world: World) -> None:
+    """The retirement's result is all of the new code (D-60): files earlier units wrote count,
+    in the target's language, not Rust's only."""
+    source = world.worktree.path / "c" / "src" / "geo.c"
+    source.parent.mkdir(parents=True)
+    source.write_text("double area;  /* LINT */\n", encoding="utf-8")
+    world.worktree.commit("the C the earlier units wrote")
+    runner, _ = _port_runner(world, [])
+    runner.target_adapter = LintedTarget()
+    retire = RETIRE.model_copy(
+        update={
+            "rule": RETIRE.rule.model_copy(
+                update={
+                    "extra_scope": ["c/**"],
+                    "postconditions": [Postcondition(type=PostconditionType.LINT_CLEAN)],
+                }
+            )
+        }
+    )
+    unit = WorkUnit(id="U-0009", seq=9, rules=["retire_geo"], files=["src/geo.cpp"])
+    problems, _, _ = runner.postconditions(unit, [retire], {})
+    [problem] = problems
+    assert "retire_geo: the linter reports 1 problem(s) in the new code" in problem
+    assert "- c/src/geo.c:1: a finding" in problem
+
+
+def test_a_csharp_type_units_context_has_no_module_port_note(tmp_path: Path) -> None:
+    """A C# type unit (D-79) has a port, but no module port's guidance (crates, Rust exports):
+    its note says what it ports."""
+    (tmp_path / "Animal.cs").write_text("namespace Zoo { }\n", encoding="utf-8")
+    unit = WorkUnit(
+        id="U-0001",
+        seq=1,
+        rules=["port_csharp_type_to_cpp"],
+        files=["Animal.cs"],
+        note="ports Zoo.Animal (Animal.cs) to C++",
+        port=PortUnit(
+            build_target="Zoo.csproj", crate="zoo", module="animal", types=["csharp:Zoo.Animal"]
+        ),
+    )
+    message = unit_message(
+        unit, worktree=tmp_path, index_path=None, codemods=None, remaining={}, build=None,
+        port=True, port_units=PortUnits.CSHARP_TYPE, csharp_target="cpp",
+    )  # fmt: skip
+    assert "ports Zoo.Animal (Animal.cs) to C++" in message
+    assert "The façades: Animal.cs." in message
+    assert "crate" not in message
+
+
+@pytest.mark.parametrize(
+    "port_units", [PortUnits.EXECUTABLE, PortUnits.TESTS, PortUnits.RETIREMENT]
+)
+def test_a_csharp_ports_other_units_have_no_notes_of_other_ports(
+    tmp_path: Path, port_units: PortUnits
+) -> None:
+    """A C# port's program, tests and retirement (D-79): their notes say what they do, and the
+    rules' guidance how; the notes of a port from C++ (Rust programs, crates, CMake) don't."""
+    (tmp_path / "Program.cs").write_text("class Program { }\n", encoding="utf-8")
+    unit = WorkUnit(
+        id="U-0001",
+        seq=1,
+        rules=["port_csharp_program_to_cpp"],
+        files=["Program.cs"],
+        note="ports the program App (Program.cs) to C++",
+        port=PortUnit(build_target="App.csproj", crate="zoo", module="app", bin="App"),
+    )
+    message = unit_message(
+        unit, worktree=tmp_path, index_path=None, codemods=None, remaining={}, build=None,
+        port=True, port_units=port_units, csharp_target="cpp",
+    )  # fmt: skip
+    assert "ports the program App (Program.cs) to C++" in message
+    assert "Rust" not in message
+    assert "crate" not in message

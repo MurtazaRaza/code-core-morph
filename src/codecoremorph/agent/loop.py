@@ -856,12 +856,13 @@ class UnitRunner:
         if self.target_adapter is None or self.target_ctx is None:
             return f"{rule_id}: lint_clean checks the code a port writes; this isn't a port"
         if loaded.rule.retirement:
-            # The retirement's result is the whole workspace: every crate file counts (D-60).
+            # The retirement's result is all of the new code, whatever its language: every file
+            # of it counts (D-60), not only the files the retirement changed.
             scope = PathMatcher(loaded.rule.extra_scope)
             new_code = {
-                p.relative_to(self.worktree.path).as_posix()
-                for p in self.worktree.path.rglob("*.rs")
-                if scope.matches(p.relative_to(self.worktree.path).as_posix())
+                f
+                for f in {*self.worktree.tracked_files(), *self._new_code(loaded)}
+                if scope.matches(f) and (self.worktree.path / f).is_file()
             }
         else:
             new_code = set(self._new_code(loaded))

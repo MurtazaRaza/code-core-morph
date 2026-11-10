@@ -167,11 +167,13 @@ def unit_message(
     port_units: PortUnits | None = None,
     c_port: bool = False,
     rust_port: bool = False,
+    csharp_target: str | None = None,
 ) -> str:
     """The unit's first message: its files in full, signatures, codemods, sites, build.
 
     A ``port`` unit (D-56) also shows the files its codemods created (the new code's
-    scaffold), and its reference files are the headers it keeps as they are."""
+    scaffold), and its reference files are the headers it keeps as they are. A port from C#
+    names its target language in ``csharp_target`` (D-78)."""
     blocks: list[str] = []
     created = [
         f for f in (codemods.changed_files if codemods and port else []) if f not in unit.files
@@ -191,6 +193,8 @@ def unit_message(
     note = f"{unit.note}\n\n" if unit.note else ""
     if rust_port:
         note += rust_port_note(unit, port_units)
+    elif csharp_target is not None:
+        note += csharp_port_note(unit, port_units, csharp_target)
     elif port_units is PortUnits.RETIREMENT:
         note += c_retirement_note(unit) if c_port else retirement_note(unit)
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE and c_port:
@@ -478,6 +482,69 @@ def rust_port_note(unit: WorkUnit, port_units: PortUnits | None) -> str:
     )
 
 
+_TARGET_NAMES = {"c": "C", "cpp": "C++", "rust": "Rust"}
+
+
+def csharp_port_note(unit: WorkUnit, port_units: PortUnits | None, target: str) -> str:
+    """A port from C#'s unit (D-78, D-79): which C# becomes a façade, goes or stays, which C#
+    keeps using it, and what to map, by ID. The unit's own note says what it ports and the
+    rule's guidance how; this is the same for every target but for its name and the
+    directory of its maps (``cpp/``, ``rust/``)."""
+    name = _TARGET_NAMES.get(target, target)
+    symbols, tests = f"{target}/symbol-map.toml", f"{target}/test-map.toml"
+    port = unit.port
+    if port_units is PortUnits.RETIREMENT or port is None:
+        baseline = (
+            f"Give every baseline test that no longer runs an entry in {tests}: the earlier "
+            "units mapped theirs, so add the ones still missing (a data-driven C# test's cases "
+            "by the IDs its test runs reported), each mapped test passing."
+        )
+        if unit.kept_api:
+            one = len(unit.kept_api) == 1
+            return (
+                f"The codemod deleted the C# programs, which are {name} programs now, and the "
+                f"test projects that ran them ({len(unit.files)} files). "
+                f"{', '.join(unit.kept_api)} {'stays' if one else 'stay'} as the .NET library "
+                f"over the {name} (keep_source_api), with the façades, the bridge, the façades' "
+                "support and the C# tests of the kept API: leave them as they are, since both "
+                f"builds run in the verification. {baseline}\n\n"
+            )
+        return (
+            f"The codemod retired the C#: it deleted {len(unit.files)} C# and MSBuild files, the "
+            f"façades' support and the bridge, so the {name} builds and tests alone. Make it "
+            "build, pass and lint clean on its own (the checks now cover all of it, not only "
+            f"what this unit changes), and fix what still refers to the C# or the bridge. "
+            f"{baseline}\n\n"
+        )
+    sources = [f for f in unit.files if f.lower().endswith(".cs")]
+    members = "\n".join(f"- {e}" for e in port.exports) or "- (none)"
+    if port_units is PortUnits.TESTS:
+        cases = "\n".join(f"- {t}" for t in port.tests) or "- (none but the note's)"
+        return (
+            "The C# test files are read-only and keep running until the retirement: "
+            f"{', '.join(unit.reference_files or sources)}. Map each of these cases in {tests} "
+            f'(`csharp = "dotnet:..."`, `{target} = ...`) to the {name} tests that translate '
+            f"it, each passing:\n{cases}\n\n"
+        )
+    if port_units is PortUnits.EXECUTABLE:
+        return (
+            "The C# file with `Main` becomes the program's façade: `Main` keeps its signature, "
+            f"calls `{port.crate}_{port.module}_main` with its arguments and exits with its "
+            f"code. Delete the program's other C# files once the {name} does their job (of "
+            f"{', '.join(sources)}). Map each member of its types in {symbols} (read it first: "
+            f"it also says where earlier units went):\n{members}\n\n"
+        )
+    callers = ", ".join(port.callers) or "none"
+    return (
+        f"The façades: {', '.join(sources)}. Each C# type keeps every public and protected "
+        "member with its signature, modifiers, XML docs and attributes, its body calling the "
+        "bridge through `CcmNative` (CodeCoreMorph.Native.g.cs, generated from the bridge's "
+        "headers at each configure: never edit it). These files keep using the types through "
+        f"the façades and don't change: {callers}. Map each of these members in {symbols} by "
+        f"its ID (read it first: it also says where earlier units went):\n{members}\n\n"
+    )
+
+
 def _rust_port(rules: Sequence[LoadedRule]) -> bool:
     """Whether the unit ports Rust (to C, D-75)."""
     return any(r.rule.kind is RuleKind.PORT and r.rule.language == "rust" for r in rules)
@@ -486,6 +553,18 @@ def _rust_port(rules: Sequence[LoadedRule]) -> bool:
 def _c_port(rules: Sequence[LoadedRule]) -> bool:
     """Whether the unit ports C (D-68), whose programs and tests build with Make."""
     return any(r.rule.kind is RuleKind.PORT and r.rule.language == "c" for r in rules)
+
+
+def _csharp_target(rules: Sequence[LoadedRule]) -> str | None:
+    """The target language when the unit ports C# (D-78)."""
+    return next(
+        (
+            r.rule.target_language
+            for r in rules
+            if r.rule.kind is RuleKind.PORT and r.rule.language == "csharp"
+        ),
+        None,
+    )
 
 
 def _port_units(rules: Sequence[LoadedRule]) -> PortUnits | None:
@@ -522,6 +601,7 @@ def build_context(
         port_units=_port_units(rules),
         c_port=_c_port(rules),
         rust_port=_rust_port(rules),
+        csharp_target=_csharp_target(rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -574,6 +654,7 @@ def host_document(
         port_units=_port_units(rules),
         c_port=_c_port(rules),
         rust_port=_rust_port(rules),
+        csharp_target=_csharp_target(rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]
