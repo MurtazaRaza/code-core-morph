@@ -22,6 +22,10 @@ dashboard-ui/dist/
 # The docs site built by `mkdocs build`
 /site/
 
+# What an IDE's restore or build writes into the C# fixtures (Rust fixtures have real `bin/`)
+fixtures/csharp/**/bin/
+fixtures/csharp/**/obj/
+
 # CodeCoreMorph state directory (when CodeCoreMorph runs against this repo)
 .codecoremorph/
 
