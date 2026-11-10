@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from codecoremorph.core.models import BuildTarget, TargetKind, TestEntry
+from codecoremorph.core.models import (
+    BuildTarget,
+    GenericUse,
+    TargetKind,
+    TestEntry,
+    TestMethod,
+    TypeEntry,
+)
 from codecoremorph.store.index import (
     DependencyRow,
     FileRow,
@@ -30,6 +37,10 @@ class FakeProject:
     deps: list[DependencyRow] = field(default_factory=list[DependencyRow])
     targets: list[BuildTarget] = field(default_factory=list[BuildTarget])
     tests: list[TestEntry] = field(default_factory=list[TestEntry])
+    # A C# source's (D-78).
+    types: list[TypeEntry] = field(default_factory=list[TypeEntry])
+    generic_uses: list[GenericUse] = field(default_factory=list[GenericUse])
+    test_methods: list[TestMethod] = field(default_factory=list[TestMethod])
 
     def file(
         self,
@@ -72,16 +83,26 @@ class FakeProject:
         definition: bool = True,
         boundary: str = "none",
         signature: str | None = None,
+        visibility: str = "none",
+        name: str | None = None,
     ) -> FakeProject:
-        name = symbol_id.rsplit("@", 1)[-1]
+        name = name or symbol_id.rsplit("@", 1)[-1]
         self.symbols.append(
             (symbol_id, name, name, kind, file, start[0], start[1], end[0], end[1], signature,
-             "none", int(definition), boundary)
+             visibility, int(definition), boundary)
         )  # fmt: skip
         return self
 
-    def ref(self, from_file: str, to_symbol: str, line: int, column: int = 1) -> FakeProject:
-        self.refs.append((from_file, None, to_symbol, "call", line, column))
+    def ref(
+        self,
+        from_file: str,
+        to_symbol: str,
+        line: int,
+        column: int = 1,
+        *,
+        from_symbol: str | None = None,
+    ) -> FakeProject:
+        self.refs.append((from_file, from_symbol, to_symbol, "call", line, column))
         return self
 
     def dep(self, from_file: str, to_file: str) -> FakeProject:
@@ -118,6 +139,9 @@ class FakeProject:
             )
             store.set_build_targets(self.targets)
             store.set_test_entries(self.tests)
+            store.set_port_source(
+                types=self.types, generic_uses=self.generic_uses, test_methods=self.test_methods
+            )
         return self.index_path
 
 

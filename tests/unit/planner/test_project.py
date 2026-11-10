@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from codecoremorph.core.models import Boundary, RuleSite
+from codecoremorph.core.models import (
+    Boundary,
+    GenericUse,
+    RuleSite,
+    SymbolKind,
+    TestMethod,
+    TypeEntry,
+)
 from codecoremorph.planner.project import ProjectModel
 
 from .conftest import FakeProject
@@ -142,3 +149,32 @@ def test_references_never_override_the_include_structure(fake_project: FakeProje
     # a reference that agrees with the structure is kept
     assert "include/db.h" in project.edges["src/user.cpp"]
     assert project.graph.cluster_of("src/user.cpp") > project.graph.cluster_of("include/db.h")
+
+
+def test_a_csharp_sources_types_generics_and_test_methods(fake_project: FakeProject) -> None:
+    p = fake_project
+    p.file("src/Zoo/Pen.cs", "public class Pen<T> { }\n", language="csharp")
+    p.file("tests/Zoo.Tests/PenTests.cs", "public class PenTests { }\n", language="csharp")
+    pen = TypeEntry(
+        id="csharp:Zoo.Pen`1",
+        name="Zoo.Pen",
+        kind=SymbolKind.CLASS,
+        files=["src/Zoo/Pen.cs"],
+        type_parameters=["T"],
+    )
+    use = GenericUse(
+        symbol="csharp:Zoo.Pen`1", arguments=["int"], file="tests/Zoo.Tests/PenTests.cs", line=3
+    )
+    method = TestMethod(
+        file="tests/Zoo.Tests/PenTests.cs",
+        class_name="Zoo.Tests.PenTests",
+        method="Holds",
+        framework="nunit",
+        cases=["dotnet:Zoo.Tests.PenTests#Holds"],
+    )
+    p.types.append(pen)
+    p.generic_uses.append(use)
+    p.test_methods.append(method)
+    p.build()
+    project = ProjectModel.load(p.index_path, p.worktree, source_dirs=["src"], test_dirs=["tests"])
+    assert (project.types, project.generic_uses, project.test_methods) == ([pen], [use], [method])

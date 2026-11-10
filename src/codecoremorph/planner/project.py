@@ -28,11 +28,14 @@ from codecoremorph.core.models import (
     DependencyGraph,
     FileEntry,
     FileRole,
+    GenericUse,
     GraphFile,
     RuleSite,
     Symbol,
     SymbolKind,
     TestEntry,
+    TestMethod,
+    TypeEntry,
     Visibility,
 )
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
@@ -98,6 +101,10 @@ class ProjectModel:
     # distinct symbols: the calls between C translation units (D-68).
     includes: dict[str, set[str]] = field(default_factory=dict[str, set[str]])
     calls: dict[str, dict[str, int]] = field(default_factory=dict[str, dict[str, int]])
+    # A C# source's types, the uses of its generics and its test methods (D-78).
+    types: list[TypeEntry] = field(default_factory=list[TypeEntry])
+    generic_uses: list[GenericUse] = field(default_factory=list[GenericUse])
+    test_methods: list[TestMethod] = field(default_factory=list[TestMethod])
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -129,6 +136,9 @@ class ProjectModel:
             uncompiled = sorted(p for p in (meta.uncompiled if meta else []) if in_scope.matches(p))
             targets = store.build_targets()
             tests = store.test_entries()
+            types = store.port_types()
+            generic_uses = store.generic_uses()
+            test_methods = store.test_methods()
         includes = {path: set(targets) for path, targets in edges.items()}
         partners = pair_headers(files, edges)
         for path, others in partners.items():
@@ -154,6 +164,9 @@ class ProjectModel:
             tests=tests,
             includes=includes,
             calls=calls,
+            types=types,
+            generic_uses=generic_uses,
+            test_methods=test_methods,
         )
 
     @property
@@ -274,6 +287,25 @@ class ProjectModel:
         read there, since the index records no type arguments (D-75)."""
         with IndexStore.open(self.index_path) as store:
             return sorted({(r.from_file, r.line) for r in store.references_to(symbol_id)})
+
+    def symbol_references(self) -> list[tuple[str, str, str]]:
+        """``(from_file, from_symbol, to_symbol)`` for each reference made inside a symbol of
+        an in-scope file: the uses between a C# library's types (D-78)."""
+        with IndexStore.open(self.index_path) as store:
+            return [r for r in store.symbol_references() if r[0] in self.files]
+
+    def definitions(self, symbol_ids: Iterable[str]) -> dict[str, Symbol]:
+        """The definition of each of ``symbol_ids`` the index has, by ID: their visibility and
+        signatures."""
+        wanted = set(symbol_ids)
+        if not wanted:
+            return {}
+        found: dict[str, Symbol] = {}
+        with IndexStore.open(self.index_path) as store:
+            for symbol in store.symbols():
+                if symbol.id in wanted and symbol.is_definition:
+                    found.setdefault(symbol.id, symbol)
+        return found
 
     def files_declaring(self, symbol_ids: Iterable[str]) -> list[str]:
         """The files that declare or define one of ``symbol_ids``."""

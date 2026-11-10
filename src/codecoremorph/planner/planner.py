@@ -18,7 +18,9 @@ always give the same plan, byte for byte (FR-5.6).
   (D-60), one unit per executable (``executable``), one per test source (``tests``), each
   needing the module units of what it includes, and one last unit that retires the source
   language (``retirement``), needing every other port unit. A C port cuts one unit per
-  source file of a library instead, ordered by calls (``translation_unit``, D-68).
+  source file of a library instead, ordered by calls (``translation_unit``, D-68); a C# port,
+  one unit per type of the library, leaves first by references (``csharp_type``, D-78,
+  :mod:`codecoremorph.planner.csharp`).
 """
 
 from __future__ import annotations
@@ -50,6 +52,14 @@ from codecoremorph.core.models import (
     WorkUnit,
 )
 from codecoremorph.llm.catalog import ModelInfo
+from codecoremorph.planner.csharp import (
+    cut_programs,
+    cut_retirement,
+    cut_tests,
+    cut_types,
+    project_name,
+)
+from codecoremorph.planner.csharp import display as csharp_display
 from codecoremorph.planner.estimate import FALLBACK_CONTEXT_WINDOW, Estimator
 from codecoremorph.planner.graph import condense
 from codecoremorph.planner.project import ProjectModel
@@ -113,7 +123,7 @@ class _Draft:
     needs: list[_Draft] = field(default_factory=list["_Draft"])  # units that must commit first
     blocking: bool = True  # whether a port's retirement needs it (a skip-list unit doesn't)
     counted: list[str] | None = None  # the files its estimate counts, when not all of them
-    kept_api: list[str] = field(default_factory=list[str])  # a C retirement's kept headers
+    kept_api: list[str] = field(default_factory=list[str])  # a retirement's kept headers, projects
 
 
 def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
@@ -152,6 +162,8 @@ class _Former:
         self.language = language  # the source's
         self.module_drafts: dict[str, _Draft] = {}  # file -> the module unit that ports it
         self.port_drafts: list[_Draft] = []
+        self.type_drafts: dict[str, _Draft] = {}  # a C# type's ID -> the unit that ports it
+        self.port_modules: set[str] = set()  # the names a C# port's units took (D-79)
 
     def is_new_code(self, path: str) -> bool:
         return self.new_code is not None and self.new_code.matches(path)
@@ -1221,6 +1233,247 @@ class _Former:
             )
         ]
 
+    # ------------------------------------------------------------------ a C# source (D-78)
+
+    def csharp_units(
+        self, scan: RuleScan, files: list[str], cut: PortUnits | None, target: str
+    ) -> list[_Draft]:
+        """A port of a C# library (D-78, D-79): its types, leaves first by the references
+        between them, each keeping its C# API as a façade over the code that takes it over;
+        then its programs, its test files, and the retirement of the C#."""
+        if cut is PortUnits.CSHARP_TYPE:
+            return self._csharp_types(scan, files, target)
+        if cut is PortUnits.EXECUTABLE:
+            return self._csharp_programs(scan, files, target)
+        if cut is PortUnits.TESTS:
+            return self._csharp_tests(scan, files, target)
+        if cut is PortUnits.RETIREMENT:
+            return self._csharp_retirement(scan, files, target)
+        return [self._skipped(scan, files, f"skipped: a port from C# doesn't cut {cut} units")]
+
+    @staticmethod
+    def _type_unit_files(language: str, module: str) -> str:
+        """Where a type unit's code goes in the target (its scaffold writes them)."""
+        if language == "cpp":
+            return f"cpp/src/{module}.hpp and .cpp, with the bridge cpp/bridge/{module}.h and .cpp"
+        return f"the {_LANGUAGE_NAMES.get(language, language)} module {module}"
+
+    @staticmethod
+    def _program_files(language: str, crate: str, module: str, program: str) -> str:
+        """Where a C# program's code goes in the target (its scaffold writes them)."""
+        if language == "cpp":
+            return (
+                f"{module}_main in cpp/src/{module}_main.cpp, which the C# Main calls through the "
+                f"export {crate}_{module}_main (cpp/bridge/{module}.cpp) until the retirement, "
+                f"and a CMake program {program}"
+            )
+        return f"the {_LANGUAGE_NAMES.get(language, language)} program {program}"
+
+    @staticmethod
+    def _tests_file(language: str, module: str) -> str:
+        """Where a C# test file's translation goes in the target (its scaffold writes it)."""
+        if language == "cpp":
+            return f"cpp/tests/{module}.cpp, a GoogleTest program"
+        return f"the {_LANGUAGE_NAMES.get(language, language)} tests {module}"
+
+    def _csharp_library(self) -> str | None:
+        """The C# library project a port's units link, when there is one."""
+        libraries = [t.name for t in self.project.targets if t.kind is TargetKind.LIBRARY]
+        return libraries[0] if len(libraries) == 1 else None
+
+    def _type_needs(self, type_ids: Iterable[str]) -> list[_Draft]:
+        """The type units that port ``type_ids``, in plan order."""
+        found = {id(d): d for t in type_ids if (d := self.type_drafts.get(t)) is not None}
+        return [d for d in self.port_drafts if id(d) in found]
+
+    def _refused_uses(self, who: str, type_ids: Iterable[str]) -> str | None:
+        """Why code that uses ``type_ids`` can't be ported: some of them stay C#."""
+        names = {t.id: t.name for t in self.project.types}
+        refused = sorted(
+            {
+                names.get(t, t)
+                for t in type_ids
+                if (d := self.type_drafts.get(t)) is not None and d.status is UnitStatus.SKIPPED
+            }
+        )
+        if not refused:
+            return None
+        more = f" and {len(refused) - 3} more" if len(refused) > 3 else ""
+        shown = ", ".join(refused[:3]) + more
+        where = "its unit" if len(refused) == 1 else "their units"
+        return f"{who} uses {shown}, which this port refuses (see {where})"
+
+    def _csharp_types(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+        target = _LANGUAGE_NAMES.get(language, language)
+        result = cut_types(self.project, files, self.is_new_code)
+        if result.refused is not None or result.project is None:
+            if not result.files:
+                return []
+            return [self._skipped(scan, result.files, f"skipped: {result.refused}")]
+        library = result.project
+        build = [library] if library in self.project.build_files else []
+        drafts: list[_Draft] = []
+        for unit in result.units:
+            unit_files = sorted({*unit.files, *build})
+            if unit.refused is not None:
+                draft = self._skipped(scan, unit_files, f"skipped: {unit.refused}")
+            else:
+                crate, module = self.names(library, unit.lead.name, self.port_modules)
+                self.port_modules.add(module)
+                inside = {t.id for t in unit.types}
+                shown = ", ".join(
+                    csharp_display(t)
+                    for t in unit.types
+                    if t.outer is None or t.outer not in inside
+                )
+                note = (
+                    f"ports {shown} ({', '.join(unit.files)}) to {target}: "
+                    f"{self._type_unit_files(language, module)}, the C# types keeping their API "
+                    f"as façades over them; {'; '.join(unit.details)}"
+                )
+                draft = _Draft(
+                    rule=scan.rule_id,
+                    files=unit_files,
+                    sites=self.site_counts(scan, unit.files),
+                    note=note,
+                    port=PortUnit(
+                        build_target=library,
+                        crate=crate,
+                        module=module,
+                        callers=unit.callers,
+                        exports=unit.exports,
+                        types=[t.id for t in unit.types],
+                    ),
+                )
+            draft.needs = [drafts[i] for i in unit.needs]
+            drafts.append(draft)
+            # A refused unit stays C#, so the retirement can't go before it does.
+            self.port_drafts.append(draft)
+            self.type_drafts.update(dict.fromkeys((t.id for t in unit.types), draft))
+        return drafts
+
+    def _csharp_programs(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+        target = _LANGUAGE_NAMES.get(language, language)
+        library = self._csharp_library()
+        drafts: list[_Draft] = []
+        for unit in cut_programs(self.project, files, self.is_new_code):
+            unit_files = sorted({*unit.files, unit.project})
+            why = unit.refused or self._refused_uses(unit.name, unit.uses)
+            if why is not None:
+                draft = self._skipped(scan, unit_files, f"skipped: {why}")
+            else:
+                stem = unit.name.replace(".", "_")
+                own = [t for t in self.project.types if t.project == unit.project]
+                crate, module = self.names(library or unit.project, stem, self.port_modules)
+                self.port_modules.add(module)
+                program = unit.name if re.fullmatch(r"[A-Za-z0-9_.+-]+", unit.name) else module
+                draft = _Draft(
+                    rule=scan.rule_id,
+                    files=unit_files,
+                    sites=self.site_counts(scan, unit.files),
+                    note=f"ports the program {unit.name} ({', '.join(unit.files)}) to {target}: "
+                    f"{self._program_files(language, crate, module, program)}; "
+                    f"{'; '.join(unit.details)}",
+                    port=PortUnit(
+                        build_target=unit.project,
+                        crate=crate,
+                        module=module,
+                        bin=program,
+                        # The symbol map says where each member of its types went.
+                        exports=sorted({m for t in own for m in t.members}),
+                        types=sorted(t.id for t in own),
+                    ),
+                    needs=self._type_needs(unit.uses),
+                )
+            drafts.append(draft)
+            self.port_drafts.append(draft)
+        return drafts
+
+    def _csharp_tests(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+        target = _LANGUAGE_NAMES.get(language, language)
+        library = self._csharp_library()
+        taken: set[str] = set()
+        drafts: list[_Draft] = []
+        for unit in cut_tests(self.project, files, self.mapped_tests):
+            references = sorted({unit.file, *unit.helpers})
+            why = self._refused_uses(unit.file, unit.uses)
+            if why is not None:
+                drafts.append(self._skipped(scan, references, f"skipped: {why}"))
+                continue
+            stem = re.sub(r"\.cs$", "", unit.file.rsplit("/", 1)[-1], flags=re.IGNORECASE)
+            if not re.search(r"(?i)(^tests?|tests?$)", stem.rsplit(".", 1)[-1]):
+                stem += "Tests"  # its GoogleTest program's name says what it is
+            owner = library or unit.project or unit.file
+            crate, module = self.names(owner, stem, taken)
+            taken.add(module)
+            n = len(unit.cases)
+            note = (
+                f"translates {unit.file} ({n} test case{'' if n == 1 else 's'}) to {target}: "
+                f"{self._tests_file(language, module)}, each case mapped in the test map; the "
+                "C# tests stay until the retirement"
+            )
+            if unit.data_driven:
+                takes = "takes its" if len(unit.data_driven) == 1 else "take their"
+                note += (
+                    f"; {', '.join(unit.data_driven)} {takes} cases from data: map each case "
+                    "the C# test report names"
+                )
+            if unit.helpers:
+                note += f"; with the test doubles and helpers of {', '.join(unit.helpers)}"
+            drafts.append(
+                _Draft(
+                    rule=scan.rule_id,
+                    files=references,
+                    sites=self.site_counts(scan, [unit.file]),
+                    references=references,
+                    note=note,
+                    port=PortUnit(
+                        build_target=unit.project or owner,
+                        crate=crate,
+                        module=module,
+                        tests=unit.cases,
+                    ),
+                    needs=self._type_needs(unit.uses),
+                )
+            )
+        self.port_drafts += drafts
+        return drafts
+
+    def _csharp_retirement(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+        target = _LANGUAGE_NAMES.get(language, language)
+        result = cut_retirement(self.project, files, self.keep_source_api)
+        if not result.deleted:
+            return []
+        code = [f for f in result.deleted if f in self.project.files and f in files]
+        names = ", ".join(project_name(p) for p in result.projects)
+        if self.keep_source_api:
+            kept = ", ".join(project_name(p) for p in result.kept) or "nothing"
+            note = (
+                f"retires the C# programs, which are {target} programs now: deletes {names} "
+                f"({len(code)} files)"
+                + (f" and takes them out of {', '.join(result.edited)}" if result.edited else "")
+                + f"; the rest ({kept}) stays as a .NET library over the {target} for .NET "
+                "consumers (keep_source_api), its façades calling the bridge"
+            )
+        else:
+            note = (
+                f"retires the C#: deletes {len(code)} files, the projects {names}, the solution "
+                f"and MSBuild files, the façades' support and the bridge; the CMake build then "
+                f"builds and tests the {target} alone"
+            )
+        return [
+            _Draft(
+                rule=scan.rule_id,
+                files=sorted({*result.deleted, *result.edited}),
+                sites=self.site_counts(scan, code),
+                note=note,
+                sized=False,
+                needs=[d for d in self.port_drafts if d.blocking],
+                counted=[],
+                kept_api=result.kept if self.keep_source_api else [],
+            )
+        ]
+
     def _skipped(self, scan: RuleScan, files: list[str], note: str) -> _Draft:
         return _Draft(
             rule=scan.rule_id,
@@ -1249,6 +1502,8 @@ class _Former:
             drafts = self.project_units(scan, files, target)
         elif rule.kind is RuleKind.PORT and self.language == "rust":
             drafts = self.rust_units(scan, files, rule.port_units, rule.target_language or target)
+        elif rule.kind is RuleKind.PORT and self.language == "csharp":
+            drafts = self.csharp_units(scan, files, rule.port_units, rule.target_language or target)
         elif rule.module_port:
             drafts = self.module_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.EXECUTABLE:
