@@ -921,7 +921,147 @@ def main_c_declarations(argv):
     return 0
 
 
+# The fixed-width types a C# façade's bridge takes (D-78), by their typedef names.
+_BRIDGE_INTS = {
+    "int8_t",
+    "uint8_t",
+    "int16_t",
+    "uint16_t",
+    "int32_t",
+    "uint32_t",
+    "int64_t",
+    "uint64_t",
+}
+
+
+def _bridge_type(t):
+    """A small description of a bridge header's C type: ``{"k": kind, ...}``. What a bridge
+    doesn't take is ``{"k": "unknown"}`` with its spelling; the adapter refuses it."""
+    from clang import cindex
+
+    kinds = cindex.TypeKind
+    if t.kind == kinds.ELABORATED:
+        t = t.get_named_type()
+    if t.kind == kinds.TYPEDEF:
+        decl = t.get_declaration()
+        name = decl.spelling
+        if name in _BRIDGE_INTS:
+            return {"k": "int", "name": name}
+        if name == "ccm_status":
+            return {"k": "int", "name": "int32_t"}
+        if name == "ccm_decimal":
+            return {"k": "decimal"}
+        if name == "ccm_release_fn":
+            return {"k": "release"}
+        under = decl.underlying_typedef_type
+        if under.kind == kinds.POINTER and under.get_pointee().kind in (
+            kinds.FUNCTIONPROTO,
+            kinds.FUNCTIONNOPROTO,
+        ):
+            return {"k": "callback", "name": name}
+        canonical = t.get_canonical()
+        if canonical.kind == kinds.RECORD and canonical.get_declaration().get_definition() is None:
+            return {"k": "handle", "name": name}
+        return _bridge_type(under)
+    if t.kind == kinds.BOOL:
+        return {"k": "bool"}
+    if t.kind in (kinds.FLOAT, kinds.DOUBLE):
+        return {"k": "float", "name": "float" if t.kind == kinds.FLOAT else "double"}
+    if t.kind == kinds.VOID:
+        return {"k": "void"}
+    if t.kind in (kinds.CHAR_S, kinds.CHAR_U):
+        return {"k": "char"}
+    if t.kind == kinds.POINTER:
+        pointee = t.get_pointee()
+        return {"k": "ptr", "const": pointee.is_const_qualified(), "to": _bridge_type(pointee)}
+    if t.kind == kinds.RECORD and t.get_declaration().spelling == "ccm_decimal":
+        return {"k": "decimal"}
+    return {"k": "unknown", "spelling": t.spelling}
+
+
+def bridge_declarations(request):
+    """What each bridge header of a C# façade declares (D-78): its exports, the function
+    pointer types of its calls into C#, and its handle types, parsed as C11. ``{"headers":
+    {path: {...}}, "problems": [...]}``."""
+    from clang import cindex
+
+    kinds = cindex.CursorKind
+    args = ["-x", "c", "-std=c11"]
+    for directory in request.get("include_dirs") or []:
+        args += ["-I", directory]
+    compiler = request.get("compiler")
+    if compiler:
+        args += system_include_args(compiler, "c", [])
+    index = cindex.Index.create()
+    headers = {}
+    problems = []
+    for header in request["headers"]:
+        header = os.path.normpath(header)
+        tu = index.parse(header, args=[*args, "-I", os.path.dirname(header)])
+        problems += [
+            f"{d.location.file.name if d.location.file else header}:{d.location.line}: {d.spelling}"
+            for d in tu.diagnostics
+            if d.severity >= cindex.Diagnostic.Error
+        ][:MAX_TU_PROBLEMS]
+        key = os.path.normcase(os.path.abspath(header))
+        functions, callbacks, handles = [], [], []
+        for cursor in tu.cursor.get_children():
+            if cursor.location.file is None:
+                continue
+            if os.path.normcase(os.path.abspath(cursor.location.file.name)) != key:
+                continue
+            if cursor.kind == kinds.TYPEDEF_DECL:
+                described = _bridge_type(cursor.type)
+                if described["k"] == "handle" and described["name"] == cursor.spelling:
+                    handles.append(cursor.spelling)
+                elif described["k"] == "callback" and described["name"] == cursor.spelling:
+                    proto = cursor.underlying_typedef_type.get_pointee()
+                    names = [c.spelling for c in cursor.get_children() if c.kind == kinds.PARM_DECL]
+                    params = []
+                    for i, arg in enumerate(proto.argument_types()):
+                        name = names[i] if i < len(names) and names[i] else f"arg{i}"
+                        params.append({"name": name, "type": _bridge_type(arg)})
+                    callbacks.append(
+                        {
+                            "name": cursor.spelling,
+                            "line": cursor.location.line,
+                            "returns": _bridge_type(proto.get_result()),
+                            "params": params,
+                        }
+                    )
+            elif cursor.kind == kinds.FUNCTION_DECL and not cursor.is_definition():
+                if cursor.storage_class == cindex.StorageClass.STATIC:
+                    continue
+                params = [
+                    {"name": a.spelling or f"arg{i}", "type": _bridge_type(a.type)}
+                    for i, a in enumerate(cursor.get_arguments())
+                ]
+                functions.append(
+                    {
+                        "name": cursor.spelling,
+                        "line": cursor.location.line,
+                        "returns": _bridge_type(cursor.result_type),
+                        "params": params,
+                    }
+                )
+        headers[header] = {"functions": functions, "callbacks": callbacks, "handles": handles}
+    return {"headers": headers, "problems": problems}
+
+
+def main_bridge_declarations(argv):
+    with open(argv[2], encoding="utf-8") as handle:
+        request = json.load(handle)
+    result = bridge_declarations(request)
+    tmp = request["output"] + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as out:
+        json.dump(result, out, indent=1, sort_keys=True)
+    os.replace(tmp, request["output"])
+    return 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--c-declarations":
         sys.exit(main_c_declarations(sys.argv))
+    if len(sys.argv) == 3 and sys.argv[1] == "--bridge-declarations":
+        sys.exit(main_bridge_declarations(sys.argv))
     sys.exit(main(sys.argv))

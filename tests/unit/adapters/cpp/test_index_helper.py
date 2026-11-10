@@ -183,3 +183,72 @@ def test_make_jobs_filters_and_classifies(tmp_path: Path, monkeypatch: pytest.Mo
     assert [(j["rel"], j["lang"]) for j in jobs] == [("src/a.cpp", "cpp"), ("src/c.c", "c")]
     assert jobs[1]["args"][:2] == ["-x", "c"]
     assert problems == ["src/m.cpp: MSVC-style compile commands are not indexed"]
+
+
+# A bridge header that needs no system header: it defines the fixed-width types itself.
+BRIDGE_HEADER = """\
+typedef int int32_t;
+typedef unsigned long long uint64_t;
+typedef _Bool bool;
+typedef int32_t ccm_status;
+typedef struct ccm_decimal { int32_t lo, mid, hi, flags; } ccm_decimal;
+typedef void (*ccm_release_fn)(void *context);
+typedef struct shop_Item shop_Item;
+typedef ccm_status (*shop_Item_visit_fn)(void *context, shop_Item *item, bool *stop);
+ccm_status shop_Item_new(const char *sku, ccm_decimal price, shop_Item **result);
+void shop_Item_release(shop_Item *handle);
+uint64_t shop_Item_key(const shop_Item *handle);
+ccm_status shop_Item_each(shop_Item *self, void *context, shop_Item_visit_fn visit,
+                          ccm_release_fn release, unsigned long count);
+static int helper(void) { return 0; }
+"""
+
+
+def test_bridge_declarations_describe_each_type(tmp_path: Path) -> None:
+    pytest.importorskip("clang.cindex")
+    header = tmp_path / "item.h"
+    header.write_text(BRIDGE_HEADER, encoding="utf-8")
+    result = helper.bridge_declarations({"headers": [str(header)], "include_dirs": []})
+    assert result["problems"] == []
+    declared = result["headers"][os.path.normpath(str(header))]
+    assert declared["handles"] == ["shop_Item"]
+    item = {"k": "handle", "name": "shop_Item"}
+    void_ptr = {"k": "ptr", "const": False, "to": {"k": "void"}}
+    assert declared["callbacks"] == [
+        {
+            "name": "shop_Item_visit_fn",
+            "line": 8,
+            "returns": {"k": "int", "name": "int32_t"},
+            "params": [
+                {"name": "context", "type": void_ptr},
+                {"name": "item", "type": {"k": "ptr", "const": False, "to": item}},
+                {"name": "stop", "type": {"k": "ptr", "const": False, "to": {"k": "bool"}}},
+            ],
+        }
+    ]
+    functions = {f["name"]: f for f in declared["functions"]}
+    assert set(functions) == {
+        "shop_Item_new",
+        "shop_Item_release",
+        "shop_Item_key",
+        "shop_Item_each",
+    }
+    new = functions["shop_Item_new"]["params"]
+    assert new[0]["type"] == {"k": "ptr", "const": True, "to": {"k": "char"}}
+    assert new[1]["type"] == {"k": "decimal"}
+    assert new[2]["type"] == {
+        "k": "ptr",
+        "const": False,
+        "to": {"k": "ptr", "const": False, "to": item},
+    }
+    assert functions["shop_Item_release"]["returns"] == {"k": "void"}
+    assert functions["shop_Item_key"]["returns"] == {"k": "int", "name": "uint64_t"}
+    assert functions["shop_Item_key"]["params"][0]["type"] == {
+        "k": "ptr",
+        "const": True,
+        "to": item,
+    }
+    each = [p["type"] for p in functions["shop_Item_each"]["params"]]
+    assert each[2] == {"k": "callback", "name": "shop_Item_visit_fn"}
+    assert each[3] == {"k": "release"}
+    assert each[4] == {"k": "unknown", "spelling": "unsigned long"}  # the adapter refuses it

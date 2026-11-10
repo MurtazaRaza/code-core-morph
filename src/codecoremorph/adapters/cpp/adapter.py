@@ -13,10 +13,13 @@ import shlex
 import shutil
 import sys
 import time
+from collections.abc import Collection
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
+from codecoremorph.adapters.cpp import csharpports, pinvoke
 from codecoremorph.adapters.cpp.cmake import (
     STANDARD_ALIASES,
     SUPPORTED_STANDARDS,
@@ -30,6 +33,7 @@ from codecoremorph.adapters.cpp.cmake import (
     std_flag,
 )
 from codecoremorph.adapters.cpp.detect import detect as detect_project
+from codecoremorph.adapters.cpp.detect import masked_comments
 from codecoremorph.adapters.cpp.determinism import nondeterminism
 from codecoremorph.adapters.cpp.diagnostics import parse_cmake_output, parse_compiler_output
 from codecoremorph.adapters.cpp.fixes import (
@@ -114,6 +118,10 @@ MAKE_INSTALL_HINT = (
     "Make builds run in Docker for now (D-68): set sandbox.mode to docker, with the "
     "codecoremorph-cpp image (or codecoremorph-rust for a port)."
 )
+CSHARP_PORT_INSTALL_HINT = (
+    "A C# → C++ port runs in Docker for now (D-78): set sandbox.mode to docker, and build the "
+    "image with scripts/build-image csharp-port (.bat on Windows)."
+)
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
@@ -139,7 +147,8 @@ class CppAdapter(LanguageAdapter):
             extract_assertions=True,
             detect_disabled_tests=True,
             c_declarations=True,
-            codemod_tools=["clang-tidy", "cmake-standard"],
+            # The scaffolds of a C# → C++ port, whose target C++ is (D-78).
+            codemod_tools=["clang-tidy", "cmake-standard", *sorted(csharpports.SCAFFOLDS)],
             queries=[
                 "typedef_declarations",
                 "c_abi_definitions",
@@ -166,6 +175,16 @@ class CppAdapter(LanguageAdapter):
                 ToolRequirement(name="ctest", min_version="3.21", purpose="test runner"),
                 ToolRequirement(name="ninja", min_version="1.10", purpose="build tool"),
             ]
+        if self.language == "cpp" and lang.port_source == "csharp":
+            # A C# port builds the C# too, the C# tests loading the C++ (D-78): one image holds
+            # both toolchains.
+            tools.append(ToolRequirement(name="dotnet", purpose="the C# façades and their tests"))
+            return ToolchainSpec(
+                language="csharp-port",
+                image="codecoremorph-csharp-port",
+                tools=tools,
+                install_hint=CSHARP_PORT_INSTALL_HINT,
+            )
         return ToolchainSpec(
             language="cpp",
             image="codecoremorph-cpp",
@@ -243,6 +262,11 @@ class CppAdapter(LanguageAdapter):
     # ------------------------------------------------------------------ build
 
     def configure(self, ctx: AdapterContext) -> BuildResult:
+        if self._csharp_port(ctx):
+            return self._configure_csharp_port(ctx)
+        return self._configure(ctx)
+
+    def _configure(self, ctx: AdapterContext) -> BuildResult:
         ctx.build_dir.mkdir(parents=True, exist_ok=True)
         ctx.log_dir.mkdir(parents=True, exist_ok=True)
         if (make := self._make_build(ctx)) is not None:
@@ -450,6 +474,8 @@ class CppAdapter(LanguageAdapter):
     def run_codemods(
         self, ctx: AdapterContext, codemods: list[CodemodSpec], files: list[str]
     ) -> CodemodResult:
+        if any(s.tool in csharpports.SCAFFOLDS for s in codemods):
+            return self._csharp_scaffolds(ctx, codemods, files)
         started = time.monotonic()
         totals: dict[str, int] = {}
         skipped: list[SkippedReplacement] = []
@@ -469,7 +495,9 @@ class CppAdapter(LanguageAdapter):
             else:
                 raise ConfigError(
                     f"the C++ adapter has no codemod tool {spec.tool!r}",
-                    hint="Available: clang-tidy, cmake-standard.",
+                    hint="Available: clang-tidy, cmake-standard, "
+                    + ", ".join(sorted(csharpports.SCAFFOLDS))
+                    + ".",
                 )
             for path, count in changes.items():
                 totals[path] = totals.get(path, 0) + count
@@ -797,6 +825,213 @@ class CppAdapter(LanguageAdapter):
                         )
                     )
         return sites
+
+    # ------------------------------------------------------------------ a C# → C++ port (D-78)
+
+    def _csharp_port(self, ctx: AdapterContext) -> bool:
+        return self.language == "cpp" and ctx.lang.port_source == "csharp"
+
+    def symbol_map_path(self) -> str:
+        return csharpports.SYMBOL_MAP
+
+    def test_map_path(self) -> str:
+        return csharpports.TEST_MAP
+
+    def port_names(self, build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+        """A C# port's units (D-78): the C++ libraries' stem from the C# project
+        (``build_target``), and the unit's files' stem from its first type's name (``stem``).
+        C++ is the target of no other port."""
+        if self.language != "cpp":
+            return super().port_names(build_target, stem, taken)
+        return csharpports.library_name(build_target), csharpports.unit_name(stem, taken)
+
+    def _configure_csharp_port(self, ctx: AdapterContext) -> BuildResult:
+        """A C# port's C++ configures with the sanitizers on, then the C# declarations of the
+        bridge are written from its headers into the façade project; before the first unit
+        there is nothing to configure."""
+        if not csharpports.is_port(ctx.worktree):
+            ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            note = ctx.log_dir / "configure.log"
+            note.write_text("no C++ yet: the port's first unit writes it\n", encoding="utf-8")
+            return BuildResult(success=True, duration_s=0.0, log_path=note)
+        args = [*ctx.lang.configure_args, f"-D{csharpports.SANITIZE}=ON"]
+        configured = self._configure(
+            replace(ctx, lang=ctx.lang.model_copy(update={"configure_args": args}))
+        )
+        if not configured.success:
+            return configured
+        problems = self.write_bridge_declarations(ctx)
+        if not problems:
+            return configured
+        return configured.model_copy(
+            update={"success": False, "diagnostics": [*configured.diagnostics, *problems]}
+        )
+
+    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """A C# port's C++ (D-78): what the compiler warns about with ``-Wall -Wextra`` and
+        clang-tidy's bug-finding checks find, over the library, the bridge, the programs and the
+        tests; a cast between pointer types outside the bridge; a ``new`` or ``delete`` whose
+        pointer no smart pointer owns, outside the bridge; and the build must keep its sanitizer
+        option, or the tests would run the C++ without them. The runtime CodeCoreMorph ships
+        isn't the port's: nothing in it counts. C++ alone has no linter here."""
+        if not self._csharp_port(ctx):
+            return super().lint(ctx)
+        found: list[Diagnostic] = []
+        top = _read_text(ctx.worktree / csharpports.TOP_CMAKE)
+        if top and csharpports.SANITIZE not in masked_comments(top):
+            found.append(
+                Diagnostic(
+                    file_path=csharpports.TOP_CMAKE,
+                    line=1,
+                    severity=Severity.ERROR,
+                    message=f"the {csharpports.SANITIZE} option is gone: the tests must run the "
+                    "C++ under AddressSanitizer and UndefinedBehaviorSanitizer",
+                    origin=DiagnosticOrigin.ANALYZER,
+                )
+            )
+        sources = csharpports.port_sources(ctx.worktree)
+        for rel in sources:
+            if csharpports.in_bridge(rel):
+                continue
+            text = _read_text(ctx.worktree / rel) or ""
+            found += [
+                Diagnostic(
+                    file_path=rel,
+                    line=line,
+                    severity=Severity.ERROR,
+                    message=f"{what}: outside the bridge, an owner is a std::unique_ptr or "
+                    "std::shared_ptr (std::make_unique, std::make_shared)",
+                    code="codecoremorph-owning-memory",
+                    origin=DiagnosticOrigin.ANALYZER,
+                )
+                for line, what in csharpports.raw_ownership(text)
+            ]
+        compiled = [f for f in sources if f.endswith((".cpp", ".cc", ".cxx"))]
+        # Configure copies the compile database to the cache: in Docker the build directory is
+        # a volume the host doesn't see.
+        if not compiled or not (ctx.cache_dir / COMPILE_COMMANDS).is_file():
+            return found
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        result = ctx.executor.run(
+            csharpports.clang_tidy_argv(
+                ctx.sandbox(ctx.build_dir),
+                [ctx.sandbox(ctx.worktree / f) for f in compiled],
+                ctx.sandbox(ctx.worktree / csharpports.CPP_DIR),
+            ),
+            cwd=ctx.sandbox(ctx.worktree),
+            timeout_s=ctx.lang.build_timeout_s,
+            log_path=ctx.log_dir / "clang-tidy-lint.log",
+        )
+        stdout, stderr = full_output(result)
+        for d in parse_compiler_output(
+            stdout + "\n" + stderr, self._mapper(ctx), origin=DiagnosticOrigin.ANALYZER
+        ):
+            rel = d.file_path
+            if rel is None or not rel.startswith(f"{csharpports.CPP_DIR}/"):
+                continue
+            if csharpports.is_runtime(rel):
+                continue
+            if d.code in csharpports.BRIDGE_ONLY_CHECKS:
+                if csharpports.in_bridge(rel):
+                    continue  # the bridge's handles and contexts are its casts
+                why = "outside the bridge, the C++ has no casts between pointer types"
+                d = d.model_copy(update={"message": f"{d.message} ({why})"})
+            found.append(d)
+        return found
+
+    def write_bridge_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """Write the C# declarations of the bridge's exports into each façade project
+        (:mod:`codecoremorph.adapters.cpp.pinvoke`); what the headers declare that a bridge
+        can't take comes back as errors at their lines."""
+        cmake = _read_text(ctx.worktree / csharpports.CPP_CMAKE) or ""
+        library = csharpports.native_name(cmake)
+        projects = csharpports.facade_projects(ctx.worktree)
+        if library is None or not projects:
+            return []
+        headers = csharpports.bridge_headers(ctx.worktree)
+        declared, problems = self._bridge_declarations(ctx, headers) if headers else ({}, [])
+        text, refused = pinvoke.csharp_declarations(declared, library)
+        data = text.encode("utf-8")
+        for project in projects:
+            path = ctx.worktree / project / pinvoke.GENERATED_FILE
+            if not path.is_file() or path.read_bytes() != data:
+                path.write_bytes(data)
+        return problems + [
+            Diagnostic(
+                file_path=r.header,
+                line=r.line,
+                severity=Severity.ERROR,
+                message=f"the bridge can't take this declaration (D-78): {r.message}",
+                origin=DiagnosticOrigin.ANALYZER,
+            )
+            for r in refused
+        ]
+
+    def _bridge_declarations(
+        self, ctx: AdapterContext, headers: list[str]
+    ) -> tuple[dict[str, dict[str, Any]], list[Diagnostic]]:
+        """What libclang reads in the bridge headers (the C++ index helper's
+        ``--bridge-declarations``), by worktree path, and their parse errors."""
+        helper = install_helper(ctx.cache_dir)
+        work = ctx.cache_dir / "bridge-declarations"
+        work.mkdir(parents=True, exist_ok=True)
+        output = work / "declarations.json"
+        output.unlink(missing_ok=True)
+        request = work / "request.json"
+        by_sandbox = {ctx.sandbox(ctx.worktree / h): h for h in headers}
+        request.write_text(
+            json.dumps(
+                {
+                    "headers": list(by_sandbox),
+                    "include_dirs": [ctx.sandbox(ctx.worktree / csharpports.BRIDGE_DIR)],
+                    "compiler": "clang",
+                    "output": ctx.sandbox(output),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        argv = [
+            python_for(ctx),
+            "-I",
+            ctx.sandbox(helper),
+            "--bridge-declarations",
+            ctx.sandbox(request),
+        ]
+        result, text = self._run(ctx, argv, "bridge-declarations.log", timeout_s=300)
+        if not result.ok or not output.is_file():
+            raise SandboxError(
+                "couldn't read the bridge headers",
+                reason="\n".join(text.strip().splitlines()[-10:]) or None,
+            )
+        data = cast(dict[str, Any], json.loads(output.read_text(encoding="utf-8")))
+        mapper = self._mapper(ctx)
+        declared: dict[str, dict[str, Any]] = {}
+        for path, entry in cast(dict[str, Any], data.get("headers") or {}).items():
+            rel = by_sandbox.get(path) or mapper.relative(path, "") or path
+            declared[rel] = cast(dict[str, Any], entry)
+        problems = parse_compiler_output(
+            "\n".join(str(p) for p in cast(list[Any], data.get("problems") or [])), mapper
+        )
+        return declared, [p.model_copy(update={"severity": Severity.ERROR}) for p in problems]
+
+    def _csharp_scaffolds(
+        self, ctx: AdapterContext, codemods: list[CodemodSpec], files: list[str]
+    ) -> CodemodResult:
+        started = time.monotonic()
+        changed: list[str] = []
+        for spec in codemods:
+            if spec.tool in csharpports.SCAFFOLDS:
+                changed += csharpports.scaffold(
+                    ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
+                )
+        rest = [s for s in codemods if s.tool not in csharpports.SCAFFOLDS]
+        result = self.run_codemods(ctx, rest, files) if rest else None
+        changes = [CodemodChange(file=f, replacements=1) for f in sorted(set(changed))]
+        if result is None:
+            return CodemodResult(changes=changes, duration_s=time.monotonic() - started)
+        return result.model_copy(update={"changes": [*changes, *result.changes]})
 
     def c_declarations(self, ctx: AdapterContext, header: Path) -> dict[str, str]:
         """libclang parses ``header`` as C11, with the include directories, macros and target
