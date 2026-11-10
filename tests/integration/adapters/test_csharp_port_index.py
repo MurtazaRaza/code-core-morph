@@ -27,6 +27,7 @@ from codecoremorph.core.models import (
     Boundary,
     LanguageConfig,
     Plan,
+    PortNoticeKind,
     PortRefusal,
     RuleSite,
     TestStatus,
@@ -189,17 +190,30 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     # What a port refuses, each in its type.
     refused = {
         name: {r.what for r in types[f"csharp:Zoo.{name}"].refusals}
-        for name in ("Loader", "Dynamo", "Mirror", "Pointer", "Query", "Record")
+        for name in ("Loader", "Dynamo", "Mirror", "Query", "Record")
     }
     assert refused == {
         "Loader": {PortRefusal.ASYNC},
         "Dynamo": {PortRefusal.DYNAMIC},
         "Mirror": {PortRefusal.REFLECTION},
-        "Pointer": {PortRefusal.UNSAFE},
         "Query": {PortRefusal.EXPRESSION_TREE},
         "Record": {PortRefusal.SERIALIZATION},
     }
-    assert not any(types[f"csharp:Zoo.{n}"].refusals for n in ("Animal", "Keeper", "Pen`1"))
+    assert not any(
+        types[f"csharp:Zoo.{n}"].refusals for n in ("Animal", "Keeper", "Pen`1", "Pointer")
+    )
+    # What a port takes over instead (D-82): unsafe code, a platform check, native calls.
+    assert {n.what for n in types["csharp:Zoo.Pointer"].notices} == {PortNoticeKind.UNSAFE}
+    assert {n.detail for n in types["csharp:Zoo.Clock"].notices} == {
+        "System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform"
+    }
+    assert types["csharp:Zoo.NativeMethods"].native_only
+    assert types["csharp:Zoo.Win32"].native_only
+    assert not types["csharp:Zoo.Clock"].native_only
+    (getpid,) = types["csharp:Zoo.NativeMethods"].native_imports
+    assert (getpid.library, getpid.entry_point) == ("libc", "getpid")
+    (ticks,) = types["csharp:Zoo.Win32"].native_imports
+    assert (ticks.library, ticks.entry_point) == ("kernel32.dll", "GetTickCount")
     # Generics in use with their type arguments; Crate<T> has none.
     instantiations = {(u.symbol, tuple(u.arguments), u.open) for u in uses}
     assert ("csharp:Zoo.Pen`1", ("Zoo.Dog",), False) in instantiations
@@ -224,10 +238,24 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     ported = {u.port.module: u for u in types_rule if u.port is not None}
     assert {m: u.port.types for m, u in ported.items() if u.port} == {
         "animal": ["csharp:Zoo.Animal", "csharp:Zoo.Bird", "csharp:Zoo.Dog"],
+        "clock": ["csharp:Zoo.Clock"],
         "i_feeder": ["csharp:Zoo.IFeeder"],
         "pen": ["csharp:Zoo.Pen`1"],
+        "pointer": ["csharp:Zoo.Pointer"],
         "ticket": ["csharp:Zoo.Ticket", "csharp:Zoo.Ticket.Kind", "csharp:Zoo.Ticket.Stub"],
         "zoo_exception": ["csharp:Zoo.ZooException"],
+    }
+    # The types that only declare native functions have no unit; the plan says what the
+    # library depends on (D-82).
+    clock = ported["clock"]
+    assert "calls libc's getpid through P/Invoke" in (clock.note or "")
+    assert "asks which platform it runs on" in (clock.note or "")
+    assert clock.port is not None
+    assert clock.port.native_libraries == []  # the C library
+    assert "unsafe code: unsafe First" in (ported["pointer"].note or "")
+    assert {(d.kind.value, d.name, d.ported) for d in plan.dependencies} == {
+        ("native_library", "libc", True),
+        ("platform_api", "kernel32.dll", True),  # declared, and nothing calls it
     }
     assert all(u.status is UnitStatus.PENDING for u in ported.values())
     order = [u.port.module for u in types_rule if u.port is not None]
@@ -237,8 +265,7 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     assert "Zoo.Pen<T> is generic, used with <Zoo.Bird>, <Zoo.Dog>" in (ported["pen"].note or "")
     skipped = sorted((u.note or "").split(" ", 2)[1] for u in types_rule if u.port is None)
     assert skipped == sorted(["Zoo.Crate<T>", "Zoo.Pens.Of", "Zoo.Keeper", "Zoo.Loader",
-                              "Zoo.Dynamo", "Zoo.Mirror", "Zoo.Pointer", "Zoo.Query",
-                              "Zoo.Record"])  # fmt: skip
+                              "Zoo.Dynamo", "Zoo.Mirror", "Zoo.Query", "Zoo.Record"])  # fmt: skip
     assert {u.status for u in types_rule if u.port is None} == {UnitStatus.SKIPPED}
     # A unit per test file, after the types its tests use, its cases the exact ones; then the
     # retirement, after everything (the refused types stay C#, so it waits on them too).

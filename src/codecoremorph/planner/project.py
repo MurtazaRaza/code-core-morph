@@ -30,6 +30,8 @@ from codecoremorph.core.models import (
     FileRole,
     GenericUse,
     GraphFile,
+    NativeLibraryProbe,
+    PackageEntry,
     RuleSite,
     Symbol,
     SymbolKind,
@@ -105,6 +107,10 @@ class ProjectModel:
     types: list[TypeEntry] = field(default_factory=list[TypeEntry])
     generic_uses: list[GenericUse] = field(default_factory=list[GenericUse])
     test_methods: list[TestMethod] = field(default_factory=list[TestMethod])
+    # A C# port's source's (D-82): the packages its projects restored, and what the toolchain
+    # has of the native libraries it calls.
+    packages: list[PackageEntry] = field(default_factory=list[PackageEntry])
+    native_probes: list[NativeLibraryProbe] = field(default_factory=list[NativeLibraryProbe])
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -139,6 +145,8 @@ class ProjectModel:
             types = store.port_types()
             generic_uses = store.generic_uses()
             test_methods = store.test_methods()
+            packages = store.packages()
+            native_probes = store.native_probes()
         includes = {path: set(targets) for path, targets in edges.items()}
         partners = pair_headers(files, edges)
         for path, others in partners.items():
@@ -167,6 +175,8 @@ class ProjectModel:
             types=types,
             generic_uses=generic_uses,
             test_methods=test_methods,
+            packages=packages,
+            native_probes=native_probes,
         )
 
     @property

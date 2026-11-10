@@ -32,6 +32,12 @@ from dataclasses import dataclass, field
 from codecoremorph.core.models import (
     FileRole,
     GenericUse,
+    NativeImport,
+    PackageEntry,
+    PackageUse,
+    PortDependency,
+    PortDependencyKind,
+    PortNoticeKind,
     Symbol,
     SymbolKind,
     TargetKind,
@@ -46,6 +52,61 @@ _VISIBLE = frozenset({Visibility.PUBLIC, Visibility.PROTECTED})
 _DELEGATES = re.compile(r"\bSystem\.(?:Func|Action|Predicate|Comparison|Converter|EventHandler)\b")
 _SHOWN = 3  # sites, uses and implementations a note names before "and N more"
 
+# An operating system's own libraries, by name without extension: the port builds and tests on
+# Linux, so code that calls them can't be ported yet (D-82).
+_PLATFORM_LIBRARIES = {
+    "Windows": frozenset(
+        {
+            "kernel32", "user32", "advapi32", "gdi32", "ole32", "oleaut32", "shell32", "ntdll",
+            "ws2_32", "winmm", "crypt32", "bcrypt", "ncrypt", "secur32", "iphlpapi", "dbghelp",
+            "version", "setupapi", "comctl32", "comdlg32", "winspool", "netapi32", "userenv",
+            "wtsapi32", "psapi", "rpcrt4", "dwmapi", "uxtheme", "shlwapi", "mpr", "hid",
+            "winhttp", "wininet", "msvcrt", "ucrtbase", "api-ms-win-core-sysinfo-l1-1-0",
+        }
+    ),
+    "macOS": frozenset(
+        {"libsystem", "corefoundation", "foundation", "security", "libobjc", "iokit", "appkit"}
+    ),
+}  # fmt: skip
+# Packages that are the framework's own (polyfills of what newer frameworks have built in, the
+# SDK's packages): no dependency of the port's.
+_FRAMEWORK_PACKAGE = re.compile(
+    r"^(?:System\.|Microsoft\.Bcl\.|Microsoft\.NETCore\.|Microsoft\.Win32\.|runtime\.)"
+    r"|^(?:NETStandard\.Library|Microsoft\.CSharp)$",
+    re.IGNORECASE,
+)
+
+
+def library_name(name: str) -> str:
+    """A native library's name as its file stem, lowercase: ``kernel32.dll`` is
+    ``kernel32``, ``/usr/lib/libSystem.dylib`` ``libsystem``, ``libsodium.so.23``
+    ``libsodium``."""
+    base = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return re.sub(r"\.(?:dll|dylib|so)(?:\.\d+)*$", "", base)
+
+
+def platform_of(library: str) -> str | None:
+    """The operating system whose own library ``library`` is, or None."""
+    base = library_name(library)
+    for platform, names in _PLATFORM_LIBRARIES.items():
+        if base in names:
+            return platform
+    return None
+
+
+_C_RUNTIME = frozenset({"libc", "c", "libm", "m", "libdl", "dl", "libpthread", "pthread", "librt"})
+
+
+def c_runtime(library: str) -> bool:
+    """Whether a P/Invoke names the C library itself (``libc``, ``libm``): every program has
+    it, with its standard headers."""
+    return library_name(library) in _C_RUNTIME
+
+
+def framework_package(name: str) -> bool:
+    """Whether a package is the framework's own rather than a dependency."""
+    return _FRAMEWORK_PACKAGE.search(name) is not None
+
 
 @dataclass
 class TypeUnit:
@@ -59,6 +120,18 @@ class TypeUnit:
     details: list[str]  # what its note says after naming its files
     needs: list[int] = field(default_factory=list[int])  # the units it uses, by position
     refused: str | None = None  # why the first version refuses it
+    native_calls: list[str] = field(default_factory=list[str])  # P/Invoke members it calls
+
+    def native(self, imports: Mapping[str, NativeImport]) -> list[str]:
+        """The native libraries its types call that the new code links, by the name the
+        P/Invokes give (not the C library, which every program links)."""
+        return sorted(
+            {
+                imports[m].library
+                for m in self.native_calls
+                if m in imports and not c_runtime(imports[m].library)
+            }
+        )
 
 
 @dataclass
@@ -69,6 +142,10 @@ class TypeCut:
     units: list[TypeUnit] = field(default_factory=list[TypeUnit])
     files: list[str] = field(default_factory=list[str])  # every type's files
     refused: str | None = None
+    # What the library depends on outside its own code (D-82), and the native declarations it
+    # needs no unit for.
+    dependencies: list[PortDependency] = field(default_factory=list[PortDependency])
+    imports: dict[str, NativeImport] = field(default_factory=dict[str, NativeImport])
 
 
 def display(entry: TypeEntry) -> str:
@@ -161,7 +238,20 @@ class _Cut:
                 entry = candidates[entry.outer]
             return False
 
-        self.ported = {i: t for i, t in candidates.items() if taken(t)}
+        def outermost(entry: TypeEntry) -> TypeEntry:
+            seen: set[str] = set()
+            while entry.outer is not None and entry.outer in candidates and entry.id not in seen:
+                seen.add(entry.id)
+                entry = candidates[entry.outer]
+            return entry
+
+        ported = {i: t for i, t in candidates.items() if taken(t)}
+        # Types that only declare native functions need no unit: the new code calls the native
+        # library itself (D-82). The retirement deletes them with the rest of the C#.
+        self.native = {i: t for i, t in ported.items() if outermost(t).native_only}
+        self.ported = {i: t for i, t in ported.items() if i not in self.native}
+        self.imports = {n.member: n for t in project.types for n in t.native_imports}
+        self.checked = {t.name for t in project.targets if t.checked_arithmetic}
 
     def _source(self, path: str) -> bool:
         entry = self.project.files.get(path)
@@ -198,7 +288,9 @@ class _Cut:
     def cut(self) -> TypeCut:
         ported = self.ported
         if not ported:
-            return TypeCut(project=None)
+            return TypeCut(
+                project=None, dependencies=self.dependencies([]), imports=dict(self.imports)
+            )
         every_file = sorted({f for t in ported.values() for f in t.files})
         projects = sorted({t.project or "" for t in ported.values()})
         if len(projects) > 1:
@@ -235,7 +327,16 @@ class _Cut:
         # Who uses what: a reference from a ported type ties its root to the one it uses; the
         # C# outside the ported types, and the other units, call the façades.
         users: dict[str, set[tuple[str, str | None]]] = {r: set() for r in roots}
+        # The native functions each root's code calls (D-82), its own declarations included.
+        native_calls: dict[str, set[str]] = {r: set() for r in roots}
+        for entry in ported.values():
+            native_calls[self.root(entry.id)].update(n.member for n in entry.native_imports)
         for from_file, from_symbol, to_symbol in self.project.symbol_references():
+            if to_symbol in self.imports:
+                caller = self.owner(from_symbol)
+                if caller in ported:
+                    native_calls[self.root(caller)].add(to_symbol)
+                continue
             to_type = self.owner(to_symbol)
             if to_type is None or to_type not in ported:
                 continue
@@ -271,12 +372,20 @@ class _Cut:
                 exports=sorted({m for t in types for m in t.members}),
                 details=[],
                 needs=sorted(graph.depends_on[position]),
+                native_calls=sorted({m for r in cluster for m in native_calls[r]}),
             )
             unit.refused = self.refusal(unit, refused_generics) or self.inherited(units, unit)
             if unit.refused is None:
                 unit.details = self.details(unit, cluster, head, definitions, len(callers))
             units.append(unit)
-        return TypeCut(project=projects[0], units=units, files=every_file)
+        native_files = {f for t in self.native.values() for f in t.files}
+        return TypeCut(
+            project=projects[0],
+            units=units,
+            files=sorted({*every_file, *native_files}),
+            dependencies=self.dependencies(units),
+            imports=dict(self.imports),
+        )
 
     # ------------------------------------------------------------------ refusals
 
@@ -294,6 +403,24 @@ class _Cut:
                 )
         reasons += [unused[t.id] for t in unit.types if t.id in unused]
         reasons += [unused[m] for t in unit.types for m in t.members if m in unused]
+        for entry in unit.types:
+            for package, uses in self.package_uses(entry).items():
+                sites = _listed(f"{u.symbol} ({u.file}:{u.line})" for u in uses)
+                reasons.append(
+                    f"{entry.name} uses the package {self.package_label(entry, package)} "
+                    f"({sites}): the new code has no counterpart of a .NET package"
+                )
+        platform_calls: dict[str, list[NativeImport]] = {}
+        for member in unit.native_calls:
+            native = self.imports.get(member)
+            if native is not None and (platform := platform_of(native.library)) is not None:
+                platform_calls.setdefault(platform, []).append(native)
+        for platform, calls in sorted(platform_calls.items()):
+            shown = _listed(f"{c.library}!{c.entry_point} ({c.file}:{c.line})" for c in calls)
+            reasons.append(
+                f"{display(unit.lead)} calls {platform}'s own API ({shown}): the port builds and "
+                "tests on Linux, where the new code can't call it"
+            )
         members = {t.id for t in unit.types}
         for other in sorted(self.types.values(), key=lambda t: t.id):
             if other.id in self.ported or other.base not in members:
@@ -437,11 +564,253 @@ class _Cut:
         callbacks = self.callbacks(unit, definitions)
         if callbacks:
             out.append(f"calls into C#: {'; '.join(callbacks)}")
+        out += self.takeovers(unit)
         if callers:
             out.append(
                 f"{_plural(callers, 'file keeps', 'files keep')} using it through the façade"
             )
         return out
+
+    # ------------------------------------------------------------------ what it depends on (D-82)
+
+    def package_uses(self, entry: TypeEntry) -> dict[str, list[PackageUse]]:
+        """The uses of each package ``entry`` uses that is no part of the framework."""
+        found: dict[str, list[PackageUse]] = {}
+        for use in entry.package_uses:
+            if not framework_package(use.package):
+                found.setdefault(use.package, []).append(use)
+        return found
+
+    def package_version(self, project: str | None, package: str) -> str | None:
+        for entry in self.project.packages:
+            if entry.name == package and (project is None or entry.project == project):
+                return entry.version or None
+        return None
+
+    def package_label(self, entry: TypeEntry, package: str) -> str:
+        version = self.package_version(entry.project, package)
+        return f"{package} {version}" if version else package
+
+    def takeovers(self, unit: TypeUnit) -> list[str]:
+        """What the unit's note says of what the port takes over that the C# runtime did: deep
+        copies through a serializer, unsafe code, platform checks, native calls, and checked
+        arithmetic."""
+        out: list[str] = []
+        notices = [(t, n) for t in unit.types for n in t.notices]
+        copies = [n for _, n in notices if n.what is PortNoticeKind.DEEP_COPY]
+        for copy in copies:
+            where = member_name(copy.member) if copy.member else f"{copy.file}:{copy.line}"
+            out.append(
+                f"{where} makes {copy.detail} ({copy.file}:{copy.line}): the new code copies the "
+                "object graph instead, each object the copy reaches a new one"
+            )
+        unsafe = [n for _, n in notices if n.what is PortNoticeKind.UNSAFE]
+        if unsafe:
+            sites = _listed(f"{n.detail} ({n.file}:{n.line})" for n in unsafe)
+            out.append(
+                f"unsafe code: {sites}: plain pointers in the new code, where nothing moves "
+                "objects, so `fixed` pins nothing; bytes read through a cast pointer are copied "
+                "instead, and a pinned string's UTF-16 units aren't a UTF-8 string's bytes"
+            )
+        platform = [n for _, n in notices if n.what is PortNoticeKind.PLATFORM]
+        if platform:
+            sites = _listed(f"{n.detail} ({n.file}:{n.line})" for n in platform)
+            out.append(
+                f"asks which platform it runs on or loads native code itself ({sites}): the new "
+                "code is built for its platform and links its libraries, so it has nothing to "
+                "ask or load"
+            )
+        by_library: dict[str, list[str]] = {}
+        for member in unit.native_calls:
+            native = self.imports.get(member)
+            if native is not None and platform_of(native.library) is None:
+                by_library.setdefault(native.library, []).append(native.entry_point)
+        for library, entries in sorted(by_library.items()):
+            how = (
+                "with the C library's standard headers"
+                if c_runtime(library)
+                else f"with {library}'s C header, and the scaffold links it"
+            )
+            out.append(
+                f"calls {library}'s {_listed(sorted(set(entries)), 4)} through P/Invoke: the new "
+                f"code calls them itself, {how}"
+            )
+        if any(t.project in self.checked for t in unit.types):
+            out.append(
+                "the project checks integer overflow (CheckForOverflowUnderflow): where the C# "
+                "would throw System.OverflowException, outside `unchecked`, the new code throws "
+                "its mirror"
+            )
+        return out
+
+    def dependencies(self, units: list[TypeUnit]) -> list[PortDependency]:
+        """What the library depends on outside its own code, and what the port does about each
+        (D-82): the native libraries its P/Invokes name, and the .NET packages its types use."""
+        names = {t.id: t.name for t in self.project.types}
+        callers: dict[str, set[str]] = {}
+        refused_callers: dict[str, set[str]] = {}
+        for unit in units:
+            for member in unit.native_calls:
+                callers.setdefault(member, set()).add(display(unit.lead))
+                if unit.refused is not None:
+                    refused_callers.setdefault(member, set()).add(display(unit.lead))
+        by_library: dict[str, list[NativeImport]] = {}
+        for native in self.imports.values():
+            by_library.setdefault(native.library, []).append(native)
+        out: list[PortDependency] = []
+        for library, imports in sorted(by_library.items()):
+            declared = sorted(
+                {self.declaring_name(n.member, names) for n in imports}, key=str.lower
+            )
+            called = [n for n in imports if n.member in callers]
+            users = sorted({u for n in called for u in callers[n.member]})
+            blocked = sorted({u for n in called for u in refused_callers.get(n.member, set())})
+            platform = platform_of(library)
+            functions = _plural(len(imports), "function")
+            if platform is not None:
+                if not called:
+                    summary = (
+                        f"{library} ({platform}'s own library): {functions} declared in "
+                        f"{_listed(declared)}, which nothing calls, so they go with the "
+                        "retirement"
+                    )
+                else:
+                    summary = (
+                        f"{library} ({platform}'s own library): {functions} declared in "
+                        f"{_listed(declared)}, called by {_listed(users)}, which stay C#: the "
+                        "port builds and tests on Linux, where the new code can't call it"
+                    )
+                out.append(
+                    PortDependency(
+                        kind=PortDependencyKind.PLATFORM_API,
+                        name=library,
+                        ported=not called,
+                        summary=summary,
+                        used_by=users,
+                    )
+                )
+                continue
+            if c_runtime(library):
+                out.append(
+                    PortDependency(
+                        kind=PortDependencyKind.NATIVE_LIBRARY,
+                        name=library,
+                        ported=True,
+                        summary=(
+                            f"{library} (the C library, through P/Invoke): {functions} declared "
+                            f"in {_listed(declared)}, {len(called)} of them called by "
+                            f"{_listed(users) if users else 'nothing'}; the new code calls them "
+                            "itself with the C library's standard headers, and the declarations "
+                            "go with the retirement"
+                        ),
+                        used_by=users,
+                    )
+                )
+                continue
+            package = self.native_package(library)
+            probe = next((p for p in self.project.native_probes if p.library == library), None)
+            loads = (
+                f"the C# loads it from the package {package.name} {package.version} "
+                f"({_listed(sorted({f.split(':', 1)[0] for f in package.native}), 6)}), its "
+                "own copy, which the C# not ported yet goes on calling until the retirement, "
+                "so what initializes the library is done for both copies"
+                if package is not None
+                else "the C# loads it from the system"
+            )
+            summary = (
+                f"{library} (a native library, through P/Invoke): {functions} declared in "
+                f"{_listed(declared)}, {len(called)} of them called by "
+                f"{_listed(users) if users else 'nothing'}; {loads}. The new code calls it "
+                "itself: the declarations need no port and go with the retirement, and the new "
+                "code includes its C header and links it, so the build needs its development "
+                "files"
+            )
+            action: str | None = None
+            if probe is None:
+                summary += " (not looked for: only a Docker run's image is)"
+            elif probe.header is None or probe.link is None:
+                missing = " and ".join(
+                    what
+                    for what, there in (("its header", probe.header), ("the library", probe.link))
+                    if there is None
+                )
+                summary += f": the toolchain image lacks {missing}"
+                wanted = f" {package.version}" if package is not None else ""
+                action = (
+                    f"the units that call {library} need its development files{wanted} in the "
+                    f"toolchain image, which lacks {missing}: build an image from "
+                    "codecoremorph-csharp-port with them and set sandbox.image to it (see "
+                    "docs/porting-csharp-to-cpp.md, Native libraries)"
+                )
+            else:
+                version = f", version {probe.version}" if probe.version else ""
+                summary += f": the toolchain image has them ({probe.header}, {probe.link}{version})"
+                if (
+                    package is not None
+                    and probe.version
+                    and not package.version.startswith(probe.version)
+                ):
+                    summary += (
+                        f", though the C# loads {package.version}: the C++ tests run the "
+                        "image's version"
+                    )
+            if blocked:
+                summary += f"; {_listed(blocked)} stay C# for reasons of their own"
+            out.append(
+                PortDependency(
+                    kind=PortDependencyKind.NATIVE_LIBRARY,
+                    name=library,
+                    version=package.version if package is not None else None,
+                    ported=action is None,
+                    summary=summary,
+                    used_by=users,
+                    action=action,
+                )
+            )
+        packages: dict[str, dict[str, list[PackageUse]]] = {}
+        for entry in self.ported.values():
+            for package, uses in self.package_uses(entry).items():
+                packages.setdefault(package, {})[entry.name] = uses
+        for package, by_type in sorted(packages.items()):
+            version = self.package_version(None, package)
+            symbols = sorted({u.symbol for uses in by_type.values() for u in uses})
+            out.append(
+                PortDependency(
+                    kind=PortDependencyKind.PACKAGE,
+                    name=package,
+                    version=version,
+                    ported=False,
+                    summary=(
+                        f"{package}{' ' + version if version else ''} (a .NET package): used by "
+                        f"{_listed(sorted(by_type))} ({_listed(symbols)}); the new code has no "
+                        "counterpart of a .NET package, so they stay C#"
+                    ),
+                    used_by=sorted(by_type),
+                )
+            )
+        return out
+
+    def declaring_name(self, member: str, names: Mapping[str, str]) -> str:
+        """The outermost type that declares a native function, by name."""
+        owner = self.owner(member)
+        seen: set[str] = set()
+        while owner is not None and owner not in seen:
+            seen.add(owner)
+            outer = self.types[owner].outer if owner in self.types else None
+            if outer is None:
+                break
+            owner = outer
+        return names.get(owner or "", owner or member)
+
+    def native_package(self, library: str) -> PackageEntry | None:
+        """The package whose native files a P/Invoke of ``library`` loads, if any."""
+        wanted = library_name(library)
+        for package in self.project.packages:
+            files = [f.split(":", 1)[-1] for f in package.native]
+            stems = (wanted, f"lib{wanted}", wanted.removeprefix("lib"))
+            if any(library_name(f) in stems for f in files):
+                return package
+        return None
 
     def instantiations(self, unit: TypeUnit) -> list[str]:
         """Each generic of the unit with the type arguments it is used with."""

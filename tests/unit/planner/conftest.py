@@ -11,6 +11,8 @@ import pytest
 from codecoremorph.core.models import (
     BuildTarget,
     GenericUse,
+    NativeLibraryProbe,
+    PackageEntry,
     TargetKind,
     TestEntry,
     TestMethod,
@@ -41,6 +43,10 @@ class FakeProject:
     types: list[TypeEntry] = field(default_factory=list[TypeEntry])
     generic_uses: list[GenericUse] = field(default_factory=list[GenericUse])
     test_methods: list[TestMethod] = field(default_factory=list[TestMethod])
+    # What it depends on outside its code (D-82).
+    packages: list[PackageEntry] = field(default_factory=list[PackageEntry])
+    native_probes: list[NativeLibraryProbe] = field(default_factory=list[NativeLibraryProbe])
+    checked: set[str] = field(default_factory=set[str])  # projects that check overflow
 
     def file(
         self,
@@ -124,6 +130,7 @@ class FakeProject:
                 files=files,
                 dependencies=list(dependencies),
                 artifacts=list(artifacts),
+                checked_arithmetic=name in self.checked,
             )
         )
         return self
@@ -140,8 +147,12 @@ class FakeProject:
             store.set_build_targets(self.targets)
             store.set_test_entries(self.tests)
             store.set_port_source(
-                types=self.types, generic_uses=self.generic_uses, test_methods=self.test_methods
+                types=self.types,
+                generic_uses=self.generic_uses,
+                test_methods=self.test_methods,
+                packages=self.packages,
             )
+            store.set_native_probes(self.native_probes)
         return self.index_path
 
 

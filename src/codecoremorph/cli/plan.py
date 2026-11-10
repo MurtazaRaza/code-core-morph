@@ -119,6 +119,26 @@ def render_plan(outcome: PlanOutcome, run_id: str, project: str) -> None:
         if unit.note:
             console.print(Text(f"        {unit.note}", style="dim"))
 
+    if plan.dependencies:
+        # What the source depends on outside its own code, before any unit runs (D-82).
+        deps = Table(
+            title="What the port depends on", title_justify="left", box=None, pad_edge=False
+        )
+        for column in ("dependency", "kind", "carried over", "what the port does"):
+            deps.add_column(column, overflow="fold")
+        for dependency in plan.dependencies:
+            name = dependency.name + (f" {dependency.version}" if dependency.version else "")
+            deps.add_row(
+                Text(name),
+                dependency.kind.value.replace("_", " "),
+                Text(
+                    "yes" if dependency.ported else "no",
+                    style="green" if dependency.ported else "yellow",
+                ),
+                Text(dependency.summary),
+            )
+        console.print(deps)
+
     counts = {s: len(plan.units_with_status(s)) for s in UnitStatus}
     summary = (
         f"{counts[UnitStatus.PENDING]} units to run, {counts[UnitStatus.TOO_LARGE]} too large, "

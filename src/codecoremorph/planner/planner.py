@@ -40,6 +40,7 @@ from codecoremorph.core.models import (
     PlanEstimate,
     PlanGraph,
     PlanRule,
+    PortDependency,
     PortUnit,
     PortUnits,
     RuleKind,
@@ -164,6 +165,8 @@ class _Former:
         self.port_drafts: list[_Draft] = []
         self.type_drafts: dict[str, _Draft] = {}  # a C# type's ID -> the unit that ports it
         self.port_modules: set[str] = set()  # the names a C# port's units took (D-79)
+        # What a C# port's library depends on outside its own code (D-82).
+        self.dependencies: list[PortDependency] = []
 
     def is_new_code(self, path: str) -> bool:
         return self.new_code is not None and self.new_code.matches(path)
@@ -1306,6 +1309,7 @@ class _Former:
     def _csharp_types(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
         target = _LANGUAGE_NAMES.get(language, language)
         result = cut_types(self.project, files, self.is_new_code)
+        self.dependencies = result.dependencies
         if result.refused is not None or result.project is None:
             if not result.files:
                 return []
@@ -1343,6 +1347,7 @@ class _Former:
                         callers=unit.callers,
                         exports=unit.exports,
                         types=[t.id for t in unit.types],
+                        native_libraries=unit.native(result.imports),
                     ),
                 )
             draft.needs = [drafts[i] for i in unit.needs]
@@ -1686,5 +1691,6 @@ def build_plan(
             tokens=sum(e.tokens for e in pending),
             cost_usd=cost,
         ),
-        warnings=notes,
+        warnings=notes + [f"{d.name}: {d.action}" for d in former.dependencies if d.action],
+        dependencies=former.dependencies,
     )
