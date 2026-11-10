@@ -178,6 +178,13 @@ class LanguageAdapter(ABC):
         test ID and its assertions, normalized so that layout changes don't show (I-4)."""
         raise AdapterNotSupportedError(f"{self.language}: extract_assertions")
 
+    def test_case_of(self, test_id: str) -> str:
+        """The test ID of the case in the sources (as :meth:`extract_assertions` names it) that
+        a test ID the test runs report runs: the same ID, except where the framework names a
+        parameterized case's instances apart from the case (GoogleTest's ``Prefix/Suite.Case/3``
+        runs ``Suite.Case``)."""
+        return test_id
+
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
         """Answer a rule detector query listed in ``capabilities().queries``."""
         raise AdapterNotSupportedError(f"{self.language}: query {name}")

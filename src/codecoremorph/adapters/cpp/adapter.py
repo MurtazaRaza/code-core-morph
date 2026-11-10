@@ -111,6 +111,11 @@ log = logging.getLogger(__name__)
 MIN_LLVM = "18"
 STYLE_FILES = (".clang-format", "_clang-format")
 _STD_FLAG = re.compile(r"[-/]std[:=](c|gnu)\+\+(\w+)")
+# A parameterized case's instances in GoogleTest's reports (test_case_of): a value-parameterized
+# one's `Prefix/Suite.Case/Index` (an empty prefix drops it; a name generator replaces the
+# index), a typed one's `Prefix/Suite/Index.Case` (`Suite/Index.Case` for TYPED_TEST).
+_GTEST_VALUE_INSTANCE = re.compile(r"^gtest:(?:\w+/)?(?P<suite>\w+)\.(?P<case>\w+)/\w+$")
+_GTEST_TYPED_INSTANCE = re.compile(r"^gtest:(?:\w+/)?(?P<suite>\w+)/\w+\.(?P<case>\w+)$")
 INSTALL_HINT = (
     "Install the pinned native toolchain with `codecoremorph toolchain install cpp` "
     "(or scripts/install-toolchain cpp), or use Docker (sandbox.mode: docker)."
@@ -785,6 +790,16 @@ class CppAdapter(LanguageAdapter):
                     )
                 )
         return found
+
+    def test_case_of(self, test_id: str) -> str:
+        """A parameterized GoogleTest case's instance, as its reports name it, runs the
+        ``TEST_P`` or ``TYPED_TEST(_P)`` case of the sources: ``Prefix/Suite.Case/3`` and
+        ``Prefix/Suite/3.Case`` (the prefix is gone for ``TYPED_TEST``) are ``Suite.Case``."""
+        if (value := _GTEST_VALUE_INSTANCE.match(test_id)) is not None:
+            return f"gtest:{value['suite']}.{value['case']}"
+        if (typed := _GTEST_TYPED_INSTANCE.match(test_id)) is not None:
+            return f"gtest:{typed['suite']}.{typed['case']}"
+        return test_id
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
         if name == "test_cases":

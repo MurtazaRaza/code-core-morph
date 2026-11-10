@@ -337,7 +337,7 @@ class InvariantChecker:
             targets = port.adapter.extract_assertions(port.ctx, tree)
         except AdapterNotSupportedError:
             return None
-        found = weaker_translations(added, sources, targets)
+        found = weaker_translations(added, sources, targets, port.adapter.test_case_of)
         if not found:
             return InvariantResult(invariant="I-4", passed=True)
         cases = {a.test_id: a.file for a in sources}

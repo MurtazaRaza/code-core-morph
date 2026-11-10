@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codecoremorph.adapters.base import AdapterContext
 from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.rust import RustAdapter
@@ -197,6 +199,49 @@ def test_a_test_split_into_several() -> None:
     assert weaker_translations(split.values(), sources, fewer) == [
         "make:test made 3 check(s); its 2 tests make 2"
     ]
+
+
+def test_a_parameterized_cases_instances_make_its_checks() -> None:
+    """The test map names what the test runs report, a ``TEST_P`` case's instances
+    (``Cases/MoneyTests_Times.Run/1``); the sources name the case once: the target adapter's
+    ``test_case_of`` finds it, and each instance makes its checks (order-book, D-83)."""
+    pairs = [
+        TestPair("dotnet:T.Times(199,3,597)", ("gtest:Cases/MoneyTests_Times.Run/0",), None),
+        TestPair("dotnet:T.Times(5,0,0)", ("gtest:Cases/MoneyTests_Times.Run/1",), None),
+    ]
+    sources = [
+        TestAssertions(file="T.cs", test=f"T.Times({a})", test_id=f"dotnet:T.Times({a})",
+                       line=1, assertions=["Assert.AreEqual(x, y)"])
+        for a in ("199,3,597", "5,0,0")
+    ]  # fmt: skip
+    targets = [
+        TestAssertions(file="t.cpp", test="MoneyTests_Times.Run",
+                       test_id="gtest:MoneyTests_Times.Run", line=3, assertions=["EXPECT_EQ(x, y)"])
+    ]  # fmt: skip
+    assert weaker_translations(pairs, sources, targets, CppAdapter().test_case_of) == []
+    # Without the adapter's mapping, the instances aren't cases of the sources.
+    assert weaker_translations(pairs, sources, targets) == [
+        "dotnet:T.Times(199,3,597): its test gtest:Cases/MoneyTests_Times.Run/0 isn't in the "
+        "sources",
+        "dotnet:T.Times(5,0,0): its test gtest:Cases/MoneyTests_Times.Run/1 isn't in the sources",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("reported", "case"),
+    [
+        ("gtest:Cases/MoneyTests_Times.Run/1", "gtest:MoneyTests_Times.Run"),
+        ("gtest:MoneyTests_Times.Run/0", "gtest:MoneyTests_Times.Run"),  # an empty prefix
+        ("gtest:Cases/MoneyTests_Times.Run/euros", "gtest:MoneyTests_Times.Run"),  # named
+        ("gtest:Ints/StackTest/0.Pushes", "gtest:StackTest.Pushes"),  # TYPED_TEST_P
+        ("gtest:StackTest/1.Pushes", "gtest:StackTest.Pushes"),  # TYPED_TEST
+        ("gtest:MoneyTests.Adds", "gtest:MoneyTests.Adds"),
+        ("ctest:calc_tests", "ctest:calc_tests"),
+    ],
+)
+def test_googletests_names_of_a_parameterized_cases_instances(reported: str, case: str) -> None:
+    assert CppAdapter().test_case_of(reported) == case
+    assert RustAdapter().test_case_of(reported) == reported  # no such names: the same ID
 
 
 def test_the_translations_are_read_in_the_ports_tree(tmp_path: Path) -> None:

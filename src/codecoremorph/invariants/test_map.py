@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import tomllib
 from collections import Counter
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -225,13 +225,23 @@ def weaker_translations(
     pairs: Iterable[TestPair],
     sources: Iterable[TestAssertions],
     targets: Iterable[TestAssertions],
+    case_of: Callable[[str], str] | None = None,
 ) -> list[str]:
     """I-4 across languages: for each pair, target tests that make fewer checks together than
     their source test, or none at all. Kinds don't translate one to one (``EXPECT_THROW``
     becomes an ``assert!`` on a ``Result``), so counts are compared; a test split into several
-    keeps its checks among them."""
+    keeps its checks among them. ``case_of`` gives the case in the target's sources that a
+    reported test ID runs (a parameterized case's instance: the target adapter's
+    ``test_case_of``), which makes the checks of each of its instances."""
+    pairs = list(pairs)
     source_counts = {a.test_id: len(a.assertions) for a in sources}
-    target_counts = {a.test_id: len(a.assertions) for a in targets}
+    by_case = {a.test_id: len(a.assertions) for a in targets}
+    target_counts: dict[str, int] = {}
+    for pair in pairs:
+        for target in pair.targets:
+            case = target if target in by_case or case_of is None else case_of(target)
+            if case in by_case:
+                target_counts[target] = by_case[case]
     found: list[str] = []
     for pair in pairs:
         before = source_counts.get(pair.source)
