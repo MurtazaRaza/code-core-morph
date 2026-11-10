@@ -254,3 +254,17 @@ def test_the_retirement_deletes_the_packages_its_unit_names(tmp_path: Path) -> N
     assert set(retired) == {*unit, "build.rs", "src/bytes/sys.rs", "c/cargo-link"}
     left = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file())
     assert left == ["fuzz/Cargo.lock", "fuzz/Cargo.toml", "fuzz/fuzz_targets/fuzz_next.rs"]
+
+
+def test_clang_tidy_checks_bugs_and_warnings_not_cs_idioms() -> None:
+    """The compiler's warnings count (``-*`` alone would turn them off), and what the
+    bug-finding checks say of C's idioms doesn't (D-80)."""
+    argv = rustports.clang_tidy_argv("/build", ["/workspace/c/src/stats.c"])
+    checks = next(a for a in argv if a.startswith("--checks="))
+    assert "clang-diagnostic-*" in checks
+    assert "bugprone-*" in checks
+    assert "-bugprone-multi-level-implicit-pointer-conversion" in checks
+    config = next(a for a in argv if a.startswith("--config="))
+    assert "WarnOnSizeOfPointerToAggregate: false" in config
+    assert "_POSIX_C_SOURCE" in config
+    assert argv[-1] == "/workspace/c/src/stats.c"

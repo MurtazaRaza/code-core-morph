@@ -139,7 +139,9 @@ class CAdapter(CppAdapter):
             )
         c_dir = ctx.worktree / rustports.C_DIR
         files = sorted(p.relative_to(ctx.worktree).as_posix() for p in c_dir.rglob("*.c"))
-        if not files or not (ctx.build_dir / COMPILE_COMMANDS).is_file():
+        # Configure copies the compile database to the cache: in Docker the build directory is
+        # a volume the host doesn't see, so it isn't the place to look for it.
+        if not files or not (ctx.cache_dir / COMPILE_COMMANDS).is_file():
             return found
         ctx.log_dir.mkdir(parents=True, exist_ok=True)
         result = ctx.executor.run(

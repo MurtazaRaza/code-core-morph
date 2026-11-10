@@ -334,13 +334,36 @@ def without_c_modules(manifest: str) -> str:
     return "".join(out)
 
 
-TIDY_CHECKS = "-*,bugprone-*,clang-analyzer-*,-bugprone-easily-swappable-parameters"
+# The compiler's warnings with the build's flags (clang-diagnostic-*, which "-*" would turn
+# off too) and clang-tidy's bug-finding checks, but for what they say of C's idioms, which
+# aren't bugs (D-80): a void * converted to T ** without a cast (calloc's result), sizeof of a
+# pointer for an array of pointers, and the feature-test macros a C file defines.
+TIDY_CHECKS = (
+    "-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-bugprone-easily-swappable-parameters,"
+    "-bugprone-multi-level-implicit-pointer-conversion"
+)
+FEATURE_MACROS = ("_POSIX_C_SOURCE", "_XOPEN_SOURCE", "_GNU_SOURCE", "_DEFAULT_SOURCE",
+                  "_BSD_SOURCE")  # fmt: skip
+TIDY_CONFIG = (
+    "{CheckOptions: {"
+    "bugprone-sizeof-expression.WarnOnSizeOfPointerToAggregate: false, "
+    f"bugprone-reserved-identifier.AllowedIdentifiers: '{';'.join(FEATURE_MACROS)}'"
+    "}}"
+)
 
 
 def clang_tidy_argv(build_dir: str, files: Sequence[str]) -> list[str]:
     """clang-tidy's bug-finding checks over the C part, with the build's flags (``-Wall
     -Wextra``, whose warnings it reports too)."""
-    return ["clang-tidy", "-p", build_dir, "--quiet", f"--checks={TIDY_CHECKS}", *files]
+    return [
+        "clang-tidy",
+        "-p",
+        build_dir,
+        "--quiet",
+        f"--checks={TIDY_CHECKS}",
+        f"--config={TIDY_CONFIG}",
+        *files,
+    ]
 
 
 # --------------------------------------------------------------------------- the scaffolds
