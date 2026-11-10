@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-10T08:14:19+00:00",
+  "project": "libsodium-core v1.3.1 (fd6567199b4c)",
+  "migration": "csharp9 -> cpp17",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 106.032,
+    "index_s": 13.859,
+    "graph_s": 0.047,
+    "plan_s": 1.062
+  },
+  "baseline": {
+    "passing": 230,
+    "failing": [],
+    "flaky": [],
+    "build_s": 15.437,
+    "test_s": 21.297
+  },
+  "graph": {
+    "files": 99,
+    "edges": 842,
+    "clusters": 95,
+    "cyclic_clusters": 3,
+    "largest_cluster": 3
+  },
+  "rules": [
+    {
+      "id": "port_csharp_type_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 63,
+      "files": 63,
+      "skipped_files": 0,
+      "units": 31
+    },
+    {
+      "id": "port_csharp_program_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "port_csharp_tests_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 240,
+      "files": 36,
+      "skipped_files": 0,
+      "units": 36
+    },
+    {
+      "id": "retire_csharp_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 99,
+      "files": 99,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 68
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 3100560,
+    "cost_usd": 15.18
+  },
+  "duration_estimate_s": 9193.1,
+  "warnings": [
+    "port_csharp_program_to_cpp: the detector found no sites, so the rule has no units"
+  ]
+}

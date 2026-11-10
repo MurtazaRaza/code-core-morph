@@ -40,7 +40,7 @@ from codecoremorph.planner.estimate import LLM_SECONDS_PER_ATTEMPT, estimate_dur
 
 BENCH = Path(__file__).resolve().parent
 # As bench/measure.py counts lines of code.
-CODE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp", ".rs")
+CODE_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp", ".rs", ".cs", ".java")
 NOT_PLANNED = (UnitStatus.SKIPPED, UnitStatus.TOO_LARGE)
 AGENT_GATE = "agent"
 

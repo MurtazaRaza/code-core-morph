@@ -1,0 +1,27 @@
+{
+  "project": "libsodium-core",
+  "url": "https://github.com/ektrah/libsodium-core.git",
+  "tag": "v1.3.1",
+  "commit": "fd6567199b4cd229277dc251fa8b8a370f26674b",
+  "license": "MIT",
+  "milestone": "m11",
+  "migration": {
+    "source": {"language": "csharp", "standard": "csharp9", "build_system": "dotnet"},
+    "target": {
+      "language": "cpp",
+      "standard": "cpp17",
+      "rules": [
+        "port_csharp_type_to_cpp",
+        "port_csharp_program_to_cpp",
+        "port_csharp_tests_to_cpp",
+        "retire_csharp_to_cpp"
+      ]
+    }
+  },
+  "build": {},
+  "image": {"dockerfile": "images/libsodium/Dockerfile", "toolchain": "csharp-port"},
+  "exclude": [],
+  "test_dirs": ["test"],
+  "public_api": [],
+  "build_note": "The M11 port benchmark: libsodium-core 1.3.1 (Sodium.Core), the .NET binding of libsodium, a netstandard2.0 and 2.1 library in C# 9 (37 files, 3.7k lines) over a shared project of 73 P/Invoke declarations (src/Interop, 26 files), with 230 NUnit tests on net6.0 (4.3k lines). Its native dependency is the point (D-82): the C# loads libsodium 1.0.18 from the libsodium NuGet package, the C++ the port writes includes sodium.h and links the library, so the run's image is the port image with Ubuntu 22.04's libsodium-dev (1.0.18) added (bench/images/libsodium). The project checks integer overflow (CheckForOverflowUnderflow)."
+}

@@ -40,7 +40,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from plan import PIN, describe, load_pin, manifest, migration, source
+from plan import PIN, describe, load_pin, manifest, migration, source, toolchain_image
 from work import measure
 
 from codecoremorph.cli.skill import install_skill
@@ -74,7 +74,7 @@ questions. Stop when the run has ended, then summarize its report.
 """
 # Claude Code's reply when the Claude plan's usage limit stops it: the run stays parked.
 USAGE_LIMIT = re.compile(r"hit your .{0,40}limit|usage limit", re.IGNORECASE)
-LANGUAGES = {"c": "C", "cpp": "C++", "rust": "Rust"}
+LANGUAGES = {"c": "C", "cpp": "C++", "csharp": "C#", "rust": "Rust"}
 
 
 def _standard(name: str) -> str:
@@ -85,13 +85,13 @@ def task(pin: dict[str, Any]) -> tuple[str, str]:
     """What Claude Code is asked to do, and what to call it: a migration or a port."""
     found = migration(pin)
     target = found["target"]
-    if target["language"] == "cpp":
+    language = source(pin)["language"]
+    if target["language"] == "cpp" and language == "cpp":
         return (
-            f"migrate this C++ project from {_standard(found['source'])} to "
+            f"migrate this C++ project from {_standard(source(pin)['standard'])} to "
             f"{_standard(target['standard'])}",
             "migration",
         )
-    language = source(pin)["language"]
     return (
         f"port this {LANGUAGES.get(language, language)} project to "
         f"{LANGUAGES.get(target['language'], target['language'])}",
@@ -216,7 +216,8 @@ def main(argv: list[str]) -> int:
         print(f"{root} doesn't exist; run bench/fetch.py first", file=sys.stderr)
         return 1
     config = root.parent / f"{pin['project']}-run.yaml"  # beside the clone, as bench/plan.py's
-    config.write_text(manifest(pin, root, args.sandbox), encoding="utf-8")
+    image = toolchain_image(pin) if args.sandbox == "docker" else None
+    config.write_text(manifest(pin, root, args.sandbox, image), encoding="utf-8")
     install_skill(root / ".claude", force=True)
     exclude = root / ".git" / "info" / "exclude"
     known = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""

@@ -1,0 +1,2405 @@
+{
+  "date": "2026-11-10T14:36:06+00:00",
+  "project": "libsodium-core v1.3.1 (fd6567199b4c)",
+  "migration": "csharp9 -> cpp17",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "fd6567199b4cd229277dc251fa8b8a370f26674b",
+  "seconds": 20923.7,
+  "runs_started": 1,
+  "run_id": "20261110-084755-9539",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 68
+    },
+    "success_rate": 1.0,
+    "agent_units": 67,
+    "attempts_per_agent_unit": 1.0,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "70283d9e11658aa96a7c7a0dcd3f34aa0c05afc1",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 257,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 32.0
+    },
+    "port": {
+      "symbols": 239,
+      "tests_mapped": 221,
+      "tests_without_counterpart": [
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptBadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptChaCha20BadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptChaCha20IetfBadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptBadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptChaCha20BadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptChaCha20IetfBadCrypto: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.PublicKeyAuthExceptionTest#ConvertEd25519PublicKeyToCurve25519PublicKeyWrongKey: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.PublicKeyAuthExceptionTest#ConvertEd25519SecretKeyToCurve25519SecretKeyWrongKey: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.PasswordHashTest#ScryptPasswordNeedsRehashOnStringNullStringTest: a null string: the C# string overload fails in Encoding.UTF8.GetBytes(null) (ArgumentNullException), which is C#-only behavior; the C++ takes a std::vector",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryNoPassword: a null password: the C++ takes a std::vector, so the null (ArgumentNullException, 'Password cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryNoSalt: a null salt: the C++ takes a std::vector, so the null (ArgumentNullException, 'Salt cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryOutOfMemory: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringNoPassword: a null password: the C++ takes a std::vector, so the null (ArgumentNullException, 'Password cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringOutOfMemory: ignored in the C# ([Ignore(\"not implemented\")], an empty test body): nothing to translate",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringVerifyNoHash: a null hash: the C++ takes a std::vector, so the null (ArgumentNullException, 'Hash cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringVerifyNoPassword: a null password: the C++ takes a std::vector, so the null (ArgumentNullException, 'Password cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoMessage: a null message: the C++ takes a std::vector, so the null (ArgumentNullException, 'Message cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoPersonal: a null personal: the C++ takes a std::vector, so the null (ArgumentNullException, 'Personal string cannot be null') is checked by the bridge and covered by the C# test that goes through it",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoSalt: a null salt: the C++ takes a std::vector, so the null (ArgumentNullException, 'Salt cannot be null') is checked by the bridge and covered by the C# test that goes through it"
+      ],
+      "deviations": [
+        "csharp:Sodium.StreamEncryption.Decrypt(System.Byte[],System.Byte[],System.Byte[]): XSalsa20; null key/nonce are refused like empty ones (actual value 0); a null cipher text throws NullReferenceException after the key and nonce checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.StreamEncryption.Decrypt(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher text throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20Ietf(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher text throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20Ietf(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptXChaCha20(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher text throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.DecryptXChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.Encrypt(System.Byte[],System.Byte[],System.Byte[]): XSalsa20; null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.Encrypt(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20Ietf(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20Ietf(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptXChaCha20(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks",
+        "csharp:Sodium.StreamEncryption.EncryptXChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.Create(System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SecretBox.Create(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.CreateDetached(System.Byte[],System.Byte[],System.Byte[]): returns a sodium::DetachedBox, which the fa\u00e7ade wraps with DetachedBox.FromHandle",
+        "csharp:Sodium.SecretBox.CreateDetached(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.Open(System.Byte[],System.Byte[],System.Byte[]): keeps the trimming of MAC_BYTES leading nulls the C# did for boxes of older versions (and its check of the first 15 bytes); a null cipher throws NullReferenceException after the key and nonce checks; a box that is all nulls and exactly MAC_BYTES long throws OverflowException (new byte[-16]), as the C# did",
+        "csharp:Sodium.SecretBox.Open(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.OpenDetached(Sodium.DetachedBox,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# overload that unpacks the DetachedBox (NullReferenceException for null) and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.OpenDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce/mac are refused like empty ones (actual value 0); a null cipher throws NullReferenceException after the key, nonce and mac checks",
+        "csharp:Sodium.SecretBox.OpenDetached(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.Byte[],Sodium.KeyPair): the fa\u00e7ade keeps the C# overload that takes the public key of the KeyPair (NullReferenceException for null) and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.Byte[],System.Byte[]): a null key is refused like an empty one (actual value 0); a null message throws NullReferenceException after the key check; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.String,Sodium.KeyPair): the fa\u00e7ade keeps the C# UTF-8 encoding and the use of the KeyPair's public key, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.Byte[],Sodium.KeyPair): the fa\u00e7ade keeps the C# overload that takes the keys of the KeyPair (NullReferenceException for null) and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.Byte[],System.Byte[],System.Byte[]): null keys are refused like empty ones (actual value 0, and the public key's parameter name for the secret key too, as in the C#); a null cipher throws NullReferenceException after the key checks",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.String,Sodium.KeyPair): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and the use of the KeyPair's keys, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.RecipientPublicKeyBytes: a public const in the C#, which stays a const (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.SealedPublicKeyBox.RecipientSecretKeyBytes: a public const in the C#, which stays a const (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyBox.Create(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null keys/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the key and nonce checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.PublicKeyBox.Create(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.CreateDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): returns a sodium::DetachedBox, which the fa\u00e7ade wraps with DetachedBox.FromHandle; like the C#, libsodium is handed the secret key where its signature has the public key (crypto_box_detached(..., nonce, secretKey, publicKey)), so a box is only openable by OpenDetached, which swaps the same way",
+        "csharp:Sodium.PublicKeyBox.CreateDetached(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.GenerateKeyPair: the fa\u00e7ade wraps the returned KeyPair handle with KeyPair.FromHandle",
+        "csharp:Sodium.PublicKeyBox.GenerateKeyPair(System.Byte[]): a null private key is refused like an empty one (SeedOutOfRangeException, actual value 0); the public key is ScalarMult::base of it",
+        "csharp:Sodium.PublicKeyBox.GenerateSeededKeyPair(System.Byte[]): a null seed is refused like an empty one (SeedOutOfRangeException, actual value 0)",
+        "csharp:Sodium.PublicKeyBox.Open(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): keeps the trimming of MAC_BYTES leading nulls the C# did for boxes of older versions (and its checks of the first 15 bytes); a null cipher throws NullReferenceException after the key and nonce checks; a box that is all nulls and exactly MAC_BYTES long throws OverflowException (new byte[-16]), as the C# did",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(Sodium.DetachedBox,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# overload that unpacks the DetachedBox (NullReferenceException for null) and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[],System.Byte[]): a null cipher throws NullReferenceException after the key, mac and nonce checks; the keys are handed to libsodium in the C#'s order (secret key where its signature has the public key)",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(System.String,System.Byte[],System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# hex decoding (Utilities.HexToBinary) and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.PublicKeyBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyBox.SecretKeyBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.Utilities.Base64ToBinary(System.String,System.String,Sodium.Utilities.Base64Variant): the fa\u00e7ade passes both strings as UTF-8 bytes (null stays null); the C++ sizes its buffer by the UTF-16 length the C# used (string.Length), computed from the UTF-8",
+        "csharp:Sodium.Utilities.Base64Variant.Original: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.Base64Variant.OriginalNoPadding: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.Base64Variant.UrlSafe: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.Base64Variant.UrlSafeNoPadding: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.BinaryToBase64(System.Byte[],Sodium.Utilities.Base64Variant): a null array throws ArgumentNullException (data) in the C++; no libsodium initialization, as in the C#",
+        "csharp:Sodium.Utilities.BinaryToHex(System.Byte[]): the fa\u00e7ade keeps the C# overload that calls the three-argument one",
+        "csharp:Sodium.Utilities.BinaryToHex(System.Byte[],Sodium.Utilities.HexFormat,Sodium.Utilities.HexCase): a null array throws NullReferenceException; pure C++ (the C# did not use libsodium either)",
+        "csharp:Sodium.Utilities.Compare(System.Byte[],System.Byte[]): a null array throws NullReferenceException, as the C# did",
+        "csharp:Sodium.Utilities.HexCase.Lower: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexCase.Upper: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexFormat.Colon: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexFormat.Hyphen: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexFormat.None: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexFormat.Space: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.Utilities.HexToBinary(System.String): the C# walks UTF-16 code units, so the fa\u00e7ade passes the string as an array of them (ushort[]) and the C++ walks those; the bit tricks, their wrap-around and the checked (byte) conversion are kept",
+        "csharp:Sodium.Utilities.Increment(System.Byte[]): the C# incremented the caller's array in place and returned it: the C++ returns the incremented copy, and the fa\u00e7ade copies it back into the array and returns that array",
+        "csharp:Sodium.ShortHash.Hash(System.Byte[],System.Byte[]): a null key is refused like an empty one (actual value 0); a null message throws NullReferenceException after the key check and the initialization, as the C# did",
+        "csharp:Sodium.ShortHash.Hash(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.ShortHash.Hash(System.String,System.String): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the overloads down to the byte[] one",
+        "csharp:Sodium.SecretKeyAuth.Sign(System.Byte[],System.Byte[]): a null key is refused like an empty one (actual value 0); a null message throws NullReferenceException after the key check and the initialization, as the C# did",
+        "csharp:Sodium.SecretKeyAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha256(System.Byte[],System.Byte[]): a null key is refused like an empty one (actual value 0); a null message throws NullReferenceException after the key check and the initialization, as the C# did",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha256(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha512(System.Byte[],System.Byte[]): a null key is refused like an empty one (actual value 0); a null message throws NullReferenceException after the key check and the initialization, as the C# did",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha512(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.Verify(System.Byte[],System.Byte[],System.Byte[]): null key/signature are refused like empty ones (actual value 0); a null message throws NullReferenceException after the checks and the initialization",
+        "csharp:Sodium.SecretKeyAuth.Verify(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha256(System.Byte[],System.Byte[],System.Byte[]): null key/signature are refused like empty ones (actual value 0); a null message throws NullReferenceException after the checks and the initialization",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha256(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha512(System.Byte[],System.Byte[],System.Byte[]): null key/signature are refused like empty ones (actual value 0); a null message throws NullReferenceException after the checks and the initialization",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha512(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.SecretAeadXChaCha20Poly1305.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher throws NullReferenceException after those checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SecretAeadXChaCha20Poly1305.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after those checks; null additional data is empty",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305IETF.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher throws NullReferenceException after those checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305IETF.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after those checks; null additional data is empty",
+        "csharp:Sodium.SecretAead.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): the C# member stays an expression-bodied forwarder to SecretAeadChaCha20Poly1305.Decrypt, which is already a fa\u00e7ade over the bridge; the C++ forwards the same way",
+        "csharp:Sodium.SecretAead.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): the C# member stays an expression-bodied forwarder to SecretAeadChaCha20Poly1305.Encrypt, which is already a fa\u00e7ade over the bridge; the C++ forwards the same way",
+        "csharp:Sodium.SecretAead.GenerateNonce: the C# member stays an expression-bodied forwarder to SecretAeadChaCha20Poly1305.GenerateNonce, which is already a fa\u00e7ade over the bridge; the C++ forwards the same way",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher throws NullReferenceException after those checks; CryptographicException is thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after those checks; null additional data is empty",
+        "csharp:Sodium.SecretAeadAes.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null cipher throws NullReferenceException after the availability check; PlatformNotSupportedException and CryptographicException are thrown by the C++ and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.SecretAeadAes.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null key/nonce are refused like empty ones (actual value 0); a null message throws NullReferenceException after the availability check; null additional data is empty",
+        "csharp:Sodium.SecretAeadAes.IsAvailable: the answer is cached in the C++ (a static atomic), as the C# cached it in s_isAvailable; it is now the toolchain libsodium's answer",
+        "csharp:Sodium.ScalarMult.Base(System.Byte[]): a null key is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.ScalarMult.Bytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.ScalarMult.Mult(System.Byte[],System.Byte[]): null keys are refused like empty ones (actual value 0), in the bridge",
+        "csharp:Sodium.ScalarMult.ScalarBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyAuth.ConvertEd25519PublicKeyToCurve25519PublicKey(System.Byte[]): a null key is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.PublicKeyAuth.ConvertEd25519SecretKeyToCurve25519SecretKey(System.Byte[]): a null key is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.PublicKeyAuth.ExtractEd25519PublicKeyFromEd25519SecretKey(System.Byte[]): a null key is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.PublicKeyAuth.ExtractEd25519SeedFromEd25519SecretKey(System.Byte[]): a null key is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.PublicKeyAuth.GenerateKeyPair: the fa\u00e7ade wraps the returned KeyPair handle with KeyPair.FromHandle",
+        "csharp:Sodium.PublicKeyAuth.GenerateKeyPair(System.Byte[]): a null seed is refused like an empty one (actual value 0), in the bridge",
+        "csharp:Sodium.PublicKeyAuth.PublicKeyBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyAuth.SecretKeyBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyAuth.SeedBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyAuth.SignatureBytes: a constant; the C# property keeps its initializer (from Interop.Libsodium) until the retirement",
+        "csharp:Sodium.PublicKeyAuth.Sign(System.Byte[],System.Byte[]): a null message throws NullReferenceException after the key check, as the C# did; a null key is refused like an empty one",
+        "csharp:Sodium.PublicKeyAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyAuth.SignDetached(System.Byte[],System.Byte[]): a null message throws NullReferenceException after the key check and the initialization, as the C# did",
+        "csharp:Sodium.PublicKeyAuth.SignDetached(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyAuth.Verify(System.Byte[],System.Byte[]): CryptographicException is thrown by the C++ (sodium::CryptographicException) and rebuilt by CcmExceptions.cs",
+        "csharp:Sodium.PublicKeyAuth.VerifyDetached(System.Byte[],System.Byte[],System.Byte[]): null signature or key are refused like empty ones (actual value 0); a null message throws NullReferenceException after the checks",
+        "csharp:Sodium.PasswordHash.ArgonAlgorithm.Argon_2I13: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.ArgonAlgorithm.Argon_2ID13: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.Byte[],System.Byte[],Sodium.PasswordHash.StrengthArgon,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.Byte[],System.Byte[],System.Int64,System.Int32,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): null password and salt are refused in the bridge, with the C# messages, before any other check",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.String,System.String,Sodium.PasswordHash.StrengthArgon,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.String,System.String,System.Int64,System.Int32,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonHashString(System.String,Sodium.PasswordHash.StrengthArgon): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ArgonHashString(System.String,System.Int64,System.Int32): the fa\u00e7ade encodes the password as UTF-8 (null stays null, and is refused in the bridge with the C# message)",
+        "csharp:Sodium.PasswordHash.ArgonHashStringVerify(System.String,System.String): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.Byte[],Sodium.PasswordHash.StrengthArgon): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.Byte[],System.Int64,System.Int32): negative limits throw OverflowException, as the checked (ulong)/(nuint) conversions of the C# did",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.String,Sodium.PasswordHash.StrengthArgon): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.String,System.Int64,System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.HashType.Argon: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.HashType.Scrypt: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.Byte[],System.Byte[],Sodium.PasswordHash.Strength,System.Int64): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.Byte[],System.Byte[],System.Int64,System.Int32,System.Int64): null password and salt are refused in the bridge, with the C# messages, before any other check",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.String,System.String,Sodium.PasswordHash.Strength,System.Int64): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.String,System.String,System.Int64,System.Int32,System.Int64): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptHashString(System.String,Sodium.PasswordHash.Strength): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ScryptHashString(System.String,System.Int64,System.Int32): the fa\u00e7ade encodes the password as UTF-8 (null stays null, and is refused in the bridge with the C# message)",
+        "csharp:Sodium.PasswordHash.ScryptHashStringVerify(System.String,System.String): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.Byte[],Sodium.PasswordHash.Strength): the fa\u00e7ade maps the strength to its limits through the bridge, then calls the limits overload",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.Byte[],System.Int64,System.Int32): negative limits throw OverflowException, as the checked (ulong)/(nuint) conversions of the C# did",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.String,Sodium.PasswordHash.Strength): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.String,System.Int64,System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.Strength.Interactive: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.Strength.Medium: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.Strength.MediumSlow: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.Strength.Moderate: the C# enum stays (obsolete there); the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.Strength.Sensitive: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.StrengthArgon.Interactive: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.StrengthArgon.Medium: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.StrengthArgon.Moderate: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.PasswordHash.StrengthArgon.Sensitive: the C# enum stays; the C++ enum class has the same value",
+        "csharp:Sodium.OneTimeAuth.Sign(System.Byte[],System.Byte[]): a null key is refused like an empty one (KeyOutOfRangeException, actual value 0), in the bridge; a null message throws NullReferenceException after the key check, as the C# did",
+        "csharp:Sodium.OneTimeAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.OneTimeAuth.Verify(System.Byte[],System.Byte[],System.Byte[]): null key or signature are refused like empty ones, in the bridge; a null message throws NullReferenceException after the checks, as the C# did",
+        "csharp:Sodium.OneTimeAuth.Verify(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.#ctor(System.Byte[],System.Int32): the C++ class is not nested in GenericHash, so that its handle type can be declared ahead; a null key is an empty one",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.#ctor(System.String,System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding of the key and chains to the byte[] constructor",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.HashCore(System.Byte[],System.Int32,System.Int32): the fa\u00e7ade keeps the C# Array.Copy of the range (and so its exceptions for a null array or a bad range) and passes the copy to the export",
+        "csharp:Sodium.GenericHash.Hash(System.Byte[],System.Byte[],System.Int32): a null message throws NullReferenceException after the key and size checks, as the C# did",
+        "csharp:Sodium.GenericHash.Hash(System.String,System.Byte[],System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.GenericHash.Hash(System.String,System.String,System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.GenericHash.HashSaltPersonal(System.Byte[],System.Byte[],System.Byte[],System.Byte[],System.Int32): the ArgumentNullException checks of message, salt and personal (with the C# messages) are in the bridge; a null key is an empty one and so is refused as too short",
+        "csharp:Sodium.GenericHash.HashSaltPersonal(System.String,System.String,System.String,System.String,System.Int32): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] overload",
+        "csharp:Sodium.CryptoHash.Hash(System.Byte[]): a null array throws NullReferenceException in the bridge, after the initialization, as the C# did",
+        "csharp:Sodium.CryptoHash.Hash(System.String): the fa\u00e7ade keeps the C# UTF-8 encoding (so a null string throws ArgumentNullException as before and a NUL inside the string is hashed) and calls the byte[] export; the C++ overload takes the UTF-8 std::string",
+        "csharp:Sodium.CryptoHash.Sha256(System.Byte[]): a null array throws NullReferenceException in the bridge, after the initialization, as the C# did",
+        "csharp:Sodium.CryptoHash.Sha256(System.String): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] export; the C++ overload takes the UTF-8 std::string",
+        "csharp:Sodium.CryptoHash.Sha512(System.Byte[]): a null array throws NullReferenceException in the bridge, after the initialization, as the C# did",
+        "csharp:Sodium.CryptoHash.Sha512(System.String): the fa\u00e7ade keeps the C# UTF-8 encoding and calls the byte[] export; the C++ overload takes the UTF-8 std::string",
+        "csharp:Sodium.SodiumCore.GetRandomBytes(System.Int32): a negative count throws OverflowException, as new byte[count] did; the C++ initializes its own libsodium",
+        "csharp:Sodium.SodiumCore.GetRandomNumber(System.Int32): a negative bound throws ArgumentOutOfRangeException(upperBound)",
+        "csharp:Sodium.SodiumCore.Init: the fa\u00e7ade also runs the C# SodiumCore.Initialize for the NuGet copy of libsodium that the C# not yet ported still calls (until the retirement). Left out of the C++: the DllNotFoundException/BadImageFormatException -> PlatformNotSupportedException translation (the C++ links libsodium) and the misuse handler that threw NotSupportedException from a native callback (libsodium's default aborts)",
+        "csharp:Sodium.SodiumCore.SodiumVersionString: reports the toolchain's libsodium (the C++ copy) rather than the NuGet package's",
+        "csharp:Sodium.KeyPair.#ctor(System.Byte[],System.Byte[]): null arrays throw ArgumentNullException in the bridge (bridge::array), publicKey first",
+        "csharp:Sodium.KeyPair.Dispose: the C# Dispose is a no-op (the managed arrays are not cleared); the C++ object is freed when the handle is released",
+        "csharp:Sodium.KeyPair.PrivateKey: returns a copy",
+        "csharp:Sodium.KeyPair.PublicKey: returns a copy",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.InvalidPasswordStringException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.InvalidPasswordStringException.#ctor(System.String): the message of the exception",
+        "csharp:Sodium.Exceptions.InvalidPasswordStringException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor: the C# class stays the exception the tests catch; CcmExceptions.cs builds it from the C++ exception's fields()",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor(System.String): the string is ArgumentOutOfRangeException's paramName, as in .NET",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor(System.String,System.Exception): C++ exceptions here carry no inner exception; the constructor stays in C#",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor(System.String,System.Object,System.String): the C++ constructor takes the actual value as an int (the byte count the C# passed)",
+        "csharp:Sodium.DetachedBox.#ctor: the obsolete parameterless constructor always throws NotSupportedException; the fa\u00e7ade keeps it in C#",
+        "csharp:Sodium.DetachedBox.#ctor(System.Byte[],System.Byte[]): null arrays throw ArgumentNullException in the bridge (bridge::array), cipherText first",
+        "csharp:Sodium.DetachedBox.CipherText: the getter returns a copy; the obsolete setter always throws NotSupportedException and stays in C#",
+        "csharp:Sodium.DetachedBox.Mac: the getter returns a copy; the obsolete setter always throws NotSupportedException and stays in C#",
+        "dotnet:Tests.VersionTest#SodiumVersionStringTest: the C++ reports the toolchain's libsodium version, expected to be 1.0.18 like the NuGet package",
+        "dotnet:Tests.UtilitiesTest#BinaryToBase64EmptyByteArrTest: Assert.IsEmpty is a check that the vector is empty",
+        "dotnet:Tests.UtilitiesTest#IncrementTest: the C++ increment returns the incremented copy (the C# incremented its argument in place and returned it)",
+        "dotnet:Tests.UtilitiesExceptionTest#Base64ToBinaryNullTest: the C# null string is std::nullopt in the C++ API (Throws.Exception.TypeOf<ArgumentNullException>() is ccm::ArgumentNullException)",
+        "dotnet:Tests.UtilitiesExceptionTest#BinaryToBase64NullTest: the C# null array is std::nullopt in the C++ API (Throws.Exception.TypeOf<ArgumentNullException>() is ccm::ArgumentNullException)",
+        "dotnet:Tests.ThreadSafetyTest#ThreadSafetyRandomTest: two std::thread workers, each keeping the exception it caught, as the C# workers did",
+        "dotnet:Tests.ShortHashTest#SimpleShortHash: the string overload is the UTF-8 bytes of both strings passed to the byte[] overload",
+        "dotnet:Tests.SecretBoxExceptionTest#OpenDetachedSecretBoxBadMac: the C# passes a null mac; the C++ takes a std::vector and the bridge makes a null mac an empty one, which the C++ refuses with the same MacOutOfRangeException",
+        "dotnet:Tests.SecretAeadXChaCha20Poly1305Test#AeadWithoutAdditionalDataTest: no additional data is the C++ default (std::nullopt), as null is in the C#",
+        "dotnet:Tests.SecretAeadChaCha20Poly1305Test#AeadWithoutAdditionalDataTest: no additional data is the C++ default (std::nullopt), as null is in the C#",
+        "dotnet:Tests.SecretAeadChaCha20Poly1305IETFTest#AeadWithoutAdditionalDataTest: no additional data is the C++ default (std::nullopt), as null is in the C#",
+        "dotnet:Tests.SecretAeadAesTest#AesAeadWithoutAdditionalDataTest: no additional data is the C++ default (std::nullopt), as null is in the C#",
+        "dotnet:Tests.SecretAeadAesExceptionTest#SecretAeadDecryptWithBadKey: Assert.Warn when AES is not available is a logged warning",
+        "dotnet:Tests.SecretAeadAesExceptionTest#SecretAeadDecryptWithBadNonce: Assert.Warn when AES is not available is a logged warning",
+        "dotnet:Tests.SecretAeadAesExceptionTest#SecretAeadEncryptWithBadKey: Assert.Warn when AES is not available is a logged warning",
+        "dotnet:Tests.SecretAeadAesExceptionTest#SecretAeadEncryptWithBadNonce: Assert.Warn when AES is not available is a logged warning",
+        "dotnet:Tests.SealedPublicKeyBoxTest#CreateAndOpenSealedBoxWithKeyPairTest: the KeyPair overloads are C# conveniences over the byte[] overloads (the KeyPair's public key to create, its private and public keys to open); the C++ test makes the same calls",
+        "dotnet:Tests.RandomNumbersTest#GetRandomNumbersTest: Assert.IsNotNull on an int (boxed, so never null) is a check that the number is not negative",
+        "dotnet:Tests.RandomBytesTest#GetRandomBytesTest: Assert.IsNotNull on the three arrays is a check that they are not empty (a C++ vector is never null)",
+        "dotnet:Tests.PublicKeyBoxTest#GenerateKeyPairTest: Assert.IsNotNull on the two key arrays is a check that the keys are not empty (a C++ vector is never null)",
+        "dotnet:Tests.PublicKeyBoxExceptionTest#PublicKeyBoxOpenDetachedBadMac: the C# passes a null mac; the C++ takes a std::vector and the bridge makes a null mac an empty one, which the C++ refuses with the same MacOutOfRangeException",
+        "dotnet:Tests.PublicKeyAuthTest#GenerateKeyTest: Assert.IsNotNull on the two key arrays is a check that the keys are not empty (a C++ vector is never null)",
+        "dotnet:Tests.PublicKeyAuthExceptionTest#VerifyAuthWrongKey: CryptographicException is the C++ sodium::CryptographicException",
+        "dotnet:Tests.PasswordHashTest#ArgonHashStringSensitiveTest: Assert.Inconclusive on OutOfMemoryException is GTEST_SKIP",
+        "dotnet:Tests.PasswordHashTest#HashArgonLongTest: Assert.Inconclusive on OutOfMemoryException is GTEST_SKIP",
+        "dotnet:Tests.PasswordHashTest#ScryptHashStringSensitiveTest: Assert.Inconclusive on OutOfMemoryException is GTEST_SKIP",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryWrongSaltLength: the Strength.Interactive overload is the limits of that strength passed to the limits overload",
+        "dotnet:Tests.OneTimeAuthExceptionTest#OneTimeAuthSignNoKey: the C++ takes a std::vector: a null key is an empty one (the bridge makes it so), which the C++ refuses the same way",
+        "dotnet:Tests.GenericHashAlgorithmTest#ComputeHashFromMemoryStream: the stream is its bytes fed to update(), then finish(), which is what HashAlgorithm.ComputeHash(Stream) does",
+        "dotnet:Tests.GenericHashAlgorithmTest#ComputeHashFromNullStream: Stream.Null has no bytes, so ComputeHash only finishes"
+      ],
+      "unsafe": [],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_csharp_type_to_cpp",
+        "units": 31,
+        "committed": 31,
+        "planned_sites": 37,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_csharp_program_to_cpp",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_csharp_tests_to_cpp",
+        "units": 36,
+        "committed": 36,
+        "planned_sites": 240,
+        "converted_sites": 240
+      },
+      {
+        "id": "retire_csharp_to_cpp",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 99,
+        "converted_sites": 99
+      }
+    ],
+    "review_items": 105,
+    "duration_s": 20859.4,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 145.3,
+        "changed_files": 15,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 142.7,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 132.9,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 104.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 113.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 105.2,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 106.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 127.0,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 112.6,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 118.3,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 148.6,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 142.2,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 223.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 202.9,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 272.6,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 172.9,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 389.3,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 287.8,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 178.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 211.6,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 207.5,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 179.7,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 210.7,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 207.3,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 242.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0026",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 216.0,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0027",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 326.6,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0028",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 320.9,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0029",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 239.6,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0030",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 266.7,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0031",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 321.6,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0032",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 222.3,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0033",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 213.8,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0034",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 259.7,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0035",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 223.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0036",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 220.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0037",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 227.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0038",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 251.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0039",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 412.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0040",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 323.3,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0041",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 321.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0042",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 336.1,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0043",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 350.2,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0044",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 344.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0045",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 332.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0046",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 343.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0047",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 378.1,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0048",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 366.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0049",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 406.1,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0050",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 455.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0051",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 467.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0052",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 478.1,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0053",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 469.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0054",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 467.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0055",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 489.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0056",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 491.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0057",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 494.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0058",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 483.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0059",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 474.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0060",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 515.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0061",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 517.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0062",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 543.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0063",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 544.8,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0064",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 476.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0065",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 413.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0066",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 458.3,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0067",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 432.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0068",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 159.0,
+        "changed_files": 171,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261110-084755-9539\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 99,
+      "project_lines": 8823,
+      "units": 68,
+      "rule_sites": {
+        "port_csharp_type_to_cpp": 63,
+        "port_csharp_tests_to_cpp": 240,
+        "retire_csharp_to_cpp": 99
+      },
+      "sites": 402,
+      "files": 102,
+      "lines": 8823,
+      "expected_agent_attempts": 61.2,
+      "verify_s": 33.5,
+      "estimated_s": 8779.3,
+      "planner_llm_s_per_attempt": 100.0,
+      "estimated_s_after_d83": 11363.3
+    },
+    "done": {
+      "units": {
+        "committed": 68
+      },
+      "agent_units": 67,
+      "agent_attempts": 67,
+      "changed_files": 209,
+      "lines_added": 9845,
+      "lines_deleted": 8966
+    },
+    "time": {
+      "run_s": 20859.4,
+      "phases_s": {
+        "baselining": 58.1,
+        "indexing": 4.5,
+        "planning": 1.1,
+        "awaiting_plan_approval": 9.5,
+        "migrating": 20754.2,
+        "verifying": 32.1
+      },
+      "migrating_s": 20754.2,
+      "agent_s": 3253.4,
+      "unit_gates_s": 0.0,
+      "tools_s": 17500.8,
+      "unit_s": {
+        "mean": 305.1,
+        "median": 283.0,
+        "max": 548.4
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 2.36,
+      "agent_attempts_over_expected": 1.09,
+      "agent_s_per_attempt": 48.6,
+      "migrating_s_per_unit": 305.2,
+      "migrating_s_per_site": 51.6,
+      "migrating_s_per_changed_line": 1.1,
+      "run_min_per_1k_project_lines": 39.4,
+      "migrating_over_estimate_after_d83": 1.83
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 151.1,
+        "agent_s": 64.5,
+        "gate_s": 0.0,
+        "tools_s": 86.6,
+        "lines_changed": 1551
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 145.2,
+        "agent_s": 65.5,
+        "gate_s": 0.0,
+        "tools_s": 79.7,
+        "lines_changed": 126
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 135.5,
+        "agent_s": 53.0,
+        "gate_s": 0.0,
+        "tools_s": 82.4,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 21,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 107.2,
+        "agent_s": 12.5,
+        "gate_s": 0.0,
+        "tools_s": 94.7,
+        "lines_changed": 87
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 116.6,
+        "agent_s": 17.7,
+        "gate_s": 0.0,
+        "tools_s": 98.9,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 107.7,
+        "agent_s": 16.4,
+        "gate_s": 0.0,
+        "tools_s": 91.3,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 109.5,
+        "agent_s": 14.5,
+        "gate_s": 0.0,
+        "tools_s": 95.0,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 130.1,
+        "agent_s": 14.8,
+        "gate_s": 0.0,
+        "tools_s": 115.2,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 115.6,
+        "agent_s": 14.6,
+        "gate_s": 0.0,
+        "tools_s": 101.0,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 120.9,
+        "agent_s": 16.5,
+        "gate_s": 0.0,
+        "tools_s": 104.3,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 151.7,
+        "agent_s": 33.0,
+        "gate_s": 0.0,
+        "tools_s": 118.7,
+        "lines_changed": 109
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 34,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 144.8,
+        "agent_s": 32.3,
+        "gate_s": 0.0,
+        "tools_s": 112.5,
+        "lines_changed": 235
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 3,
+        "lines": 124,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 118.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 225.5,
+        "agent_s": 93.3,
+        "gate_s": 0.0,
+        "tools_s": 132.3,
+        "lines_changed": 228
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 75,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 205.5,
+        "agent_s": 67.4,
+        "gate_s": 0.0,
+        "tools_s": 138.1,
+        "lines_changed": 245
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 3,
+        "lines": 200,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 142.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 275.1,
+        "agent_s": 150.5,
+        "gate_s": 0.0,
+        "tools_s": 124.6,
+        "lines_changed": 564
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 80,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 175.6,
+        "agent_s": 46.7,
+        "gate_s": 0.0,
+        "tools_s": 128.9,
+        "lines_changed": 282
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 4,
+        "lines": 643,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 286.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 391.9,
+        "agent_s": 260.2,
+        "gate_s": 0.0,
+        "tools_s": 131.7,
+        "lines_changed": 1159
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 244,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 157.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 290.9,
+        "agent_s": 154.5,
+        "gate_s": 0.0,
+        "tools_s": 136.5,
+        "lines_changed": 807
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 56,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 180.6,
+        "agent_s": 41.3,
+        "gate_s": 0.0,
+        "tools_s": 139.3,
+        "lines_changed": 221
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 120,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 214.1,
+        "agent_s": 72.4,
+        "gate_s": 0.0,
+        "tools_s": 141.7,
+        "lines_changed": 425
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 95,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 210.5,
+        "agent_s": 53.9,
+        "gate_s": 0.0,
+        "tools_s": 156.7,
+        "lines_changed": 349
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 17,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 182.4,
+        "agent_s": 35.7,
+        "gate_s": 0.0,
+        "tools_s": 146.6,
+        "lines_changed": 94
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 96,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 213.2,
+        "agent_s": 56.7,
+        "gate_s": 0.0,
+        "tools_s": 156.5,
+        "lines_changed": 351
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 96,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 210.4,
+        "agent_s": 52.1,
+        "gate_s": 0.0,
+        "tools_s": 158.3,
+        "lines_changed": 351
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 205,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 144.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 244.5,
+        "agent_s": 80.4,
+        "gate_s": 0.0,
+        "tools_s": 164.1,
+        "lines_changed": 556
+      },
+      {
+        "id": "U-0026",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 59,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 219.2,
+        "agent_s": 51.2,
+        "gate_s": 0.0,
+        "tools_s": 168.0,
+        "lines_changed": 203
+      },
+      {
+        "id": "U-0027",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 4,
+        "lines": 262,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 162.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 329.1,
+        "agent_s": 157.1,
+        "gate_s": 0.0,
+        "tools_s": 171.9,
+        "lines_changed": 669
+      },
+      {
+        "id": "U-0028",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 282,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 169.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 323.7,
+        "agent_s": 137.4,
+        "gate_s": 0.0,
+        "tools_s": 186.3,
+        "lines_changed": 762
+      },
+      {
+        "id": "U-0029",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 133,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 121.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 242.6,
+        "agent_s": 51.5,
+        "gate_s": 0.0,
+        "tools_s": 191.1,
+        "lines_changed": 333
+      },
+      {
+        "id": "U-0030",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 235,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 154.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 269.4,
+        "agent_s": 67.2,
+        "gate_s": 0.0,
+        "tools_s": 202.3,
+        "lines_changed": 599
+      },
+      {
+        "id": "U-0031",
+        "rules": [
+          "port_csharp_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 367,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 196.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 324.7,
+        "agent_s": 110.2,
+        "gate_s": 0.0,
+        "tools_s": 214.5,
+        "lines_changed": 792
+      },
+      {
+        "id": "U-0032",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 224.9,
+        "agent_s": 29.8,
+        "gate_s": 0.0,
+        "tools_s": 195.0,
+        "lines_changed": 114
+      },
+      {
+        "id": "U-0033",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 216.3,
+        "agent_s": 26.9,
+        "gate_s": 0.0,
+        "tools_s": 189.4,
+        "lines_changed": 68
+      },
+      {
+        "id": "U-0034",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 15,
+        "expected_attempts": 0.9,
+        "estimated_s": 119.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 262.2,
+        "agent_s": 67.7,
+        "gate_s": 0.0,
+        "tools_s": 194.5,
+        "lines_changed": 170
+      },
+      {
+        "id": "U-0035",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 226.5,
+        "agent_s": 25.1,
+        "gate_s": 0.0,
+        "tools_s": 201.4,
+        "lines_changed": 87
+      },
+      {
+        "id": "U-0036",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 224.0,
+        "agent_s": 17.9,
+        "gate_s": 0.0,
+        "tools_s": 206.1,
+        "lines_changed": 40
+      },
+      {
+        "id": "U-0037",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 230.4,
+        "agent_s": 20.5,
+        "gate_s": 0.0,
+        "tools_s": 209.9,
+        "lines_changed": 56
+      },
+      {
+        "id": "U-0038",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 13,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 254.5,
+        "agent_s": 40.8,
+        "gate_s": 0.0,
+        "tools_s": 213.7,
+        "lines_changed": 126
+      },
+      {
+        "id": "U-0039",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 31,
+        "expected_attempts": 0.9,
+        "estimated_s": 299.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 415.1,
+        "agent_s": 167.9,
+        "gate_s": 0.0,
+        "tools_s": 247.2,
+        "lines_changed": 612
+      },
+      {
+        "id": "U-0040",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 122.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 325.8,
+        "agent_s": 43.4,
+        "gate_s": 0.0,
+        "tools_s": 282.4,
+        "lines_changed": 157
+      },
+      {
+        "id": "U-0041",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 324.1,
+        "agent_s": 36.9,
+        "gate_s": 0.0,
+        "tools_s": 287.2,
+        "lines_changed": 191
+      },
+      {
+        "id": "U-0042",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 15,
+        "expected_attempts": 0.9,
+        "estimated_s": 147.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 338.6,
+        "agent_s": 43.2,
+        "gate_s": 0.0,
+        "tools_s": 295.4,
+        "lines_changed": 231
+      },
+      {
+        "id": "U-0043",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 353.7,
+        "agent_s": 38.7,
+        "gate_s": 0.0,
+        "tools_s": 315.0,
+        "lines_changed": 164
+      },
+      {
+        "id": "U-0044",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 347.5,
+        "agent_s": 19.2,
+        "gate_s": 0.0,
+        "tools_s": 328.3,
+        "lines_changed": 26
+      },
+      {
+        "id": "U-0045",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 335.5,
+        "agent_s": 12.2,
+        "gate_s": 0.0,
+        "tools_s": 323.4,
+        "lines_changed": 33
+      },
+      {
+        "id": "U-0046",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 348.4,
+        "agent_s": 21.1,
+        "gate_s": 0.0,
+        "tools_s": 327.2,
+        "lines_changed": 40
+      },
+      {
+        "id": "U-0047",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 380.9,
+        "agent_s": 30.1,
+        "gate_s": 0.0,
+        "tools_s": 350.8,
+        "lines_changed": 89
+      },
+      {
+        "id": "U-0048",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 369.5,
+        "agent_s": 20.5,
+        "gate_s": 0.0,
+        "tools_s": 349.0,
+        "lines_changed": 58
+      },
+      {
+        "id": "U-0049",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 409.4,
+        "agent_s": 24.3,
+        "gate_s": 0.0,
+        "tools_s": 385.2,
+        "lines_changed": 99
+      },
+      {
+        "id": "U-0050",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 459.1,
+        "agent_s": 28.7,
+        "gate_s": 0.0,
+        "tools_s": 430.4,
+        "lines_changed": 61
+      },
+      {
+        "id": "U-0051",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 471.2,
+        "agent_s": 27.2,
+        "gate_s": 0.0,
+        "tools_s": 444.0,
+        "lines_changed": 85
+      },
+      {
+        "id": "U-0052",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 481.6,
+        "agent_s": 30.2,
+        "gate_s": 0.0,
+        "tools_s": 451.4,
+        "lines_changed": 83
+      },
+      {
+        "id": "U-0053",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 473.2,
+        "agent_s": 19.0,
+        "gate_s": 0.0,
+        "tools_s": 454.2,
+        "lines_changed": 56
+      },
+      {
+        "id": "U-0054",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 471.2,
+        "agent_s": 18.9,
+        "gate_s": 0.0,
+        "tools_s": 452.3,
+        "lines_changed": 56
+      },
+      {
+        "id": "U-0055",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 493.0,
+        "agent_s": 33.7,
+        "gate_s": 0.0,
+        "tools_s": 459.2,
+        "lines_changed": 81
+      },
+      {
+        "id": "U-0056",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 494.4,
+        "agent_s": 28.4,
+        "gate_s": 0.0,
+        "tools_s": 466.0,
+        "lines_changed": 62
+      },
+      {
+        "id": "U-0057",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 497.9,
+        "agent_s": 26.5,
+        "gate_s": 0.0,
+        "tools_s": 471.4,
+        "lines_changed": 132
+      },
+      {
+        "id": "U-0058",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 487.2,
+        "agent_s": 28.1,
+        "gate_s": 0.0,
+        "tools_s": 459.1,
+        "lines_changed": 105
+      },
+      {
+        "id": "U-0059",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 477.9,
+        "agent_s": 25.6,
+        "gate_s": 0.0,
+        "tools_s": 452.3,
+        "lines_changed": 129
+      },
+      {
+        "id": "U-0060",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 518.4,
+        "agent_s": 25.7,
+        "gate_s": 0.0,
+        "tools_s": 492.7,
+        "lines_changed": 110
+      },
+      {
+        "id": "U-0061",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 520.9,
+        "agent_s": 14.6,
+        "gate_s": 0.0,
+        "tools_s": 506.2,
+        "lines_changed": 44
+      },
+      {
+        "id": "U-0062",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 18,
+        "expected_attempts": 0.9,
+        "estimated_s": 137.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 546.5,
+        "agent_s": 38.1,
+        "gate_s": 0.0,
+        "tools_s": 508.4,
+        "lines_changed": 174
+      },
+      {
+        "id": "U-0063",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 548.4,
+        "agent_s": 35.4,
+        "gate_s": 0.0,
+        "tools_s": 512.9,
+        "lines_changed": 150
+      },
+      {
+        "id": "U-0064",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 479.2,
+        "agent_s": 17.7,
+        "gate_s": 0.0,
+        "tools_s": 461.5,
+        "lines_changed": 57
+      },
+      {
+        "id": "U-0065",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 416.7,
+        "agent_s": 14.9,
+        "gate_s": 0.0,
+        "tools_s": 401.8,
+        "lines_changed": 35
+      },
+      {
+        "id": "U-0066",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 17,
+        "expected_attempts": 0.9,
+        "estimated_s": 179.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 460.9,
+        "agent_s": 48.4,
+        "gate_s": 0.0,
+        "tools_s": 412.5,
+        "lines_changed": 317
+      },
+      {
+        "id": "U-0067",
+        "rules": [
+          "port_csharp_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 435.4,
+        "agent_s": 11.1,
+        "gate_s": 0.0,
+        "tools_s": 424.3,
+        "lines_changed": 20
+      },
+      {
+        "id": "U-0068",
+        "rules": [
+          "retire_csharp_to_cpp"
+        ],
+        "files": 102,
+        "lines": 8823,
+        "sites": 99,
+        "expected_attempts": 0.9,
+        "estimated_s": 117.7,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 159.1,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 159.1,
+        "lines_changed": 12520
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 253,
+    "duration_ms": 20921685,
+    "total_cost_usd_equivalent": 16.5809221,
+    "usage": {
+      "input_tokens": 348,
+      "cache_creation_input_tokens": 861728,
+      "cache_read_input_tokens": 83931544,
+      "output_tokens": 474001,
+      "output_tokens_details": {
+        "thinking_tokens": 112265
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 861728,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1891,
+          "cache_read_input_tokens": 866575,
+          "cache_creation_input_tokens": 25088,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 25088
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port is finished. All 68 units were committed, and the final verification, a clean build plus the full test run, passed with 257 tests. The result is on branch `codecoremorph/20261110-084755-9539` (last commit `70283d9e1165`, base `fd6567199b4c`). I did not merge or push anything.\n\nI approved the plan myself, as you asked. Every unit passed on its first attempt, and the whole run took about 348 minutes.\n\n## What was ported\n\n- **Library types (U-0001 to U-0031).** All 31 type units moved to C++ under `cpp/` as `sodium::*` classes over libsodium. Each C# type became a fa\u00e7ade calling `extern \"C\"` bridge exports. The 239-entry symbol map covers them.\n  - **Exceptions.** The 10 range exceptions and `InvalidPasswordStringException` kept their C# classes. They gained C++ mirrors that `CcmExceptions.cs` rebuilds on the C# side.\n  - **New mirrors.** I added mirrors for `CryptographicException`, `PlatformNotSupportedException` and `OutOfMemoryException` in the C++ sources.\n- **Tests (U-0032 to U-0067).** All 36 C# test files were translated to GoogleTest in `cpp/tests/`. The test map pairs 221 tests.\n- **Retirement (U-0068).** The deterministic codemod deleted the C# library, its projects and the C# tests (171 files). The CMake C++ build is now the project.\n- **Program rule.** It found no sites, so there were no program units.\n\n## What the verification did not cover\n\n- **I-4 warnings.** The check that compares assertion counts flagged 6 of the 36 test units (U-0034, U-0038, U-0039, U-0040, U-0049, U-0062). Those units' translated tests check less than their originals:\n  - 18 C# cases have no C++ counterpart. Of these, 8 test a null argument. The null checks live in the bridge, and the C++ API takes non-null vectors. 9 are `[Ignore]`d with empty bodies in the C#. 1 tests `Encoding.UTF8.GetBytes(null)`, which is C#-only. All 18 are listed in the report under \"Tests without a counterpart\".\n  - Three tests (`ArgonHashStringSensitiveTest`, `HashArgonLongTest`, `ScryptHashStringSensitiveTest`) show 2 checks against the C#'s 3. The third C# check is `Assert.Inconclusive` after an out-of-memory error, which I translated to `GTEST_SKIP()`.\n  - Four AES exception tests also show 1 check against 2, because the C# counts `Assert.Warn` and the C++ logs a warning instead.\n- **Skipped tests.** The baseline had 10 skipped tests (not parity-checked). The three `GTEST_SKIP` branches above would show as skipped, not passed, if an out-of-memory error occurs.\n- **Characterization tests.** They did not run, because the C# adapter can't add tests to the build.\n- **Unreviewed code.** Nothing in the C++ uses `unsafe`, but the generated bridge and fa\u00e7ade code is large and has not had a human review.\n\n## Behavior kept deliberately\n\n- `PublicKeyBox.CreateDetached` and `OpenDetached` pass the secret and public keys to libsodium in swapped positions. This looks like a bug in the original, and I kept it so behavior doesn't change. Create and Open are correct.\n- `SealedPublicKeyBox.Open` names the public key as the parameter when the secret key is the wrong size, as the C# did.\n- `SodiumCore.Initialize()` is kept for the C# NuGet copy of libsodium until the retirement. `SodiumVersionString` and AES availability now report the toolchain's libsodium. The version test expects 1.0.18.\n\n## Review\n\nThe report is `E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261110-084755-9539\\report.md`. To review the changes, run `git diff fd6567199b4c codecoremorph/20261110-084755-9539`, or `git log` on that branch. Merging is up to you."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 253,
+      "duration_ms": 20921685,
+      "total_cost_usd_equivalent": 16.5809221,
+      "usage": {
+        "input_tokens": 348,
+        "cache_creation_input_tokens": 861728,
+        "cache_read_input_tokens": 83931544,
+        "output_tokens": 474001,
+        "output_tokens_details": {
+          "thinking_tokens": 112265
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 861728,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1891,
+            "cache_read_input_tokens": 866575,
+            "cache_creation_input_tokens": 25088,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 25088
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port is finished. All 68 units were committed, and the final verification, a clean build plus the full test run, passed with 257 tests. The result is on branch `codecoremorph/20261110-084755-9539` (last commit `70283d9e1165`, base `fd6567199b4c`). I did not merge or push anything.\n\nI approved the plan myself, as you asked. Every unit passed on its first attempt, and the whole run took about 348 minutes.\n\n## What was ported\n\n- **Library types (U-0001 to U-0031).** All 31 type units moved to C++ under `cpp/` as `sodium::*` classes over libsodium. Each C# type became a fa\u00e7ade calling `extern \"C\"` bridge exports. The 239-entry symbol map covers them.\n  - **Exceptions.** The 10 range exceptions and `InvalidPasswordStringException` kept their C# classes. They gained C++ mirrors that `CcmExceptions.cs` rebuilds on the C# side.\n  - **New mirrors.** I added mirrors for `CryptographicException`, `PlatformNotSupportedException` and `OutOfMemoryException` in the C++ sources.\n- **Tests (U-0032 to U-0067).** All 36 C# test files were translated to GoogleTest in `cpp/tests/`. The test map pairs 221 tests.\n- **Retirement (U-0068).** The deterministic codemod deleted the C# library, its projects and the C# tests (171 files). The CMake C++ build is now the project.\n- **Program rule.** It found no sites, so there were no program units.\n\n## What the verification did not cover\n\n- **I-4 warnings.** The check that compares assertion counts flagged 6 of the 36 test units (U-0034, U-0038, U-0039, U-0040, U-0049, U-0062). Those units' translated tests check less than their originals:\n  - 18 C# cases have no C++ counterpart. Of these, 8 test a null argument. The null checks live in the bridge, and the C++ API takes non-null vectors. 9 are `[Ignore]`d with empty bodies in the C#. 1 tests `Encoding.UTF8.GetBytes(null)`, which is C#-only. All 18 are listed in the report under \"Tests without a counterpart\".\n  - Three tests (`ArgonHashStringSensitiveTest`, `HashArgonLongTest`, `ScryptHashStringSensitiveTest`) show 2 checks against the C#'s 3. The third C# check is `Assert.Inconclusive` after an out-of-memory error, which I translated to `GTEST_SKIP()`.\n  - Four AES exception tests also show 1 check against 2, because the C# counts `Assert.Warn` and the C++ logs a warning instead.\n- **Skipped tests.** The baseline had 10 skipped tests (not parity-checked). The three `GTEST_SKIP` branches above would show as skipped, not passed, if an out-of-memory error occurs.\n- **Characterization tests.** They did not run, because the C# adapter can't add tests to the build.\n- **Unreviewed code.** Nothing in the C++ uses `unsafe`, but the generated bridge and fa\u00e7ade code is large and has not had a human review.\n\n## Behavior kept deliberately\n\n- `PublicKeyBox.CreateDetached` and `OpenDetached` pass the secret and public keys to libsodium in swapped positions. This looks like a bug in the original, and I kept it so behavior doesn't change. Create and Open are correct.\n- `SealedPublicKeyBox.Open` names the public key as the parameter when the secret key is the wrong size, as the C# did.\n- `SodiumCore.Initialize()` is kept for the C# NuGet copy of libsodium until the retirement. `SodiumVersionString` and AES availability now report the toolchain's libsodium. The version test expects 1.0.18.\n\n## Review\n\nThe report is `E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261110-084755-9539\\report.md`. To review the changes, run `git diff fd6567199b4c codecoremorph/20261110-084755-9539`, or `git log` on that branch. Merging is up to you."
+    }
+  ]
+}

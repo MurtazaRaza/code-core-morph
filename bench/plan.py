@@ -61,6 +61,35 @@ def describe(pin: dict[str, Any]) -> str:
     return f"{source(pin)['standard']} -> {migration(pin)['target']['standard']}"
 
 
+def toolchain_image(pin: dict[str, Any]) -> str | None:
+    """The image a pin's ``image`` builds on top of its toolchain's, by ID, or None.
+
+    ``image`` names a Dockerfile under bench/ (``{"dockerfile": "images/libsodium/Dockerfile",
+    "toolchain": "csharp-port"}``) whose ``BASE`` argument is the toolchain image: a project's
+    native libraries added for the code a port writes, which the plan says it needs (D-82).
+    Docker's CLI builds it; a local image's ID pins it by content, as ``sandbox.image`` wants.
+    """
+    found = pin.get("image")
+    if not isinstance(found, dict):
+        return None
+    from codecoremorph.sandbox.provisioning import read_lock
+
+    # By its published digest, else its local build's tag: BuildKit takes no image ID in FROM.
+    lock = read_lock(str(found.get("toolchain", "csharp-port")))
+    base = lock.pinned_reference or lock.local_reference
+    dockerfile = BENCH / str(found["dockerfile"])
+    tag = f"codecoremorph-bench-{pin['project'].lower()}:local"
+    subprocess.run(
+        ["docker", "build", "--build-arg", f"BASE={base}", "-t", tag, "-f", str(dockerfile),
+         str(dockerfile.parent)],
+        check=True,
+    )  # fmt: skip
+    return subprocess.run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()  # fmt: skip
+
+
 def _build(pin: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
     """The pin's build options by build system: its ``build``, else CMake's configure_args."""
     found = pin.get("build")
@@ -69,7 +98,7 @@ def _build(pin: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
     return {"cmake": {"configure_args": list(pin.get("configure_args", []))}}
 
 
-def manifest(pin: dict[str, Any], root: Path, sandbox: str) -> str:
+def manifest(pin: dict[str, Any], root: Path, sandbox: str, image: str | None = None) -> str:
     def items(values: object) -> str:
         return ", ".join(json.dumps(v) for v in values) if isinstance(values, list) else ""
 
@@ -97,7 +126,7 @@ build_system: {src["build_system"]}}}
     standard: {target["standard"]}
     rules: [{", ".join(target["rules"])}]
 {build_block}guardrails: {{build_timeout_s: 3600, test_timeout_s: 3600}}
-sandbox: {{mode: {sandbox}}}
+sandbox: {{mode: {sandbox}{f", image: {json.dumps(image)}" if image else ""}}}
 """
 
 
@@ -115,7 +144,8 @@ def main(argv: list[str]) -> int:
         print(f"{root} doesn't exist; run bench/fetch.py first", file=sys.stderr)
         return 1
     config = root.parent / f"{pin['project']}-plan.yaml"
-    config.write_text(manifest(pin, root, args.sandbox), encoding="utf-8")
+    image = toolchain_image(pin) if args.sandbox == "docker" else None
+    config.write_text(manifest(pin, root, args.sandbox, image), encoding="utf-8")
 
     result = subprocess.run(
         [sys.executable, "-m", "codecoremorph", "plan", str(config), "--json"],
