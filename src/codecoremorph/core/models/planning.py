@@ -81,7 +81,9 @@ class PortUnit(CoreModel):
         default_factory=list[str],
         description="A C translation unit's (D-68): the functions and variables it defines that "
         "other files use. The new code exports them under these names, and c_abi_kept compares "
-        "only these, since a shared header also declares other units' functions",
+        "only these, since a shared header also declares other units' functions. A C# type "
+        "unit's (D-78): its types' public and protected members, by symbol ID, which the symbol "
+        "map covers",
     )
     sys_headers: list[WorktreePath] = Field(
         default_factory=list[WorktreePath],
@@ -115,10 +117,17 @@ class PortUnit(CoreModel):
         default_factory=list[str],
         description="The packages its new code depends on: an executable's libraries (D-60)",
     )
+    types: list[str] = Field(
+        default_factory=list[str],
+        description="A C# type unit's (D-78): the types it ports, by symbol ID; each keeps its "
+        "C# API as a façade",
+    )
 
     def codemod_options(self) -> dict[str, str]:
         """What the scaffold codemod needs to know about the unit."""
         options = {"crate": self.crate, "module": self.module, "build_target": self.build_target}
+        if self.types:
+            options["types"] = ",".join(self.types)
         if self.bin is not None:
             options["bin"] = self.bin
         if self.dependencies:
@@ -162,8 +171,10 @@ class WorkUnit(CoreModel):
     )
     kept_api: list[WorktreePath] = Field(
         default_factory=list[WorktreePath],
-        description="A C port's retirement with keep_source_api: the public headers it keeps, "
-        "whose functions the crates must go on exporting, checked whole by c_abi_kept (D-72)",
+        description="A port's retirement with keep_source_api: what it keeps of the source's "
+        "public API. A C port's public headers, whose functions the crates must go on "
+        "exporting, checked whole by c_abi_kept (D-72); a C# port's library projects, which "
+        "stay a .NET library over the target (D-79)",
     )
 
     @field_validator("flags")

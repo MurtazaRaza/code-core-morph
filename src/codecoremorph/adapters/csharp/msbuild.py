@@ -203,6 +203,7 @@ class ProjectInfo:
     lang_version: str | None = None
     sdk_style: bool = True
     test_project: bool = False
+    executable: bool = False  # OutputType Exe or WinExe: a program
 
     @property
     def standard(self) -> str | None:
@@ -223,11 +224,13 @@ def project_info(text: str, inherited: dict[str, str] | None = None) -> ProjectI
     frameworks_text = props.get("TargetFrameworks") or props.get("TargetFramework") or ""
     frameworks = [t.strip() for t in _resolve(frameworks_text, props).split(";") if t.strip()]
     lang = props.get("LangVersion")
+    output = _resolve(props.get("OutputType") or "", props).strip().lower()
     return ProjectInfo(
         frameworks=[t for t in frameworks if "$(" not in t],
         lang_version=_resolve(lang, props) if lang else None,
         sdk_style=_SDK_PROJECT.search(clean) is not None,
         test_project=_TEST_SDK.search(clean) is not None,
+        executable=output in ("exe", "winexe"),
     )
 
 

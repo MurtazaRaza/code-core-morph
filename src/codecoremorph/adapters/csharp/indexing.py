@@ -2,6 +2,10 @@
 the files each project compiles, and its JSON lines become the SQLite index. The project files,
 solutions and MSBuild's other files are build files.
 
+The source of a port (``LanguageConfig.port_target``, D-78) also gets its types, the uses of its
+generics, what a port refuses, the exceptions its members throw, and its test methods with the
+TRX names of their cases (:func:`port_records`).
+
 The helper is compiled from its source into the adapter's cache with the SDK's own ``csc``,
 against the SDK's Roslyn assemblies, once per helper version; it runs on the SDK's runtime.
 """
@@ -13,6 +17,8 @@ import json
 import logging
 import re
 import time
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -24,9 +30,25 @@ from codecoremorph.adapters.csharp.msbuild import (
     inherited_properties,
     project_info,
 )
+from codecoremorph.adapters.csharp.trx import test_id
 from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
-from codecoremorph.core.models import FileRole, IndexMeta, LineEnding, SymbolIndex
+from codecoremorph.core.models import (
+    BuildTarget,
+    FileRole,
+    GenericUse,
+    IndexMeta,
+    LineEnding,
+    PortRefusal,
+    RefusalSite,
+    SymbolIndex,
+    SymbolKind,
+    TargetKind,
+    TestEntry,
+    TestMethod,
+    ThrowSite,
+    TypeEntry,
+)
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.sandbox.executor import full_output
 from codecoremorph.store.index import (
@@ -43,6 +65,9 @@ log = logging.getLogger(__name__)
 HELPER_SOURCE = "CsIndexHelper.cs"
 HELPER_NAME = "CsIndexHelper"
 _PUBLIC = ("public", "protected")
+# A generic used all over keeps this many of its uses with each set of type arguments: enough
+# for a unit's note, without one row per member access.
+MAX_USES = 12
 _RUNTIME_CONFIG = {
     "runtimeOptions": {
         "tfm": "net10.0",
@@ -198,7 +223,10 @@ def run_index(
     *,
     mirror: Path,
     adapter_version: str,
+    port: bool = False,
 ) -> SymbolIndex:
+    """The index of the projects' compiled files; ``port`` adds what a port's source needs
+    (D-78)."""
     started = time.monotonic()
     ctx.cache_dir.mkdir(parents=True, exist_ok=True)
     ctx.log_dir.mkdir(parents=True, exist_ok=True)
@@ -219,6 +247,8 @@ def run_index(
             f"output={ctx.sandbox(output)}",
             f"refpack={tools.ref_pack}",
         ]
+        if port:
+            lines.append("port=1")
         for project in lay.projects:
             info = project_info(
                 _text(ctx.worktree / project) or "", inherited_properties(ctx.worktree, project)
@@ -256,11 +286,9 @@ def run_index(
         )
     for path in compiled:
         role = FileRole.TEST if tests.matches(path) else FileRole.SOURCE
-        files.append(
-            file_row(
-                ctx.worktree, path, role=role, language="csharp", public=public_api.matches(path)
-            )
-        )
+        # A port's source files are its façades' API, which I-6 snapshots (D-78).
+        public = public_api.matches(path) or (port and role is FileRole.SOURCE)
+        files.append(file_row(ctx.worktree, path, role=role, language="csharp", public=public))
     known = {f[0] for f in files}
     symbols: list[SymbolRow] = []
     references: list[ReferenceRow] = []
@@ -271,7 +299,10 @@ def run_index(
             problems.append(str(row.get("message")))
         elif kind == "sym" and row["file"] in known:
             boundary = str(row["b"])
-            if boundary == "none" and row["vis"] in _PUBLIC and public_api.matches(row["file"]):
+            # A port's source keeps its API behind façades: I-6 checks each member's signature
+            # (D-78), as the manifest's public_api asks of an upgrade.
+            exposed = public_api.matches(row["file"]) or (port and not tests.matches(row["file"]))
+            if boundary == "none" and row["vis"] in _PUBLIC and exposed:
                 boundary = "public_api"
             symbols.append(
                 (
@@ -318,7 +349,163 @@ def run_index(
     path = ctx.cache_dir / INDEX_FILE_NAME
     with IndexStore.open(path, reset=True) as store:
         store.write(files=files, symbols=symbols, references=references, dependencies=dependencies)
+        if port:
+            records = port_records(rows, known)
+            store.set_port_source(
+                types=records.types, generic_uses=records.uses, test_methods=records.tests
+            )
+            store.set_test_entries(records.entries())
+            store.set_build_targets(project_targets(ctx.worktree, lay))
+            meta.stats["types"] = len(records.types)
+            meta.stats["test_methods"] = len(records.tests)
         store.set_meta(meta)
     if problems:
         log.warning("the C# index helper reported %d problem(s): %s", len(problems), problems[0])
     return SymbolIndex(path=path, meta=meta, problems=problems[:50])
+
+
+def project_targets(worktree: Path, lay: Layout) -> list[BuildTarget]:
+    """Each project as a build target (D-78): a test project, a program (``OutputType`` Exe or
+    WinExe) or a library, with the files it compiles and the projects it references. A port
+    cuts its types from the libraries, and leaves programs and tests to their own units."""
+    targets: list[BuildTarget] = []
+    for project in sorted(lay.projects):
+        info = project_info(
+            _text(worktree / project) or "", inherited_properties(worktree, project)
+        )
+        if info.test_project:
+            kind = TargetKind.TEST
+        elif info.executable:
+            kind = TargetKind.EXECUTABLE
+        else:
+            kind = TargetKind.LIBRARY
+        targets.append(
+            BuildTarget(
+                name=project,
+                kind=kind,
+                files=list(lay.sources.get(project, [])),
+                dependencies=sorted(lay.references.get(project, [])),
+            )
+        )
+    return targets
+
+
+@dataclass
+class PortRecords:
+    """What a port's source records beyond its symbols (D-78)."""
+
+    types: list[TypeEntry] = field(default_factory=list[TypeEntry])
+    uses: list[GenericUse] = field(default_factory=list[GenericUse])
+    tests: list[TestMethod] = field(default_factory=list[TestMethod])
+
+    def entries(self) -> list[TestEntry]:
+        """A test entry per case the sources name exactly, run by its test project."""
+        return [
+            TestEntry(test_id=case, runs=method.project, file=method.file)
+            for method in self.tests
+            if method.exact
+            for case in method.cases
+        ]
+
+
+def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> PortRecords:
+    """The helper's ``type``, ``inst``, ``refuse``, ``throw`` and ``test`` rows (``port=1``) as
+    the index's models, for the files the index has (``known``). A refusal or a throw goes to
+    the type it is in; a generic's uses with the same type arguments keep their first
+    :data:`MAX_USES`."""
+    types: dict[str, TypeEntry] = {}
+    uses: list[GenericUse] = []
+    tests: list[TestMethod] = []
+    refusals: list[tuple[str, RefusalSite]] = []
+    throws: list[tuple[str, ThrowSite]] = []
+    counts: dict[tuple[str, tuple[str, ...]], int] = {}
+    for row in rows:
+        kind = row.get("t")
+        if kind == "type":
+            files = [str(f) for f in _strings(row.get("files")) if f in known]
+            if not files:
+                continue
+            types[str(row["id"])] = TypeEntry(
+                id=str(row["id"]),
+                name=str(row["name"]),
+                kind=SymbolKind(str(row["kind"])),
+                files=files,
+                project=_optional(row.get("project")),
+                outer=_optional(row.get("outer")),
+                base=_optional(row.get("base")),
+                interfaces=_strings(row.get("interfaces")),
+                external_bases=_strings(row.get("external")),
+                abstract=bool(row.get("abstract")),
+                sealed=bool(row.get("sealed")),
+                static=bool(row.get("static")),
+                type_parameters=_strings(row.get("tparams")),
+                members=_strings(row.get("members")),
+                virtual_members=_strings(row.get("virtual")),
+                instance_fields=_strings(row.get("fields")),
+                static_state=_strings(row.get("statics")),
+            )
+        elif kind == "refuse" and row.get("file") in known:
+            site = RefusalSite(
+                what=PortRefusal(str(row["what"])),
+                detail=str(row.get("detail") or row["what"]),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+                member=_optional(row.get("member")),
+            )
+            refusals.append((str(row["type"]), site))
+        elif kind == "throw" and row.get("file") in known:
+            thrown = ThrowSite(
+                exception=str(row["exception"]),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+                member=_optional(row.get("member")),
+            )
+            throws.append((str(row["type"]), thrown))
+        elif kind == "inst" and row.get("file") in known:
+            arguments = _strings(row.get("args"))
+            key = (str(row["of"]), tuple(arguments))
+            counts[key] = counts.get(key, 0) + 1
+            if counts[key] > MAX_USES:
+                continue
+            uses.append(
+                GenericUse(
+                    symbol=str(row["of"]),
+                    arguments=arguments,
+                    open=bool(row.get("open")),
+                    file=str(row["file"]),
+                    line=max(int(row["line"]), 1),
+                    member=_optional(row.get("member")),
+                )
+            )
+        elif kind == "test" and row.get("file") in known:
+            class_name = str(row["cls"])
+            tests.append(
+                TestMethod(
+                    file=str(row["file"]),
+                    class_name=class_name,
+                    method=str(row["method"]),
+                    framework=str(row["fw"]),
+                    project=_optional(row.get("project")),
+                    cases=[test_id(class_name, c) for c in _strings(row.get("cases"))],
+                    exact=bool(row.get("exact", True)),
+                )
+            )
+    for owner, site in refusals:
+        if owner in types:
+            types[owner].refusals.append(site)
+    for owner, thrown in throws:
+        if owner in types:
+            types[owner].throws.append(thrown)
+    return PortRecords(
+        types=sorted(types.values(), key=lambda t: t.id),
+        uses=sorted(uses, key=lambda u: (u.symbol, u.file, u.line, u.arguments)),
+        tests=sorted(tests, key=lambda m: (m.file, m.class_name, m.method)),
+    )
+
+
+def _optional(value: object) -> str | None:
+    return str(value) if value else None
+
+
+def _strings(value: object) -> list[str]:
+    return [str(v) for v in cast(list[object], value)] if isinstance(value, list) else []

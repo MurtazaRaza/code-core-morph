@@ -28,6 +28,7 @@ from codecoremorph.core.models import (
     FileDependency,
     FileEntry,
     FileRole,
+    GenericUse,
     IndexMeta,
     LineEnding,
     Reference,
@@ -37,6 +38,8 @@ from codecoremorph.core.models import (
     SymbolKind,
     TargetKind,
     TestEntry,
+    TestMethod,
+    TypeEntry,
     Visibility,
 )
 
@@ -234,6 +237,22 @@ class IndexStore:
         """The tests the build registers and what they run (D-60)."""
         self.set_value("test_entries", "[" + ",".join(e.model_dump_json() for e in entries) + "]")
 
+    def set_port_source(
+        self,
+        *,
+        types: Sequence[TypeEntry] = (),
+        generic_uses: Sequence[GenericUse] = (),
+        test_methods: Sequence[TestMethod] = (),
+    ) -> None:
+        """What a port's source records beyond its symbols (a C# source, D-78): its types,
+        the uses of its generics with their type arguments, and its test methods."""
+        for key, models in (
+            ("port_types", types),
+            ("generic_uses", generic_uses),
+            ("test_methods", test_methods),
+        ):
+            self.set_value(key, "[" + ",".join(m.model_dump_json() for m in models) + "]")
+
     def clear_program_boundaries(self) -> None:
         """Take what a source file only programs compile defines off the C ABI boundary: no
         code links against a program, so its functions and globals are no ABI (D-71;
@@ -265,6 +284,21 @@ class IndexStore:
         if not text:
             return []
         return [TestEntry.model_validate(e) for e in json.loads(text)]
+
+    def port_types(self) -> list[TypeEntry]:
+        """The types a port's source recorded (D-78), or none."""
+        text = self.value("port_types")
+        return [TypeEntry.model_validate(t) for t in json.loads(text)] if text else []
+
+    def generic_uses(self) -> list[GenericUse]:
+        """The uses of the project's generics a port's source recorded (D-78), or none."""
+        text = self.value("generic_uses")
+        return [GenericUse.model_validate(u) for u in json.loads(text)] if text else []
+
+    def test_methods(self) -> list[TestMethod]:
+        """The test methods a port's source recorded (D-78), or none."""
+        text = self.value("test_methods")
+        return [TestMethod.model_validate(m) for m in json.loads(text)] if text else []
 
     def meta(self) -> IndexMeta | None:
         row = self._conn.execute("SELECT value FROM meta WHERE key = 'index'").fetchone()
@@ -369,6 +403,15 @@ class IndexStore:
             "GROUP BY r.from_file, s.file ORDER BY r.from_file, s.file"
         )
         return [(str(a), str(b), _int(n)) for a, b, n in rows]
+
+    def symbol_references(self) -> list[tuple[str, str, str]]:
+        """``(from_file, from_symbol, to_symbol)`` for every reference made inside a symbol,
+        once each: what the types of a port from C# use of each other (D-78)."""
+        rows = self._conn.execute(
+            "SELECT DISTINCT from_file, from_symbol, to_symbol FROM refs "
+            "WHERE from_symbol IS NOT NULL ORDER BY from_file, from_symbol, to_symbol"
+        )
+        return [(str(a), str(b), str(c)) for a, b, c in rows]
 
     def used_elsewhere(self, path: str) -> list[Symbol]:
         """The symbols ``path`` defines that another file declares or references: in C, what

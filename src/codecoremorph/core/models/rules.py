@@ -164,6 +164,11 @@ class PortUnits(StrEnum):
     # C (D-68): one unit per source file of a library, ordered leaves first by the calls
     # between them; the headers stay as they are, and the new code exports the functions.
     TRANSLATION_UNIT = "translation_unit"
+    # Phase 17 (D-78): one unit per type of a C# library, leaves first by the references
+    # between them. A reference cycle is one unit, and so is a class with virtual members with
+    # the project's classes that derive from it; nested types go with their outer type. Each
+    # type keeps its C# API as a façade over the code that takes it over.
+    CSHARP_TYPE = "csharp_type"
 
 
 class Rule(CoreModel):

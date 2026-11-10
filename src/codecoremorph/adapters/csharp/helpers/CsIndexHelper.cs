@@ -7,7 +7,10 @@
 // assets= (obj/project.assets.json) and reference=<project path> lines. Paths of sources and
 // projects are relative to root, with forward slashes. The output is JSON lines: sym (a
 // declaration), ref (a reference to a project symbol), dep (a file using a type another file
-// declares) and problem.
+// declares) and problem. With port=1, the source of a port (D-78) also gets type (a type, its
+// hierarchy and members), inst (a use of a generic type or method with its type arguments),
+// refuse (what a port's first version refuses), throw (an exception a member throws) and test
+// (a test method and the TRX names of its cases).
 
 using System;
 using System.Collections.Generic;
@@ -51,7 +54,7 @@ internal sealed class ProjectRequest
 
 internal static class Indexer
 {
-    private static readonly SymbolDisplayFormat Signature = new SymbolDisplayFormat(
+    internal static readonly SymbolDisplayFormat Signature = new SymbolDisplayFormat(
         globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters
@@ -74,16 +77,48 @@ internal static class Indexer
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes
             | SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
 
-    private static readonly SymbolDisplayFormat Qualified = new SymbolDisplayFormat(
+    // A property's accessors only its own assembly (or class) can call, as Signature spells them.
+    private static readonly string[] HiddenAccessors = new[] { "private protected", "private", "internal" }
+        .SelectMany(a => new[] { "get", "set", "init" }.Select(k => " " + a + " " + k + ";"))
+        .ToArray();
+
+    private static string WithoutHiddenAccessors(string signature)
+    {
+        foreach (string accessor in HiddenAccessors)
+        {
+            signature = signature.Replace(accessor, "");
+        }
+        return signature;
+    }
+
+    // Whether other assemblies see the type: it and each type it is nested in are public or
+    // protected.
+    private static bool Exposed(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? t = type; t != null; t = t.ContainingType)
+        {
+            if (t.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Protected
+                or Accessibility.ProtectedOrInternal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    internal static readonly SymbolDisplayFormat Qualified = new SymbolDisplayFormat(
         globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         genericsOptions: SymbolDisplayGenericsOptions.None,
         memberOptions: SymbolDisplayMemberOptions.IncludeContainingType);
 
     private static StreamWriter output = StreamWriter.Null;
+    // The reference pack's assemblies, by file name: they win over a package's of the same name.
+    private static readonly HashSet<string> FrameworkNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private static string root = "";
-    private static readonly HashSet<string> Known = new HashSet<string>(StringComparer.Ordinal);
-    private static readonly HashSet<string> Emitted = new HashSet<string>(StringComparer.Ordinal);
+    private static bool port;
+    internal static readonly HashSet<string> Known = new HashSet<string>(StringComparer.Ordinal);
+    internal static readonly HashSet<string> Emitted = new HashSet<string>(StringComparer.Ordinal);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static int Run(string requestPath)
@@ -106,6 +141,7 @@ internal static class Indexer
                 case "root": root = value; break;
                 case "output": outputPath = value; break;
                 case "refpack": refpack = value; break;
+                case "port": port = value == "1"; break;
                 case "project":
                     current = new ProjectRequest { Path = value };
                     projects.Add(current);
@@ -125,9 +161,12 @@ internal static class Indexer
         }
         using (output = new StreamWriter(outputPath, false, new UTF8Encoding(false)))
         {
-            var framework = Directory.Exists(refpack)
-                ? Directory.GetFiles(refpack, "*.dll").Select(f => (MetadataReference)MetadataReference.CreateFromFile(f)).ToList()
-                : new List<MetadataReference>();
+            var frameworkFiles = Directory.Exists(refpack) ? Directory.GetFiles(refpack, "*.dll") : new string[0];
+            var framework = frameworkFiles.Select(f => (MetadataReference)MetadataReference.CreateFromFile(f)).ToList();
+            foreach (string file in frameworkFiles)
+            {
+                FrameworkNames.Add(Path.GetFileName(file));
+            }
             if (framework.Count == 0)
             {
                 Problem("no framework reference assemblies in " + refpack);
@@ -140,6 +179,10 @@ internal static class Indexer
                 foreach (var tree in compilation.SyntaxTrees)
                 {
                     Walk(compilation, tree);
+                    if (port)
+                    {
+                        PortSource.Walk(compilation, tree, project.Path);
+                    }
                 }
             }
         }
@@ -205,7 +248,7 @@ internal static class Indexer
             trees.Add(tree);
         }
         var references = new List<MetadataReference>(framework);
-        references.AddRange(PackageAssemblies(project.Assets));
+        references.AddRange(PackageAssemblies(project.Assets, project.Path));
         foreach (string r in project.References)
         {
             if (built.TryGetValue(r, out var other))
@@ -214,16 +257,26 @@ internal static class Indexer
             }
         }
         string name = Path.GetFileNameWithoutExtension(project.Path);
+        // As csc does: a package built for netstandard1.x references System.Runtime 4.0, which
+        // the desktop comparer unifies with the reference pack's. Without it, attributes from
+        // such a package (xUnit 2's, MSTest 2's) bind without their arguments.
         return CSharpCompilation.Create(
             name,
             trees,
             references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true)
+                .WithAssemblyIdentityComparer(DesktopAssemblyIdentityComparer.Default));
     }
 
     // The compile assets the restore recorded for the project's first framework.
-    private static IEnumerable<MetadataReference> PackageAssemblies(string assets)
+    // The packages each project restored, by name, with their versions.
+    internal static readonly Dictionary<string, Dictionary<string, string>> Packages =
+        new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
+    private static IEnumerable<MetadataReference> PackageAssemblies(string assets, string project)
     {
+        var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Packages[project] = versions;
         var found = new List<MetadataReference>();
         if (string.IsNullOrEmpty(assets) || !File.Exists(assets))
         {
@@ -248,6 +301,11 @@ internal static class Indexer
                     {
                         continue;
                     }
+                    int slash = library.Name.IndexOf('/');
+                    if (slash > 0)
+                    {
+                        versions[library.Name.Substring(0, slash)] = library.Name.Substring(slash + 1);
+                    }
                     if (!library.Value.TryGetProperty("compile", out var compile)
                         || !libraries.TryGetProperty(library.Name, out var info)
                         || !info.TryGetProperty("path", out var libPath))
@@ -256,7 +314,11 @@ internal static class Indexer
                     }
                     foreach (var asset in compile.EnumerateObject())
                     {
-                        if (asset.Name.EndsWith("/_._", StringComparison.Ordinal))
+                        // As MSBuild resolves conflicts: the framework's own assembly wins over a
+                        // package's (System.Runtime 4.3.0's, which a netstandard1.x package brings),
+                        // whose types would otherwise be other types than the framework's.
+                        if (asset.Name.EndsWith("/_._", StringComparison.Ordinal)
+                            || FrameworkNames.Contains(Path.GetFileName(asset.Name)))
                         {
                             continue;
                         }
@@ -320,7 +382,7 @@ internal static class Indexer
         }
     }
 
-    private static bool IsDeclarationName(SimpleNameSyntax name) =>
+    internal static bool IsDeclarationName(SimpleNameSyntax name) =>
         name.Parent is NameColonSyntax || name.Parent is NameEqualsSyntax;
 
     private static bool InBaseList(SyntaxNode node) =>
@@ -365,12 +427,7 @@ internal static class Indexer
         }
         string? kind = symbol switch
         {
-            INamedTypeSymbol t when t.IsRecord => "record",
-            INamedTypeSymbol t when t.TypeKind == TypeKind.Class => "class",
-            INamedTypeSymbol t when t.TypeKind == TypeKind.Struct => "struct",
-            INamedTypeSymbol t when t.TypeKind == TypeKind.Interface => "interface",
-            INamedTypeSymbol t when t.TypeKind == TypeKind.Enum => "enum",
-            INamedTypeSymbol t when t.TypeKind == TypeKind.Delegate => "delegate",
+            INamedTypeSymbol t => TypeKindName(t),
             IMethodSymbol m when m.MethodKind == MethodKind.Constructor || m.MethodKind == MethodKind.StaticConstructor => "constructor",
             IMethodSymbol m when m.MethodKind == MethodKind.Destructor => "destructor",
             IMethodSymbol => "method",
@@ -390,6 +447,12 @@ internal static class Indexer
             ? symbol.ContainingType.Name
             : symbol.Name;
         string signature = symbol.ToDisplayString(Signature);
+        if (symbol is IPropertySymbol)
+        {
+            // An accessor other code can't call is no part of the signature (I-6): a façade's
+            // property keeps `{ get; }` without the private setter the C# had.
+            signature = WithoutHiddenAccessors(signature);
+        }
         if (symbol is INamedTypeSymbol named)
         {
             signature = TypePrefix(named) + signature;
@@ -399,7 +462,9 @@ internal static class Indexer
             {
                 bases.Add(named.BaseType.ToDisplayString(Signature));
             }
-            bases.AddRange(named.Interfaces.Select(i => i.ToDisplayString(Signature)));
+            // Only the interfaces other assemblies see: an internal one (a façade's own) changes
+            // no type's API (I-6).
+            bases.AddRange(named.Interfaces.Where(Exposed).Select(i => i.ToDisplayString(Signature)));
             if (bases.Count > 0)
             {
                 signature += " : " + string.Join(", ", bases);
@@ -433,6 +498,17 @@ internal static class Indexer
             Emit(file, id, target, "override", where.Line + 1, where.Character + 1);
         }
     }
+
+    internal static string? TypeKindName(INamedTypeSymbol t) => t switch
+    {
+        { IsRecord: true } => "record",
+        { TypeKind: TypeKind.Class } => "class",
+        { TypeKind: TypeKind.Struct } => "struct",
+        { TypeKind: TypeKind.Interface } => "interface",
+        { TypeKind: TypeKind.Enum } => "enum",
+        { TypeKind: TypeKind.Delegate } => "delegate",
+        _ => null,
+    };
 
     private static void Reference(SemanticModel model, string file, SyntaxNode node, ISymbol? symbol, string kind)
     {
@@ -477,7 +553,7 @@ internal static class Indexer
         }
     }
 
-    private static string? Enclosing(SemanticModel model, SyntaxNode node)
+    internal static string? Enclosing(SemanticModel model, SyntaxNode node)
     {
         foreach (var ancestor in node.Ancestors())
         {
@@ -515,7 +591,7 @@ internal static class Indexer
     }
 
     // csharp:<documentation comment ID without its kind letter>: csharp:Shop.Cart.Add(Shop.Item).
-    private static string? Id(ISymbol symbol)
+    internal static string? Id(ISymbol symbol)
     {
         string? doc = symbol.GetDocumentationCommentId();
         if (string.IsNullOrEmpty(doc) || doc.Length < 3 || doc[1] != ':')
@@ -538,8 +614,900 @@ internal static class Indexer
         Write(new Dictionary<string, object?> { ["t"] = "problem", ["message"] = message });
     }
 
-    private static void Write(Dictionary<string, object?> row)
+    internal static void Write(Dictionary<string, object?> row)
     {
         output.WriteLine(JsonSerializer.Serialize(row));
     }
+}
+
+// What a port's source records beyond its symbols (D-78): its types with their hierarchies and
+// members, the uses of its generics with their type arguments, what the first version of a port
+// refuses, the exceptions each member throws, and its test methods with the TRX names of their
+// cases.
+internal static class PortSource
+{
+    private static readonly SymbolDisplayFormat TypeArgument = new SymbolDisplayFormat(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    // Serializers, dependency injection and composition: behavior driven by attributes and
+    // reflection, which the first version refuses.
+    private static readonly string[] SerializerNamespaces =
+    {
+        "System.Runtime.Serialization", "System.Xml.Serialization", "System.Text.Json",
+        "Newtonsoft.Json", "System.Web.Script.Serialization",
+        "Microsoft.Extensions.DependencyInjection", "System.ComponentModel.Composition",
+        "System.Composition",
+    };
+
+    // An exception's serialization support (its GetObjectData) is no serializer use.
+    private static readonly HashSet<string> SerializationSupport = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "SerializationInfo", "StreamingContext", "SerializationException", "ISerializable",
+    };
+
+    private static readonly HashSet<string> ReflectiveTypeMembers = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "GetMethod", "GetMethods", "GetProperty", "GetProperties", "GetField", "GetFields",
+        "GetMember", "GetMembers", "GetConstructor", "GetConstructors", "GetEvent", "GetEvents",
+        "GetInterface", "GetInterfaces", "GetNestedType", "GetNestedTypes", "InvokeMember",
+        "MakeGenericType", "GetCustomAttributes", "GetType",
+    };
+
+    private static readonly HashSet<string> Described = new HashSet<string>(StringComparer.Ordinal);
+    private static readonly HashSet<string> Tested = new HashSet<string>(StringComparer.Ordinal);
+
+    public static void Walk(CSharpCompilation compilation, SyntaxTree tree, string project)
+    {
+        var model = compilation.GetSemanticModel(tree, ignoreAccessibility: true);
+        string file = tree.FilePath;
+        foreach (var node in tree.GetRoot().DescendantNodes())
+        {
+            if ((node is BaseTypeDeclarationSyntax || node is DelegateDeclarationSyntax)
+                && model.GetDeclaredSymbol(node) is INamedTypeSymbol type)
+            {
+                Describe(type, project);
+                Tests(type, project);
+            }
+            Refusals(model, file, node);
+            Throws(model, file, node);
+            Uses(model, file, node);
+        }
+    }
+
+    private static bool InProject(ISymbol symbol) =>
+        symbol.OriginalDefinition.Locations.Any(l => l.IsInSource && Indexer.Known.Contains(l.SourceTree?.FilePath ?? ""));
+
+    private static int Line(SyntaxNode node) => node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+
+    // The type a node is in (itself, for a type's declaration).
+    private static string? EnclosingType(SemanticModel model, SyntaxNode node)
+    {
+        foreach (var candidate in node.AncestorsAndSelf())
+        {
+            if ((candidate is BaseTypeDeclarationSyntax || candidate is DelegateDeclarationSyntax)
+                && model.GetDeclaredSymbol(candidate) is INamedTypeSymbol type)
+            {
+                return Indexer.Id(type);
+            }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------ types
+
+    private static void Describe(INamedTypeSymbol type, string project)
+    {
+        string? id = Indexer.Id(type);
+        string? kind = Indexer.TypeKindName(type);
+        if (id == null || kind == null || !Described.Add(id))
+        {
+            return;
+        }
+        var files = type.DeclaringSyntaxReferences
+            .Select(r => r.SyntaxTree.FilePath)
+            .Where(f => Indexer.Known.Contains(f))
+            .Distinct()
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        string? baseId = null;
+        var interfaces = new List<string>();
+        var external = new List<string>();
+        if (type.TypeKind == TypeKind.Class && type.BaseType is { } baseType
+            && baseType.SpecialType != SpecialType.System_Object)
+        {
+            if (InProject(baseType) && Indexer.Id(baseType.OriginalDefinition) is { } known)
+            {
+                baseId = known;
+            }
+            else
+            {
+                external.Add(baseType.ToDisplayString(TypeArgument));
+            }
+        }
+        foreach (var implemented in type.Interfaces)
+        {
+            if (InProject(implemented) && Indexer.Id(implemented.OriginalDefinition) is { } known)
+            {
+                interfaces.Add(known);
+            }
+            else
+            {
+                external.Add(implemented.ToDisplayString(TypeArgument));
+            }
+        }
+        var members = new List<string>();
+        var virtuals = new List<string>();
+        var fields = new List<string>();
+        var statics = new List<string>();
+        foreach (var member in type.GetMembers())
+        {
+            if (member is INamedTypeSymbol || (member.IsImplicitlyDeclared && member is not IFieldSymbol))
+            {
+                continue;
+            }
+            if (member is IMethodSymbol { MethodKind: MethodKind.PropertyGet or MethodKind.PropertySet
+                or MethodKind.EventAdd or MethodKind.EventRemove or MethodKind.EventRaise })
+            {
+                continue;
+            }
+            string? memberId = Indexer.Id(member);
+            if (memberId == null)
+            {
+                continue;
+            }
+            if (!member.IsImplicitlyDeclared && member.DeclaredAccessibility is Accessibility.Public
+                or Accessibility.Protected or Accessibility.ProtectedOrInternal)
+            {
+                members.Add(memberId);
+            }
+            if (type.TypeKind == TypeKind.Class && !member.IsSealed
+                && (member.IsVirtual || member.IsAbstract || member.IsOverride))
+            {
+                virtuals.Add(memberId);
+            }
+            if (member is IFieldSymbol field && !field.IsConst)
+            {
+                if (!field.IsStatic && !field.IsImplicitlyDeclared && field.DeclaredAccessibility != Accessibility.Private)
+                {
+                    fields.Add(field.Name);
+                }
+                if (field.IsStatic && !(field.IsReadOnly && Immutable(field.Type))
+                    && Indexer.Id(field.AssociatedSymbol ?? field) is { } state && !statics.Contains(state))
+                {
+                    statics.Add(state);
+                }
+            }
+        }
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "type",
+            ["id"] = id,
+            ["name"] = type.ToDisplayString(Indexer.Qualified),
+            ["kind"] = kind,
+            ["files"] = files,
+            ["project"] = project,
+            ["outer"] = type.ContainingType != null ? Indexer.Id(type.ContainingType) : null,
+            ["base"] = baseId,
+            ["interfaces"] = interfaces,
+            ["external"] = external,
+            ["abstract"] = type.TypeKind == TypeKind.Class && type.IsAbstract && !type.IsStatic,
+            ["sealed"] = type.TypeKind == TypeKind.Class && type.IsSealed && !type.IsStatic,
+            ["static"] = type.IsStatic,
+            ["tparams"] = type.TypeParameters.Select(p => p.Name).ToList(),
+            ["members"] = members,
+            ["virtual"] = virtuals,
+            ["fields"] = fields,
+            ["statics"] = statics,
+        });
+    }
+
+    // A value no code can change: a readonly field of one of these is no state.
+    private static bool Immutable(ITypeSymbol type) =>
+        type.SpecialType != SpecialType.None || type.TypeKind == TypeKind.Enum;
+
+    // ------------------------------------------------------------------ refusals
+
+    private static void Refusals(SemanticModel model, string file, SyntaxNode node)
+    {
+        switch (node)
+        {
+            case MemberDeclarationSyntax member when member is not BaseTypeDeclarationSyntax || member.Modifiers.Any(SyntaxKind.UnsafeKeyword):
+                string name = model.GetDeclaredSymbol(member)?.Name ?? "";
+                if (member.Modifiers.Any(SyntaxKind.AsyncKeyword))
+                {
+                    Refuse(model, file, node, "async", "async " + name);
+                }
+                if (member.Modifiers.Any(SyntaxKind.UnsafeKeyword))
+                {
+                    Refuse(model, file, node, "unsafe", "unsafe " + name);
+                }
+                break;
+            case LocalFunctionStatementSyntax local:
+                if (local.Modifiers.Any(SyntaxKind.AsyncKeyword))
+                {
+                    Refuse(model, file, node, "async", "async " + local.Identifier.ValueText);
+                }
+                if (local.Modifiers.Any(SyntaxKind.UnsafeKeyword))
+                {
+                    Refuse(model, file, node, "unsafe", "unsafe " + local.Identifier.ValueText);
+                }
+                break;
+            case AnonymousFunctionExpressionSyntax lambda:
+                if (lambda.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword))
+                {
+                    Refuse(model, file, node, "async", "an async lambda");
+                }
+                if (model.GetTypeInfo(lambda).ConvertedType is INamedTypeSymbol { Name: "Expression", Arity: 1 } tree
+                    && tree.ContainingNamespace.ToDisplayString() == "System.Linq.Expressions")
+                {
+                    Refuse(model, file, node, "expression_tree", "a lambda as " + tree.ToDisplayString(TypeArgument));
+                }
+                break;
+            case UnsafeStatementSyntax:
+                Refuse(model, file, node, "unsafe", "an unsafe block");
+                break;
+            case FixedStatementSyntax:
+                Refuse(model, file, node, "unsafe", "a fixed statement");
+                break;
+            case PointerTypeSyntax pointer:
+                Refuse(model, file, node, "unsafe", "the pointer type " + pointer);
+                break;
+            case FunctionPointerTypeSyntax:
+                Refuse(model, file, node, "unsafe", "a function pointer");
+                break;
+            case IdentifierNameSyntax word when word.Identifier.ValueText == "dynamic"
+                && (model.GetTypeInfo(word).Type?.TypeKind == TypeKind.Dynamic || model.GetSymbolInfo(word).Symbol is IDynamicTypeSymbol):
+                Refuse(model, file, node, "dynamic", "dynamic");
+                break;
+            case InvocationExpressionSyntax call when model.GetSymbolInfo(call).Symbol is IMethodSymbol method:
+                var owner = method.ContainingType;
+                string space = owner?.ContainingNamespace?.ToDisplayString() ?? "";
+                bool reflective = space == "System.Reflection" || space.StartsWith("System.Reflection.", StringComparison.Ordinal)
+                    || (space == "System" && owner?.Name == "Activator")
+                    || (space == "System" && owner?.Name == "Type" && ReflectiveTypeMembers.Contains(method.Name))
+                    || (space == "System" && owner?.Name == "Attribute" && method.Name.StartsWith("GetCustomAttribute", StringComparison.Ordinal));
+                if (owner != null && (reflective || Serializer(owner)))
+                {
+                    Refuse(model, file, node, reflective ? "reflection" : "serialization",
+                        owner.ToDisplayString(Indexer.Qualified) + "." + method.Name);
+                }
+                break;
+            case ObjectCreationExpressionSyntax creation when model.GetSymbolInfo(creation).Symbol is IMethodSymbol { ContainingType: { } created } && Serializer(created):
+                Refuse(model, file, node, "serialization", "new " + created.ToDisplayString(Indexer.Qualified));
+                break;
+            case AttributeSyntax attribute when model.GetSymbolInfo(attribute).Symbol is IMethodSymbol { ContainingType: { } driving } && Serializer(driving):
+                Refuse(model, file, node, "serialization", "[" + driving.ToDisplayString(Indexer.Qualified) + "]");
+                break;
+        }
+    }
+
+    private static bool Serializer(INamedTypeSymbol type)
+    {
+        if (SerializationSupport.Contains(type.Name))
+        {
+            return false;
+        }
+        string space = type.ContainingNamespace?.ToDisplayString() ?? "";
+        return SerializerNamespaces.Any(n => space == n || space.StartsWith(n + ".", StringComparison.Ordinal));
+    }
+
+    private static void Refuse(SemanticModel model, string file, SyntaxNode node, string what, string detail)
+    {
+        string? type = EnclosingType(model, node);
+        if (type == null)
+        {
+            return;
+        }
+        int line = Line(node);
+        if (!Indexer.Emitted.Add(string.Join("\0", "refuse", what, file, line.ToString(), detail)))
+        {
+            return;
+        }
+        string? member = node is MemberDeclarationSyntax and not BaseTypeDeclarationSyntax && model.GetDeclaredSymbol(node) is { } declared
+            ? Indexer.Id(declared)
+            : Indexer.Enclosing(model, node);
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "refuse",
+            ["what"] = what,
+            ["detail"] = detail,
+            ["type"] = type,
+            ["member"] = member,
+            ["file"] = file,
+            ["line"] = line,
+        });
+    }
+
+    // ------------------------------------------------------------------ exceptions
+
+    private static void Throws(SemanticModel model, string file, SyntaxNode node)
+    {
+        ExpressionSyntax? thrown = node switch
+        {
+            ThrowStatementSyntax statement => statement.Expression,
+            ThrowExpressionSyntax expression => expression.Expression,
+            _ => null,
+        };
+        if (thrown == null)
+        {
+            return; // a rethrow: the exception it caught
+        }
+        var exception = model.GetTypeInfo(thrown).Type;
+        string? type = EnclosingType(model, node);
+        if (exception == null || exception.TypeKind == TypeKind.Error || type == null)
+        {
+            return;
+        }
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "throw",
+            ["exception"] = exception.ToDisplayString(Indexer.Qualified),
+            ["type"] = type,
+            ["member"] = Indexer.Enclosing(model, node),
+            ["file"] = file,
+            ["line"] = Line(node),
+        });
+    }
+
+    // ------------------------------------------------------------------ generics in use
+
+    private static void Uses(SemanticModel model, string file, SyntaxNode node)
+    {
+        if (node is not SimpleNameSyntax name || Indexer.IsDeclarationName(name))
+        {
+            return;
+        }
+        var info = model.GetSymbolInfo(name);
+        var symbol = info.Symbol ?? (info.CandidateSymbols.Length == 1 ? info.CandidateSymbols[0] : null);
+        switch (symbol)
+        {
+            case INamedTypeSymbol type:
+                UseType(model, file, name, type);
+                break;
+            case IMethodSymbol method:
+                var full = method.MethodKind == MethodKind.ReducedExtension ? method.GetConstructedReducedFrom() ?? method : method;
+                if (full.IsGenericMethod && !SymbolEqualityComparer.Default.Equals(full, full.OriginalDefinition)
+                    && InProject(full))
+                {
+                    Use(model, file, name, full.OriginalDefinition, full.TypeArguments);
+                }
+                if (full.ContainingType != null)
+                {
+                    UseType(model, file, name, full.ContainingType);
+                }
+                break;
+            case IPropertySymbol or IFieldSymbol or IEventSymbol when symbol.ContainingType != null:
+                UseType(model, file, name, symbol.ContainingType);
+                break;
+        }
+    }
+
+    // A constructed generic type of the project, and the generic types it is nested in.
+    private static void UseType(SemanticModel model, string file, SyntaxNode node, INamedTypeSymbol type)
+    {
+        for (var t = type; t != null; t = t.ContainingType)
+        {
+            if (t.IsGenericType && !t.IsUnboundGenericType && !SymbolEqualityComparer.Default.Equals(t, t.OriginalDefinition)
+                && InProject(t))
+            {
+                Use(model, file, node, t.OriginalDefinition, t.TypeArguments);
+            }
+        }
+    }
+
+    private static void Use(SemanticModel model, string file, SyntaxNode node, ISymbol generic, IEnumerable<ITypeSymbol> arguments)
+    {
+        string? of = Indexer.Id(generic);
+        if (of == null)
+        {
+            return;
+        }
+        var shown = arguments.Select(a => a.ToDisplayString(TypeArgument)).ToList();
+        int line = Line(node);
+        if (!Indexer.Emitted.Add(string.Join("\0", "inst", of, string.Join(",", shown), file, line.ToString())))
+        {
+            return;
+        }
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "inst",
+            ["of"] = of,
+            ["args"] = shown,
+            ["open"] = arguments.Any(Open),
+            ["member"] = Indexer.Enclosing(model, node),
+            ["file"] = file,
+            ["line"] = line,
+        });
+    }
+
+    private static bool Open(ITypeSymbol type) => type switch
+    {
+        ITypeParameterSymbol => true,
+        IArrayTypeSymbol array => Open(array.ElementType),
+        IPointerTypeSymbol pointer => Open(pointer.PointedAtType),
+        INamedTypeSymbol named => named.TypeArguments.Any(Open) || (named.ContainingType != null && Open(named.ContainingType)),
+        _ => false,
+    };
+
+    // ------------------------------------------------------------------ tests
+
+    // The class as a TRX report names it: its namespace, then the classes it is nested in, by "+".
+    private static string TrxClass(INamedTypeSymbol type)
+    {
+        var names = new List<string>();
+        for (var t = type; t != null; t = t.ContainingType)
+        {
+            names.Insert(0, t.Name);
+        }
+        string space = type.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() + "." : "";
+        return space + string.Join("+", names);
+    }
+
+    private static bool Is(INamedTypeSymbol? type, string space, params string[] names)
+    {
+        for (var t = type; t != null; t = t.BaseType)
+        {
+            if (names.Contains(t.Name) && t.ContainingNamespace?.ToDisplayString() == space)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string? Framework(INamedTypeSymbol? attribute)
+    {
+        if (Is(attribute, "NUnit.Framework", "TestAttribute", "TestCaseAttribute", "TestCaseSourceAttribute", "TheoryAttribute"))
+        {
+            return "nunit";
+        }
+        if (Is(attribute, "Xunit", "FactAttribute"))
+        {
+            return "xunit";
+        }
+        if (Is(attribute, "Microsoft.VisualStudio.TestTools.UnitTesting", "TestMethodAttribute"))
+        {
+            return "mstest";
+        }
+        return null;
+    }
+
+    // MSTest.TestFramework's package version in the project, or null.
+    private static Version? MSTestVersion(string project)
+    {
+        return Indexer.Packages.TryGetValue(project, out var versions)
+            && versions.TryGetValue("MSTest.TestFramework", out var text)
+            && Version.TryParse(text.Split('-')[0], out var version) ? version : null;
+    }
+
+    private static void Tests(INamedTypeSymbol type, string project)
+    {
+        if (type.TypeKind != TypeKind.Class || type.IsAbstract || type.IsStatic)
+        {
+            return; // an abstract class's tests run as its derived classes'
+        }
+        string? id = Indexer.Id(type);
+        if (id == null || !Tested.Add(id))
+        {
+            return;
+        }
+        bool generic = false;
+        for (var t = type; t != null; t = t.ContainingType)
+        {
+            generic |= t.IsGenericType;
+        }
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var t = type; t != null && InProject(t); t = t.BaseType)
+        {
+            foreach (var method in t.GetMembers().OfType<IMethodSymbol>())
+            {
+                if (method.MethodKind != MethodKind.Ordinary)
+                {
+                    continue;
+                }
+                var attributes = method.GetAttributes();
+                string? framework = attributes.Select(a => Framework(a.AttributeClass)).FirstOrDefault(f => f != null);
+                if (framework == null || !seen.Add(method.Name))
+                {
+                    continue;
+                }
+                string file = method.Locations.FirstOrDefault(l => l.IsInSource)?.SourceTree?.FilePath ?? "";
+                if (!Indexer.Known.Contains(file))
+                {
+                    continue;
+                }
+                // A generic fixture, or NUnit's fixture with arguments, adds to the class's name.
+                bool exact = !generic && !method.IsGenericMethod && !type.GetAttributes().Any(a =>
+                    Is(a.AttributeClass, "NUnit.Framework", "TestFixtureAttribute") && a.ConstructorArguments.Length > 0);
+                var cases = framework switch
+                {
+                    "nunit" => TestNames.NUnit(method, attributes, ref exact),
+                    "xunit" => TestNames.Xunit(method, attributes, ref exact),
+                    _ => TestNames.MSTest(method, attributes, MSTestVersion(project), ref exact),
+                };
+                Indexer.Write(new Dictionary<string, object?>
+                {
+                    ["t"] = "test",
+                    ["file"] = file,
+                    ["project"] = project,
+                    ["cls"] = TrxClass(type),
+                    ["method"] = method.Name,
+                    ["fw"] = framework,
+                    ["cases"] = cases,
+                    ["exact"] = exact,
+                });
+            }
+        }
+    }
+}
+
+// The names each framework gives a test's cases in its TRX report, from the test's attributes:
+// the method's name, and a parameterized case's arguments as the framework shows them. A case
+// the source can't tell (a data source, an argument shown its own way) makes the list inexact.
+internal static class TestNames
+{
+    private static bool Named(AttributeData attribute, string space, string name) =>
+        attribute.AttributeClass is { } c && c.Name == name && c.ContainingNamespace?.ToDisplayString() == space;
+
+    private static string? NamedString(AttributeData attribute, string name)
+    {
+        foreach (var pair in attribute.NamedArguments)
+        {
+            if (pair.Key == name && pair.Value.Value is string text)
+            {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    // A data attribute's values: its constructor's arguments, a params array spread. A lone
+    // params array passed as null is null: the frameworks take it as one null value.
+    private static List<TypedConstant>? Values(AttributeData attribute)
+    {
+        var parameters = attribute.AttributeConstructor?.Parameters
+            ?? System.Collections.Immutable.ImmutableArray<IParameterSymbol>.Empty;
+        var arguments = attribute.ConstructorArguments;
+        var values = new List<TypedConstant>();
+        for (int i = 0; i < arguments.Length; i++)
+        {
+            bool spread = i == parameters.Length - 1 && parameters[i].IsParams && arguments[i].Kind == TypedConstantKind.Array;
+            if (spread && arguments[i].IsNull && arguments.Length == 1)
+            {
+                return null;
+            }
+            if (spread && !arguments[i].IsNull)
+            {
+                values.AddRange(arguments[i].Values);
+            }
+            else
+            {
+                values.Add(arguments[i]);
+            }
+        }
+        return values;
+    }
+
+    private static string? EnumName(TypedConstant constant)
+    {
+        if (constant.Type is not INamedTypeSymbol type)
+        {
+            return null;
+        }
+        var matches = type.GetMembers().OfType<IFieldSymbol>()
+            .Where(f => f.HasConstantValue && Equals(f.ConstantValue, constant.Value))
+            .Select(f => f.Name)
+            .ToList();
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
+    // ---------------------------------------------------------------- NUnit 3
+
+    public static List<string> NUnit(IMethodSymbol method, IEnumerable<AttributeData> attributes, ref bool exact)
+    {
+        var all = attributes.ToList();
+        var cases = all.Where(a => Named(a, "NUnit.Framework", "TestCaseAttribute")).ToList();
+        var names = new List<string>();
+        if (all.Any(a => Named(a, "NUnit.Framework", "TestCaseSourceAttribute") || Named(a, "NUnit.Framework", "TheoryAttribute")))
+        {
+            exact = false;
+        }
+        if (cases.Count == 0)
+        {
+            if (method.Parameters.Length > 0)
+            {
+                exact = false; // [Values], [Range] and the like
+            }
+            else
+            {
+                names.Add(method.Name);
+            }
+            return names;
+        }
+        foreach (var attribute in cases)
+        {
+            string? given = NamedString(attribute, "TestName");
+            if (given != null)
+            {
+                exact &= given.IndexOf('{') < 0;
+                names.Add(given);
+                continue;
+            }
+            var values = Values(attribute);
+            var shown = new List<string>();
+            foreach (var value in values ?? new List<TypedConstant>())
+            {
+                string? text = NUnitValue(value);
+                exact &= text != null;
+                shown.Add(text ?? "?");
+            }
+            if (values == null)
+            {
+                shown.Add("null");
+            }
+            names.Add(method.Name + "(" + string.Join(",", shown) + ")");
+        }
+        return names;
+    }
+
+    private static string? NUnitValue(TypedConstant constant)
+    {
+        if (constant.IsNull)
+        {
+            return "null";
+        }
+        switch (constant.Kind)
+        {
+            case TypedConstantKind.Enum:
+                return EnumName(constant);
+            case TypedConstantKind.Primitive:
+                break;
+            default:
+                return null; // typeof and arrays
+        }
+        switch (constant.Value)
+        {
+            case string s:
+                return "\"" + string.Concat(s.Select(c => c == '\'' ? "'" : NUnitEscape(c))) + "\"";
+            case char c:
+                return "'" + (c == '"' ? "\"" : NUnitEscape(c)) + "'";
+            case bool b:
+                return b ? "True" : "False";
+            case double d:
+                if (double.IsNaN(d)) return "double.NaN";
+                if (double.IsPositiveInfinity(d)) return "double.PositiveInfinity";
+                if (double.IsNegativeInfinity(d)) return "double.NegativeInfinity";
+                if (d == double.MaxValue) return "double.MaxValue";
+                if (d == double.MinValue) return "double.MinValue";
+                return Decimals(Convert.ToString(d, System.Globalization.CultureInfo.InvariantCulture)) + "d";
+            case float f:
+                if (float.IsNaN(f)) return "float.NaN";
+                if (float.IsPositiveInfinity(f)) return "float.PositiveInfinity";
+                if (float.IsNegativeInfinity(f)) return "float.NegativeInfinity";
+                if (f == float.MaxValue) return "float.MaxValue";
+                if (f == float.MinValue) return "float.MinValue";
+                return Decimals(Convert.ToString(f, System.Globalization.CultureInfo.InvariantCulture)) + "f";
+            case long l:
+                return l == long.MaxValue ? "long.MaxValue" : l == long.MinValue ? "long.MinValue" : l + "L";
+            case ulong u:
+                return u == ulong.MaxValue ? "ulong.MaxValue" : u == ulong.MinValue ? "ulong.MinValue" : u + "UL";
+            case int i:
+                return i == int.MaxValue ? "int.MaxValue" : i == int.MinValue ? "int.MinValue" : i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            case uint u:
+                return u.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            case short s:
+                return s == short.MaxValue ? "short.MaxValue" : s == short.MinValue ? "short.MinValue" : s.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            case ushort u:
+                return u == ushort.MaxValue ? "ushort.MaxValue" : u == ushort.MinValue ? "ushort.MinValue" : u.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            case byte b:
+                return b == byte.MaxValue ? "byte.MaxValue" : b == byte.MinValue ? "byte.MinValue" : b.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            case sbyte s:
+                return s == sbyte.MaxValue ? "sbyte.MaxValue" : s == sbyte.MinValue ? "sbyte.MinValue" : s.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    private static string Decimals(string text) => text.IndexOf('.') < 0 ? text + ".0" : text;
+
+    private static string NUnitEscape(char c) => c switch
+    {
+        '\'' => "\\'",
+        '"' => "\\\"",
+        '\\' => "\\\\",
+        '\0' => "\\0",
+        '\a' => "\\a",
+        '\b' => "\\b",
+        '\f' => "\\f",
+        '\n' => "\\n",
+        '\r' => "\\r",
+        '\t' => "\\t",
+        '\v' => "\\v",
+        '\x0085' or '\x2028' or '\x2029' => string.Format("\\x{0:X4}", (int)c),
+        _ => c.ToString(),
+    };
+
+    // ---------------------------------------------------------------- xUnit 2
+
+    public static List<string> Xunit(IMethodSymbol method, IEnumerable<AttributeData> attributes, ref bool exact)
+    {
+        var all = attributes.ToList();
+        var fact = all.FirstOrDefault(a => a.AttributeClass is { } c && (c.Name == "FactAttribute" || c.Name == "TheoryAttribute"));
+        string display = (fact != null ? NamedString(fact, "DisplayName") : null) ?? method.Name;
+        var rows = all.Where(a => Named(a, "Xunit", "InlineDataAttribute")).ToList();
+        var names = new List<string>();
+        // Any other data attribute (MemberData, ClassData, a project's own) has cases the source
+        // can't tell.
+        if (all.Any(a => !Named(a, "Xunit", "InlineDataAttribute") && IsData(a.AttributeClass)))
+        {
+            exact = false;
+        }
+        if (rows.Count == 0)
+        {
+            if (method.Parameters.Length > 0)
+            {
+                exact = false;
+            }
+            else
+            {
+                names.Add(display);
+            }
+            return names;
+        }
+        foreach (var row in rows)
+        {
+            var values = Values(row);
+            int count = values?.Count ?? 1;
+            if (count != method.Parameters.Length || method.Parameters.Any(p => p.IsParams))
+            {
+                exact = false; // xUnit fills in optional parameters, and gathers params arrays
+            }
+            var shown = new List<string>();
+            for (int i = 0; i < count; i++)
+            {
+                string parameter = i < method.Parameters.Length ? method.Parameters[i].Name : "???";
+                string? text = values == null ? "null" : XunitValue(values[i]);
+                exact &= text != null;
+                shown.Add(parameter + ": " + (text ?? "?"));
+            }
+            names.Add(display + "(" + string.Join(", ", shown) + ")");
+        }
+        return names;
+    }
+
+    private static bool IsData(INamedTypeSymbol? type)
+    {
+        for (var t = type; t != null; t = t.BaseType)
+        {
+            if (t.Name == "DataAttribute" && t.ContainingNamespace?.ToDisplayString() == "Xunit.Sdk")
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string? XunitValue(TypedConstant constant)
+    {
+        if (constant.IsNull)
+        {
+            return "null";
+        }
+        if (constant.Kind == TypedConstantKind.Enum)
+        {
+            return EnumName(constant);
+        }
+        if (constant.Kind != TypedConstantKind.Primitive)
+        {
+            return null;
+        }
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        switch (constant.Value)
+        {
+            case string s:
+                // Escapes and long strings are shown the framework's own way.
+                if (s.Length > 50 || s.Any(c => char.IsControl(c) || c == '\\'))
+                {
+                    return null;
+                }
+                return "\"" + s.Replace("\"", "\\\"") + "\"";
+            case char c:
+                if (c == '\'')
+                {
+                    return "'\\''";
+                }
+                return char.IsLetterOrDigit(c) || char.IsPunctuation(c) || char.IsSymbol(c) || c == ' ' ? "'" + c + "'" : null;
+            case bool b:
+                return b ? "True" : "False";
+            case double d:
+                return d.ToString("G17", invariant);
+            case float f:
+                return f.ToString("G9", invariant);
+            default:
+                return Convert.ToString(constant.Value, invariant);
+        }
+    }
+
+    // ---------------------------------------------------------------- MSTest 2 and 3
+
+    // The newest MSTest whose names are checked against its reports: a newer one may show a
+    // string or a null its own way.
+    private static readonly Version CheckedMSTest = new Version(3, 1, 1);
+
+    public static List<string> MSTest(IMethodSymbol method, IEnumerable<AttributeData> attributes, Version? version, ref bool exact)
+    {
+        var all = attributes.ToList();
+        const string space = "Microsoft.VisualStudio.TestTools.UnitTesting";
+        var rows = all.Where(a => Named(a, space, "DataRowAttribute")).ToList();
+        var names = new List<string>();
+        if (all.Any(a => Named(a, space, "DynamicDataAttribute") || Named(a, space, "DataSourceAttribute")))
+        {
+            exact = false;
+        }
+        var test = all.FirstOrDefault(a => a.AttributeClass is { } c && (c.Name == "TestMethodAttribute" || c.Name == "DataTestMethodAttribute"));
+        string? display = test != null && test.ConstructorArguments.Length == 1 ? test.ConstructorArguments[0].Value as string : null;
+        if (rows.Count == 0)
+        {
+            if (method.Parameters.Length > 0)
+            {
+                exact = false;
+            }
+            else
+            {
+                names.Add(display ?? method.Name);
+            }
+            return names;
+        }
+        bool checkedVersion = version != null && version <= CheckedMSTest;
+        foreach (var row in rows)
+        {
+            string? given = NamedString(row, "DisplayName");
+            if (given != null)
+            {
+                names.Add(given);
+                continue;
+            }
+            var values = Values(row);
+            var shown = new List<string>();
+            foreach (var value in values ?? new List<TypedConstant>())
+            {
+                string? text = MSTestValue(value);
+                exact &= text != null && (checkedVersion || !(value.IsNull || value.Value is string));
+                shown.Add(text ?? "?");
+            }
+            if (values == null)
+            {
+                exact = false;
+            }
+            names.Add(method.Name + " (" + string.Join(",", shown) + ")");
+        }
+        return names;
+    }
+
+    // MSTest joins its values' ToString(), null as nothing (2.2.10 and 3.1.1).
+    private static string? MSTestValue(TypedConstant constant)
+    {
+        if (constant.IsNull)
+        {
+            return "";
+        }
+        if (constant.Kind == TypedConstantKind.Enum)
+        {
+            return EnumName(constant);
+        }
+        if (constant.Kind != TypedConstantKind.Primitive)
+        {
+            return null;
+        }
+        return constant.Value switch
+        {
+            bool b => b ? "True" : "False",
+            double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            float f => f.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => Convert.ToString(constant.Value, System.Globalization.CultureInfo.InvariantCulture),
+        };
+    }
+
 }

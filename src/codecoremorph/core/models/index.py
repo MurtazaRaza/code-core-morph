@@ -143,6 +143,7 @@ class FileDependency(CoreModel):
 class TargetKind(StrEnum):
     LIBRARY = "library"
     EXECUTABLE = "executable"
+    TEST = "test"  # a project only for tests (a C# test project): no port cuts types from it
     OTHER = "other"  # custom targets and the like
 
 
@@ -175,6 +176,116 @@ class TestEntry(CoreModel):
         default=None, description="The project's build target its command runs, if any"
     )
     file: WorktreePath | None = Field(default=None, description="The build file that adds it")
+
+
+class PortRefusal(StrEnum):
+    """What the first version of a port from C# refuses in a type (D-78)."""
+
+    ASYNC = "async"
+    DYNAMIC = "dynamic"
+    REFLECTION = "reflection"
+    # Serializers, dependency injection and the attributes that drive them.
+    SERIALIZATION = "serialization"
+    UNSAFE = "unsafe"
+    EXPRESSION_TREE = "expression_tree"
+
+
+class RefusalSite(CoreModel):
+    """Where a type uses what a port refuses (D-78)."""
+
+    what: PortRefusal
+    detail: str = Field(description='What it is: "async Load", "System.Activator.CreateInstance"')
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = Field(default=None, description="The member it is in, by symbol ID")
+
+
+class ThrowSite(CoreModel):
+    """An exception a member throws (D-78): the port's C++ throws its mirror, and the façade
+    throws it again."""
+
+    exception: str = Field(min_length=1, description='Its type: "System.ArgumentNullException"')
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = Field(default=None, description="The member that throws it, by ID")
+
+
+class GenericUse(CoreModel):
+    """A use of a generic type or method of the project with its type arguments (D-78): each
+    instantiation in use is what a port exports, as Roslyn's semantic model tells them."""
+
+    symbol: str = Field(min_length=1, description="The generic type or method, by symbol ID")
+    arguments: list[str] = Field(default_factory=list[str], description='"int", "Shop.Money"')
+    open: bool = Field(
+        default=False,
+        description="An argument is a type parameter of the code that uses it: the code's own "
+        "instantiations decide",
+    )
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = Field(default=None, description="The member that uses it, by ID")
+
+
+class TypeEntry(CoreModel):
+    """A type a port's source declares (D-78): what the planner cuts its type units by, and
+    what their notes say."""
+
+    id: str = Field(min_length=1, description='Its symbol ID: "csharp:Shop.Cart"')
+    name: str = Field(min_length=1, description='Qualified, without type parameters: "Shop.Cart"')
+    kind: SymbolKind
+    files: list[WorktreePath] = Field(
+        default_factory=list[WorktreePath], description="Where it is declared (a partial type's)"
+    )
+    project: WorktreePath | None = Field(default=None, description="The project that compiles it")
+    outer: str | None = Field(default=None, description="The type it is nested in, by ID")
+    base: str | None = Field(default=None, description="Its base class, when the project's")
+    interfaces: list[str] = Field(
+        default_factory=list[str], description="The project's interfaces it implements, by ID"
+    )
+    external_bases: list[str] = Field(
+        default_factory=list[str],
+        description="Its other base class and interfaces: System.Exception, IEquatable<Money>",
+    )
+    abstract: bool = False
+    sealed: bool = False
+    static: bool = False
+    type_parameters: list[str] = Field(default_factory=list[str])
+    members: list[str] = Field(
+        default_factory=list[str], description="Its public and protected members, by ID"
+    )
+    virtual_members: list[str] = Field(
+        default_factory=list[str],
+        description="The members a derived class can override (virtual, abstract, or an "
+        "override that isn't sealed), by ID",
+    )
+    instance_fields: list[str] = Field(
+        default_factory=list[str],
+        description="Its non-private instance fields, by name: a class's can't be forwarded",
+    )
+    static_state: list[str] = Field(
+        default_factory=list[str],
+        description="Its static fields that aren't constants (nor readonly of an immutable "
+        "type), and static properties and events with storage, by ID",
+    )
+    refusals: list[RefusalSite] = Field(default_factory=list[RefusalSite])
+    throws: list[ThrowSite] = Field(default_factory=list[ThrowSite])
+
+
+class TestMethod(CoreModel):
+    """A test method of a C# test project and the IDs of its cases (D-78). A case's ID is the
+    one the TRX report gives; ``exact`` is false when the source can't tell them all (a data
+    source, a combinatorial attribute, an argument the framework formats its own way): the
+    baseline's report has them."""
+
+    __test__: ClassVar[bool] = False  # not a pytest test class
+
+    file: WorktreePath
+    class_name: str = Field(min_length=1, description='As the TRX spells it: "Ns.Outer+Inner"')
+    method: str = Field(min_length=1)
+    framework: str = Field(pattern=r"^(nunit|xunit|mstest)$")
+    project: WorktreePath | None = None
+    cases: list[str] = Field(default_factory=list[str], description='"dotnet:Ns.C#M(1,\\"x\\")"')
+    exact: bool = True
 
 
 class IndexMeta(CoreModel):

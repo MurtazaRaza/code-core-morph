@@ -117,6 +117,17 @@ def test_test_projects_are_recognized() -> None:
     assert not project_info(PROJECT).test_project
 
 
+def test_programs_are_recognized() -> None:
+    """``OutputType`` Exe or WinExe, set by the project or by the props above it (D-78)."""
+    program = PROJECT.replace(
+        "</PropertyGroup>", "  <OutputType>Exe</OutputType>\n  </PropertyGroup>", 1
+    )
+    assert project_info(program).executable
+    assert project_info(PROJECT, {"OutputType": "WinExe"}).executable
+    assert not project_info(PROJECT).executable
+    assert not project_info(PROJECT, {"OutputType": "Library"}).executable
+
+
 # ------------------------------------------------------------------------------- the bump
 
 

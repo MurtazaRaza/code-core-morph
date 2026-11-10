@@ -19,6 +19,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
+from codecoremorph.adapters.cpp import csharpports
+from codecoremorph.adapters.cpp.diagnostics import parse_compiler_output
+from codecoremorph.adapters.cpp.paths import PathMapper
 from codecoremorph.adapters.csharp import formatting, mirror
 from codecoremorph.adapters.csharp.detect import detect as detect_project
 from codecoremorph.adapters.csharp.diagnostics import PathMap, build_failure, parse_dotnet_output
@@ -43,7 +46,7 @@ from codecoremorph.adapters.csharp.msbuild import (
     uncommented,
 )
 from codecoremorph.adapters.csharp.testcode import assertions, disabled_markers, find_cases
-from codecoremorph.adapters.csharp.trx import read_reports, selection_filter
+from codecoremorph.adapters.csharp.trx import read_reports, run_errors, selection_filter
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -54,6 +57,7 @@ from codecoremorph.core.models import (
     CodemodSpec,
     Diagnostic,
     DiagnosticOrigin,
+    FileRole,
     LanguageConfig,
     ProjectDetection,
     ReferenceKind,
@@ -62,6 +66,7 @@ from codecoremorph.core.models import (
     SkippedReplacement,
     SymbolIndex,
     SymbolKind,
+    TargetKind,
     TestAssertions,
     TestCaseResult,
     TestReport,
@@ -112,7 +117,13 @@ class CSharpAdapter(LanguageAdapter):
             extract_assertions=True,
             detect_disabled_tests=True,
             codemod_tools=["dotnet-format", "msbuild-lang-version"],
-            queries=["test_cases", "record_candidates", "nullable_disabled"],
+            queries=[
+                "test_cases",
+                "record_candidates",
+                "nullable_disabled",
+                "csharp_types",
+                "csharp_programs",
+            ],
             standards=list(STANDARDS),
         )
 
@@ -336,7 +347,11 @@ class CSharpAdapter(LanguageAdapter):
         return [c for c in current if c not in first]
 
     def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
-        """``dotnet build --no-restore`` of the entry point, offline."""
+        """``dotnet build --no-restore`` of the entry point, offline; in a port to C++, after
+        the bridge library the façades call (D-78)."""
+        native = self._native_build(ctx)
+        if native is not None and not native.success:
+            return native
         self._sync(ctx)
         lay = self._layout(ctx)
         args = [
@@ -428,7 +443,7 @@ class CSharpAdapter(LanguageAdapter):
             args,
             "dotnet-test.log",
             timeout_s=timeout + ctx.lang.build_timeout_s,
-            env={"DOTNET_ROLL_FORWARD": "Major"},
+            env={"DOTNET_ROLL_FORWARD": "Major", **self._native_test_env(ctx)},
         )
         cases, problems = read_reports(results.rglob("*.trx"))
         extra: list[TestCaseResult] = [_error_case("dotnet:(report)", p) for p in problems[:1]]
@@ -452,10 +467,84 @@ class CSharpAdapter(LanguageAdapter):
             message = failure.message
             if errors:
                 message += "\n" + "\n".join(f"{d.file_path}:{d.line}: {d.message}" for d in errors)
+            # A test host that crashed (a sanitizer's report from native code, D-78) says why
+            # in the TRX, ahead of everything else.
+            crashed = run_errors(results.rglob("*.trx"))
+            if crashed:
+                message = crashed[0]
             extra.append(_error_case("dotnet:(run)", message))
         return TestReport(
             cases=[*cases, *extra], duration_s=result.duration_s, log_path=result.log_path
         )
+
+    # ------------------------------------------------------------------ a port to C++ (D-78)
+
+    def _native_port(self, ctx: AdapterContext) -> bool:
+        return ctx.lang.port_target == "cpp" and csharpports.is_port(ctx.worktree)
+
+    def _native_build(self, ctx: AdapterContext) -> BuildResult | None:
+        """In a port to C++: CMake builds the bridge library the façades call, in the build
+        directory the C++ adapter configured (it configures first), so the C# tests run the C++
+        just built. None when there is no C++ yet."""
+        if not self._native_port(ctx):
+            return None
+        library = csharpports.native_name(_read_text(ctx.worktree / csharpports.CPP_CMAKE) or "")
+        if library is None:
+            return None
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        result = ctx.executor.run(
+            ["cmake", "--build", ctx.sandbox(ctx.build_dir), "--target", library],
+            cwd=ctx.sandbox(ctx.worktree),
+            timeout_s=ctx.lang.build_timeout_s,
+            log_path=ctx.log_dir / "native-build.log",
+        )
+        stdout, stderr = full_output(result)
+        folds = ctx.executor.kind == "native" and sys.platform in ("win32", "darwin")
+        mapper = PathMapper(
+            ctx.sandbox(ctx.worktree), ctx.sandbox(ctx.build_dir), case_insensitive=folds
+        )
+        diagnostics = parse_compiler_output(stdout + "\n" + stderr, mapper)
+        if not result.ok and not any(d.severity is Severity.ERROR for d in diagnostics):
+            diagnostics.append(
+                build_failure(stdout + "\n" + stderr, f"build of {library}", str(result.log_path))
+            )
+        return BuildResult(
+            success=result.ok,
+            diagnostics=diagnostics,
+            duration_s=result.duration_s,
+            log_path=result.log_path,
+        )
+
+    def _native_test_env(self, ctx: AdapterContext) -> dict[str, str]:
+        """What ``dotnet test`` needs in a port to C++: the bridge library's directory on the
+        loader's path, and the shared ASan runtime preloaded, the C++ being built with the
+        sanitizers (D-78)."""
+        if not self._native_port(ctx):
+            return {}
+        return csharpports.test_environment(
+            f"{ctx.sandbox(ctx.build_dir)}/lib", self._asan_runtime(ctx)
+        )
+
+    def _asan_runtime(self, ctx: AdapterContext) -> str | None:
+        """The shared AddressSanitizer runtime of the toolchain's clang, asked once per run."""
+        record = self._root(ctx) / "asan-runtime"
+        if record.is_file():
+            return record.read_text(encoding="utf-8").strip() or None
+        found: str | None = None
+        for name in ("libclang_rt.asan.so", "libclang_rt.asan-x86_64.so"):
+            result = ctx.executor.run(
+                ["clang", f"-print-file-name={name}"],
+                cwd=ctx.sandbox(ctx.worktree),
+                timeout_s=60,
+                log_path=ctx.log_dir / "asan-runtime.log",
+            )
+            path = full_output(result)[0].strip()
+            if result.ok and path != name and PurePosixPath(path).is_absolute():
+                found = path
+                break
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(found or "", encoding="utf-8")
+        return found
 
     # ------------------------------------------------------------------ index
 
@@ -464,12 +553,16 @@ class CSharpAdapter(LanguageAdapter):
         return detect_project(root, files)
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
+        """The Roslyn index of the projects' compiled files. A port's source
+        (``ctx.lang.port_target``) also records its types, generics in use, refusals, thrown
+        exceptions and test methods (D-78)."""
         return run_index(
             ctx,
             self._tools(ctx),
             self._layout(ctx),
             mirror=self._mirror(ctx),
             adapter_version=self.version,
+            port=ctx.lang.port_target is not None,
         )
 
     # ------------------------------------------------------------------ codemods
@@ -607,7 +700,11 @@ class CSharpAdapter(LanguageAdapter):
         return found
 
     def extract_assertions(self, ctx: AdapterContext, files: list[str]) -> list[TestAssertions]:
+        """Each test method's assertions, by its test ID; a parameterized method's for each of
+        its cases, by the case's ID, where a port's index names them exactly (D-78): what the
+        test map pairs, and the test runs report."""
         found: list[TestAssertions] = []
+        cases: dict[str, list[str]] | None = None
         for path in files:
             if not path.lower().endswith(".cs"):
                 continue
@@ -615,15 +712,19 @@ class CSharpAdapter(LanguageAdapter):
             if text is None:
                 continue
             for block in find_cases(text):
-                found.append(
-                    TestAssertions(
-                        file=path,
-                        test=f"{block.class_name}#{block.method}",
-                        test_id=block.test_id,
-                        line=block.line,
-                        assertions=assertions(text, block),
+                if cases is None:
+                    cases = _parameterized_cases(ctx.cache_dir / INDEX_FILE_NAME)
+                checks = assertions(text, block)
+                for test_id in cases.get(block.test_id) or [block.test_id]:
+                    found.append(
+                        TestAssertions(
+                            file=path,
+                            test=f"{block.class_name}#{block.method}",
+                            test_id=test_id,
+                            line=block.line,
+                            assertions=checks,
+                        )
                     )
-                )
         return found
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
@@ -632,11 +733,16 @@ class CSharpAdapter(LanguageAdapter):
                 RuleSite(file=case.file, line=case.line, text=case.test_id)
                 for case in self.extract_assertions(ctx, files)
             ]
-        if name == "record_candidates":
+        queries = {
+            "record_candidates": record_candidates,
+            "csharp_types": port_type_sites,
+            "csharp_programs": program_sites,
+        }
+        if name in queries:
             index_path = ctx.cache_dir / INDEX_FILE_NAME
             if not index_path.is_file():
-                raise ConfigError("the record_candidates query needs an index", hint="Index first.")
-            return record_candidates(index_path, files)
+                raise ConfigError(f"the {name} query needs an index", hint="Index first.")
+            return queries[name](index_path, files)
         if name == "nullable_disabled":
             return self._nullable_sites(ctx, files)
         return super().query(ctx, name, files)
@@ -677,6 +783,22 @@ class CSharpAdapter(LanguageAdapter):
                         )
                     )
         return sites
+
+
+def _parameterized_cases(index_path: Path) -> dict[str, list[str]]:
+    """``dotnet:Ns.Class#Method`` → its cases' IDs, for each parameterized method whose cases a
+    port's index names exactly (D-78); empty without such an index (an upgrade's has no test
+    methods), where a method's assertions stay the method's."""
+    if not index_path.is_file():
+        return {}
+    with IndexStore.open(index_path) as store:
+        methods = store.test_methods()
+    found: dict[str, list[str]] = {}
+    for method in methods:
+        stem = f"dotnet:{method.class_name}#{method.method}"
+        if method.exact and method.cases and method.cases != [stem]:
+            found[stem] = sorted(method.cases)
+    return found
 
 
 def record_candidates(index_path: Path, files: list[str]) -> list[RuleSite]:
@@ -735,6 +857,51 @@ def record_candidates(index_path: Path, files: list[str]) -> list[RuleSite]:
                     f"{len(properties)} property(ies), Equals and GetHashCode",
                 )
             )
+    return sites
+
+
+def port_type_sites(index_path: Path, files: list[str]) -> list[RuleSite]:
+    """A port's types (``csharp_types``, D-79): each type a library project declares in
+    ``files`` and isn't nested in another, at its declaration in each of its files (a partial
+    type has several). The planner cuts the units."""
+    wanted = set(files)
+    with IndexStore.open(index_path) as store:
+        libraries = {t.name for t in store.build_targets() if t.kind is TargetKind.LIBRARY}
+        sources = {f.path for f in store.files(FileRole.SOURCE)}
+        sites: list[RuleSite] = []
+        for entry in store.port_types():
+            if entry.outer is not None or entry.project not in libraries:
+                continue
+            if any(f not in sources for f in entry.files):
+                continue
+            lines = {s.file: s.range.start_line for s in store.symbols(symbol_id=entry.id)}
+            text = f"{entry.name}: port it, keeping its C# API as a façade"
+            sites += [
+                RuleSite(file=f, line=lines.get(f, 1), text=text)
+                for f in entry.files
+                if f in wanted
+            ]
+    return sorted(sites, key=lambda s: (s.file, s.line, s.text))
+
+
+def program_sites(index_path: Path, files: list[str]) -> list[RuleSite]:
+    """A port's programs (``csharp_programs``, D-79): each program project with a file in
+    ``files``, at its ``Main`` (or its first file, for top-level statements)."""
+    wanted = set(files)
+    with IndexStore.open(index_path) as store:
+        sites: list[RuleSite] = []
+        for target in store.build_targets():
+            sources = [f for f in target.files if f in wanted]
+            if target.kind is not TargetKind.EXECUTABLE or not sources:
+                continue
+            mains = [
+                s
+                for f in sources
+                for s in store.symbols(file=f, name="Main")
+                if s.kind is SymbolKind.METHOD
+            ]
+            file, line = (mains[0].file, mains[0].range.start_line) if mains else (sources[0], 1)
+            sites.append(RuleSite(file=file, line=line, text=f"{target.name}: port the program"))
     return sites
 
 

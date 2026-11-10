@@ -11,6 +11,7 @@ import pytest
 from codecoremorph.adapters.csharp.trx import (
     parse_report,
     read_reports,
+    run_errors,
     selection_filter,
     split_id,
 )
@@ -121,3 +122,30 @@ def test_a_selection_takes_whole_methods() -> None:
 def test_filter_values_are_escaped() -> None:
     assert selection_filter(["dotnet:Ns.A#B"]) == "FullyQualifiedName=Ns.A.B"
     assert "\\!" in (selection_filter(["dotnet:Ns.A!x#B"]) or "")
+
+
+CRASHED = """<?xml version="1.0" encoding="utf-8"?>
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <ResultSummary outcome="Failed">
+    <Counters total="0" executed="0" passed="0" failed="0" error="0" />
+    <RunInfos>
+      <RunInfo computerName="c" outcome="Warning" timestamp="2026-11-09T09:18:45">
+        <Text>A warning.</Text>
+      </RunInfo>
+      <RunInfo computerName="c" outcome="Error" timestamp="2026-11-09T09:18:45">
+        <Text>Test host process crashed : ==255==ERROR: AddressSanitizer: heap-buffer-overflow</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>
+"""
+
+
+def test_a_crashed_test_host_is_a_run_error(tmp_path: Path) -> None:
+    report = tmp_path / "run.trx"
+    report.write_text(CRASHED, encoding="utf-8")
+    assert parse_report(report) == []
+    assert run_errors([report]) == [
+        "Test host process crashed : ==255==ERROR: AddressSanitizer: heap-buffer-overflow"
+    ]
+    assert run_errors([tmp_path / "missing.trx"]) == []

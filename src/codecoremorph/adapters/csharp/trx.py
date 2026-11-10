@@ -132,6 +132,28 @@ def read_reports(paths: Iterable[Path]) -> tuple[list[TestCaseResult], list[str]
     return cases, problems
 
 
+def run_errors(paths: Iterable[Path]) -> list[str]:
+    """The run-level errors the TRX files record (``RunInfo`` entries with an error outcome),
+    such as a test host that crashed: a sanitizer's report from native code ends the run there,
+    with no result for the test that was running (D-78)."""
+    found: list[str] = []
+    for path in sorted(paths):
+        try:
+            data = path.read_bytes()
+            if b"<!DOCTYPE" in data[:4096] or b"<!ENTITY" in data:
+                continue
+            root = ElementTree.fromstring(data)  # noqa: S314 - DTDs rejected above
+        except (OSError, ElementTree.ParseError):
+            continue
+        for info in root.iterfind("t:ResultSummary/t:RunInfos/t:RunInfo", _NS):
+            if (info.get("outcome") or "").lower() != "error":
+                continue
+            text = (info.findtext("t:Text", default="", namespaces=_NS) or "").strip()
+            if text:
+                found.append(text[:_MAX_MESSAGE])
+    return found
+
+
 def _escape(value: str) -> str:
     return re.sub(r"([\\()&|=!~,])", r"\\\1", value)
 
