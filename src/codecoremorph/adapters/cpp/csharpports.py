@@ -57,6 +57,8 @@ PROGRAMS_BEGIN = "# >>> codecoremorph: programs >>>"
 PROGRAMS_END = "# <<< codecoremorph: programs <<<"
 TESTS_BEGIN = "# >>> codecoremorph: translated tests >>>"
 TESTS_END = "# <<< codecoremorph: translated tests <<<"
+NATIVE_BEGIN = "# >>> codecoremorph: native libraries >>>"
+NATIVE_END = "# <<< codecoremorph: native libraries <<<"
 SCAFFOLDS = frozenset(
     {"cpp-csharp-type", "cpp-csharp-program", "cpp-csharp-tests", "cpp-csharp-retire"}
 )
@@ -246,6 +248,51 @@ def with_listed(text: str, source: str, *, bridge: bool = False) -> str | None:
     if source in sources:
         return text
     return text[: match.start(1)] + _listed([*sources, source]) + text[match.end(1) :]
+
+
+def native_variable(library: str) -> str:
+    """The CMake variable a native library is found into: ``libsodium`` is
+    ``CCM_NATIVE_SODIUM``."""
+    stem = re.sub(r"\.(?:dll|dylib|so)(?:\.\d+)*$", "", library.rsplit("/", 1)[-1].lower())
+    stem = stem.removeprefix("lib") or stem
+    return "CCM_NATIVE_" + re.sub(r"[^A-Za-z0-9]+", "_", stem).upper()
+
+
+def with_native(text: str, name: str, libraries: Iterable[str]) -> str:
+    """``cpp/CMakeLists.txt`` finding and linking each native library the C# called through
+    P/Invoke, which the C++ calls itself (D-82): one marked block after the library's compile
+    options, each library once."""
+    wanted = sorted(set(libraries))
+    if not wanted:
+        return text
+    lib = cpp_library(name)
+    lines: list[str] = []
+    for library in wanted:
+        variable = native_variable(library)
+        if f"{variable} " in text or f"{{{variable}}}" in text:
+            continue
+        stem = variable.removeprefix("CCM_NATIVE_").lower()
+        lines.append(f"find_library({variable} NAMES {stem} lib{stem} REQUIRED)\n")
+        lines.append(f"target_link_libraries({lib} PUBLIC ${{{variable}}})\n")
+    if not lines:
+        return text
+    block = _marked(NATIVE_BEGIN, NATIVE_END).search(text)
+    if block is not None:
+        return text[: block.end(1)] + "".join(lines) + text[block.end(1) :]
+    anchor = f"target_compile_options({lib} PRIVATE -Wall -Wextra)\n"
+    at = text.find(anchor)
+    if at < 0:
+        raise ConfigError(
+            f"{CPP_CMAKE} lost the compile options of {lib}, after which the scaffold links the "
+            "native libraries",
+            hint=f"Put them back, or link {', '.join(wanted)} to {lib} by hand.",
+        )
+    at += len(anchor)
+    added = (
+        "# The native libraries the C# called through P/Invoke, which the C++ calls itself\n"
+        f"# (CodeCoreMorph, D-82).\n{NATIVE_BEGIN}\n{''.join(lines)}{NATIVE_END}\n"
+    )
+    return text[:at] + added + text[at:]
 
 
 def native_name(cpp_cmake_text: str) -> str | None:
@@ -659,12 +706,18 @@ def _type(out: _Writer, options: Mapping[str, str], standard: str) -> None:
     """A unit of types: the CMake files and runtime (the first unit), the unit's C++ and bridge
     files, and its sources in the libraries. The options are the unit's port's: ``crate`` (the
     C++ libraries' stem), ``module`` (the unit's files' stem), ``build_target`` (the façade
-    project's file) and ``types`` (the C# types it ports)."""
+    project's file), ``types`` (the C# types it ports) and ``native`` (the native libraries its
+    types call, which the library links, D-82)."""
     name = _identifier(options, "crate", "the C++ libraries' name")
     unit = _identifier(options, "module", "the unit's name")
     project = _project(out.worktree, options)
     types = type_names(options.get("types", "")) or unit
     cmake = _base(out, name, project, standard)
+    native = [n for n in options.get("native", "").split(",") if n.strip()]
+    linked = with_native(cmake, name, native)
+    if linked != cmake:
+        out.write(CPP_CMAKE, linked)
+        cmake = linked
     out.create(f"{SOURCE_DIR}/{unit}.hpp", header_stub(name, unit, types))
     out.create(f"{SOURCE_DIR}/{unit}.cpp", source_stub(unit, types))
     out.create(f"{BRIDGE_DIR}/{unit}.h", bridge_header_stub(name, unit, types))

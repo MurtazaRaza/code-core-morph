@@ -121,6 +121,35 @@ def test_strings_cross_as_utf8_bytes_through_a_wrapper() -> None:
     assert "LPUTF8Str" not in text  # netstandard2.0 doesn't have it
 
 
+def test_arrays_out_are_a_pointer_and_a_count_the_facade_takes() -> None:
+    """A byte[] the C# returns crosses as one malloc'd copy and its length (D-82), not an
+    export per element."""
+    byte: dict[str, Any] = {"k": "int", "name": "uint8_t"}
+    headers = {
+        "cpp/bridge/secret_box.h": {
+            "handles": [],
+            "callbacks": [],
+            "functions": [
+                fn(
+                    "sodium_SecretBox_create",
+                    [
+                        ("message_data", ptr(byte, const=True)),
+                        ("message_count", INT32),
+                        ("result_data", ptr(ptr(byte))),
+                        ("result_count", ptr(INT32)),
+                    ],
+                )
+            ],
+        }
+    }
+    text, problems = csharp_declarations(headers, "sodium_native")
+    assert problems == []
+    assert (
+        "internal static extern int sodium_SecretBox_create(byte[] message_data, int "
+        "message_count, out IntPtr result_data, out int result_count);"
+    ) in text
+
+
 def test_function_pointers_become_delegates() -> None:
     headers = {
         "cpp/bridge/discounts.h": {

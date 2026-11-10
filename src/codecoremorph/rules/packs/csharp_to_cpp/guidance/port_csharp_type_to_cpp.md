@@ -60,11 +60,18 @@ the top-level `CMakeLists.txt`.
   leaves it: the status carries it to the façade.
 - It takes only: fixed-width integers, `bool`, `float`, `double`, `ccm_decimal`,
   `const char *` (a UTF-8 string in, maybe null), `char **` (a string out), handles, `void *`
-  contexts, `ccm_release_fn`, function pointer typedefs, out pointers to these, and input
+  contexts, `ccm_release_fn`, function pointer typedefs, out pointers to these, input
   arrays (`const int32_t *values_data` beside `int32_t values_count`, or `const char **` for
-  strings). The generator refuses anything else, with the header's line.
+  strings) and arrays out (`uint8_t **result_data` beside `int32_t *result_count`). The
+  generator refuses anything else, with the header's line.
 - **Strings:** `bridge::str(text, "param")` where the C# throws `ArgumentNullException` for
   null, `bridge::opt_str(text)` where null is allowed; out, `bridge::out_str(result, s)`.
+- **Arrays** of numbers (a `byte[]`): in, `bridge::array(key_data, key_count, "key")` gives a
+  `std::vector`, the façade passing `CcmInterop.Count(key)` (-1 for null, which throws
+  `ArgumentNullException` as the C# check did; where the C# allows null, test the count).
+  Out, `bridge::out_array(result_data, result_count, bytes)` copies a vector, and the façade
+  reads it with `CcmInterop.TakeBytes(data, count)` (`TakeInts` for `int32_t`), which frees
+  it: one call per array, not one per element.
 - **Decimals:** `bridge::dec(ccm_decimal)` gives a `ccm::Decimal`, and back.
 - **A class** is a handle: `CCM_HANDLE(zoo_Animal);` in the header's `extern "C"` block,
   `CCM_HANDLE_CLASS(zoo_Animal, zoo::Animal)` after it (C++ only, with a forward declaration
@@ -179,6 +186,46 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
 - A generic type is a template, exported once per type argument in use (the unit's note lists
   them: `zoo_Pen_Dog_add`, `zoo_Pen_Bird_add`); the C# generic façade dispatches on
   `typeof(T)` to the right exports.
+- **Checked arithmetic.** When the note says the project checks integer overflow
+  (`CheckForOverflowUnderflow`), every integer `+`, `-`, `*`, conversion and negation outside
+  `unchecked` throws `System.OverflowException` in the C#: check each in the C++ (the
+  `__builtin_*_overflow` functions) and throw `ccm::OverflowException`.
+
+## What the C# runtime did that the C++ does itself
+
+The unit's note names each of these where the C# has them (D-82).
+
+- **Native calls.** A P/Invoke (`[DllImport("libsodium")] static extern int
+  crypto_box_easy(...)`) becomes a plain call of the C function: include the library's own
+  header (`#include <sodium.h>`) in the `.cpp` that calls it, and pass `std::vector<uint8_t>`'s
+  `data()` and `size()` where the C# passed a `byte[]`. The scaffold links the library to
+  `<name>_cpp` (`find_library` in `cpp/CMakeLists.txt`'s marked block of native libraries).
+  The C# types that only declare the functions (an `Interop` class) need no port: leave them,
+  the retirement deletes them. A `ref`/`out` parameter is a pointer to a local; an `IntPtr`
+  the library returns (`sodium_version_string`) is the `const char *` or handle its header
+  says.
+- **Two copies of a native library.** Until the retirement, the C# not ported yet still calls
+  the library through its own P/Invokes, which load the package's copy (its NuGet native
+  file), while the C++ links the toolchain's: two copies in one process, each with its own
+  state. What the C# did to the library before using it (`sodium_init`, a global setting), the
+  façade keeps doing for the C#'s copy beside the C++'s, until the retirement: otherwise the
+  C# that still calls it finds an uninitialized library (libsodium-core's AES-GCM then looks
+  unavailable).
+- **Unsafe code** is plain C++: `fixed (byte* p = buffer)` is `buffer.data()` (nothing moves
+  objects in C++, so there is nothing to pin), `stackalloc` a local `std::array` or a
+  `std::vector`, pointer arithmetic stays. Reading one type through a pointer to another
+  (`*(int*)p`) is undefined behavior in C++ and not in C#: copy the bytes with `std::memcpy`
+  (or `std::bit_cast` from C++20). A pointer into a `fixed` string walks UTF-16 units, which a
+  `std::string` hasn't: say in the symbol map what the C++ walks instead.
+- **A deep copy through a serializer** (a `BinaryFormatter` writing the object into a
+  `MemoryStream` and reading it back): copy the object graph. Each object the copy reaches is
+  a new object (`std::make_shared<Order>(*order)` for each entry of a shared collection, not the
+  pointer); a field marked `[NonSerialized]` gets its default value in the copy, as the note
+  says.
+- **Platform checks** (`RuntimeInformation.IsOSPlatform`, `NativeLibrary.Load`, a
+  `SetDllImportResolver`) go: the C++ is built for its platform and links its libraries. Keep
+  what the C# did for the platform the port builds on (Linux), and say in the symbol map what
+  went.
 
 ## The symbol map
 

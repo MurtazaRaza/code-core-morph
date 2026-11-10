@@ -93,6 +93,15 @@ def _param(t: Type, name: str, arrays: set[str]) -> _Param:
         to = cast(Type, t.get("to") or {})
         if kind == "ptr" and t.get("const") and _scalar(to):
             return _plain(f"{_scalar(to)}[] {name}", name)
+        if (
+            kind == "ptr"
+            and not t.get("const")
+            and _kind(to) == "ptr"
+            and _scalar(cast(Type, to["to"]))
+        ):
+            # An array out (D-82): the C++ malloc's a copy, which the façade takes and frees
+            # (CcmInterop.TakeBytes), its length in the <p>_count beside it.
+            return _plain(f"out IntPtr {name}", f"out {name}")
         if kind == "ptr" and _kind(to) == "ptr" and _kind(cast(Type, to["to"])) == "char":
             return _Param(f"IntPtr[] {name}", f"string[] {name}", f"{name}_utf8", strings=True)
         raise _RefusedError(f"the array {name} is of {_spell(t)}: arrays are of numbers or strings")

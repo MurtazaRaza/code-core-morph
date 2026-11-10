@@ -9,9 +9,11 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "codecoremorph_bridge.h"
 #include "codecoremorph_decimal.hpp"
@@ -114,6 +116,29 @@ inline void out_str(char** out, const std::string& text) { *out = dup(text); }
 
 inline void out_opt_str(char** out, const std::optional<std::string>& text) {
     *out = text ? dup(*text) : nullptr;
+}
+
+// --- arrays: in as a pointer and a count, out as a copy the façade frees (D-82) --------------
+
+// An array parameter C# requires: the façade passes a count of -1 for null, which throws
+// ArgumentNullException, as the C# check did.
+template <class T>
+std::vector<T> array(const T* data, int32_t count, const char* param_name) {
+    if (count < 0) throw ccm::ArgumentNullException(param_name);
+    return count == 0 ? std::vector<T>() : std::vector<T>(data, data + count);
+}
+
+// An array the export returns: a malloc'd copy and its length, which the façade reads and
+// frees (CcmInterop.TakeBytes for bytes); never null, so an empty array is one too.
+template <class T>
+void out_array(T** out, int32_t* count, const std::vector<T>& values) {
+    static_assert(std::is_trivially_copyable_v<T>, "an array out is of numbers");
+    if (values.size() > static_cast<std::size_t>(INT32_MAX)) throw std::length_error("array");
+    auto* copy = static_cast<T*>(std::malloc(values.empty() ? 1 : values.size() * sizeof(T)));  // NOLINT
+    if (copy == nullptr) throw std::bad_alloc();
+    if (!values.empty()) std::memcpy(copy, values.data(), values.size() * sizeof(T));
+    *out = copy;
+    *count = static_cast<int32_t>(values.size());
 }
 
 // --- decimals --------------------------------------------------------------------------------

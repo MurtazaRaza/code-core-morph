@@ -14,6 +14,7 @@ from codecoremorph.adapters.cpp import CppAdapter, csharpports
 from codecoremorph.adapters.cpp.pinvoke import GENERATED_FILE
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.models import LanguageConfig
+from codecoremorph.invariants.checks import check_build_commands, patch_lines
 
 from .test_make import ScriptedExecutor
 
@@ -164,6 +165,28 @@ def test_a_later_unit_adds_its_files_and_keeps_the_rest(tmp_path: Path) -> None:
     cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
     assert csharpports.listed(cmake) == ["src/item.cpp", "src/money.cpp"]
     assert csharpports.bridge_headers(root) == ["cpp/bridge/item.h", "cpp/bridge/money.h"]
+
+
+def test_a_unit_that_calls_a_native_library_links_it(tmp_path: Path) -> None:
+    """The C# called it through P/Invoke; the C++ calls it itself, so the library links it,
+    each library once, in a marked block that survives the retirement (D-82)."""
+    root = _shop(tmp_path)
+    csharpports.scaffold(root, "cpp-csharp-type", {**OPTIONS, "native": "libsodium"}, [], "cpp17")
+    cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
+    assert (
+        "find_library(CCM_NATIVE_SODIUM NAMES sodium libsodium REQUIRED)\n"
+        "target_link_libraries(shop_cpp PUBLIC ${CCM_NATIVE_SODIUM})\n" in cmake
+    )
+    assert cmake.index(csharpports.NATIVE_BEGIN) > cmake.index("target_compile_options(shop_cpp")
+    later = {**OPTIONS, "module": "item", "types": "csharp:Shop.Item", "native": "libsodium,zstd"}
+    csharpports.scaffold(root, "cpp-csharp-type", later, [], "cpp17")
+    cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
+    assert cmake.count("find_library(CCM_NATIVE_SODIUM") == 1
+    assert "target_link_libraries(shop_cpp PUBLIC ${CCM_NATIVE_ZSTD})" in cmake
+    assert cmake.count(csharpports.NATIVE_BEGIN) == 1
+    assert csharpports.NATIVE_BEGIN in csharpports.without_bridge(cmake)
+    assert csharpports.native_variable("kernel32.dll") == "CCM_NATIVE_KERNEL32"
+    assert csharpports.native_variable("libzstd.so.1") == "CCM_NATIVE_ZSTD"
 
 
 @pytest.mark.parametrize(
@@ -442,6 +465,47 @@ def test_keep_source_api_retires_the_programs_only(tmp_path: Path) -> None:
     assert '"src\\Shop\\Shop.csproj"' in solution
     cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
     assert csharpports.native_name(cmake) == "shop_native"
+
+
+def _as_added(root: Path) -> str:
+    """Every file under ``root`` as one patch that adds it."""
+    patch: list[str] = []
+    for file in sorted(p for p in root.rglob("*") if p.is_file()):
+        rel = file.relative_to(root).as_posix()
+        lines = file.read_text(encoding="utf-8").splitlines()
+        patch.append(
+            f"diff --git a/{rel} b/{rel}\nnew file mode 100644\n--- /dev/null\n+++ b/{rel}\n"
+            f"@@ -0,0 +1,{len(lines)} @@\n" + "".join(f"+{line}\n" for line in lines)
+        )
+    return "".join(patch)
+
+
+@pytest.mark.parametrize("keep", ["false", "true"])
+def test_the_scaffolds_add_no_build_time_command(tmp_path: Path, keep: str) -> None:
+    """I-12 (D-78): what the scaffolds write, from the first type unit and a native library's
+    link through the program, the tests and the retirement (both kinds), runs and downloads
+    nothing at configure or build time, so a unit's diff never trips I-12 by its scaffold."""
+    root, files = _ported(tmp_path)
+    linked = {**OPTIONS, "module": "item", "types": "csharp:Shop.Item", "native": "libsodium"}
+    csharpports.scaffold(root, "cpp-csharp-type", linked, [], "cpp17")
+    during = _as_added(root)
+    assert "find_library(CCM_NATIVE_SODIUM" in during
+    assert "add_test(NAME ${program} COMMAND ${program})" in during
+    assert check_build_commands(patch_lines(during)).passed
+    retired = (
+        ["Shop.sln", "src/Cli/Program.cs", "src/Cli/Shop.Cli.csproj"] if keep == "true" else files
+    )
+    csharpports.scaffold(root, "cpp-csharp-retire", {"keep": keep}, retired, "cpp17")
+    after = _as_added(root)
+    assert "add_subdirectory(tests)" in after
+    assert check_build_commands(patch_lines(after)).passed
+    # The check reads these files: a command planted in the top CMake file fails it.
+    top = root / "CMakeLists.txt"
+    planted_text = top.read_text(encoding="utf-8") + "execute_process(COMMAND x)\n"
+    top.write_text(planted_text, encoding="utf-8")
+    planted = check_build_commands(patch_lines(_as_added(root)))
+    assert not planted.passed
+    assert "execute_process in CMakeLists.txt" in planted.message
 
 
 def test_every_scaffold_is_the_cpp_adapters() -> None:

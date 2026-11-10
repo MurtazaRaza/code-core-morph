@@ -150,6 +150,56 @@ namespace CodeCoreMorph.Interop
             }
         }
 
+        /// <summary>An array of bytes the native side returned (bridge::out_array), freed once
+        /// read.</summary>
+        public static byte[] TakeBytes(IntPtr data, int count)
+        {
+            try
+            {
+                var bytes = new byte[count];
+                if (count > 0)
+                {
+                    Marshal.Copy(data, bytes, 0, count);
+                }
+                return bytes;
+            }
+            finally
+            {
+                if (data != IntPtr.Zero)
+                {
+                    ccm_free(data);
+                }
+            }
+        }
+
+        /// <summary>An array of ints the native side returned, freed once read.</summary>
+        public static int[] TakeInts(IntPtr data, int count)
+        {
+            try
+            {
+                var values = new int[count];
+                if (count > 0)
+                {
+                    Marshal.Copy(data, values, 0, count);
+                }
+                return values;
+            }
+            finally
+            {
+                if (data != IntPtr.Zero)
+                {
+                    ccm_free(data);
+                }
+            }
+        }
+
+        /// <summary>An array's count as a bridge takes it: -1 for null, which the bridge
+        /// refuses where the C# did (bridge::array).</summary>
+        public static int Count<T>(T[] values)
+        {
+            return values == null ? -1 : values.Length;
+        }
+
         /// <summary>A string as a native call takes it: NUL-terminated UTF-8, or null.</summary>
         public static byte[] Utf8Z(string text)
         {
