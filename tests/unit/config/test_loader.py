@@ -207,11 +207,11 @@ def test_prd_style_dict_validates_directly() -> None:
             "are not portable across providers (and Anthropic rejects them); put "
             "provider-specific options under `provider_options`",
         ),
-        # image not pinned by digest
+        # image not pinned by content
         (
             "sandbox:\n  image: ubuntu:24.04\n",
-            "m.yaml:7:10: error: sandbox.image: 'ubuntu:24.04' must be pinned by digest, e.g. "
-            "registry/codecoremorph-cpp@sha256:<64 hex>",
+            "m.yaml:7:10: error: sandbox.image: 'ubuntu:24.04' must be pinned by content: "
+            "registry/codecoremorph-cpp@sha256:<64 hex>, or a local image's ID, sha256:<64 hex>",
         ),
         # absolute path where a relative one is required
         (
@@ -223,6 +223,18 @@ def test_prd_style_dict_validates_directly() -> None:
 )
 def test_invalid_field_classes(snippet: str, expected: str) -> None:
     assert _single_error(MINIMAL + snippet) == expected
+
+
+def test_an_image_is_pinned_by_its_digest_or_its_local_id() -> None:
+    """A registry image by its digest, or a local build by its image ID: one built from a
+    toolchain image with a project's native libraries added, say (D-82)."""
+    digest = "0" * 64
+    for image in (f"ghcr.io/x/codecoremorph-cpp@sha256:{digest}", f"sha256:{digest}"):
+        cfg = parse_config(MINIMAL + f"sandbox:\n  image: '{image}'\n").config
+        assert cfg.sandbox.image == image
+    assert "must be pinned by content" in _single_error(
+        MINIMAL + "sandbox:\n  image: 'sha256:abc'\n"
+    )
 
 
 def test_git_revision_cannot_look_like_an_option() -> None:

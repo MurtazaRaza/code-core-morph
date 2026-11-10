@@ -72,9 +72,13 @@ def _git_revision(value: str) -> str:
 
 
 def _pinned_image(value: str) -> str:
-    if not re.fullmatch(r"\S+@sha256:[0-9a-f]{64}", value):
+    # A registry image by its digest, or a local build by its image ID (`docker images
+    # --no-trunc`): both name the image's content (FR-1.2), such as one built from a toolchain
+    # image with a project's native libraries added (D-82).
+    if not re.fullmatch(r"\S+@sha256:[0-9a-f]{64}|sha256:[0-9a-f]{64}", value):
         raise ValueError(
-            f"{value!r} must be pinned by digest, e.g. registry/codecoremorph-cpp@sha256:<64 hex>"
+            f"{value!r} must be pinned by content: registry/codecoremorph-cpp@sha256:<64 hex>, "
+            "or a local image's ID, sha256:<64 hex>"
         )
     return value
 
@@ -450,7 +454,8 @@ class SandboxConfig(ConfigModel):
         description="`auto` uses Docker when it is running, otherwise native with a warning",
     )
     image: Annotated[str, AfterValidator(_pinned_image)] | None = Field(
-        default=None, description="Image override; must be pinned by digest"
+        default=None,
+        description="Image override, pinned by content: a registry digest, or a local image's ID",
     )
     network: NetworkPolicy = Field(
         default=NetworkPolicy.FETCH_ONLY,
