@@ -1,0 +1,28 @@
+id: port_csharp_type_to_cpp
+language: csharp
+target_language: cpp
+kind: port
+port_units: csharp_type           # one unit per type, leaves first by references (D-78, D-79)
+description: >-
+  Port one type of a C# library to C++, with the types it can't be split from (a reference
+  cycle, or a class with virtual members and the classes that derive from it), leaves first.
+  The type keeps its C# API as a façade that calls the C++ through P/Invoke, so the rest of the
+  library and the project's own C# tests keep using it unchanged, and they decide whether the
+  port is right; the C++ runs under AddressSanitizer and UndefinedBehaviorSanitizer in every
+  test.
+detector:
+  type: adapter_query
+  query: csharp_types             # each type a library project declares
+codemods:
+  - tool: cpp-csharp-type         # the CMake build, the runtime, the unit's C++ and bridge files
+extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']   # the C++ and the support
+llm:
+  guidance: guidance/port_csharp_type_to_cpp.md
+postconditions:
+  - {type: symbol_map, severity: error}         # every public member mapped to the C++
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's checks quiet,
+                                                # no owning raw pointer or pointer cast
+                                                # outside the bridge, sanitizers kept
+skip:
+  - test                          # the C# tests stay C#: they judge the port

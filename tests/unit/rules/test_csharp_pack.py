@@ -64,6 +64,8 @@ def test_every_feature_rule_runs_dotnet_format_or_asks_the_adapter() -> None:
     for loaded in registry.for_language("csharp"):
         rule = loaded.rule
         tools = {c.tool for c in rule.codemods}
+        if loaded.pack != "csharp":
+            continue  # a port's (csharp_to_cpp): its scaffolds are the target adapter's
         if rule.id == "bump_csharp_version":
             assert tools == {"msbuild-lang-version"}
         elif rule.id in ("use_record_types", "enable_nullable"):

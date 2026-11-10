@@ -1,0 +1,22 @@
+id: retire_csharp_to_cpp
+language: csharp
+target_language: cpp
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-78)
+description: >-
+  Retire the C# once the types, programs and tests are C++: delete the C# projects, the
+  solution, the MSBuild files only the C# needed, the generated declarations and the bridge, so
+  the CMake build builds and tests the C++ alone. With migration.target.keep_source_api the C#
+  public API stays as a .NET library over the native one.
+detector:
+  type: files                     # each C# file, until it is deleted
+codemods:
+  - tool: cpp-csharp-retire       # deletes the C# and its build, and the bridge
+extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']
+llm:
+  guidance: guidance/retire_csharp_to_cpp.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no C# file left (but a kept API)
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: lint_clean, severity: error}         # all of the C++: no warning, checks quiet

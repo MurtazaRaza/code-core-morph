@@ -179,7 +179,9 @@ def test_every_built_in_pack_loads_without_problems() -> None:
     only a problem logged: the C# pack's records rule once took the Java pack down (D-66)."""
     registry = RuleRegistry.discover()
     assert registry.problems == []
-    assert {"cpp", "cpp_to_rust", "c_to_rust", "java", "csharp"} <= set(registry.packs)
+    assert {"cpp", "cpp_to_rust", "c_to_rust", "java", "csharp", "csharp_to_cpp"} <= set(
+        registry.packs
+    )
     # C has a pack of its own (D-68): the C++ packs never apply to it.
     assert sorted(r.rule.id for r in registry.for_language("c")) == [
         "port_c_executable",
@@ -191,7 +193,7 @@ def test_every_built_in_pack_loads_without_problems() -> None:
     assert (c_module.port_units, c_module.target_language) == ("translation_unit", "rust")
     assert c_module.codemods[0].options == {"language": "c"}
     assert "c_abi_kept" in {p.type.value for p in c_module.postconditions}
-    csharp = sorted(r.rule.id for r in registry.for_language("csharp"))
+    csharp = sorted(r.rule.id for r in registry.for_language("csharp") if r.pack == "csharp")
     assert csharp == [
         "bump_csharp_version",
         "convert_switch_statements",
@@ -203,6 +205,23 @@ def test_every_built_in_pack_loads_without_problems() -> None:
         "use_target_typed_new",
         "use_using_declarations",
     ]
+    # A port from C# (D-78, D-79): its own pack, by target, so C# → Rust can add its own.
+    to_cpp = {r.rule.id: r.rule for r in registry.for_language("csharp") if r.pack != "csharp"}
+    assert {i: (r.port_units, r.target_language) for i, r in to_cpp.items()} == {
+        "port_csharp_type_to_cpp": ("csharp_type", "cpp"),
+        "port_csharp_program_to_cpp": ("executable", "cpp"),
+        "port_csharp_tests_to_cpp": ("tests", "cpp"),
+        "retire_csharp_to_cpp": ("retirement", "cpp"),
+    }
+    assert to_cpp["port_csharp_type_to_cpp"].codemods[0].tool == "cpp-csharp-type"
+    assert "cpp/**" in to_cpp["port_csharp_type_to_cpp"].extra_scope
+    # Every unit's C++ is linted; what a type or program unit ports is mapped.
+    assert {i: sorted(p.type.value for p in r.postconditions) for i, r in to_cpp.items()} == {
+        "port_csharp_type_to_cpp": ["lint_clean", "symbol_map"],
+        "port_csharp_program_to_cpp": ["lint_clean", "symbol_map"],
+        "port_csharp_tests_to_cpp": ["lint_clean", "test_map"],
+        "retire_csharp_to_cpp": ["detector_empty", "lint_clean", "test_map"],
+    }
     assert registry.get("use_records").pack == "java"
 
 
