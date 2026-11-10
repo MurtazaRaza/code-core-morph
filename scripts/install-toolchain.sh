@@ -51,15 +51,17 @@ EOF
 }
 
 # Members of the LLVM archive to extract. The full release is several GB unpacked; CodeCoreMorph
-# needs the compiler, linker, clang-tidy, clang-format, their shared libraries and the
-# compiler's resource directory.
+# needs the compiler, linker, clang-tidy, clang-format, their shared libraries, the compiler's
+# resource directory, and llvm-symbolizer, which the sanitizers' reports name source lines with
+# (addr2line in its place can deadlock a test host, D-78). llvm-mingw, on Windows, has it too.
 llvm_members() {
     case $CCM_PLATFORM in
         macos-*) _libs='*/lib/lib*.dylib' ;;
         *) _libs='*/lib/lib*.so*' ;;
     esac
     LLVM_MEMBERS="*/bin/clang */bin/clang++ */bin/clang-[0-9]* */bin/clang-tidy */bin/clang-format"
-    LLVM_MEMBERS="$LLVM_MEMBERS */bin/lld */bin/ld.lld */bin/llvm-ar */bin/llvm-ranlib */lib/clang/*"
+    LLVM_MEMBERS="$LLVM_MEMBERS */bin/lld */bin/ld.lld */bin/llvm-ar */bin/llvm-ranlib"
+    LLVM_MEMBERS="$LLVM_MEMBERS */bin/llvm-symbolizer */lib/clang/*"
     LLVM_MEMBERS="$LLVM_MEMBERS $_libs"
 }
 

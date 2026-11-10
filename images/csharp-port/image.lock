@@ -1,0 +1,7 @@
+# CodeCoreMorph toolchain image for ports from C#: Rust, C++ and .NET (SPEC §7.8, §11.9, D-78).
+# KEY=VALUE lines, read by codecoremorph.sandbox.provisioning and scripts/pull-images.
+#
+# digest is written when the image is published by CI (deferred, D-28). While it is empty,
+# runs use a local build: scripts/build-image csharp-port (tagged codecoremorph-csharp-port:local).
+image=ghcr.io/codecoremorph/codecoremorph-csharp-port
+digest=

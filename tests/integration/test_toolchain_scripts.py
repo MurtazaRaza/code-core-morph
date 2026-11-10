@@ -202,6 +202,9 @@ def test_build_image_dry_run_and_usage(flavor: Flavor) -> None:
     rust = _script(flavor, "build-image", ["--dry-run", "rust"])  # the port image (D-57)
     assert rust.returncode == 0, rust.stderr
     assert "-t codecoremorph-rust:local" in rust.stdout
+    port = _script(flavor, "build-image", ["--dry-run", "csharp-port"])  # ports from C# (D-78)
+    assert port.returncode == 0, port.stderr
+    assert "-t codecoremorph-csharp-port:local" in port.stdout
     missing = _script(flavor, "build-image", ["cobol"])
     assert missing.returncode == 2
     assert "there is no image definition for 'cobol'" in missing.stderr
