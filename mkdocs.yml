@@ -60,6 +60,7 @@ nav:
       - Porting C++ to Rust: porting-to-rust.md
       - Porting C to Rust: porting-c-to-rust.md
       - Porting Rust to C: porting-rust-to-c.md
+      - Porting C# to C++: porting-csharp-to-cpp.md
       - Upgrading Java: upgrading-java.md
       - Upgrading C#: upgrading-csharp.md
       - The dashboard: dashboard.md
