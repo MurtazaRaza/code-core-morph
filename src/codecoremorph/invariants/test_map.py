@@ -256,6 +256,25 @@ def weaker_translations(
     return found
 
 
+_NOT_THE_PORTS = frozenset({".git", "target", "bin", "obj"})  # VCS and build output
+
+
+def port_tree_files(root: Path, test_map: str) -> list[str]:
+    """The files (relative to ``root``) of a port's new tree: the directory its test map is in
+    (``rust/``, ``c/``, ``cpp/``), where the target's tests are, whatever its language; the
+    whole tree for a map at the top. Build output and VCS directories are left out."""
+    parent = Path(test_map).parent
+    tree = root if parent == Path() else root / parent
+    if not tree.is_dir():
+        return []
+    found: list[str] = []
+    for path in tree.rglob("*"):
+        rel = path.relative_to(root)
+        if path.is_file() and not _NOT_THE_PORTS.intersection(rel.parts[:-1]):
+            found.append(rel.as_posix())
+    return sorted(found)
+
+
 def project_test_pairs(
     root: Path, adapter: LanguageAdapter | None, source_language: str, target_language: str
 ) -> dict[str, TestPair]:

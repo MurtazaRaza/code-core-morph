@@ -57,6 +57,7 @@ from codecoremorph.invariants.test_map import (
     TestPair,
     by_source,
     gone_but_mapped,
+    port_tree_files,
     read_test_map,
     weaker_translations,
 )
@@ -331,10 +332,9 @@ class InvariantChecker:
         finally:
             shutil.rmtree(old, ignore_errors=True)
         try:
-            rust_files = [
-                p.relative_to(worktree.path).as_posix() for p in worktree.path.rglob("*.rs")
-            ]
-            targets = port.adapter.extract_assertions(port.ctx, rust_files)
+            # The translations are in the port's tree, in the target's language (D-60).
+            tree = port_tree_files(worktree.path, port.test_map or "")
+            targets = port.adapter.extract_assertions(port.ctx, tree)
         except AdapterNotSupportedError:
             return None
         found = weaker_translations(added, sources, targets)

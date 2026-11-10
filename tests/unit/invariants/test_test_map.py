@@ -5,18 +5,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codecoremorph.adapters.base import AdapterContext
+from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.rust import RustAdapter
-from codecoremorph.core.models import TestAssertions, TestStatus
+from codecoremorph.core.models import LanguageConfig, TestAssertions, TestStatus
 from codecoremorph.invariants import test_map as tm
 from codecoremorph.invariants.test_map import (
     TestPair,
     by_source,
     gone_but_mapped,
     parity,
+    port_tree_files,
     project_test_pairs,
     read_test_map,
     weaker_translations,
 )
+from codecoremorph.sandbox.native import NativeExecutor
 
 MAP = """\
 # a comment
@@ -193,3 +197,36 @@ def test_a_test_split_into_several() -> None:
     assert weaker_translations(split.values(), sources, fewer) == [
         "make:test made 3 check(s); its 2 tests make 2"
     ]
+
+
+def test_the_translations_are_read_in_the_ports_tree(tmp_path: Path) -> None:
+    """I-4 reads the translated tests where the test map is, in the target's language: a C++
+    target's GoogleTest files under cpp/ (D-78), not only Rust files."""
+    tests = tmp_path / "cpp" / "tests"
+    tests.mkdir(parents=True)
+    (tests / "money_tests.cpp").write_text(
+        "#include <gtest/gtest.h>\nTEST(MoneyTests, Adds) {\n    EXPECT_EQ(2, 1 + 1);\n}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "cpp" / "test-map.toml").write_text("", encoding="utf-8")
+    (tmp_path / "cpp" / "obj").mkdir()
+    (tmp_path / "cpp" / "obj" / "stale.cpp").write_text("TEST(A, B) {}\n", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Money.cs").write_text("class Money { }\n", encoding="utf-8")
+    files = port_tree_files(tmp_path, "cpp/test-map.toml")
+    assert files == ["cpp/test-map.toml", "cpp/tests/money_tests.cpp"]
+    (found,) = CppAdapter().extract_assertions(_ctx(tmp_path), files)
+    assert (found.test_id, len(found.assertions)) == ("gtest:MoneyTests.Adds", 1)
+    assert port_tree_files(tmp_path, "rust/test-map.toml") == []  # no such tree yet
+    assert "src/Money.cs" in port_tree_files(tmp_path, "test-map.toml")  # a map at the top
+
+
+def _ctx(root: Path) -> AdapterContext:
+    return AdapterContext(
+        worktree=root,
+        build_dir=root / "build",
+        cache_dir=root / "cache",
+        log_dir=root / "logs",
+        executor=NativeExecutor(log_dir=root / "exec"),
+        lang=LanguageConfig(language="cpp", standard="cpp17"),
+    )
