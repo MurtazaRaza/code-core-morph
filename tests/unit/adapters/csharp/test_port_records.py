@@ -10,7 +10,13 @@ from typing import Any
 
 from codecoremorph.adapters.csharp.indexing import MAX_USES, port_records, project_targets
 from codecoremorph.adapters.csharp.msbuild import Layout
-from codecoremorph.core.models import PortRefusal, SymbolKind, TargetKind
+from codecoremorph.core.models import (
+    NativeLibraryProbe,
+    PortNoticeKind,
+    PortRefusal,
+    SymbolKind,
+    TargetKind,
+)
 from codecoremorph.store.index import IndexStore
 
 ROWS = Path(__file__).with_name("data") / "port_rows.jsonl"
@@ -125,6 +131,58 @@ def test_the_store_keeps_them(tmp_path: Path) -> None:
         assert store.port_types() == records.types
         assert store.generic_uses() == records.uses
         assert store.test_methods() == records.tests
+
+
+def test_what_a_port_takes_over_and_depends_on(tmp_path: Path) -> None:
+    """The helper's rows of D-82: notices, P/Invoke declarations, package uses and the
+    packages a project restored, each to its type, and the types that only declare natives."""
+    rows: list[dict[str, Any]] = [
+        {"t": "type", "id": "csharp:Interop", "name": "Interop", "kind": "class",
+         "files": ["src/Zoo/Animal.cs"], "native_only": True},
+        {"t": "type", "id": "csharp:Zoo.Pen`1", "name": "Zoo.Pen", "kind": "class",
+         "files": ["src/Zoo/Pen.cs"]},
+        {"t": "native", "library": "libsodium", "entry": "sodium_init", "type": "csharp:Interop",
+         "member": "csharp:Interop.sodium_init", "sig": "int sodium_init()",
+         "file": "src/Zoo/Animal.cs", "line": 7},
+        {"t": "notice", "what": "unsafe", "detail": "a fixed statement", "type": "csharp:Zoo.Pen`1",
+         "member": "csharp:Zoo.Pen`1.First", "file": "src/Zoo/Pen.cs", "line": 12},
+        {"t": "notice", "what": "deep_copy", "detail": "a deep copy of Zoo.Pen",
+         "type": "csharp:Zoo.Pen`1", "file": "src/Zoo/Pen.cs", "line": 20},
+        {"t": "pkguse", "package": "Newtonsoft.Json", "symbol": "Newtonsoft.Json.JsonConvert",
+         "type": "csharp:Zoo.Pen`1", "file": "src/Zoo/Pen.cs", "line": 3},
+        {"t": "pkg", "project": "src/Zoo/Zoo.csproj", "name": "libsodium", "version": "1.0.18.2",
+         "assemblies": [], "native": ["linux-x64:libsodium.so"]},
+        # A file the index lacks keeps none of its rows.
+        {"t": "notice", "what": "platform", "detail": "x", "type": "csharp:Zoo.Pen`1",
+         "file": "src/Elsewhere.cs", "line": 1},
+    ]  # fmt: skip
+    records = port_records(rows, {"src/Zoo/Animal.cs", "src/Zoo/Pen.cs"})
+    types = {t.id: t for t in records.types}
+    interop, pen = types["csharp:Interop"], types["csharp:Zoo.Pen`1"]
+    assert interop.native_only
+    assert not pen.native_only
+    (native,) = interop.native_imports
+    assert (native.library, native.entry_point, native.line) == ("libsodium", "sodium_init", 7)
+    assert [(n.what, n.line) for n in pen.notices] == [
+        (PortNoticeKind.UNSAFE, 12),
+        (PortNoticeKind.DEEP_COPY, 20),
+    ]
+    assert [(u.package, u.symbol) for u in pen.package_uses] == [
+        ("Newtonsoft.Json", "Newtonsoft.Json.JsonConvert")
+    ]
+    (package,) = records.packages
+    assert (package.name, package.version, package.native) == (
+        "libsodium", "1.0.18.2", ["linux-x64:libsodium.so"],
+    )  # fmt: skip
+    probe = NativeLibraryProbe(library="libsodium", header="/usr/include/sodium.h")
+    with IndexStore.open(tmp_path / "index.sqlite") as store:
+        assert (store.packages(), store.native_probes()) == ([], [])
+        store.set_port_source(types=records.types, packages=records.packages)
+        store.set_native_probes([probe])
+    with IndexStore.open(tmp_path / "index.sqlite") as store:
+        assert store.packages() == records.packages
+        assert store.native_probes() == [probe]
+        assert store.port_types() == records.types
 
 
 def test_each_project_is_a_build_target(tmp_path: Path) -> None:

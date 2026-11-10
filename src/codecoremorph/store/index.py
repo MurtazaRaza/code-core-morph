@@ -31,6 +31,8 @@ from codecoremorph.core.models import (
     GenericUse,
     IndexMeta,
     LineEnding,
+    NativeLibraryProbe,
+    PackageEntry,
     Reference,
     ReferenceKind,
     SourceRange,
@@ -243,13 +245,16 @@ class IndexStore:
         types: Sequence[TypeEntry] = (),
         generic_uses: Sequence[GenericUse] = (),
         test_methods: Sequence[TestMethod] = (),
+        packages: Sequence[PackageEntry] = (),
     ) -> None:
         """What a port's source records beyond its symbols (a C# source, D-78): its types,
-        the uses of its generics with their type arguments, and its test methods."""
+        the uses of its generics with their type arguments, its test methods, and the packages
+        its projects restored (D-82)."""
         for key, models in (
             ("port_types", types),
             ("generic_uses", generic_uses),
             ("test_methods", test_methods),
+            ("packages", packages),
         ):
             self.set_value(key, "[" + ",".join(m.model_dump_json() for m in models) + "]")
 
@@ -289,6 +294,21 @@ class IndexStore:
         """The types a port's source recorded (D-78), or none."""
         text = self.value("port_types")
         return [TypeEntry.model_validate(t) for t in json.loads(text)] if text else []
+
+    def set_native_probes(self, probes: Sequence[NativeLibraryProbe]) -> None:
+        """What the toolchain has of each native library a port's source calls (D-82)."""
+        self.set_value("native_probes", "[" + ",".join(p.model_dump_json() for p in probes) + "]")
+
+    def native_probes(self) -> list[NativeLibraryProbe]:
+        """What the toolchain has of each native library a port's source calls (D-82), or
+        nothing when it wasn't looked at (a native run)."""
+        text = self.value("native_probes")
+        return [NativeLibraryProbe.model_validate(p) for p in json.loads(text)] if text else []
+
+    def packages(self) -> list[PackageEntry]:
+        """The packages a port's source's projects restored (D-82), or none."""
+        text = self.value("packages")
+        return [PackageEntry.model_validate(p) for p in json.loads(text)] if text else []
 
     def generic_uses(self) -> list[GenericUse]:
         """The uses of the project's generics a port's source recorded (D-78), or none."""

@@ -70,6 +70,11 @@ _COMPILE = re.compile(
 _PROJECT_REFERENCE = re.compile(
     r"<ProjectReference\s+Include\s*=\s*\"(?P<value>[^\"]*)\"", re.IGNORECASE
 )
+# A shared project's items, which the projects that import it compile (D-82).
+_SHARED_IMPORT = re.compile(
+    r"<Import\s+Project\s*=\s*\"(?P<value>[^\"]*\.projitems)\"", re.IGNORECASE
+)
+_THIS_DIRECTORY = re.compile(r"\$\(MSBuildThisFileDirectory\)", re.IGNORECASE)
 _PROPERTY = re.compile(
     r"<(?P<name>[A-Za-z_][\w.-]*)(?:\s[^>]*)?>\s*(?P<value>[^<]*?)\s*</(?P=name)>"
 )
@@ -204,6 +209,9 @@ class ProjectInfo:
     sdk_style: bool = True
     test_project: bool = False
     executable: bool = False  # OutputType Exe or WinExe: a program
+    # CheckForOverflowUnderflow: integer arithmetic outside `unchecked` throws on overflow,
+    # which a port keeps (D-82).
+    checked_arithmetic: bool = False
 
     @property
     def standard(self) -> str | None:
@@ -231,6 +239,10 @@ def project_info(text: str, inherited: dict[str, str] | None = None) -> ProjectI
         sdk_style=_SDK_PROJECT.search(clean) is not None,
         test_project=_TEST_SDK.search(clean) is not None,
         executable=output in ("exe", "winexe"),
+        checked_arithmetic=_resolve(props.get("CheckForOverflowUnderflow") or "", props)
+        .strip()
+        .lower()
+        == "true",
     )
 
 
@@ -480,6 +492,7 @@ def layout(worktree: Path, exclude: PathMatcher) -> Layout:
         included = _glob_matcher(base, includes)
         if included is not None:
             chosen += [f for f in cs if included.fullmatch(f) and f not in chosen]
+        chosen += [f for f in shared_items(worktree, base, clean, cs) if f not in chosen]
         removed = _glob_matcher(base, removes)
         if removed is not None:
             chosen = [f for f in chosen if not removed.fullmatch(f)]
@@ -490,6 +503,31 @@ def layout(worktree: Path, exclude: PathMatcher) -> Layout:
     compiled = set(result.compiled)
     result.uncompiled = [f for f in cs if f not in compiled]
     return result
+
+
+def shared_items(worktree: Path, base: str, project_text: str, cs: Iterable[str]) -> list[str]:
+    """The C# files (of ``cs``) of the shared projects (``.projitems``) a project imports,
+    which it compiles as its own: ``$(MSBuildThisFileDirectory)`` is the shared project's
+    directory."""
+    found: list[str] = []
+    cs = list(cs)
+    for match in _SHARED_IMPORT.finditer(project_text):
+        items = _join(base, match.group("value"))
+        if items.startswith("../"):
+            continue
+        text = uncommented(_text(worktree / items) or "")
+        directory = PurePosixPath(items).parent.as_posix()
+        directory = "" if directory == "." else directory
+        includes = [
+            _THIS_DIRECTORY.sub("", m.group("value"))
+            for m in _COMPILE.finditer(text)
+            if m.group("attr").lower() == "include"
+        ]
+        matcher = _glob_matcher(directory, includes)
+        if matcher is None:
+            continue
+        found += [path for path in cs if matcher.fullmatch(path) and path not in found]
+    return sorted(found)
 
 
 def entry_point(worktree: Path, lay: Layout) -> str | None:

@@ -273,11 +273,17 @@ internal static class Indexer
     internal static readonly Dictionary<string, Dictionary<string, string>> Packages =
         new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
+    // The package each package assembly comes from, by assembly name: what a port's types use
+    // of a package (D-82).
+    internal static readonly Dictionary<string, string> PackageOfAssembly =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     private static IEnumerable<MetadataReference> PackageAssemblies(string assets, string project)
     {
         var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Packages[project] = versions;
         var found = new List<MetadataReference>();
+        var shipped = new Dictionary<string, (List<string> Assemblies, List<string> Native)>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrEmpty(assets) || !File.Exists(assets))
         {
             return found;
@@ -305,6 +311,33 @@ internal static class Indexer
                     if (slash > 0)
                     {
                         versions[library.Name.Substring(0, slash)] = library.Name.Substring(slash + 1);
+                    }
+                    string packageName = slash > 0 ? library.Name.Substring(0, slash) : library.Name;
+                    var record = (Assemblies: new List<string>(), Native: new List<string>());
+                    shipped[library.Name] = record;
+                    // Its native files, by runtime: what a P/Invoke of it loads (D-82).
+                    if (library.Value.TryGetProperty("runtimeTargets", out var runtimeTargets))
+                    {
+                        foreach (var native in runtimeTargets.EnumerateObject())
+                        {
+                            if (native.Value.TryGetProperty("assetType", out var assetType) && assetType.GetString() == "native"
+                                && native.Value.TryGetProperty("rid", out var rid))
+                            {
+                                record.Native.Add(rid.GetString() + ":" + Path.GetFileName(native.Name));
+                            }
+                        }
+                    }
+                    if (library.Value.TryGetProperty("compile", out var assembliesOf))
+                    {
+                        foreach (var asset in assembliesOf.EnumerateObject())
+                        {
+                            if (!asset.Name.EndsWith("/_._", StringComparison.Ordinal))
+                            {
+                                string assembly = Path.GetFileNameWithoutExtension(asset.Name);
+                                record.Assemblies.Add(assembly);
+                                PackageOfAssembly[assembly] = packageName;
+                            }
+                        }
                     }
                     if (!library.Value.TryGetProperty("compile", out var compile)
                         || !libraries.TryGetProperty(library.Name, out var info)
@@ -339,6 +372,22 @@ internal static class Indexer
         catch (Exception ex)
         {
             Problem(assets + ": " + ex.Message);
+        }
+        if (port)
+        {
+            foreach (var entry in shipped.OrderBy(e => e.Key, StringComparer.Ordinal))
+            {
+                int slash = entry.Key.IndexOf('/');
+                Write(new Dictionary<string, object?>
+                {
+                    ["t"] = "pkg",
+                    ["project"] = project,
+                    ["name"] = slash > 0 ? entry.Key.Substring(0, slash) : entry.Key,
+                    ["version"] = slash > 0 ? entry.Key.Substring(slash + 1) : "",
+                    ["assemblies"] = entry.Value.Assemblies.Distinct(StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal).ToList(),
+                    ["native"] = entry.Value.Native.Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList(),
+                });
+            }
         }
         return found;
     }
@@ -663,6 +712,11 @@ internal static class PortSource
     {
         var model = compilation.GetSemanticModel(tree, ignoreAccessibility: true);
         string file = tree.FilePath;
+        RoundTrips.Clear();
+        foreach (var body in tree.GetRoot().DescendantNodes().Where(n => n is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax or LocalFunctionStatementSyntax))
+        {
+            DeepCopy(model, file, body);
+        }
         foreach (var node in tree.GetRoot().DescendantNodes())
         {
             if ((node is BaseTypeDeclarationSyntax || node is DelegateDeclarationSyntax)
@@ -674,6 +728,9 @@ internal static class PortSource
             Refusals(model, file, node);
             Throws(model, file, node);
             Uses(model, file, node);
+            Native(model, file, node);
+            PackageUses(model, file, node);
+            Platform(model, file, node);
         }
     }
 
@@ -801,8 +858,33 @@ internal static class PortSource
             ["virtual"] = virtuals,
             ["fields"] = fields,
             ["statics"] = statics,
+            ["native_only"] = NativeOnly(type),
         });
     }
+
+    // A type that only declares native functions (P/Invoke externs), with the constants and the
+    // plain structs they take: the new code calls the native library itself, so it needs no
+    // port (D-82).
+    private static bool NativeOnly(INamedTypeSymbol type) =>
+        HasExtern(type) && type.GetMembers().All(m => m switch
+        {
+            INamedTypeSymbol nested => NativeOnly(nested) || NativeStruct(nested) || ConstantsOnly(nested),
+            IMethodSymbol { IsExtern: true } => true,
+            IMethodSymbol { IsImplicitlyDeclared: true, MethodKind: MethodKind.Constructor } => true,
+            IFieldSymbol { IsConst: true } => true,
+            _ => false,
+        });
+
+    private static bool HasExtern(INamedTypeSymbol type) =>
+        type.GetMembers().Any(m => m is IMethodSymbol { IsExtern: true } || (m is INamedTypeSymbol nested && HasExtern(nested)));
+
+    private static bool NativeStruct(INamedTypeSymbol type) =>
+        type.TypeKind == TypeKind.Struct && type.GetMembers().All(m =>
+            m is IFieldSymbol { IsStatic: false } || m.IsImplicitlyDeclared);
+
+    private static bool ConstantsOnly(INamedTypeSymbol type) =>
+        type.TypeKind == TypeKind.Class && type.GetMembers().All(m =>
+            m is IFieldSymbol { IsConst: true } || m.IsImplicitlyDeclared);
 
     // A value no code can change: a readonly field of one of these is no state.
     private static bool Immutable(ITypeSymbol type) =>
@@ -812,6 +894,10 @@ internal static class PortSource
 
     private static void Refusals(SemanticModel model, string file, SyntaxNode node)
     {
+        if (RoundTrips.Contains(node))
+        {
+            return; // a serializer's round trip in memory: a deep copy (D-82)
+        }
         switch (node)
         {
             case MemberDeclarationSyntax member when member is not BaseTypeDeclarationSyntax || member.Modifiers.Any(SyntaxKind.UnsafeKeyword):
@@ -822,7 +908,7 @@ internal static class PortSource
                 }
                 if (member.Modifiers.Any(SyntaxKind.UnsafeKeyword))
                 {
-                    Refuse(model, file, node, "unsafe", "unsafe " + name);
+                    Notice(model, file, node, "unsafe", "unsafe " + name);
                 }
                 break;
             case LocalFunctionStatementSyntax local:
@@ -832,7 +918,7 @@ internal static class PortSource
                 }
                 if (local.Modifiers.Any(SyntaxKind.UnsafeKeyword))
                 {
-                    Refuse(model, file, node, "unsafe", "unsafe " + local.Identifier.ValueText);
+                    Notice(model, file, node, "unsafe", "unsafe " + local.Identifier.ValueText);
                 }
                 break;
             case AnonymousFunctionExpressionSyntax lambda:
@@ -847,16 +933,16 @@ internal static class PortSource
                 }
                 break;
             case UnsafeStatementSyntax:
-                Refuse(model, file, node, "unsafe", "an unsafe block");
+                Notice(model, file, node, "unsafe", "an unsafe block");
                 break;
             case FixedStatementSyntax:
-                Refuse(model, file, node, "unsafe", "a fixed statement");
+                Notice(model, file, node, "unsafe", "a fixed statement");
                 break;
             case PointerTypeSyntax pointer:
-                Refuse(model, file, node, "unsafe", "the pointer type " + pointer);
+                Notice(model, file, node, "unsafe", "the pointer type " + pointer);
                 break;
             case FunctionPointerTypeSyntax:
-                Refuse(model, file, node, "unsafe", "a function pointer");
+                Notice(model, file, node, "unsafe", "a function pointer");
                 break;
             case IdentifierNameSyntax word when word.Identifier.ValueText == "dynamic"
                 && (model.GetTypeInfo(word).Type?.TypeKind == TypeKind.Dynamic || model.GetSymbolInfo(word).Symbol is IDynamicTypeSymbol):
@@ -919,6 +1005,260 @@ internal static class PortSource
             ["file"] = file,
             ["line"] = line,
         });
+    }
+
+    // What a unit's note tells about a site that the port takes over without refusing it
+    // (D-82): unsafe code, a deep copy through a serializer, code that asks which platform it
+    // runs on or loads native code itself.
+    private static void Notice(SemanticModel model, string file, SyntaxNode node, string what, string detail)
+    {
+        string? type = EnclosingType(model, node);
+        if (type == null)
+        {
+            return;
+        }
+        int line = Line(node);
+        if (!Indexer.Emitted.Add(string.Join("\0", "notice", what, file, line.ToString(), detail)))
+        {
+            return;
+        }
+        string? member = node is MemberDeclarationSyntax and not BaseTypeDeclarationSyntax && model.GetDeclaredSymbol(node) is { } declared
+            ? Indexer.Id(declared)
+            : Indexer.Enclosing(model, node);
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "notice",
+            ["what"] = what,
+            ["detail"] = detail,
+            ["type"] = type,
+            ["member"] = member,
+            ["file"] = file,
+            ["line"] = line,
+        });
+    }
+
+    // ------------------------------------------------------------------ deep copies (D-82)
+
+    // The serializer nodes of the round trips in memory found in the current tree: a deep copy,
+    // which the port makes by copying the object graph rather than refusing it.
+    private static readonly HashSet<SyntaxNode> RoundTrips = new HashSet<SyntaxNode>();
+
+    private static readonly HashSet<string> SerializationCallbacks = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "OnSerializingAttribute", "OnSerializedAttribute", "OnDeserializingAttribute", "OnDeserializedAttribute",
+    };
+
+    // A formatter (an IFormatter, BinaryFormatter's kind) made in the body serializes an object
+    // into a MemoryStream made in the body and deserializes it back from the same stream: the
+    // object graph copied, its bytes never seen outside. Not when a type of the graph decides its
+    // own serialization (ISerializable, the serialization callbacks): that is the type's code.
+    private static void DeepCopy(SemanticModel model, string file, SyntaxNode body)
+    {
+        var nodes = body.DescendantNodes().ToList();
+        var formatters = nodes.OfType<ObjectCreationExpressionSyntax>()
+            .Where(c => model.GetSymbolInfo(c).Symbol is IMethodSymbol { ContainingType: { } t } && Formatter(t))
+            .ToList();
+        if (formatters.Count == 0)
+        {
+            return;
+        }
+        InvocationExpressionSyntax? serialize = null, deserialize = null;
+        ISymbol? written = null, read = null;
+        ExpressionSyntax? copied = null;
+        foreach (var call in nodes.OfType<InvocationExpressionSyntax>())
+        {
+            if (model.GetSymbolInfo(call).Symbol is not IMethodSymbol { ContainingType: { } owner } method || !Formatter(owner))
+            {
+                continue;
+            }
+            var arguments = call.ArgumentList.Arguments;
+            if (method.Name == "Serialize" && arguments.Count == 2 && serialize == null)
+            {
+                serialize = call;
+                written = model.GetSymbolInfo(arguments[0].Expression).Symbol;
+                copied = arguments[1].Expression;
+            }
+            else if (method.Name == "Deserialize" && arguments.Count == 1 && deserialize == null)
+            {
+                deserialize = call;
+                read = model.GetSymbolInfo(arguments[0].Expression).Symbol;
+            }
+            else
+            {
+                return; // another use of the formatter: not a plain round trip
+            }
+        }
+        if (serialize == null || deserialize == null || copied == null || written is not ILocalSymbol stream
+            || !SymbolEqualityComparer.Default.Equals(written, read)
+            || stream.Type.ToDisplayString() != "System.IO.MemoryStream"
+            || !nodes.OfType<ObjectCreationExpressionSyntax>().Any(c => model.GetTypeInfo(c).Type?.ToDisplayString() == "System.IO.MemoryStream"))
+        {
+            return;
+        }
+        var graph = Graph(model.GetTypeInfo(copied).Type);
+        if (graph.Any(t => t.AllInterfaces.Any(i => i.ToDisplayString() == "System.Runtime.Serialization.ISerializable")
+            || t.GetMembers().OfType<IMethodSymbol>().Any(m => m.GetAttributes().Any(a => SerializationCallbacks.Contains(a.AttributeClass?.Name ?? "")))))
+        {
+            return;
+        }
+        RoundTrips.UnionWith(formatters);
+        RoundTrips.Add(serialize);
+        RoundTrips.Add(deserialize);
+        var reset = graph.SelectMany(t => t.GetMembers().OfType<IFieldSymbol>()
+                .Where(f => !f.IsStatic && f.GetAttributes().Any(a => a.AttributeClass?.Name == "NonSerializedAttribute"))
+                .Select(f => t.Name + "." + f.Name))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        string what = model.GetTypeInfo(copied).Type?.ToDisplayString(Indexer.Qualified) ?? "the object";
+        string formatter = model.GetTypeInfo(formatters[0]).Type?.Name ?? "a formatter";
+        string detail = "a deep copy of " + what + " through a " + formatter + " round trip in memory";
+        if (reset.Count > 0)
+        {
+            detail += " ([NonSerialized], so reset in the copy: " + string.Join(", ", reset) + ")";
+        }
+        Notice(model, file, serialize, "deep_copy", detail);
+    }
+
+    private static bool Formatter(INamedTypeSymbol type) =>
+        type.AllInterfaces.Any(i => i.ToDisplayString() == "System.Runtime.Serialization.IFormatter")
+        || type.ToDisplayString() == "System.Runtime.Serialization.IFormatter";
+
+    // The project's types an object of this type reaches through instance fields (type arguments
+    // of a collection included).
+    private static List<INamedTypeSymbol> Graph(ITypeSymbol? start)
+    {
+        var found = new List<INamedTypeSymbol>();
+        var queue = new Queue<ITypeSymbol>();
+        if (start != null)
+        {
+            queue.Enqueue(start);
+        }
+        var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        while (queue.Count > 0)
+        {
+            var type = queue.Dequeue();
+            if (!seen.Add(type))
+            {
+                continue;
+            }
+            if (type is IArrayTypeSymbol array)
+            {
+                queue.Enqueue(array.ElementType);
+                continue;
+            }
+            if (type is not INamedTypeSymbol named)
+            {
+                continue;
+            }
+            foreach (var argument in named.TypeArguments)
+            {
+                queue.Enqueue(argument);
+            }
+            if (!InProject(named))
+            {
+                continue;
+            }
+            found.Add(named);
+            foreach (var field in named.GetMembers().OfType<IFieldSymbol>().Where(f => !f.IsStatic))
+            {
+                queue.Enqueue(field.Type);
+            }
+            if (named.BaseType != null)
+            {
+                queue.Enqueue(named.BaseType);
+            }
+        }
+        return found;
+    }
+
+    // ------------------------------------------------------------------ native code (D-82)
+
+    // A P/Invoke declaration: the library it names (its constant resolved), the entry point.
+    private static void Native(SemanticModel model, string file, SyntaxNode node)
+    {
+        if (node is not MethodDeclarationSyntax declaration || model.GetDeclaredSymbol(declaration) is not IMethodSymbol method
+            || !method.IsExtern)
+        {
+            return;
+        }
+        var import = method.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "DllImportAttribute" or "LibraryImportAttribute");
+        string? type = EnclosingType(model, node);
+        string? id = Indexer.Id(method);
+        if (import == null || type == null || id == null)
+        {
+            return;
+        }
+        string library = import.ConstructorArguments.Length > 0 ? import.ConstructorArguments[0].Value as string ?? "" : "";
+        string entry = import.NamedArguments.FirstOrDefault(a => a.Key == "EntryPoint").Value.Value as string ?? method.Name;
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "native",
+            ["library"] = library,
+            ["entry"] = entry,
+            ["type"] = type,
+            ["member"] = id,
+            ["sig"] = method.ToDisplayString(Indexer.Signature),
+            ["file"] = file,
+            ["line"] = Line(node),
+        });
+    }
+
+    // A package's API that a type uses, once per symbol and type: what the new code needs a
+    // counterpart of (D-82).
+    private static void PackageUses(SemanticModel model, string file, SyntaxNode node)
+    {
+        if (node is not SimpleNameSyntax name || Indexer.IsDeclarationName(name))
+        {
+            return;
+        }
+        var info = model.GetSymbolInfo(name);
+        var symbol = info.Symbol ?? (info.CandidateSymbols.Length == 1 ? info.CandidateSymbols[0] : null);
+        if (symbol == null || symbol is INamespaceSymbol || symbol.ContainingAssembly == null
+            || !Indexer.PackageOfAssembly.TryGetValue(symbol.ContainingAssembly.Name, out var package))
+        {
+            return;
+        }
+        string? type = EnclosingType(model, node);
+        string shown = symbol is INamedTypeSymbol ? symbol.ToDisplayString(Indexer.Qualified)
+            : (symbol.ContainingType?.ToDisplayString(Indexer.Qualified) ?? "") + "." + symbol.Name;
+        if (type == null || !Indexer.Emitted.Add(string.Join("\0", "pkguse", type, package, shown)))
+        {
+            return;
+        }
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "pkguse",
+            ["package"] = package,
+            ["symbol"] = shown,
+            ["type"] = type,
+            ["member"] = Indexer.Enclosing(model, node),
+            ["file"] = file,
+            ["line"] = Line(node),
+        });
+    }
+
+    private static readonly HashSet<string> PlatformTypes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "System.Runtime.InteropServices.RuntimeInformation", "System.Runtime.InteropServices.NativeLibrary",
+        "System.OperatingSystem",
+    };
+
+    // Code that asks which platform it runs on, or loads native code itself: the new code is
+    // built for its platform and links its libraries (D-82).
+    private static void Platform(SemanticModel model, string file, SyntaxNode node)
+    {
+        if (node is not MemberAccessExpressionSyntax access)
+        {
+            return;
+        }
+        var symbol = model.GetSymbolInfo(access).Symbol;
+        string owner = symbol?.ContainingType?.ToDisplayString() ?? "";
+        bool platform = PlatformTypes.Contains(owner)
+            || (owner == "System.Environment" && symbol?.Name == "OSVersion");
+        if (symbol != null && platform)
+        {
+            Notice(model, file, node, "platform", owner + "." + symbol.Name);
+        }
     }
 
     // ------------------------------------------------------------------ exceptions

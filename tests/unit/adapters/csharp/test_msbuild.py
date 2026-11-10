@@ -233,6 +233,47 @@ def test_layout_follows_msbuild_s_default_globs(tmp_path: Path) -> None:
     assert entry_point(tmp_path, lay) == "App.sln"
 
 
+def test_a_shared_project_s_items_are_its_importers_own(tmp_path: Path) -> None:
+    """A shared project (``.projitems``, D-82): the projects that import it compile its items,
+    ``$(MSBuildThisFileDirectory)`` being its own directory (libsodium-core's Interop)."""
+    _write(
+        tmp_path,
+        {
+            "src/Lib/Lib.csproj": PROJECT.replace(
+                "</Project>",
+                '  <Import Project="..\\Interop\\Interop.projitems" Label="Shared" />\n</Project>',
+            ),
+            "src/Lib/A.cs": "",
+            "src/Interop/Interop.projitems": (
+                "<Project>\n  <ItemGroup>\n"
+                '    <Compile Include="$(MSBuildThisFileDirectory)Interop.Core.cs" />\n'
+                '    <Compile Include="$(MSBuildThisFileDirectory)Box/*.cs" />\n'
+                "  </ItemGroup>\n</Project>\n"
+            ),
+            "src/Interop/Interop.Core.cs": "",
+            "src/Interop/Box/Interop.Box.cs": "",
+            "src/Interop/Unlisted.cs": "",
+        },
+    )
+    lay = layout(tmp_path, PathMatcher())
+    assert lay.sources["src/Lib/Lib.csproj"] == [
+        "src/Interop/Box/Interop.Box.cs",
+        "src/Interop/Interop.Core.cs",
+        "src/Lib/A.cs",
+    ]
+    assert lay.uncompiled == ["src/Interop/Unlisted.cs"]
+
+
+def test_checked_arithmetic_is_recognized() -> None:
+    checked = "<CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>"
+    assert project_info(
+        PROJECT.replace("<PropertyGroup>", f"<PropertyGroup>{checked}")
+    ).checked_arithmetic
+    assert not project_info(PROJECT).checked_arithmetic
+    inherited = {"CheckForOverflowUnderflow": "True"}
+    assert project_info(PROJECT, inherited).checked_arithmetic
+
+
 def test_an_old_style_project_compiles_only_what_it_lists(tmp_path: Path) -> None:
     old = (
         '<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">\n'

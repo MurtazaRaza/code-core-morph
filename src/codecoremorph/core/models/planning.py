@@ -122,12 +122,19 @@ class PortUnit(CoreModel):
         description="A C# type unit's (D-78): the types it ports, by symbol ID; each keeps its "
         "C# API as a façade",
     )
+    native_libraries: list[str] = Field(
+        default_factory=list[str],
+        description="A C# type unit's (D-82): the native libraries its types call through "
+        "P/Invoke, which the new code calls itself and links",
+    )
 
     def codemod_options(self) -> dict[str, str]:
         """What the scaffold codemod needs to know about the unit."""
         options = {"crate": self.crate, "module": self.module, "build_target": self.build_target}
         if self.types:
             options["types"] = ",".join(self.types)
+        if self.native_libraries:
+            options["native"] = ",".join(self.native_libraries)
         if self.bin is not None:
             options["bin"] = self.bin
         if self.dependencies:
@@ -240,6 +247,30 @@ class PlanEstimate(CoreModel):
     cost_usd: float | None = Field(default=None, ge=0, description="None when not priced")
 
 
+class PortDependencyKind(StrEnum):
+    """What a port's source depends on outside its own code (D-82)."""
+
+    NATIVE_LIBRARY = "native_library"  # called through P/Invoke
+    PLATFORM_API = "platform_api"  # an operating system's own library (kernel32, libSystem)
+    PACKAGE = "package"  # a .NET package the library's code uses
+
+
+class PortDependency(CoreModel):
+    """Something a port's source depends on, and what the port does about it (D-82): the
+    plan says it before any unit runs, so what can't be ported, and what the toolchain still
+    needs, is known up front."""
+
+    kind: PortDependencyKind
+    name: str = Field(min_length=1, description='"libsodium", "kernel32", "Newtonsoft.Json"')
+    version: str | None = None
+    ported: bool = Field(description="Whether the new code carries it over")
+    summary: str = Field(description="What it is, who uses it, and what the port does with it")
+    used_by: list[str] = Field(default_factory=list[str], description="The types, by name")
+    action: str | None = Field(
+        default=None, description="What has to happen before the units that use it can run"
+    )
+
+
 class Plan(CoreModel):
     """The ordered list of work units. Deterministic for identical inputs (FR-5.6): it holds
     no timestamps, run IDs, absolute paths or measured durations."""
@@ -256,6 +287,10 @@ class Plan(CoreModel):
     units: list[WorkUnit] = Field(default_factory=list[WorkUnit])
     estimate: PlanEstimate | None = None
     warnings: list[str] = Field(default_factory=list[str])
+    dependencies: list[PortDependency] = Field(
+        default_factory=list[PortDependency],
+        description="A port's: what its source depends on outside its own code (D-82)",
+    )
 
     @model_validator(mode="after")
     def _check_order(self) -> Plan:

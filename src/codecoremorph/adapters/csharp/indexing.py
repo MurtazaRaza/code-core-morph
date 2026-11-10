@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path, PurePosixPath
@@ -39,6 +39,12 @@ from codecoremorph.core.models import (
     GenericUse,
     IndexMeta,
     LineEnding,
+    NativeImport,
+    NativeLibraryProbe,
+    PackageEntry,
+    PackageUse,
+    PortNotice,
+    PortNoticeKind,
     PortRefusal,
     RefusalSite,
     SymbolIndex,
@@ -352,10 +358,15 @@ def run_index(
         if port:
             records = port_records(rows, known)
             store.set_port_source(
-                types=records.types, generic_uses=records.uses, test_methods=records.tests
+                types=records.types,
+                generic_uses=records.uses,
+                test_methods=records.tests,
+                packages=records.packages,
             )
             store.set_test_entries(records.entries())
             store.set_build_targets(project_targets(ctx.worktree, lay))
+            libraries = sorted({i.library for t in records.types for i in t.native_imports})
+            store.set_native_probes(probe_native(ctx, libraries))
             meta.stats["types"] = len(records.types)
             meta.stats["test_methods"] = len(records.tests)
         store.set_meta(meta)
@@ -385,6 +396,7 @@ def project_targets(worktree: Path, lay: Layout) -> list[BuildTarget]:
                 kind=kind,
                 files=list(lay.sources.get(project, [])),
                 dependencies=sorted(lay.references.get(project, [])),
+                checked_arithmetic=info.checked_arithmetic,
             )
         )
     return targets
@@ -397,6 +409,7 @@ class PortRecords:
     types: list[TypeEntry] = field(default_factory=list[TypeEntry])
     uses: list[GenericUse] = field(default_factory=list[GenericUse])
     tests: list[TestMethod] = field(default_factory=list[TestMethod])
+    packages: list[PackageEntry] = field(default_factory=list[PackageEntry])
 
     def entries(self) -> list[TestEntry]:
         """A test entry per case the sources name exactly, run by its test project."""
@@ -408,16 +421,75 @@ class PortRecords:
         ]
 
 
+# For each library a P/Invoke names, where the toolchain image has its C header, the library to
+# link and its pkg-config version: the new code includes and links it (D-82). One line each:
+# name, header, library, version, tab-separated (empty when not found).
+_NATIVE_PROBE = r"""for name in "$@"; do
+  base=${name#lib}; base=${base%.so*}; base=${base%.dll}; base=${base%.dylib}
+  header=""; link=""; version=""
+  for d in /usr/local/include /usr/include; do
+    for h in "$d/$base.h" "$d/$base/$base.h" "$d/lib$base.h"; do
+      if [ -z "$header" ] && [ -f "$h" ]; then header=$h; fi
+    done
+  done
+  for d in /usr/local/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu \
+      /usr/lib64 /usr/lib; do
+    for l in "$d/lib$base.so" "$d/lib$base.a"; do
+      if [ -z "$link" ] && [ -e "$l" ]; then link=$l; fi
+    done
+    for pc in "$d/pkgconfig/lib$base.pc" "$d/pkgconfig/$base.pc"; do
+      if [ -z "$version" ] && [ -f "$pc" ]; then version=$(sed -n 's/^Version: *//p' "$pc"); fi
+    done
+  done
+  printf '%s\t%s\t%s\t%s\n' "$name" "$header" "$link" "$version"
+done
+"""
+
+
+def probe_native(ctx: AdapterContext, libraries: Sequence[str]) -> list[NativeLibraryProbe]:
+    """What the toolchain image has of each native library (D-82). Only in Docker, where the
+    toolchain is the image's: natively there is no one place to look, so nothing is said."""
+    if not libraries or ctx.executor.kind != "docker":
+        return []
+    ctx.log_dir.mkdir(parents=True, exist_ok=True)
+    result = ctx.executor.run(
+        ["sh", "-c", _NATIVE_PROBE, "probe", *libraries],
+        cwd=ctx.sandbox(ctx.worktree),
+        timeout_s=60,
+        log_path=ctx.log_dir / "native-probe.log",
+    )
+    stdout, _ = full_output(result)
+    found: list[NativeLibraryProbe] = []
+    for line in stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4 or parts[0] not in libraries:
+            continue
+        found.append(
+            NativeLibraryProbe(
+                library=parts[0],
+                header=parts[1] or None,
+                link=parts[2] or None,
+                version=parts[3] or None,
+            )
+        )
+    return found
+
+
 def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> PortRecords:
-    """The helper's ``type``, ``inst``, ``refuse``, ``throw`` and ``test`` rows (``port=1``) as
-    the index's models, for the files the index has (``known``). A refusal or a throw goes to
+    """The helper's ``type``, ``inst``, ``refuse``, ``throw``, ``test``, ``notice``, ``native``,
+    ``pkguse`` and ``pkg`` rows (``port=1``) as the index's models, for the files the index has
+    (``known``). A refusal, a throw, a notice, a P/Invoke declaration or a package use goes to
     the type it is in; a generic's uses with the same type arguments keep their first
     :data:`MAX_USES`."""
     types: dict[str, TypeEntry] = {}
     uses: list[GenericUse] = []
     tests: list[TestMethod] = []
+    packages: list[PackageEntry] = []
     refusals: list[tuple[str, RefusalSite]] = []
     throws: list[tuple[str, ThrowSite]] = []
+    notices: list[tuple[str, PortNotice]] = []
+    imports: list[tuple[str, NativeImport]] = []
+    package_uses: list[tuple[str, PackageUse]] = []
     counts: dict[tuple[str, tuple[str, ...]], int] = {}
     for row in rows:
         kind = row.get("t")
@@ -443,6 +515,7 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
                 virtual_members=_strings(row.get("virtual")),
                 instance_fields=_strings(row.get("fields")),
                 static_state=_strings(row.get("statics")),
+                native_only=bool(row.get("native_only")),
             )
         elif kind == "refuse" and row.get("file") in known:
             site = RefusalSite(
@@ -453,6 +526,44 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
                 member=_optional(row.get("member")),
             )
             refusals.append((str(row["type"]), site))
+        elif kind == "notice" and row.get("file") in known:
+            notice = PortNotice(
+                what=PortNoticeKind(str(row["what"])),
+                detail=str(row.get("detail") or row["what"]),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+                member=_optional(row.get("member")),
+            )
+            notices.append((str(row["type"]), notice))
+        elif kind == "native" and row.get("file") in known:
+            native = NativeImport(
+                library=str(row.get("library") or ""),
+                entry_point=str(row["entry"]),
+                member=str(row["member"]),
+                signature=str(row.get("sig") or ""),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+            )
+            imports.append((str(row["type"]), native))
+        elif kind == "pkguse" and row.get("file") in known:
+            used = PackageUse(
+                package=str(row["package"]),
+                symbol=str(row["symbol"]),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+                member=_optional(row.get("member")),
+            )
+            package_uses.append((str(row["type"]), used))
+        elif kind == "pkg":
+            packages.append(
+                PackageEntry(
+                    project=str(row["project"]),
+                    name=str(row["name"]),
+                    version=str(row.get("version") or ""),
+                    assemblies=_strings(row.get("assemblies")),
+                    native=_strings(row.get("native")),
+                )
+            )
         elif kind == "throw" and row.get("file") in known:
             thrown = ThrowSite(
                 exception=str(row["exception"]),
@@ -496,10 +607,20 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
     for owner, thrown in throws:
         if owner in types:
             types[owner].throws.append(thrown)
+    for owner, notice in notices:
+        if owner in types:
+            types[owner].notices.append(notice)
+    for owner, native in imports:
+        if owner in types:
+            types[owner].native_imports.append(native)
+    for owner, used in package_uses:
+        if owner in types:
+            types[owner].package_uses.append(used)
     return PortRecords(
         types=sorted(types.values(), key=lambda t: t.id),
         uses=sorted(uses, key=lambda u: (u.symbol, u.file, u.line, u.arguments)),
         tests=sorted(tests, key=lambda m: (m.file, m.class_name, m.method)),
+        packages=sorted(packages, key=lambda p: (p.project, p.name)),
     )
 
 

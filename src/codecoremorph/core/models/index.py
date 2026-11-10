@@ -159,6 +159,11 @@ class BuildTarget(CoreModel):
         default_factory=list[str],
         description="The project's targets it depends on (links), by name (D-60)",
     )
+    checked_arithmetic: bool = Field(
+        default=False,
+        description="A C# project's CheckForOverflowUnderflow: its integer arithmetic throws "
+        "on overflow outside `unchecked`, which a port keeps (D-82)",
+    )
     artifacts: list[str] = Field(
         default_factory=list[str],
         description="What it builds, relative to the build directory (D-60)",
@@ -198,6 +203,77 @@ class RefusalSite(CoreModel):
     file: WorktreePath
     line: int = Field(ge=1)
     member: str | None = Field(default=None, description="The member it is in, by symbol ID")
+
+
+class PortNoticeKind(StrEnum):
+    """What a port from C# takes over without refusing it, which a unit's note names (D-82)."""
+
+    # Pointers, `fixed`, `stackalloc`, function pointers: plain pointers in the new code.
+    UNSAFE = "unsafe"
+    # A serializer's round trip in memory (BinaryFormatter into a MemoryStream and back): a
+    # copy of the object graph.
+    DEEP_COPY = "deep_copy"
+    # Code that asks which platform it runs on, or loads native code itself.
+    PLATFORM = "platform"
+
+
+class PortNotice(CoreModel):
+    """A site a port takes over, with what its unit's note says of it (D-82)."""
+
+    what: PortNoticeKind
+    detail: str = Field(description='What it is: "a fixed statement", "a deep copy of Shop.Cart"')
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = Field(default=None, description="The member it is in, by symbol ID")
+
+
+class NativeImport(CoreModel):
+    """A P/Invoke declaration of a port's source (D-82): the new code calls the native function
+    itself."""
+
+    library: str = Field(description='As the declaration names it: "libsodium", "kernel32"')
+    entry_point: str = Field(min_length=1)
+    member: str = Field(min_length=1, description="The extern method, by symbol ID")
+    signature: str = ""
+    file: WorktreePath
+    line: int = Field(ge=1)
+
+
+class NativeLibraryProbe(CoreModel):
+    """What the toolchain has of a native library a port's source calls through P/Invoke
+    (D-82): the new code includes its C header and links it, so both must be there."""
+
+    library: str = Field(description='As the P/Invoke names it: "libsodium"')
+    header: str | None = Field(default=None, description='"/usr/include/sodium.h", or none found')
+    link: str | None = Field(
+        default=None, description='The library to link: "/usr/lib/x86_64-linux-gnu/libsodium.so"'
+    )
+    version: str | None = Field(default=None, description="Its pkg-config version, when known")
+
+
+class PackageUse(CoreModel):
+    """A package's API that a type of a port's source uses (D-82)."""
+
+    package: str = Field(min_length=1)
+    symbol: str = Field(min_length=1, description='"Newtonsoft.Json.JsonConvert.SerializeObject"')
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = None
+
+
+class PackageEntry(CoreModel):
+    """A package a project of a port's source restored (D-82), from ``project.assets.json``."""
+
+    project: WorktreePath
+    name: str = Field(min_length=1)
+    version: str = ""
+    assemblies: list[str] = Field(
+        default_factory=list[str], description="The managed assemblies it brings, by name"
+    )
+    native: list[str] = Field(
+        default_factory=list[str],
+        description='Its native files by runtime: "linux-x64:libsodium.so"',
+    )
 
 
 class ThrowSite(CoreModel):
@@ -269,6 +345,14 @@ class TypeEntry(CoreModel):
     )
     refusals: list[RefusalSite] = Field(default_factory=list[RefusalSite])
     throws: list[ThrowSite] = Field(default_factory=list[ThrowSite])
+    native_only: bool = Field(
+        default=False,
+        description="It only declares native functions (with their constants and structs): the "
+        "new code calls the native library itself, so it has no unit (D-82)",
+    )
+    notices: list[PortNotice] = Field(default_factory=list[PortNotice])
+    native_imports: list[NativeImport] = Field(default_factory=list[NativeImport])
+    package_uses: list[PackageUse] = Field(default_factory=list[PackageUse])
 
 
 class TestMethod(CoreModel):
