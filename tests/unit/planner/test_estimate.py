@@ -21,6 +21,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.planner.estimate import (
     FALLBACK_CONTEXT_WINDOW,
+    PORT_TARGET_VERIFY_S,
     Estimator,
     agent_probability,
     estimate_duration_s,
@@ -102,6 +103,10 @@ def test_duration_counts_pending_units_only() -> None:
         update={"estimate": UnitEstimate(context_tokens=10, expected_attempts=2.0, agent_s=40.0)}
     )
     assert estimate_duration_s(Plan(units=[timed]), baseline) == 15.0 + 2.0 * (15.0 + 40.0)
+    # A port's verification builds and tests the target too, which the baseline doesn't time.
+    port = Plan(units=[timed], target_language="cpp")
+    verify = 15.0 + PORT_TARGET_VERIFY_S
+    assert estimate_duration_s(port, baseline) == verify + 2.0 * (verify + 40.0)
 
 
 def test_model_time_grows_with_lines_and_more_for_a_port() -> None:

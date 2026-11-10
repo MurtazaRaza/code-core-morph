@@ -36,7 +36,11 @@ LLM_SECONDS_PER_ATTEMPT = 100.0  # the M1 benchmark: Claude Code averaged 103 s
 AGENT_SECONDS_PER_LINE = 0.12  # the M1 benchmark's fit, per attempt
 MIN_AGENT_SECONDS = 20.0  # the smallest M1 units still took about this long
 PORT_OUTPUT_SHARE = 2.0  # a port writes the module again, and its façade
-PORT_TIME_FACTOR = 3.0  # provisional (D-58)
+PORT_TIME_FACTOR = 3.0  # provisional (D-58); C# type units matched it within 3% (M11)
+# A port's verification also configures, builds, lints and tests the target, which the source
+# baseline doesn't time: 23 to 25 s more per verification in the M8-M10 benchmarks, 5 to 10 s
+# in M11's once a unit's lint was its own files, its C# build and tests being most of it (D-83).
+PORT_TARGET_VERIFY_S = 20.0
 FALLBACK_CONTEXT_WINDOW = 32_768  # when the editor model's window is unknown
 
 
@@ -103,9 +107,11 @@ class Estimator:
 
 def estimate_duration_s(plan: Plan, baseline: Baseline) -> float:
     """Wall-clock estimate for running ``plan``: every unit is verified at least once, and each
-    agent attempt adds model time plus another build and test run. Measured durations vary
-    between runs, so this stays out of ``plan.json``."""
+    agent attempt adds model time plus another build and test run (a port's: the target's too).
+    Measured durations vary between runs, so this stays out of ``plan.json``."""
     verify = baseline.build_s + baseline.test_s
+    if plan.target_language is not None:
+        verify += PORT_TARGET_VERIFY_S
     total = 0.0
     for unit in plan.units:
         if unit.status.is_terminal or unit.estimate is None:
