@@ -9,6 +9,7 @@ the ``c_to_rust`` pack's (§11.7). C has no modernization pack.
 from __future__ import annotations
 
 import time
+from collections.abc import Collection
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
@@ -22,6 +23,7 @@ from codecoremorph.adapters.cpp.detect import masked_comments
 from codecoremorph.adapters.cpp.diagnostics import parse_compiler_output
 from codecoremorph.adapters.cpp.indexing import COMPILE_COMMANDS, build_files
 from codecoremorph.adapters.cpp.make import BUILD_SYSTEM as MAKE
+from codecoremorph.adapters.cpp.tidy import lint_scope
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -117,12 +119,13 @@ class CAdapter(CppAdapter):
     def test_map_path(self) -> str:
         return rustports.TEST_MAP
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
         """A Rust port's C (D-75): what the compiler warns about with ``-Wall -Wextra`` and what
-        clang-tidy's bug-finding checks find, over every C file under ``c/``; and the build
-        must keep its sanitizer option, or the tests would run the C without them."""
+        clang-tidy's bug-finding checks find, over the C files under ``c/`` that cover
+        ``files`` (D-83); and the build must keep its sanitizer option, or the tests would run
+        the C without them."""
         if not self._rust_port(ctx):
-            return super().lint(ctx)
+            return super().lint(ctx, files)
         found: list[Diagnostic] = []
         top = ctx.worktree / rustports.TOP_CMAKE
         text = TextFile.decode(top.read_bytes()).text if top.is_file() else ""
@@ -138,15 +141,19 @@ class CAdapter(CppAdapter):
                 )
             )
         c_dir = ctx.worktree / rustports.C_DIR
-        files = sorted(p.relative_to(ctx.worktree).as_posix() for p in c_dir.rglob("*.c"))
+        compiled = lint_scope(
+            ctx.worktree,
+            sorted(p.relative_to(ctx.worktree).as_posix() for p in c_dir.rglob("*.c")),
+            files,
+        )
         # Configure copies the compile database to the cache: in Docker the build directory is
         # a volume the host doesn't see, so it isn't the place to look for it.
-        if not files or not (ctx.cache_dir / COMPILE_COMMANDS).is_file():
+        if not compiled or not (ctx.cache_dir / COMPILE_COMMANDS).is_file():
             return found
         ctx.log_dir.mkdir(parents=True, exist_ok=True)
         result = ctx.executor.run(
             rustports.clang_tidy_argv(
-                ctx.sandbox(ctx.build_dir), [ctx.sandbox(ctx.worktree / f) for f in files]
+                ctx.sandbox(ctx.build_dir), [ctx.sandbox(ctx.worktree / f) for f in compiled]
             ),
             cwd=ctx.sandbox(ctx.worktree),
             timeout_s=ctx.lang.build_timeout_s,

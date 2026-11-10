@@ -217,8 +217,11 @@ class LanguageAdapter(ABC):
         """Places where the port's packages allow unsafe code outside their bridge."""
         raise AdapterNotSupportedError(f"{self.language}: unsafe_sites")
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
-        """The linter's diagnostics over the port's packages (Rust: clippy)."""
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
+        """The linter's diagnostics over the port's packages (Rust: clippy). ``files``
+        (worktree-relative) are those whose diagnostics the caller wants, a unit's new code: a
+        linter that works file by file looks only at what covers them (M11: clang-tidy over all
+        of a port's C++ at every unit grew to most of the run); ``None`` is all of the port."""
         raise AdapterNotSupportedError(f"{self.language}: lint")
 
     def apply_lint_fixes(self, ctx: AdapterContext) -> list[str]:

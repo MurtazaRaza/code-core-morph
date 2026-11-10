@@ -5,6 +5,7 @@ the target adapter's diagnostics, and ``c_abi_kept`` compares the C interfaces."
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import replace
 from pathlib import Path
 
@@ -356,7 +357,12 @@ def test_a_kept_api_retirement_may_edit_the_build(world: World) -> None:
 class LintedTarget(TargetAdapter):
     """Its linter reports each line that says LINT, in any file of the worktree."""
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+    def __init__(self) -> None:
+        super().__init__()
+        self.linted: list[Collection[str] | None] = []
+
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
+        self.linted.append(files)
         return [
             Diagnostic(
                 file_path=path.relative_to(ctx.worktree).as_posix(),
@@ -379,7 +385,8 @@ def test_the_retirement_lints_all_of_the_new_code_whatever_its_language(world: W
     source.write_text("double area;  /* LINT */\n", encoding="utf-8")
     world.worktree.commit("the C the earlier units wrote")
     runner, _ = _port_runner(world, [])
-    runner.target_adapter = LintedTarget()
+    target = LintedTarget()
+    runner.target_adapter = target
     retire = RETIRE.model_copy(
         update={
             "rule": RETIRE.rule.model_copy(
@@ -395,6 +402,7 @@ def test_the_retirement_lints_all_of_the_new_code_whatever_its_language(world: W
     [problem] = problems
     assert "retire_geo: the linter reports 1 problem(s) in the new code" in problem
     assert "- c/src/geo.c:1: a finding" in problem
+    assert target.linted == [None]  # all of the port, not a unit's files (D-83)
 
 
 def test_a_csharp_type_units_context_has_no_module_port_note(tmp_path: Path) -> None:

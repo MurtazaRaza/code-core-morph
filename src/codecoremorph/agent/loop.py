@@ -869,7 +869,11 @@ class UnitRunner:
         if not new_code:
             return ""
         try:
-            diagnostics = self.target_adapter.lint(self.target_ctx)
+            # A unit's own files only (D-83): linting all of the port at every unit grew to two
+            # thirds of libsodium-core's run (M11). The retirement's is all of it anyway.
+            diagnostics = self.target_adapter.lint(
+                self.target_ctx, None if loaded.rule.retirement else new_code
+            )
         except AdapterNotSupportedError as exc:
             return f"{rule_id}: the target adapter has no linter ({exc})"
         found = sorted(

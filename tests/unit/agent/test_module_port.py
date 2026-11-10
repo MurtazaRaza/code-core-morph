@@ -5,6 +5,7 @@ the C++ that keeps using the module is outside the unit."""
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import replace
 from pathlib import Path
 
@@ -82,6 +83,7 @@ class ModuleTarget(LanguageAdapter):
     def __init__(self) -> None:
         self.options: list[dict[str, str]] = []
         self.tested = 0  # a port runs the new code's tests too (D-60)
+        self.linted: list[set[str] | None] = []
 
     def capabilities(self) -> AdapterCapabilities:
         return AdapterCapabilities(codemod_tools=["rust-module"])
@@ -145,7 +147,8 @@ class ModuleTarget(LanguageAdapter):
             if "UNSAFE" in line
         ]
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
+        self.linted.append(None if files is None else set(files))
         return [
             Diagnostic(
                 file_path=rel,
@@ -262,6 +265,9 @@ def test_the_checks_of_a_module_port(world: World) -> None:
     [i9] = [r for r in first.invariant_results if r.invariant == "I-9"]
     assert "port_module: unsafe code must stay in the bridge" in (i9.message or "")
     assert "port_module: the linter reports 1 problem(s) in the new code" in (i9.message or "")
+    # The linter heard which files are the unit's (D-83): a file-by-file linter looks at those.
+    assert target.linted
+    assert all(f is not None and "rust/geo_rs/src/geo.rs" in f for f in target.linted)
 
 
 def test_mechanical_lints_are_fixed_before_the_build(world: World) -> None:

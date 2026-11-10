@@ -542,6 +542,19 @@ def test_the_lint_of_a_csharp_ports_cpp(tmp_path: Path) -> None:
     ]  # the runtime's codecoremorph_bridge.cpp isn't the port's
 
 
+def test_a_units_lint_runs_clang_tidy_over_its_own_files(tmp_path: Path) -> None:
+    """A unit's ``lint_clean`` lints what covers its new code, not every file earlier units
+    wrote (D-83): at libsodium-core's last unit that was 165 s of 98 files against 2.5 s."""
+    ctx, executor = _lint_context(tmp_path, "")
+    (ctx.worktree / "cpp/src/money.cpp").write_text('#include "money.hpp"\n', encoding="utf-8")
+    CppAdapter().lint(ctx, {"cpp/src/money.hpp", "cpp/src/money.cpp", "cpp/symbol-map.toml"})
+    [(argv, _)] = executor.commands
+    work = (tmp_path / "work").as_posix()
+    assert [a.removeprefix(f"{work}/") for a in argv if a.startswith(f"{work}/cpp/")] == [
+        "cpp/src/money.cpp"
+    ]
+
+
 def test_the_lint_keeps_the_sanitizers(tmp_path: Path) -> None:
     ctx, _ = _lint_context(tmp_path, "")
     top = ctx.worktree / "CMakeLists.txt"

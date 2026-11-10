@@ -1516,9 +1516,10 @@ class RustAdapter(LanguageAdapter):
                 sites.append(RuleSite(file=file, line=line, text=what))
         return sites
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
-        """clippy over every crate: compiler and clippy diagnostics, by file; and in a C port's
-        crate, a ``#[repr(C)]`` copy of a kept header's type (D-68)."""
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
+        """clippy over every crate (it checks crates, not files: ``files`` doesn't narrow it):
+        compiler and clippy diagnostics, by file; and in a C port's crate, a ``#[repr(C)]``
+        copy of a kept header's type (D-68)."""
         return self.clippy(ctx).diagnostics + self._c_type_copies(ctx)
 
     def _c_type_copies(self, ctx: AdapterContext) -> list[Diagnostic]:

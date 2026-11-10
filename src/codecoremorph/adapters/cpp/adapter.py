@@ -72,6 +72,7 @@ from codecoremorph.adapters.cpp.testing import (
     parse_ctest_junit,
     read_gtest_dir,
 )
+from codecoremorph.adapters.cpp.tidy import lint_scope
 from codecoremorph.core.errors import ConfigError, SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -867,15 +868,16 @@ class CppAdapter(LanguageAdapter):
             update={"success": False, "diagnostics": [*configured.diagnostics, *problems]}
         )
 
-    def lint(self, ctx: AdapterContext) -> list[Diagnostic]:
+    def lint(self, ctx: AdapterContext, files: Collection[str] | None = None) -> list[Diagnostic]:
         """A C# port's C++ (D-78): what the compiler warns about with ``-Wall -Wextra`` and
         clang-tidy's bug-finding checks find, over the library, the bridge, the programs and the
-        tests; a cast between pointer types outside the bridge; a ``new`` or ``delete`` whose
-        pointer no smart pointer owns, outside the bridge; and the build must keep its sanitizer
-        option, or the tests would run the C++ without them. The runtime CodeCoreMorph ships
-        isn't the port's: nothing in it counts. C++ alone has no linter here."""
+        tests (clang-tidy over those that cover ``files``, D-83); a cast between pointer types
+        outside the bridge; a ``new`` or ``delete`` whose pointer no smart pointer owns, outside
+        the bridge; and the build must keep its sanitizer option, or the tests would run the C++
+        without them. The runtime CodeCoreMorph ships isn't the port's: nothing in it counts.
+        C++ alone has no linter here."""
         if not self._csharp_port(ctx):
-            return super().lint(ctx)
+            return super().lint(ctx, files)
         found: list[Diagnostic] = []
         top = _read_text(ctx.worktree / csharpports.TOP_CMAKE)
         if top and csharpports.SANITIZE not in masked_comments(top):
@@ -906,7 +908,9 @@ class CppAdapter(LanguageAdapter):
                 )
                 for line, what in csharpports.raw_ownership(text)
             ]
-        compiled = [f for f in sources if f.endswith((".cpp", ".cc", ".cxx"))]
+        compiled = lint_scope(
+            ctx.worktree, [f for f in sources if f.endswith((".cpp", ".cc", ".cxx"))], files
+        )
         # Configure copies the compile database to the cache: in Docker the build directory is
         # a volume the host doesn't see.
         if not compiled or not (ctx.cache_dir / COMPILE_COMMANDS).is_file():
