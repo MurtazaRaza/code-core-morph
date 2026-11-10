@@ -77,7 +77,20 @@ test report gives it) and cuts:
 A unit's note names what to know: the public members (which the symbol map must cover), each
 generic's type arguments in use (one set of exports per argument), the static state, the
 exceptions thrown, and what calls back into C# (delegates, events, the C# classes that
-implement an interface, test doubles among them).
+implement an interface, test doubles among them). It also names what the C# runtime did that
+the C++ does itself: the native functions the types call, unsafe code, a deep copy through a
+serializer, a platform check, and checked arithmetic (`CheckForOverflowUnderflow`).
+
+Before any unit runs, the plan says what the library depends on outside its own code, in a
+table `codecoremorph plan` prints and in `plan.json` (`dependencies`):
+
+| Dependency | What the port does |
+|---|---|
+| A native library its P/Invokes call (`libsodium`) | The C++ calls it itself, with its C header, and links it. The C# types that only declare its functions get no unit; they go with the retirement. The plan says which package the C# loads it from and whether the toolchain image has its header and library. |
+| An operating system's own library (`kernel32`, `libSystem`) | Nothing calls it: it goes with the retirement. Something calls it: that type stays C#, since the port builds and tests on Linux. |
+| A .NET package's API (`Newtonsoft.Json`) | The types that use it stay C#: the C++ has no counterpart of a .NET package. The framework's own packages (`System.Memory`) don't count. |
+
+What has to happen first (a native library the image lacks) is also a plan warning.
 
 ## Type units
 
@@ -144,6 +157,42 @@ C++ class lists its constructor's arguments, and `CcmExceptions.cs` makes the C#
   friend operator).
 - **`lint_clean`** is the list in *What is lost*; the retirement's covers all of the C++.
 
+## Native libraries
+
+A C# library that calls a native one through P/Invoke loads it at run time, often from a
+NuGet package's native files, without its C header. The C++ includes the header and links
+the library, so the toolchain image needs both. When the plan says the image lacks them,
+build an image from the port image with the library's development files and give the run its
+ID:
+
+```dockerfile
+FROM codecoremorph-csharp-port:local
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends libsodium-dev \
+    && rm -rf /var/lib/apt/lists/*
+USER 1000:1000
+```
+
+```sh
+docker build -t my-port-image .
+docker image inspect --format '{{.Id}}' my-port-image   # sha256:...
+```
+
+```yaml
+sandbox: {mode: docker, image: "sha256:..."}   # a local image's ID pins it by content
+```
+
+Use the version the C# loads where it matters: libsodium-core 1.3.1 loads libsodium 1.0.18
+from its package, which is Ubuntu 22.04's `libsodium-dev`. Until the retirement the C# not yet
+ported keeps calling the package's copy while the C++ calls the image's: two copies in one
+process, each with its own state. A façade keeps doing for the C#'s copy what the C# did
+before using the library (`sodium_init`), or that C# finds it uninitialized.
+
+The same version can be two builds. NuGet's libsodium 1.0.18.2 and Ubuntu's 1.0.18 disagree
+on which Ed25519 public keys convert to Curve25519 keys: of the 24,292 calls M11's check
+made, these were the only two whose results differ. A C# test that depends on such a key
+passes before its type is ported and fails after.
+
 ## Reviewing the result
 
 The report lists every unit, the symbol map's notes (what the C++ keeps differently: a hash that
@@ -165,14 +214,43 @@ retirement by its codemod alone), it replays from the recorded edits in
 every type unit, the CMake program prints what the C# one did, and 58 of the 60 tests are
 GoogleTest tests now; the other two passed a null string. With `keep_source_api` the same edits end as a .NET library over the C++: the retirement takes only the program, and the final verification runs the 60 C# tests through the façades and the C++ tests under the sanitizers.
 
+## The second fixture: order-book
+
+`fixtures/csharp/order-book` is Phase 10's C# 7.3 fixture, unchanged: a book of orders
+with `decimal?` prices, value classes, a snapshot made by a `BinaryFormatter` round trip in
+memory, and a Windows `DllImport`. Its plan is 11 units: six types, four test files and
+the retirement. The round trip is a deep copy, so `Book` ports, and its C++ copies the
+object graph, keeping what the original shares shared. `Platform`, which only declares
+the `kernel32.dll` function, gets no unit: nothing calls it, so it goes with the
+retirement. Headless Claude Code ported it whole in 19 minutes. 29 of its 30 tests are
+GoogleTest tests now, and the other passes a null currency. It replays from the recorded
+edits beside parking's.
+
+## The benchmark: libsodium-core
+
+libsodium-core 1.3.1 (`bench/csharp-port-pin.json`) is 8.8k lines of C# 9 over libsodium,
+with 230 NUnit tests. Its plan was 68 units: 31 types, 36 test files and the retirement. The
+shared project `src/Interop`, which only declares libsodium's 73 functions, got no unit,
+and the plan said the image lacked libsodium's header. Headless Claude Code ported it
+whole: every unit on its first attempt, the C# tests passing through the façades at every
+commit, and the final CMake build passing 257 GoogleTest tests under the sanitizers. 221 of the 230 tests map to them,
+and the other 9 pass a null, which the C++ API can't receive. Over 24,292 seeded calls with
+nulls and wrong sizes among the arguments, the C++ behind the façades returns or throws
+what the C# did, except where the two libsodium builds differ. The run took 5 h 49 min,
+most of it spent linting all of the port at every unit. A unit now lints its own files
+(D-83).
+
 ## Limits
 
 - One library project per port: types to port in several are refused.
 - Refused, with the reason in the plan: `async` code, `dynamic`, reflection, serializers and
-  dependency injection with their attributes, `unsafe` code, expression trees, a public generic
-  type or method nothing in the project instantiates, a class with non-private instance fields
-  (a façade can't forward a field), a class that C# outside the port derives from and overrides,
-  and a type that uses a refused one.
+  dependency injection with their attributes (a serializer's round trip in memory is a deep
+  copy, which ports), expression trees, a public generic type or method nothing in the project
+  instantiates, a class with non-private instance fields (a façade can't forward a field), a
+  class that C# outside the port derives from and overrides, a type that uses a .NET package's
+  API or calls an operating system's own library, and a type that uses a refused one.
+- Ported, with a note: `unsafe` code is plain C++ (`fixed` pins nothing, a pointer cast that
+  reads one type as another becomes `std::memcpy`).
 - A façade's protected constructor is kept, but a C# class deriving from a ported class outside
   the library has no C++ to run.
 - Strings are UTF-8 in C++: C#'s lengths and indices count UTF-16 units, and `ToUpperInvariant`
