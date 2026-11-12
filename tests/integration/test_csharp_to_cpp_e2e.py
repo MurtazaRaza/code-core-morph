@@ -12,6 +12,7 @@ are marked ``docker``.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -147,7 +148,7 @@ def test_every_unit_of_a_csharp_port_to_cpp(
         for u in report.units
         for warning in u.warnings
         if warning.startswith(i4)
-        for item in warning.removeprefix(i4).rstrip(".").split("; ")
+        for item in re.split(r"; (?=dotnet:)", warning.removeprefix(i4).rstrip("."))
         if "has no translation" not in item
     ]
     assert weaker == []
