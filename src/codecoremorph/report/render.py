@@ -28,6 +28,19 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def _cells_by_file(cells: list[str]) -> list[str]:
+    """``path:line: type`` entries as one line per file: ``path: 2 Mutex, 1 RefCell``."""
+    counts: dict[str, dict[str, int]] = {}
+    for cell in cells:
+        location, _, kind = cell.partition(": ")
+        kinds = counts.setdefault(location.rsplit(":", 1)[0], {})
+        kinds[kind] = kinds.get(kind, 0) + 1
+    return [
+        f"{path}: {', '.join(f'{n} {kind}' for kind, n in sorted(kinds.items()))}"
+        for path, kinds in sorted(counts.items())
+    ]
+
+
 def _money(value: float) -> str:
     return f"${value:,.2f}"
 
@@ -135,10 +148,12 @@ def render_markdown(report: RunReport) -> str:
             f"tests. Unsafe code: {len(port.unsafe) or 'none'}"
             + (f" ({', '.join(f'`{u}`' for u in port.unsafe[:20])})" if port.unsafe else "")
             + "."
+            + (f" Shared mutable cells: {len(port.shared_cells)}." if port.shared_cells else "")
         )
         sections = [
             ("Tests without a counterpart", port.tests_without_counterpart),
             ("Behavior the port couldn't keep, or kept differently", port.deviations),
+            ("Shared mutable cells, by file", _cells_by_file(port.shared_cells)),
             ("Source code left", port.source_left),
         ]
         for title, items in sections:

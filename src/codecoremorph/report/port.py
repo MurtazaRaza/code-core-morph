@@ -59,6 +59,9 @@ def port_summary(
         deviations += [f"{p.source}: {p.note}" for p in pairs if p.targets and p.note]
     with suppress(AdapterNotSupportedError):
         unsafe = [f"{s.file}:{s.line}" for s in target.unsafe_uses(target_ctx)]
+    cells: list[str] = []
+    with suppress(AdapterNotSupportedError):
+        cells = [f"{s.file}:{s.line}: {s.text}" for s in target.shared_cells(target_ctx)]
     left: list[str] = []
     for path in sorted(set(source_files)):
         if not (worktree / path).is_file():
@@ -83,5 +86,6 @@ def port_summary(
         tests_without_counterpart=without,
         deviations=deviations,
         unsafe=unsafe,
+        shared_cells=cells,
         source_left=left,
     )

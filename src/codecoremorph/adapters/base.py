@@ -249,3 +249,9 @@ class LanguageAdapter(ABC):
     def unsafe_uses(self, ctx: AdapterContext) -> list[RuleSite]:
         """Every use of unsafe code in the port's packages, for the report."""
         raise AdapterNotSupportedError(f"{self.language}: unsafe_uses")
+
+    def shared_cells(self, ctx: AdapterContext) -> list[RuleSite]:
+        """Each shared mutable cell in the port's code (Rust: a ``Mutex``, ``RwLock``,
+        ``RefCell`` or ``Cell`` type), for the report (D-84): where a port from a garbage
+        collected language kept shared mutation rather than redesigning it. Not gated."""
+        raise AdapterNotSupportedError(f"{self.language}: shared_cells")

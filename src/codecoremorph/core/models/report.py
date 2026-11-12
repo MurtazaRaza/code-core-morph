@@ -82,6 +82,10 @@ class PortSummary(CoreModel):
     unsafe: list[str] = Field(
         default_factory=list[str], description="Every use of unsafe code, as path:line"
     )
+    shared_cells: list[str] = Field(
+        default_factory=list[str],
+        description="Each shared mutable cell in the target's code, as path:line: type (D-84)",
+    )
     source_left: list[str] = Field(
         default_factory=list[str],
         description="Source-language files still on the branch, each with the reason, and the "
