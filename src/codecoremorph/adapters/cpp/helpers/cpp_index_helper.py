@@ -976,6 +976,9 @@ def _bridge_type(t):
         return {"k": "ptr", "const": pointee.is_const_qualified(), "to": _bridge_type(pointee)}
     if t.kind == kinds.RECORD and t.get_declaration().spelling == "ccm_decimal":
         return {"k": "decimal"}
+    if t.kind == kinds.RECORD and t.get_declaration().get_definition() is None:
+        # A handle spelled by its tag (`struct X *`, cbindgen's default style, D-84).
+        return {"k": "handle", "name": t.get_declaration().spelling}
     return {"k": "unknown", "spelling": t.spelling}
 
 
@@ -1010,10 +1013,18 @@ def bridge_declarations(request):
                 continue
             if os.path.normcase(os.path.abspath(cursor.location.file.name)) != key:
                 continue
-            if cursor.kind == kinds.TYPEDEF_DECL:
+            if (
+                cursor.kind == kinds.STRUCT_DECL
+                and not cursor.is_definition()
+                and cursor.spelling
+                and cursor.spelling not in handles
+            ):
+                handles.append(cursor.spelling)  # an opaque struct a bridge passes by its tag
+            elif cursor.kind == kinds.TYPEDEF_DECL:
                 described = _bridge_type(cursor.type)
                 if described["k"] == "handle" and described["name"] == cursor.spelling:
-                    handles.append(cursor.spelling)
+                    if cursor.spelling not in handles:
+                        handles.append(cursor.spelling)
                 elif described["k"] == "callback" and described["name"] == cursor.spelling:
                     proto = cursor.underlying_typedef_type.get_pointee()
                     names = [c.spelling for c in cursor.get_children() if c.kind == kinds.PARM_DECL]

@@ -198,13 +198,16 @@ def test_function_pointers_become_delegates() -> None:
 def test_what_a_bridge_cannot_take_is_refused_at_its_line() -> None:
     headers = {
         "cpp/bridge/bad.h": {
-            "handles": ["shop_Thing"],
+            # Money: an opaque type no export passes (cbindgen declares one a constant names,
+            # D-84), which is no handle and needs no exports.
+            "handles": ["shop_Thing", "Money"],
             "callbacks": [],
             "functions": [
                 fn("size_of", [("n", {"k": "unknown", "spelling": "size_t"})]),
                 fn("name_of", [("out", ptr(CHAR))]),
                 fn("value", [], {"k": "decimal"}),
                 fn("ok", [("n", INT32)]),
+                fn("thing", [("result", ptr(ptr(handle("shop_Thing"))))]),
             ],
         }
     }
@@ -232,6 +235,7 @@ def test_what_a_bridge_cannot_take_is_refused_at_its_line() -> None:
     ]
     assert "internal static extern int ok(int n);" in text
     assert "size_of" not in text
+    assert "MoneyHandle" not in text
 
 
 def test_the_output_is_stable() -> None:
@@ -269,3 +273,38 @@ def test_a_programs_export_takes_the_arguments_as_strings() -> None:
     assert (
         "internal static int shop_shop_cli_main(string[] args_data, int args_count, out int result)"
     ) in text
+
+
+def test_csharp_keywords_as_parameter_names_are_escaped() -> None:
+    """A Rust bridge may name a parameter `this`, `object` or `event` (D-84); in C# they are
+    reserved words, escaped with @."""
+    headers = {
+        "rust/zoo_rs/include/zoo_rs/bridge.h": {
+            "handles": ["zoo_Pen"],
+            "callbacks": [
+                {
+                    "name": "zoo_Pen_visit_fn",
+                    "line": 3,
+                    "returns": STATUS,
+                    "params": [
+                        {"name": "context", "type": ptr(VOID)},
+                        {"name": "object", "type": ptr(handle("zoo_Pen"))},
+                    ],
+                }
+            ],
+            "functions": [
+                *handle_exports("zoo_Pen"),
+                fn(
+                    "zoo_Pen_name",
+                    [("this", ptr(handle("zoo_Pen"), const=True)), ("string", STR_OUT)],
+                ),
+            ],
+        }
+    }
+    text, problems = csharp_declarations(
+        headers, "zoo_rs", "rust/zoo_rs/include/zoo_rs/bridge.h", "Rust"
+    )
+    assert problems == []
+    assert "zoo_Pen_name(zoo_PenHandle @this, out IntPtr @string);" in text
+    assert "delegate int zoo_Pen_visit_fn(IntPtr context, IntPtr @object);" in text
+    assert "(rust/zoo_rs/include/zoo_rs/bridge.h) when the Rust is" in text

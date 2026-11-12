@@ -19,6 +19,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+from codecoremorph.adapters.csharp import ports as _csharp
+
+# The generated file's name and namespace are the C# side's (D-84).
+NAMESPACE = _csharp.NAMESPACE
+GENERATED_FILE = _csharp.GENERATED_FILE
+
 INTS = {
     "int8_t": "sbyte",
     "uint8_t": "byte",
@@ -30,8 +36,89 @@ INTS = {
     "uint64_t": "ulong",
 }
 U1 = "[MarshalAs(UnmanagedType.U1)] "
-NAMESPACE = "CodeCoreMorph.Interop"
-GENERATED_FILE = "CodeCoreMorph.Native.g.cs"
+# C#'s reserved words, which a parameter name escapes with @: a Rust bridge may name one so
+# (``this``, ``object``, ``event`` are Rust names, D-84).
+CSHARP_KEYWORDS = frozenset(
+    [
+        "abstract",
+        "as",
+        "base",
+        "bool",
+        "break",
+        "byte",
+        "case",
+        "catch",
+        "char",
+        "checked",
+        "class",
+        "const",
+        "continue",
+        "decimal",
+        "default",
+        "delegate",
+        "do",
+        "double",
+        "else",
+        "enum",
+        "event",
+        "explicit",
+        "extern",
+        "false",
+        "finally",
+        "fixed",
+        "float",
+        "for",
+        "foreach",
+        "goto",
+        "if",
+        "implicit",
+        "in",
+        "int",
+        "interface",
+        "internal",
+        "is",
+        "lock",
+        "long",
+        "namespace",
+        "new",
+        "null",
+        "object",
+        "operator",
+        "out",
+        "override",
+        "params",
+        "private",
+        "protected",
+        "public",
+        "readonly",
+        "ref",
+        "return",
+        "sbyte",
+        "sealed",
+        "short",
+        "sizeof",
+        "stackalloc",
+        "static",
+        "string",
+        "struct",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "typeof",
+        "uint",
+        "ulong",
+        "unchecked",
+        "unsafe",
+        "ushort",
+        "using",
+        "virtual",
+        "void",
+        "volatile",
+        "while",
+    ]
+)
 
 Type = Mapping[str, Any]
 
@@ -55,6 +142,11 @@ class _Param:
     wrapper: str  # in the wrapper, with C# types
     arg: str  # what the wrapper passes
     strings: bool = False  # a string array, copied to native strings for the call
+
+
+def csharp_name(name: str) -> str:
+    """A parameter's name in C#: a reserved word escaped (``@this``)."""
+    return f"@{name}" if name in CSHARP_KEYWORDS else name
 
 
 def _kind(t: Type) -> str:
@@ -104,7 +196,9 @@ def _param(t: Type, name: str, arrays: set[str]) -> _Param:
             return _plain(f"out IntPtr {name}", f"out {name}")
         if kind == "ptr" and _kind(to) == "ptr" and _kind(cast(Type, to["to"])) == "char":
             return _Param(f"IntPtr[] {name}", f"string[] {name}", f"{name}_utf8", strings=True)
-        raise _RefusedError(f"the array {name} is of {_spell(t)}: arrays are of numbers or strings")
+        raise _RefusedError(
+            f"the array {name.lstrip('@')} is of {_spell(t)}: arrays are of numbers or strings"
+        )
     if scalar:
         return _plain(f"{scalar} {name}", name)
     if kind == "bool":
@@ -121,7 +215,9 @@ def _param(t: Type, name: str, arrays: set[str]) -> _Param:
         if target == "char":
             if t.get("const"):
                 return _Param(f"byte[] {name}", f"string {name}", f"CcmInterop.Utf8Z({name})")
-            raise _RefusedError(f"{name} is a char * that isn't const: a string in is const char *")
+            raise _RefusedError(
+                f"{name.lstrip('@')} is a char * that isn't const: a string in is const char *"
+            )
         if target == "void":
             return _plain(f"IntPtr {name}", name)
         if target == "handle":
@@ -139,7 +235,7 @@ def _param(t: Type, name: str, arrays: set[str]) -> _Param:
                     return _plain(f"out IntPtr {name}", f"out {name}")
                 if _kind(inner) == "handle":
                     return _plain(f"out {inner['name']}Handle {name}", f"out {name}")
-    raise _RefusedError(f"{name} is of {_spell(t)}, which a bridge doesn't take")
+    raise _RefusedError(f"{name.lstrip('@')} is of {_spell(t)}, which a bridge doesn't take")
 
 
 def _callback_param(t: Type, name: str) -> str:
@@ -167,7 +263,7 @@ def _callback_param(t: Type, name: str) -> str:
                 return f"out CcmDecimal {name}"
             if target == "ptr" and _kind(cast(Type, to["to"])) == "char" and not to.get("const"):
                 return f"out IntPtr {name}"  # set with CcmInterop.NewString
-    raise _RefusedError(f"{name} is of {_spell(t)}, which a call into C# doesn't take")
+    raise _RefusedError(f"{name.lstrip('@')} is of {_spell(t)}, which a call into C# doesn't take")
 
 
 def _returns(t: Type) -> str:
@@ -197,7 +293,9 @@ def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
     else:
         names = [str(p["name"]) for p in params_in]
         arrays = _arrays(names)
-        params = [_param(cast(Type, p["type"]), str(p["name"]), arrays) for p in params_in]
+        params = [
+            _param(cast(Type, p["type"]), csharp_name(str(p["name"])), arrays) for p in params_in
+        ]
     attribute = (
         "        [DllImport(Library, CallingConvention = CallingConvention.Cdecl, "
         "ExactSpelling = true"
@@ -233,7 +331,7 @@ def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
 def _callback(entry: Mapping[str, Any]) -> list[str]:
     returns = _returns(cast(Type, entry["returns"]))
     params = [
-        _callback_param(cast(Type, p["type"]), str(p["name"]))
+        _callback_param(cast(Type, p["type"]), csharp_name(str(p["name"])))
         for p in cast(list[Mapping[str, Any]], entry.get("params") or [])
     ]
     return [
@@ -282,21 +380,49 @@ def _handle(name: str) -> list[str]:
     ]
 
 
+def _handles_in(t: Type) -> set[str]:
+    """The handle types a C type description names."""
+    if _kind(t) == "handle":
+        return {str(t.get("name"))}
+    if _kind(t) == "ptr":
+        return _handles_in(cast(Type, t.get("to") or {}))
+    return set()
+
+
 def csharp_declarations(
-    headers: Mapping[str, Mapping[str, Any]], library: str
+    headers: Mapping[str, Mapping[str, Any]],
+    library: str,
+    source: str = "cpp/bridge/*.h",
+    target: str = "C++",
 ) -> tuple[str, list[BridgeProblem]]:
     """The generated C# file for the bridge headers (``header → what the helper read``, keys
     as worktree paths) of the native library ``library``, and what the headers declare that a
-    bridge can't take (left out of the file)."""
+    bridge can't take (left out of the file). ``source`` and ``target`` say in its comment
+    where the headers come from (a C++ bridge's own, or cbindgen's for a Rust one)."""
     problems: list[BridgeProblem] = []
     handles_of = {
         h: [str(n) for n in cast(list[Any], d.get("handles") or [])] for h, d in headers.items()
     }
-    handles = {n for names in handles_of.values() for n in names}
     exported = {
         str(f["name"])
         for decl in headers.values()
         for f in cast(list[Mapping[str, Any]], decl.get("functions") or [])
+    }
+    # A handle type is one an export or a call into C# passes, or one with its own exports: an
+    # opaque struct nothing uses is no handle (cbindgen declares the Rust types an item it reads
+    # names, D-84).
+    used: set[str] = set()
+    for decl in headers.values():
+        for key in ("functions", "callbacks"):
+            for entry in cast(list[Mapping[str, Any]], decl.get(key) or []):
+                for param in cast(list[Mapping[str, Any]], entry.get("params") or []):
+                    used |= _handles_in(cast(Type, param["type"]))
+                used |= _handles_in(cast(Type, entry.get("returns") or {}))
+    handles = {
+        n
+        for names in handles_of.values()
+        for n in names
+        if n in used or f"{n}_release" in exported or f"{n}_key" in exported
     }
     functions: list[str] = []
     callbacks: list[str] = []
@@ -330,7 +456,7 @@ def csharp_declarations(
             )
     lines = [
         "// <auto-generated>",
-        "// Written by CodeCoreMorph from the bridge headers (cpp/bridge/*.h) when the C++ is",
+        f"// Written by CodeCoreMorph from the bridge headers ({source}) when the {target} is",
         "// configured; do not edit. C# 7.3 and netstandard2.0.",
         "// </auto-generated>",
         "using System;",

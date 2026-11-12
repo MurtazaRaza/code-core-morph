@@ -967,9 +967,33 @@ class CppAdapter(LanguageAdapter):
         projects = csharpports.facade_projects(ctx.worktree)
         if library is None or not projects:
             return []
-        headers = csharpports.bridge_headers(ctx.worktree)
-        declared, problems = self._bridge_declarations(ctx, headers) if headers else ({}, [])
-        text, refused = pinvoke.csharp_declarations(declared, library)
+        return self.write_csharp_declarations(
+            ctx,
+            csharpports.bridge_headers(ctx.worktree),
+            [csharpports.BRIDGE_DIR],
+            library,
+            projects,
+        )
+
+    def write_csharp_declarations(
+        self,
+        ctx: AdapterContext,
+        headers: list[str],
+        include_dirs: list[str],
+        library: str,
+        projects: list[str],
+        source: str = "cpp/bridge/*.h",
+        target: str = "C++",
+    ) -> list[Diagnostic]:
+        """Write the C# declarations of a bridge's exports, read in its C ``headers`` (worktree
+        paths; ``include_dirs`` hold what they include) with this adapter's libclang, into the
+        façade ``projects`` (their directories) for the native ``library``: a C++ bridge's own
+        headers, or cbindgen's for a Rust one (D-84). What the headers declare that a bridge
+        can't take comes back as errors at their lines."""
+        declared, problems = (
+            self._bridge_declarations(ctx, headers, include_dirs) if headers else ({}, [])
+        )
+        text, refused = pinvoke.csharp_declarations(declared, library, source, target)
         data = text.encode("utf-8")
         for project in projects:
             path = ctx.worktree / project / pinvoke.GENERATED_FILE
@@ -987,7 +1011,7 @@ class CppAdapter(LanguageAdapter):
         ]
 
     def _bridge_declarations(
-        self, ctx: AdapterContext, headers: list[str]
+        self, ctx: AdapterContext, headers: list[str], include_dirs: list[str]
     ) -> tuple[dict[str, dict[str, Any]], list[Diagnostic]]:
         """What libclang reads in the bridge headers (the C++ index helper's
         ``--bridge-declarations``), by worktree path, and their parse errors."""
@@ -1002,7 +1026,7 @@ class CppAdapter(LanguageAdapter):
             json.dumps(
                 {
                     "headers": list(by_sandbox),
-                    "include_dirs": [ctx.sandbox(ctx.worktree / csharpports.BRIDGE_DIR)],
+                    "include_dirs": [ctx.sandbox(ctx.worktree / d) for d in include_dirs],
                     "compiler": "clang",
                     "output": ctx.sandbox(output),
                 },
