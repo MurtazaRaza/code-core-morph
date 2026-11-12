@@ -179,9 +179,15 @@ def test_every_built_in_pack_loads_without_problems() -> None:
     only a problem logged: the C# pack's records rule once took the Java pack down (D-66)."""
     registry = RuleRegistry.discover()
     assert registry.problems == []
-    assert {"cpp", "cpp_to_rust", "c_to_rust", "java", "csharp", "csharp_to_cpp"} <= set(
-        registry.packs
-    )
+    assert {
+        "cpp",
+        "cpp_to_rust",
+        "c_to_rust",
+        "java",
+        "csharp",
+        "csharp_to_cpp",
+        "csharp_to_rust",
+    } <= set(registry.packs)
     # C has a pack of its own (D-68): the C++ packs never apply to it.
     assert sorted(r.rule.id for r in registry.for_language("c")) == [
         "port_c_executable",
@@ -206,7 +212,9 @@ def test_every_built_in_pack_loads_without_problems() -> None:
         "use_using_declarations",
     ]
     # A port from C# (D-78, D-79): its own pack, by target, so C# → Rust can add its own.
-    to_cpp = {r.rule.id: r.rule for r in registry.for_language("csharp") if r.pack != "csharp"}
+    to_cpp = {
+        r.rule.id: r.rule for r in registry.for_language("csharp") if r.pack == "csharp_to_cpp"
+    }
     assert {i: (r.port_units, r.target_language) for i, r in to_cpp.items()} == {
         "port_csharp_type_to_cpp": ("csharp_type", "cpp"),
         "port_csharp_program_to_cpp": ("executable", "cpp"),
@@ -221,6 +229,24 @@ def test_every_built_in_pack_loads_without_problems() -> None:
         "port_csharp_program_to_cpp": ["lint_clean", "symbol_map"],
         "port_csharp_tests_to_cpp": ["lint_clean", "test_map"],
         "retire_csharp_to_cpp": ["detector_empty", "lint_clean", "test_map"],
+    }
+    # The same four for Rust (D-84), whose units also keep unsafe code in the bridge.
+    to_rust = {
+        r.rule.id: r.rule for r in registry.for_language("csharp") if r.pack == "csharp_to_rust"
+    }
+    assert {i: (r.port_units, r.target_language) for i, r in to_rust.items()} == {
+        "port_csharp_type_to_rust": ("csharp_type", "rust"),
+        "port_csharp_program_to_rust": ("executable", "rust"),
+        "port_csharp_tests_to_rust": ("tests", "rust"),
+        "retire_csharp_to_rust": ("retirement", "rust"),
+    }
+    assert to_rust["port_csharp_type_to_rust"].codemods[0].tool == "rust-csharp-type"
+    assert "rust/**" in to_rust["port_csharp_type_to_rust"].extra_scope
+    assert {i: sorted(p.type.value for p in r.postconditions) for i, r in to_rust.items()} == {
+        "port_csharp_type_to_rust": ["lint_clean", "symbol_map", "unsafe_in_bridge"],
+        "port_csharp_program_to_rust": ["lint_clean", "symbol_map", "unsafe_in_bridge"],
+        "port_csharp_tests_to_rust": ["lint_clean", "test_map", "unsafe_in_bridge"],
+        "retire_csharp_to_rust": ["detector_empty", "lint_clean", "test_map", "unsafe_in_bridge"],
     }
     assert registry.get("use_records").pack == "java"
 

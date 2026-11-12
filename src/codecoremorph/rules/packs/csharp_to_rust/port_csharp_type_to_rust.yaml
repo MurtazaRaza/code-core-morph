@@ -1,0 +1,27 @@
+id: port_csharp_type_to_rust
+language: csharp
+target_language: rust
+kind: port
+port_units: csharp_type           # one unit per type, leaves first by references (D-78, D-79)
+description: >-
+  Port one type of a C# library to Rust, with the types it can't be split from (a reference
+  cycle, or a class with virtual members and the classes that derive from it), leaves first.
+  The type keeps its C# API as a façade that calls the Rust through P/Invoke, so the rest of the
+  library and the project's own C# tests keep using it unchanged, and they decide whether the
+  port is right; unsafe code stays in the crate's bridge.
+detector:
+  type: adapter_query
+  query: csharp_types             # each type a library project declares
+codemods:
+  - tool: rust-csharp-type        # the workspace, the runtime, the crate, the unit's module and bridge
+extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
+              '**/CcmExceptions.cs']             # the Rust and the façades' support
+llm:
+  guidance: guidance/port_csharp_type_to_rust.md
+postconditions:
+  - {type: symbol_map, severity: error}         # every public member mapped to the Rust
+  - {type: unsafe_in_bridge, severity: error}   # unsafe code only in the bridge
+  - {type: lint_clean, severity: error}         # clippy is quiet about the new code
+skip:
+  - test                          # the C# tests stay C#: they judge the port
+allow_suppressions: ['rust/*/src/bridge/**', 'rust/*/src/native/**']   # C names: the bridge, native/

@@ -1,0 +1,25 @@
+id: port_csharp_program_to_rust
+language: csharp
+target_language: rust
+kind: port
+port_units: executable            # one unit per program, after the types it uses (D-78)
+description: >-
+  Port a C# program (a console project) to Rust: its code becomes a function of the Rust library
+  that the C# program calls until the retirement, so the tests that run the program run the
+  Rust, and a Cargo program calls it.
+detector:
+  type: adapter_query
+  query: csharp_programs          # each program project, at its Main
+codemods:
+  - tool: rust-csharp-program     # the program's function, its export and its Cargo program
+extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
+              '**/CcmExceptions.cs']
+llm:
+  guidance: guidance/port_csharp_program_to_rust.md
+postconditions:
+  - {type: symbol_map, severity: error}         # every member of its types mapped
+  - {type: unsafe_in_bridge, severity: error}
+  - {type: lint_clean, severity: error}
+skip:
+  - test
+allow_suppressions: ['rust/*/src/bridge/**', 'rust/*/src/native/**']

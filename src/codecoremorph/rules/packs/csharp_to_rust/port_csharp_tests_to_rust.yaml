@@ -1,0 +1,23 @@
+id: port_csharp_tests_to_rust
+language: csharp
+target_language: rust
+kind: port
+port_units: tests                 # one unit per test file, after what it tests (D-78)
+description: >-
+  Translate the tests of one C# test file (NUnit, xUnit or MSTest) into a Rust integration test
+  file, one test per C# test case, each mapped in the project's test map from its dotnet: ID to
+  its nextest: ID. Both suites run while the C# lasts.
+detector:
+  type: adapter_query
+  query: test_cases               # the file's tests, by their dotnet: IDs
+codemods:
+  - tool: rust-csharp-tests       # the crate's integration test file
+extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
+              '**/CcmExceptions.cs']
+llm:
+  guidance: guidance/port_csharp_tests_to_rust.md
+postconditions:
+  - {type: test_map, severity: error}           # every test mapped to a passing Rust test
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code in the tests
+  - {type: lint_clean, severity: error}
+allow_suppressions: ['rust/*/src/bridge/**', 'rust/*/src/native/**']

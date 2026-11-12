@@ -1,0 +1,25 @@
+id: retire_csharp_to_rust
+language: csharp
+target_language: rust
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-78)
+description: >-
+  Retire the C# once the types, programs and tests are Rust: delete the C# projects, the
+  solution, the MSBuild files only the C# needed, the generated declarations, each crate's
+  bridge and its cdylib, so the Cargo workspace builds and tests alone, unsafe code forbidden.
+  With migration.target.keep_source_api the C# public API stays as a .NET library over the
+  Rust.
+detector:
+  type: files                     # each C# file, until it is deleted
+codemods:
+  - tool: rust-csharp-retire      # deletes the C# and its build, and the bridges
+extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
+              '**/CcmExceptions.cs']
+llm:
+  guidance: guidance/retire_csharp_to_rust.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no C# file left (but a kept API)
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code (but a kept bridge)
+  - {type: lint_clean, severity: error}         # clippy is quiet about every crate
+allow_suppressions: ['rust/*/src/bridge/**', 'rust/*/src/native/**']

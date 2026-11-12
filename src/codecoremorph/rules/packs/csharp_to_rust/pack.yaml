@@ -1,0 +1,6 @@
+# The built-in C# to Rust port pack (SPEC §11.10, D-84).
+name: csharp_to_rust
+language: csharp
+api_version: "1"     # the rule pack API (rule format) this pack is written for (FR-15.3)
+version: "1"
+description: Port a C# library and its programs to Rust, one type at a time, behind its own C# API.
