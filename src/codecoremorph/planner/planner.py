@@ -1308,7 +1308,7 @@ class _Former:
 
     def _csharp_types(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
         target = _LANGUAGE_NAMES.get(language, language)
-        result = cut_types(self.project, files, self.is_new_code)
+        result = cut_types(self.project, files, self.is_new_code, language)
         self.dependencies = result.dependencies
         if result.refused is not None or result.project is None:
             if not result.files:
@@ -1463,8 +1463,9 @@ class _Former:
         else:
             note = (
                 f"retires the C#: deletes {len(code)} files, the projects {names}, the solution "
-                f"and MSBuild files, the façades' support and the bridge; the CMake build then "
-                f"builds and tests the {target} alone"
+                f"and MSBuild files, the façades' support and the bridge; the "
+                f"{'Cargo workspace' if target == 'Rust' else 'CMake build'} then builds and "
+                f"tests the {target} alone"
             )
         return [
             _Draft(

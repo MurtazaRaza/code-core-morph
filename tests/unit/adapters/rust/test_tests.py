@@ -18,7 +18,7 @@ SOURCE = """\
 use calc_rs::rational::Rational;
 
 fn helper() -> i32 {
-    assert!(true); // a helper's checks are not a test's
+    assert!(true); // a helper's checks count in each test calling it
     1
 }
 
@@ -66,9 +66,55 @@ def test_tests_with_their_module_paths_and_checks() -> None:
             10,
             ('assert_eq!(r.num(), 1, "num {}", "}")', "assert!(Rational::new(1, 0).is_err())"),
         ),
-        ("suite::panics", 21, ("#[should_panic]",)),
+        ("suite::panics", 21, ("#[should_panic]", "assert!(true)")),
         ("suite::inner::deep", 28, (".unwrap_err()", 'panic!("x")')),
     ]
+
+
+PARAMETERIZED = """\
+fn times(cents: i64, quantity: i32, expected: i64) {
+    assert_eq!(expected, cents * i64::from(quantity));
+    again(expected);
+}
+
+fn again(expected: i64) {
+    assert!(expected >= 0);
+    again(expected - 1); // a helper never counts inside itself
+}
+
+fn twice() {}
+
+#[test]
+fn times_199_3_597() {
+    times(199, 3, 597);
+}
+
+#[test]
+fn not_calls() {
+    let b = Book::new();
+    b.times(1, 2, 3); // a method
+    other::times(1, 2, 3); // another module's
+    twice();
+}
+
+#[test]
+fn through_super() {
+    super::times(1, 1, 1);
+    super::times(2, 1, 2);
+}
+"""
+
+
+def test_a_tests_checks_include_the_helpers_it_calls() -> None:
+    """A parameterized C# test translates to one Rust test per case calling a helper with the
+    checks (the order-book fixture's port, D-84): each case checks what the helper does."""
+    found = {t.path: t.checks for t in scan_tests(PARAMETERIZED)}
+    assert found["times_199_3_597"] == (
+        "assert_eq!(expected, cents * i64::from(quantity))",
+        "assert!(expected >= 0)",
+    )
+    assert found["not_calls"] == ()
+    assert len(found["through_super"]) == 4
 
 
 @pytest.mark.parametrize(
@@ -123,7 +169,7 @@ def test_the_adapter_reads_a_packages_tests(tmp_path: Path) -> None:
     assert [(a.file, a.test_id, len(a.assertions)) for a in found] == [
         ("rust/calc_rs/src/rational.rs", "nextest:calc_rs::rational::tests::one", 1),
         ("rust/calc_rs/tests/rational_test.rs", "nextest:calc_rs::rational_test::adds", 2),
-        ("rust/calc_rs/tests/rational_test.rs", "nextest:calc_rs::rational_test::suite::panics", 1),
+        ("rust/calc_rs/tests/rational_test.rs", "nextest:calc_rs::rational_test::suite::panics", 2),
         (
             "rust/calc_rs/tests/rational_test.rs",
             "nextest:calc_rs::rational_test::suite::inner::deep",

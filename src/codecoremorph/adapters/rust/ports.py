@@ -36,7 +36,9 @@ RUST_KEYWORDS = frozenset(
 _TAKEN_MODULES = frozenset({"lib", "main", BRIDGE_MODULE})
 _DENY_UNSAFE = re.compile(r"#!\[\s*(?:deny|forbid)\s*\([^\]]*\bunsafe_code\b[^\]]*\)\s*\]")
 _ALLOW_UNSAFE = re.compile(r"#!?\[\s*(?:allow|expect|warn)\s*\([^\]]*\bunsafe_code\b[^\]]*\)\s*\]")
-_BRIDGE_DECL = re.compile(r"\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+bridge\s*;")
+# The modules a crate root may let hold unsafe code: the bridge, and a C# port's native
+# libraries (D-84 (9)).
+_BRIDGE_DECL = re.compile(r"\s*(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+(?:bridge|native)\s*;")
 
 
 def identifier(text: str) -> str:
@@ -311,9 +313,10 @@ def unsafe_problems(
     lib_path: str, lib_text: str, files: dict[str, str]
 ) -> list[tuple[str, int, str]]:
     """Where unsafe code escapes the bridge, as ``(file, line, what)``. The crate root
-    (``lib_text``, masked) must deny ``unsafe_code``, and only its ``mod bridge`` declaration may
-    allow it; ``files`` are the crate's other sources, masked, by worktree path, and none of
-    them may allow it (the bridge's own files need not: the declaration covers them)."""
+    (``lib_text``, masked) must deny ``unsafe_code``, and only its ``mod bridge`` declaration (and
+    a C# port's ``mod native``, D-84) may allow it; ``files`` are the crate's other sources,
+    masked, by worktree path, and none of them may allow it (the bridge's own files need not:
+    the declaration covers them)."""
     found: list[tuple[str, int, str]] = []
     if _DENY_UNSAFE.search(lib_text) is None:
         found.append((lib_path, 1, "the crate root must keep #![deny(unsafe_code)]"))
@@ -515,6 +518,29 @@ def retired_workspace(manifest: str) -> str:
 
 
 _UNSAFE = re.compile(r"\bunsafe\b")
+# Shared mutable state (D-84): the cells a port kept where the source shared and mutated.
+_CELL = r"\b(Mutex|RwLock|RefCell|Cell)\s*<"
+# Where a cell holds state: a struct's field (`state: Mutex<State>,`, a tuple struct's), or a
+# static; not a parameter, a reference or an annotation, which name one that is elsewhere.
+_CELL_HOLDERS = (
+    re.compile(
+        r"(?m)^[ \t]*(?:pub(?:\s*\([^)\n]*\))?\s+)?[A-Za-z_]\w*\s*:\s*[^=;&(\n]*?"
+        + _CELL
+        + r"[^;\n]*,[ \t]*\r?$"
+    ),
+    re.compile(rf"(?m)^[ \t]*(?:pub(?:\s*\([^)\n]*\))?\s+)?struct\s+\w+[^\n;{{]*\([^&\n]*?{_CELL}"),
+    re.compile(rf"(?m)^[ \t]*(?:pub(?:\s*\([^)\n]*\))?\s+)?static\s+\w+\s*:[^=\n]*?{_CELL}"),
+)
+
+
+def shared_cells(path: str, masked: str) -> list[tuple[str, int, str]]:
+    """Each shared mutable cell in a masked source, as ``(file, line, what)``: a struct's field
+    or a static whose type is (or holds) a ``Mutex``, ``RwLock``, ``RefCell`` or ``Cell``."""
+    found: dict[int, tuple[str, int, str]] = {}
+    for holder in _CELL_HOLDERS:
+        for m in holder.finditer(masked):
+            found.setdefault(m.start(1), (path, _line(masked, m.start(1)), m.group(1)))
+    return [found[k] for k in sorted(found)]
 
 
 def unsafe_keywords(path: str, masked: str) -> list[tuple[str, int, str]]:

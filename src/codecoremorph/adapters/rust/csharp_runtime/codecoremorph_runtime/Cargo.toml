@@ -1,0 +1,9 @@
+# Written by CodeCoreMorph for a port of C# code to Rust: .NET's decimal and exceptions, which
+# the port's crates use. Do not edit.
+[package]
+name = "codecoremorph_runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]

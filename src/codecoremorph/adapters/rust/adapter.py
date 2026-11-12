@@ -21,10 +21,13 @@ from typing import cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.adapters.c import rustports
-from codecoremorph.adapters.rust import cports, ports, source
+from codecoremorph.adapters.cpp import CppAdapter
+from codecoremorph.adapters.csharp import ports as csharp_ports
+from codecoremorph.adapters.rust import cports, csharpports, ports, source
 from codecoremorph.adapters.rust.cargo import (
     EDITIONS,
     NEXTEST_PROFILE,
+    TARGET_DIR,
     cbindgen_config,
     crate_files,
     edition,
@@ -71,7 +74,10 @@ from codecoremorph.sandbox.executor import full_output
 from codecoremorph.store.index import INDEX_FILE_NAME, FileRow, IndexStore, SymbolRow
 
 MIN_RUST = "1.80"
-TARGET_DIR = "cargo-target"  # in ctx.cache_dir, outside the worktree
+CSHARP_PORT_INSTALL_HINT = (
+    "A C# → Rust port runs in Docker for now (D-84): set sandbox.mode to docker, and build the "
+    "image with scripts/build-image csharp-port (.bat on Windows)."
+)
 # Every build is a verification of a new tree, so incremental caches only cost time and disk
 # (and their directory names overflow Windows' path limit in deep cache directories).
 CARGO_ENV = {"CARGO_INCREMENTAL": "0"}
@@ -97,12 +103,35 @@ class RustAdapter(LanguageAdapter):
                 "rust-bin",
                 "rust-tests",
                 "rust-retire",
+                *sorted(csharpports.SCAFFOLDS),
                 "rustfmt",
             ],
             standards=list(EDITIONS),
         )
 
     def toolchain_requirements(self, lang: LanguageConfig) -> ToolchainSpec:
+        if lang.port_source == "csharp":
+            # A C# port builds the C# too, the C# tests loading the cdylib (D-84): the image of
+            # ports from C# holds both toolchains, and the C++ one whose libclang reads the
+            # bridge's header for the C# declarations.
+            return ToolchainSpec(
+                language="csharp-port",
+                image="codecoremorph-csharp-port",
+                tools=[
+                    ToolRequirement(name="cargo", min_version=MIN_RUST, purpose="Rust builds"),
+                    ToolRequirement(name="rustc", min_version=MIN_RUST, purpose="Rust compiler"),
+                    ToolRequirement(
+                        name="cargo-nextest", version_args=["--version"], purpose="Rust tests"
+                    ),
+                    ToolRequirement(name="cbindgen", purpose="the C header of the bridge"),
+                    ToolRequirement(
+                        name="bindgen", purpose="the native libraries' declarations (D-84)"
+                    ),
+                    ToolRequirement(name="clang", purpose="reading the bridge's header"),
+                    ToolRequirement(name="dotnet", purpose="the C# façades and their tests"),
+                ],
+                install_hint=CSHARP_PORT_INSTALL_HINT,
+            )
         return ToolchainSpec(
             language="rust",
             image="codecoremorph-rust",
@@ -263,7 +292,9 @@ class RustAdapter(LanguageAdapter):
     def _roots(self, ctx: AdapterContext) -> list[str]:
         return [ctx.sandbox(ctx.worktree), str(ctx.worktree)]
 
-    def _check(self, ctx: AdapterContext, subcommand: str, *, analyzer: bool) -> BuildResult:
+    def _check(
+        self, ctx: AdapterContext, subcommand: str, *, analyzer: bool, scope: str = "--all-targets"
+    ) -> BuildResult:
         started = time.monotonic()
         diagnostics: list[Diagnostic] = self._c_build(ctx)
         success = not diagnostics
@@ -272,8 +303,8 @@ class RustAdapter(LanguageAdapter):
             ok, output, log_path, _ = self._cargo(
                 ctx,
                 crate,
-                [subcommand, "--locked", "--all-targets", "--message-format=json"],
-                f"cargo-{subcommand}-{_slug(crate)}.log",
+                [subcommand, "--locked", scope, "--message-format=json"],
+                f"cargo-{subcommand}-{_slug(crate)}{scope.replace('--all-targets', '')}.log",
                 timeout_s=ctx.lang.build_timeout_s,
             )
             found = parse_cargo_messages(output, crate, self._roots(ctx), analyzer=analyzer)
@@ -313,6 +344,11 @@ class RustAdapter(LanguageAdapter):
         # crates use the former, and the C++ build includes the latter (D-58).
         _, diagnostics = self._sys_modules(ctx)
         diagnostics += self._bridge_headers(ctx)
+        # A C# port's crate (D-84): the C# declarations of its bridge, from the header cbindgen
+        # just wrote, in each façade project.
+        diagnostics += self._csharp_declarations(ctx)
+        # ... and the declarations of the native libraries its Rust calls itself (D-84 (9)).
+        diagnostics += self._native_modules(ctx)[1]
         # A crate being ported to C (D-75): CMake configures its C, bindgen writes the façades'
         # sys modules.
         diagnostics += self._c_configure(ctx)
@@ -363,6 +399,12 @@ class RustAdapter(LanguageAdapter):
     def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
         """``cargo build --all-targets`` over every crate: libraries, programs and tests."""
         return self._check(ctx, "build", analyzer=False)
+
+    def build_libraries(self, ctx: AdapterContext) -> BuildResult:
+        """``cargo build --lib`` over every crate: what the source of a port loads before its
+        own build (a C# port's ``cdylib``, D-84), with the build's diagnostics. ``ctx`` is the
+        target's context, so Cargo's target directory is the one :meth:`build` uses."""
+        return self._check(ctx, "build", analyzer=False, scope="--lib")
 
     def builds(self, ctx: AdapterContext) -> bool:
         return bool(self.crates(ctx))
@@ -583,6 +625,10 @@ class RustAdapter(LanguageAdapter):
                 diagnostics += problems
             elif spec.tool == "rust-retire":
                 changes += self._retire(ctx, spec, files)
+            elif spec.tool in csharpports.SCAFFOLDS:
+                found, problems = self._csharp_scaffold(ctx, spec, files)
+                changes += found
+                diagnostics += problems
             elif spec.tool == "rustfmt":
                 changes += self._rustfmt(ctx)
             else:
@@ -1432,7 +1478,105 @@ class RustAdapter(LanguageAdapter):
     # ------------------------------------------------------------------ module ports (D-58)
 
     def port_names(self, build_target: str, stem: str, taken: Collection[str]) -> tuple[str, str]:
+        """A module port's crate and module (D-58); a C# port's units (D-84): the crate's stem
+        from the C# project (``build_target``), and the unit's module from its first type's
+        name (``stem``)."""
+        if build_target.lower().endswith(".csproj"):
+            name = csharp_ports.library_name(build_target)
+            return name, csharpports.unit_name(stem, taken)
         return ports.port_names(build_target, stem, taken)
+
+    # ------------------------------------------------------------------ a port from C# (D-84)
+
+    def _csharp_scaffold(
+        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
+    ) -> tuple[list[CodemodChange], list[Diagnostic]]:
+        """The C# port's scaffolds (:mod:`codecoremorph.adapters.rust.csharpports`), then the
+        workspace's lockfile, when they changed a manifest."""
+        changed = csharpports.scaffold(
+            ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
+        )
+        changes = [CodemodChange(file=rel, replacements=1) for rel in changed]
+        problems: list[Diagnostic] = []
+        if (
+            any(rel.endswith("Cargo.toml") for rel in changed)
+            and (ctx.worktree / csharpports.WORKSPACE).is_file()
+        ):
+            problems = self._lock_workspace(ctx, csharpports.WORKSPACE_DIR, changes)
+        # A native library's declarations, which the unit's Rust calls (D-84 (9)), now, so the
+        # agent reads them.
+        if any(f"/{csharpports.NATIVE_DIR}/" in rel for rel in changed):
+            written, native = self._native_modules(ctx)
+            changes += [CodemodChange(file=rel, replacements=1) for rel in written]
+            problems += native
+        once = {c.file: c for c in changes}
+        return list(once.values()), problems
+
+    def _csharp_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """The C# declarations of the façades (``CodeCoreMorph.Native.g.cs``), written from the
+        bridge's cbindgen header by the C++ adapter's libclang reader (D-84); before the first
+        unit, nothing."""
+        if not csharpports.is_port(ctx.worktree):
+            return []
+        found = csharpports.facade_library(ctx.worktree)
+        projects = csharp_ports.facade_projects(ctx.worktree)
+        if found is None or not projects:
+            return []
+        crate, library = found
+        header = csharpports.bridge_header(crate, library)
+        headers = [header] if (ctx.worktree / header).is_file() else []
+        return CppAdapter().write_csharp_declarations(
+            ctx,
+            headers,
+            [f"{crate}/include/{library}"],
+            library,
+            projects,
+            header,
+            "Rust",
+        )
+
+    def _native_modules(self, ctx: AdapterContext) -> tuple[list[str], list[Diagnostic]]:
+        """bindgen writes each C# port crate's ``src/native/<library>_sys.rs`` (D-84 (9)) from
+        the native library's own header, ``<library>.h`` on the system's include path (the
+        run's image holds the library's development files), for the crate's edition. Returns
+        the files it changed."""
+        written: list[str] = []
+        problems: list[Diagnostic] = []
+        for crate, names, year in csharpports.native_crates(ctx.worktree):
+            work = ctx.cache_dir / "bindgen"
+            work.mkdir(parents=True, exist_ok=True)
+            ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            for name in names:
+                wrapper = work / f"{_slug(crate)}-{name}.h"
+                wrapper.write_text(csharpports.native_wrapper(name), encoding="utf-8")
+                rel = f"{crate}/{csharpports.NATIVE_DIR}/{name}_sys.rs"
+                out = ctx.worktree / rel
+                out.parent.mkdir(parents=True, exist_ok=True)
+                before = out.read_bytes() if out.is_file() else None
+                result = ctx.executor.run(
+                    csharpports.native_bindgen_argv(
+                        ctx.sandbox(wrapper), ctx.sandbox(out), name, year
+                    ),
+                    cwd=ctx.sandbox(ctx.worktree / crate),
+                    timeout_s=600,
+                    log_path=ctx.log_dir / f"bindgen-{_slug(crate)}-{name}.log",
+                )
+                if not result.ok:
+                    stdout, stderr = full_output(result)
+                    tail = "\n".join((stdout + stderr).strip().splitlines()[-10:])
+                    problems.append(
+                        Diagnostic(
+                            file_path=rel,
+                            severity=Severity.ERROR,
+                            message=f"bindgen couldn't read {name}.h, the header of the native "
+                            f"library {name}: the run's image needs the library's development "
+                            f"files (sandbox.image)\n{tail}",
+                            origin=DiagnosticOrigin.BUILD_SYSTEM,
+                        )
+                    )
+                elif out.is_file() and out.read_bytes() != before:
+                    written.append(rel)
+        return written, problems
 
     def query(self, ctx: AdapterContext, name: str, files: list[str]) -> list[RuleSite]:
         """A port from Rust's detectors (D-75): ``rust_modules``, each module file of a
@@ -1477,7 +1621,8 @@ class RustAdapter(LanguageAdapter):
 
     def unsafe_sites(self, ctx: AdapterContext) -> list[RuleSite]:
         """In each package with a bridge: the crate root must keep ``#![deny(unsafe_code)]``,
-        and no file but the root's ``mod bridge`` declaration may allow unsafe code. In the
+        and no file but the root's ``mod bridge`` declaration (or a C# port's ``mod native``,
+        the native libraries its Rust calls, D-84) may allow unsafe code. In the
         port's other packages (under ``rust/``), and in every package's programs and tests,
         no code is unsafe (D-60)."""
         sites: list[RuleSite] = []
@@ -1485,7 +1630,11 @@ class RustAdapter(LanguageAdapter):
             base = ctx.worktree / package
             src = base / "src"
             lib = src / "lib.rs"
-            bridged = (src / "bridge").is_dir() or (src / "bridge.rs").is_file()
+            bridged = (
+                (src / "bridge").is_dir()
+                or (src / "bridge.rs").is_file()
+                or (src / "native").is_dir()
+            )
             ported = package.startswith(f"{ports.WORKSPACE_DIR}/")
             for file in sorted(base.rglob("*.rs")):
                 rel = file.relative_to(ctx.worktree)
@@ -1506,7 +1655,7 @@ class RustAdapter(LanguageAdapter):
             others: dict[str, str] = {}
             for file in sorted(src.rglob("*.rs")):
                 inner = file.relative_to(src).as_posix()
-                if file == lib or inner == "bridge.rs" or inner.startswith("bridge/"):
+                if file == lib or inner == "bridge.rs" or inner.startswith(("bridge/", "native/")):
                     continue
                 text = _text(file)
                 if text is not None:
@@ -1621,6 +1770,29 @@ class RustAdapter(LanguageAdapter):
                 text = None if _skipped(rel) else _text(file)
                 if text is not None:
                     for path, line, what in ports.unsafe_keywords(rel.as_posix(), mask(text)):
+                        sites.append(RuleSite(file=path, line=line, text=what))
+        return sites
+
+    def shared_cells(self, ctx: AdapterContext) -> list[RuleSite]:
+        """Each ``Mutex``, ``RwLock``, ``RefCell`` or ``Cell`` type in the port's libraries
+        (under ``rust/``, the bridge, the programs, the tests and CodeCoreMorph's runtime left
+        out), for the report: what a port from C# kept shared and mutable (D-84). A unit's code
+        is its own module, so the files say which unit kept them."""
+        sites: list[RuleSite] = []
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            if not package.startswith(f"{ports.WORKSPACE_DIR}/") or package.endswith(
+                f"/{csharpports.RUNTIME_CRATE}"
+            ):
+                continue
+            src = ctx.worktree / package / "src"
+            for file in sorted(src.rglob("*.rs")) if src.is_dir() else []:
+                inner = file.relative_to(src).as_posix()
+                if inner.startswith(("bridge/", "bin/")) or inner == "bridge.rs":
+                    continue
+                rel = file.relative_to(ctx.worktree)
+                text = None if _skipped(rel) else _text(file)
+                if text is not None:
+                    for path, line, what in ports.shared_cells(rel.as_posix(), mask(text)):
                         sites.append(RuleSite(file=path, line=line, text=what))
         return sites
 

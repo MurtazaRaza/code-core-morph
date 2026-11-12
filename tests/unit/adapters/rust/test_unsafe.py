@@ -48,3 +48,25 @@ def test_unsafe_code_outside_the_bridge(tmp_path: Path) -> None:
         ("rust/calc_rs/src/bridge/mod.rs", 1),
         ("rust/calc_rs/tests/t.rs", 2),
     ]
+
+
+def test_a_csharp_ports_native_module_may_hold_unsafe_code(tmp_path: Path) -> None:
+    """A C# port's crate whose Rust calls a native library (D-84 (9)): after the retirement, no
+    bridge, and the root's `mod native` the one declaration that may allow unsafe code."""
+    lib = (
+        "//! The C# library `src/Shop/Shop.csproj`, ported to Rust (CodeCoreMorph, D-84).\n"
+        "#![deny(unsafe_code)]\n\n#[allow(unsafe_code)]\nmod native;\npub mod money;\n"
+    )
+    _write(tmp_path, "rust/Cargo.toml", ports.workspace_manifest(["shop_rs"]))
+    _write(tmp_path, "rust/shop_rs/Cargo.toml", '[package]\nname = "shop_rs"\n')
+    _write(tmp_path, "rust/shop_rs/src/lib.rs", lib)
+    _write(tmp_path, "rust/shop_rs/src/money.rs", "pub fn f() {}\n")
+    _write(tmp_path, "rust/shop_rs/src/native/mod.rs", "pub fn g() {\n    unsafe { h() }\n}\n")
+    adapter = RustAdapter()
+    assert adapter.unsafe_sites(_ctx(tmp_path)) == []
+    uses = [(s.file, s.line) for s in adapter.unsafe_uses(_ctx(tmp_path))]
+    assert uses == [("rust/shop_rs/src/native/mod.rs", 2)]
+    # Only `mod native` and `mod bridge` may allow it.
+    _write(tmp_path, "rust/shop_rs/src/lib.rs", lib + "#[allow(unsafe_code)]\nmod other;\n")
+    sites = [(s.file, s.line, s.text) for s in adapter.unsafe_sites(_ctx(tmp_path))]
+    assert sites == [("rust/shop_rs/src/lib.rs", 7, "allows unsafe code")]

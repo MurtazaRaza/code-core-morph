@@ -27,6 +27,8 @@ EDITIONS = ("rust2015", "rust2018", "rust2021", "rust2024")
 CORROSION_BEGIN = "# >>> CodeCoreMorph: the Rust crates (SPEC §11.5)"
 CORROSION_END = "# <<< CodeCoreMorph: the Rust crates"
 NEXTEST_PROFILE = "codecoremorph"
+# Cargo's target directory, in the Rust adapter's cache (ctx.cache_dir), outside the worktree.
+TARGET_DIR = "cargo-target"
 _SKIP_DIRS = {".git", ".codecoremorph", "target", "build", "out", "node_modules"}
 _CRATE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 _DTD = re.compile(r"<!(?:DOCTYPE|ENTITY)", re.IGNORECASE)

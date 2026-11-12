@@ -83,10 +83,55 @@ def _checks(text: str, masked: str, start: int, end: int, should_panic: bool) ->
     return found
 
 
+@dataclass(frozen=True)
+class _Fn:
+    name: str
+    path: str
+    line: int
+    start: int  # the body's opening brace
+    end: int  # and its closing one
+    test: bool
+    should_panic: bool
+
+
+_CALL = re.compile(r"(?<![\w.:])(?:(?:self|super)::)?([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
+
+def _calls(masked: str, start: int, end: int) -> list[str]:
+    """The names of the plain function calls in ``masked[start:end]`` (``check(1, 2)``,
+    ``super::check(..)``), in order: not a method's (``.check(``), a path's (``a::check(``) or
+    a macro's (``check!(``)."""
+    return [m.group(1) for m in _CALL.finditer(masked, start, end)]
+
+
 def scan_tests(text: str) -> list[RustTest]:
-    """The ``#[test]`` functions of one file, with their module path inside it."""
+    """The ``#[test]`` functions of one file, with their module path inside it. A test's checks
+    are its own body's and those of the file's other functions it calls (a parameterized case's
+    helper, ``fn times(a, b, expected) { assert_eq!(..) }``), each call counting its helper's
+    checks once, a helper never inside itself."""
     masked = mask(text)
-    tests: list[RustTest] = []
+    fns = _functions(text, masked)
+    names = [f.name for f in fns if not f.test]
+    helpers = {f.name: f for f in fns if not f.test and names.count(f.name) == 1}
+
+    def checks(fn: _Fn, inside: frozenset[str]) -> list[str]:
+        found = _checks(text, masked, fn.start, fn.end, fn.should_panic)
+        for name in _calls(masked, fn.start, fn.end):
+            helper = helpers.get(name)
+            if helper is not None and name not in inside:
+                found += checks(helper, inside | {name})
+        return found
+
+    return [
+        RustTest(path=f.path, line=f.line, checks=tuple(checks(f, frozenset())))
+        for f in fns
+        if f.test
+    ]
+
+
+def _functions(text: str, masked: str) -> list[_Fn]:
+    """Every function of one file with a body, outside other functions: tests and the rest."""
+    found: list[_Fn] = []
     scopes: list[tuple[str | None, int]] = []  # (module name or None, closing brace index)
     attributes: list[str] = []
     i, n = 0, len(masked)
@@ -130,21 +175,24 @@ def scan_tests(text: str) -> list[RustTest]:
             if name is not None and brace >= 0 and (semicolon < 0 or brace < semicolon):
                 closing = _close(masked, brace)
                 closing = closing if closing >= 0 else n
-                if "test" in attributes:
-                    modules = [m for m, _ in scopes if m is not None]
-                    should_panic = any(a.startswith("should_panic") for a in attributes)
-                    tests.append(
-                        RustTest(
-                            path="::".join([*modules, name.group()]),
-                            line=text.count("\n", 0, match.start()) + 1,
-                            checks=tuple(_checks(text, masked, brace, closing, should_panic)),
-                        )
+                test = "test" in attributes
+                modules = [m for m, _ in scopes if m is not None]
+                found.append(
+                    _Fn(
+                        name=name.group(),
+                        path="::".join([*modules, name.group()]),
+                        line=text.count("\n", 0, match.start()) + 1,
+                        start=brace,
+                        end=closing,
+                        test=test,
+                        should_panic=test and any(a.startswith("should_panic") for a in attributes),
                     )
+                )
                 attributes = []
                 i = closing + 1
                 continue
         i = match.end()
-    return tests
+    return found
 
 
 def bin_names(manifest: str, package: str) -> dict[str, str]:

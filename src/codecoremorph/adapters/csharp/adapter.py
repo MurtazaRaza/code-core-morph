@@ -15,6 +15,7 @@ import re
 import shutil
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -47,6 +48,8 @@ from codecoremorph.adapters.csharp.msbuild import (
 )
 from codecoremorph.adapters.csharp.testcode import assertions, disabled_markers, find_cases
 from codecoremorph.adapters.csharp.trx import read_reports, run_errors, selection_filter
+from codecoremorph.adapters.rust import RustAdapter
+from codecoremorph.adapters.rust import csharpports as rustports
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -477,15 +480,27 @@ class CSharpAdapter(LanguageAdapter):
             cases=[*cases, *extra], duration_s=result.duration_s, log_path=result.log_path
         )
 
-    # ------------------------------------------------------------------ a port to C++ (D-78)
+    # ------------------------------------------------------------------ a port to C++ or Rust
 
     def _native_port(self, ctx: AdapterContext) -> bool:
         return ctx.lang.port_target == "cpp" and csharpports.is_port(ctx.worktree)
 
+    def _rust_port(self, ctx: AdapterContext) -> bool:
+        return ctx.lang.port_target == "rust" and rustports.is_port(ctx.worktree)
+
+    @staticmethod
+    def _rust_ctx(ctx: AdapterContext) -> AdapterContext:
+        """The Rust adapter's view of the port (D-84): its cache, so Cargo's target directory is
+        the one its own builds use."""
+        return replace(ctx, cache_dir=ctx.cache_dir / "rust", log_dir=ctx.log_dir / "rust")
+
     def _native_build(self, ctx: AdapterContext) -> BuildResult | None:
-        """In a port to C++: CMake builds the bridge library the façades call, in the build
-        directory the C++ adapter configured (it configures first), so the C# tests run the C++
-        just built. None when there is no C++ yet."""
+        """In a port to C++ (D-78): CMake builds the bridge library the façades call, in the
+        build directory the C++ adapter configured (it configures first), so the C# tests run
+        the C++ just built. In a port to Rust (D-84): Cargo builds the crates' libraries, the
+        ``cdylib`` the façades load among them. None when there is no C++ or Rust yet."""
+        if self._rust_port(ctx):
+            return RustAdapter().build_libraries(self._rust_ctx(ctx))
         if not self._native_port(ctx):
             return None
         library = csharpports.native_name(_read_text(ctx.worktree / csharpports.CPP_CMAKE) or "")
@@ -519,6 +534,9 @@ class CSharpAdapter(LanguageAdapter):
         """What ``dotnet test`` needs in a port to C++: the bridge library's directory on the
         loader's path, and the shared ASan runtime preloaded, the C++ being built with the
         sanitizers (D-78)."""
+        if self._rust_port(ctx):
+            target = rustports.cargo_target_dir(ctx.cache_dir)
+            return rustports.test_environment(f"{ctx.sandbox(target)}/debug")
         if not self._native_port(ctx):
             return {}
         return csharpports.test_environment(
