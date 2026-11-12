@@ -21,15 +21,28 @@ programs and the tests that need them, the library staying a .NET library over t
 
 from __future__ import annotations
 
-import posixpath
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from importlib import resources
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from codecoremorph.adapters.cpp.pinvoke import GENERATED_FILE, NAMESPACE
+from codecoremorph.adapters.csharp import ports as csharp
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.rules.detectors import mask_c_family
+
+# The C# side of the port, shared with the other targets (D-84), under the names this module
+# always had.
+BRIDGE_RUNTIME_HEADER = csharp.BRIDGE_RUNTIME_HEADER
+EXCEPTIONS_FILE = csharp.EXCEPTIONS_FILE
+MSBUILD_FILES = csharp.MSBUILD_FILES
+PROJECT_SUFFIXES = csharp.PROJECT_SUFFIXES
+SOLUTION_SUFFIXES = csharp.SOLUTION_SUFFIXES
+SUPPORT_FILE = csharp.SUPPORT_FILE
+facade_projects = csharp.facade_projects
+initial_declarations = csharp.initial_declarations
+library_name = csharp.library_name
+type_names = csharp.type_names
+without_projects = csharp.without_projects
 
 CPP_DIR = "cpp"
 TOP_CMAKE = "CMakeLists.txt"
@@ -44,8 +57,6 @@ SYMBOL_MAP = "cpp/symbol-map.toml"
 TEST_MAP = "cpp/test-map.toml"
 SANITIZE = "CODECOREMORPH_SANITIZE"
 SANITIZER_FLAGS = "-fsanitize=address,undefined"
-SUPPORT_FILE = "CodeCoreMorph.Interop.cs"
-EXCEPTIONS_FILE = "CcmExceptions.cs"
 TOP_MARK = "# Written by CodeCoreMorph for a C# → C++ port (D-78)"
 SOURCES_BEGIN = "  # >>> codecoremorph: ported types >>>"
 SOURCES_END = "  # <<< codecoremorph: ported types <<<"
@@ -62,19 +73,6 @@ NATIVE_END = "# <<< codecoremorph: native libraries <<<"
 SCAFFOLDS = frozenset(
     {"cpp-csharp-type", "cpp-csharp-program", "cpp-csharp-tests", "cpp-csharp-retire"}
 )
-# What MSBuild and NuGet read beside the projects, which the retirement deletes with them.
-MSBUILD_FILES = frozenset(
-    {
-        "directory.build.props",
-        "directory.build.targets",
-        "directory.packages.props",
-        "directory.build.rsp",
-        "global.json",
-        "nuget.config",
-    }
-)
-PROJECT_SUFFIXES = (".csproj",)
-SOLUTION_SUFFIXES = (".sln", ".slnx")
 
 # The files of csharp_runtime and where the scaffold puts them (the C# one beside the façade
 # project's file). The first two stay after the retirement.
@@ -85,7 +83,6 @@ RUNTIME_FILES = {
     "codecoremorph_bridge.hpp": f"{BRIDGE_DIR}/codecoremorph_bridge.hpp",
     "codecoremorph_bridge.cpp": f"{BRIDGE_DIR}/codecoremorph_bridge.cpp",
 }
-BRIDGE_RUNTIME_HEADER = "codecoremorph_bridge.h"
 
 # The test host runs the C++ under the sanitizers (D-78): the shared ASan runtime preloaded into
 # `dotnet test`, CoreCLR keeping its own SIGSEGV handling, no leak report of the runtime's own.
@@ -93,39 +90,10 @@ ASAN_OPTIONS = "detect_leaks=0:handle_segv=0:allow_user_segv_handler=1:verify_as
 UBSAN_OPTIONS = "print_stacktrace=1:halt_on_error=1"
 
 
-def _snake(text: str) -> str:
-    stem = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", text)
-    stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_").lower()
-    if not stem or stem[0].isdigit():
-        stem = f"cs_{stem}"
-    return stem
-
-
-def library_name(project: str) -> str:
-    """The C++ libraries' stem for a C# project: ``OrderBook`` and ``Order.Book`` give
-    ``order_book``."""
-    stem = PurePosixPath(project.replace("\\", "/")).name
-    return _snake(re.sub(r"\.csproj$", "", stem, flags=re.IGNORECASE))
-
-
 def unit_name(type_name: str, taken: Collection[str]) -> str:
-    """The stem of a type unit's C++ and bridge files, from the name of its first type:
-    ``Zoo.OrderBook`` gives ``order_book``, ``Zoo.Pen`1`` gives ``pen``. A stem the runtime's
-    files have (``codecoremorph_bridge``) or ``taken`` has (another unit's) gets a suffix."""
-    stem = _snake(type_name.rsplit(".", 1)[-1].split("`", 1)[0])
-    if stem.startswith("codecoremorph"):
-        stem = f"{stem}_type"
-    base, n = stem, 2
-    while stem in taken:
-        stem, n = f"{base}_{n}", n + 1
-    return stem
-
-
-def type_names(types: str) -> str:
-    """A unit's ``types`` option (symbol IDs, comma-separated) as the stubs' comments name
-    them: ``csharp:Zoo.Pen`1,csharp:Zoo.Pens`` gives ``Zoo.Pen, Zoo.Pens``."""
-    names = [re.sub(r"`\d+", "", t.strip().removeprefix("csharp:")) for t in types.split(",")]
-    return ", ".join(n for n in names if n)
+    """The stem of a type unit's C++ and bridge files, from the name of its first type
+    (:func:`codecoremorph.adapters.csharp.ports.unit_name`)."""
+    return csharp.unit_name(type_name, taken)
 
 
 def native_library(name: str) -> str:
@@ -137,7 +105,10 @@ def cpp_library(name: str) -> str:
 
 
 def runtime_text(file_name: str) -> str:
-    """A runtime file's text, as CodeCoreMorph ships it."""
+    """A runtime file's text, as CodeCoreMorph ships it: the C++ runtime's, or the C# side's
+    (the C ABI header, the support file)."""
+    if csharp.has_runtime_file(file_name):
+        return csharp.runtime_text(file_name)
     package = resources.files("codecoremorph.adapters.cpp.csharp_runtime")
     return (package / file_name).read_text(encoding="utf-8")
 
@@ -379,44 +350,6 @@ def test_programs(tests_cmake_text: str) -> list[str]:
     return sorted({m.group(1) for m in _TEST_PROGRAM.finditer(tests_cmake_text)})
 
 
-_SLN_PROJECT = re.compile(
-    r'(?ms)^Project\("[^"]*"\)\s*=\s*"[^"]*"\s*,\s*"(?P<path>[^"]*)"\s*,\s*"(?P<guid>\{[^}]*\})"'
-    r"[^\n]*\n.*?^EndProject[ \t]*(?:\r?\n|\Z)"
-)
-_SLNX_PROJECT = re.compile(
-    r'(?ms)^[ \t]*<Project\s+Path="(?P<path>[^"]*)"[^>]*?(?:/>|>.*?</Project>)[ \t]*(?:\r?\n)?'
-)
-
-
-def _from(directory: str, path: str) -> str:
-    return posixpath.normpath(posixpath.join(directory, path.replace("\\", "/")))
-
-
-def without_projects(solution: str, text: str, removed: Collection[str]) -> str:
-    """A solution's text (``solution`` is its worktree path) without the projects ``removed``
-    (worktree paths), their configurations and nesting included."""
-    directory = posixpath.dirname(solution)
-    gone = set(removed)
-    if solution.lower().endswith(".slnx"):
-        return _SLNX_PROJECT.sub(
-            lambda m: "" if _from(directory, m.group("path")) in gone else m.group(0), text
-        )
-    guids: set[str] = set()
-
-    def drop(match: re.Match[str]) -> str:
-        if _from(directory, match.group("path")) not in gone:
-            return match.group(0)
-        guids.add(match.group("guid").upper())
-        return ""
-
-    text = _SLN_PROJECT.sub(drop, text)
-    if not guids:
-        return text
-    return "".join(
-        line for line in text.splitlines(keepends=True) if not any(g in line.upper() for g in guids)
-    )
-
-
 def is_port(worktree: Path) -> bool:
     """Whether the project has a C# → C++ port's top-level CMake file."""
     top = worktree / TOP_CMAKE
@@ -434,36 +367,6 @@ def bridge_headers(worktree: Path) -> list[str]:
         f"{BRIDGE_DIR}/{p.name}"
         for p in directory.glob("*.h")
         if p.is_file() and p.name != BRIDGE_RUNTIME_HEADER
-    )
-
-
-def facade_projects(worktree: Path) -> list[str]:
-    """The directories (worktree paths) of the C# projects that hold façades: those with the
-    support file."""
-    found: list[str] = []
-    for support in worktree.rglob(SUPPORT_FILE):
-        rel = support.relative_to(worktree)
-        if any(part in {"bin", "obj", "build", ".git"} for part in rel.parts[:-1]):
-            continue
-        found.append(rel.parent.as_posix())
-    return sorted(found)
-
-
-def initial_declarations(library: str) -> str:
-    """The generated file before the bridge exports anything: the library's name, which the
-    support file needs to compile."""
-    return (
-        "// <auto-generated>\n"
-        "// Written by CodeCoreMorph from the bridge headers (cpp/bridge/*.h) when the C++ is\n"
-        "// configured; do not edit. C# 7.3 and netstandard2.0.\n"
-        "// </auto-generated>\n"
-        f"namespace {NAMESPACE}\n"
-        "{\n"
-        "    internal static partial class CcmNative\n"
-        "    {\n"
-        f'        internal const string Library = "{library}";\n'
-        "    }\n"
-        "}\n"
     )
 
 
@@ -575,72 +478,15 @@ def raw_ownership(text: str) -> list[tuple[int, str]]:
 # --------------------------------------------------------------------------- scaffolds
 
 
-class _Writer:
-    """Writes files under the worktree with LF endings, remembering what it changed."""
-
-    def __init__(self, worktree: Path):
-        self.worktree = worktree
-        self.changed: list[str] = []
-
-    def read(self, rel: str) -> str | None:
-        path = self.worktree / rel
-        if not path.is_file():
-            return None
-        return path.read_bytes().decode("utf-8", errors="replace")
-
-    def write(self, rel: str, text: str) -> None:
-        path = self.worktree / rel
-        data = text.encode("utf-8")
-        if path.is_file() and path.read_bytes() == data:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-        self.changed.append(rel)
-
-    def create(self, rel: str, text: str) -> None:
-        if self.read(rel) is None:
-            self.write(rel, text)
-
-    def delete(self, rel: str) -> None:
-        path = self.worktree / rel
-        if path.is_file():
-            path.unlink()
-            self.changed.append(rel)
-
-    def prune(self) -> None:
-        """Remove the directories the deletions left empty, deepest first."""
-        directories = {
-            parent
-            for rel in self.changed
-            if not (self.worktree / rel).exists()
-            for parent in PurePosixPath(rel).parents
-            if parent.as_posix() != "."
-        }
-        for directory in sorted(directories, key=lambda d: len(d.parts), reverse=True):
-            path = self.worktree / directory.as_posix()
-            if path.is_dir() and not any(path.iterdir()):
-                path.rmdir()
+_Writer = csharp.Writer
 
 
 def _identifier(options: Mapping[str, str], name: str, what: str) -> str:
-    value = options.get(name, "")
-    if not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
-        raise ConfigError(
-            f"the C# → C++ scaffold needs {what} (its {name} option, a C identifier), got "
-            f"{value!r}",
-            hint="The planner sets it from the unit's port; re-plan the run.",
-        )
-    return value
+    return csharp.identifier_option(options, name, what, "C# → C++")
 
 
 def _project(worktree: Path, options: Mapping[str, str]) -> str:
-    project = options.get("build_target", "").replace("\\", "/")
-    if not project.lower().endswith(".csproj") or not (worktree / project).is_file():
-        raise ConfigError(
-            f"the C# → C++ scaffold needs the façade project's file, got {project!r}",
-            hint="The planner sets it from the unit's types; re-plan the run.",
-        )
-    return project
+    return csharp.facade_project(worktree, options, "C# → C++")
 
 
 def header_stub(name: str, unit: str, types: str) -> str:
@@ -681,10 +527,7 @@ def _base(out: _Writer, name: str, project: str, standard: str) -> str:
     out.create(CPP_CMAKE, cpp_cmake(name, project, [], ["bridge/codecoremorph_bridge.cpp"]))
     for file_name, rel in RUNTIME_FILES.items():
         out.create(rel, runtime_text(file_name))
-    folder = PurePosixPath(project).parent.as_posix()
-    prefix = "" if folder == "." else f"{folder}/"
-    out.create(f"{prefix}{SUPPORT_FILE}", runtime_text(SUPPORT_FILE))
-    out.create(f"{prefix}{GENERATED_FILE}", initial_declarations(native_library(name)))
+    csharp.write_facade_support(out, project, native_library(name))
     out.create(SYMBOL_MAP, SYMBOL_MAP_TEXT)
     return out.read(CPP_CMAKE) or ""
 
@@ -865,36 +708,9 @@ def _retire(out: _Writer, options: Mapping[str, str], files: Sequence[str]) -> N
     façades' support and the bridge. With ``keep`` (``keep_source_api``) the unit names only the
     programs and the tests that need them: the solutions drop them, and the rest stays."""
     keep = options.get("keep") == "true"
-    removed: list[str] = []
-    for rel in files:
-        lower = rel.lower()
-        if lower.endswith(PROJECT_SUFFIXES):
-            removed.append(rel)
-            out.delete(rel)
-        elif lower.endswith(".cs"):
-            out.delete(rel)
-    for rel in files:
-        lower = rel.lower()
-        if lower.endswith(SOLUTION_SUFFIXES):
-            text = out.read(rel)
-            if not keep:
-                out.delete(rel)
-            elif text is not None:
-                out.write(rel, without_projects(rel, text, removed))
-        elif posixpath.basename(lower) in MSBUILD_FILES and not keep:
-            out.delete(rel)
-    gone = {posixpath.dirname(p) or "." for p in removed}
-    for directory in facade_projects(out.worktree):
-        if keep and directory not in gone:
-            continue
-        prefix = "" if directory == "." else f"{directory}/"
-        for file_name in (SUPPORT_FILE, GENERATED_FILE, EXCEPTIONS_FILE):
-            out.delete(f"{prefix}{file_name}")
+    csharp.retire_csharp(out, files, keep=keep)
     if not keep:
-        bridge = out.worktree / BRIDGE_DIR
-        if bridge.is_dir():
-            for path in sorted(p for p in bridge.rglob("*") if p.is_file()):
-                out.delete(path.relative_to(out.worktree).as_posix())
+        out.delete_tree(BRIDGE_DIR)
         cmake = out.read(CPP_CMAKE)
         if cmake is not None:
             out.write(CPP_CMAKE, without_bridge(cmake))

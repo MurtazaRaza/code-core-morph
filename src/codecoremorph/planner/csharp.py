@@ -196,19 +196,34 @@ def _refused_sites(entry: TypeEntry) -> str | None:
     return f"{entry.name} uses {', '.join(kinds)}: {sites}"
 
 
+# The target languages' names and guides, for what the plan says of native libraries (D-84).
+_TARGETS = {
+    "cpp": ("C++", "docs/porting-csharp-to-cpp.md"),
+    "rust": ("Rust", "docs/porting-csharp-to-rust.md"),
+}
+
+
 def cut_types(
-    project: ProjectModel, files: Collection[str], skip: Callable[[str], bool]
+    project: ProjectModel,
+    files: Collection[str],
+    skip: Callable[[str], bool],
+    target: str = "cpp",
 ) -> TypeCut:
     """The type units of the library types declared in ``files`` (``skip`` leaves out a port's
-    new code)."""
-    return _Cut(project, files, skip).cut()
+    new code), for a port to ``target`` (a language ID)."""
+    return _Cut(project, files, skip, target).cut()
 
 
 class _Cut:
     def __init__(
-        self, project: ProjectModel, files: Collection[str], skip: Callable[[str], bool]
+        self,
+        project: ProjectModel,
+        files: Collection[str],
+        skip: Callable[[str], bool],
+        target: str = "cpp",
     ) -> None:
         self.project = project
+        self.target_name, self.guide = _TARGETS.get(target, (target, "the porting guide"))
         self.types = {t.id: t for t in project.types}
         kinds = {t.name: t.kind for t in project.targets}
         wanted = set(files)
@@ -740,7 +755,7 @@ class _Cut:
                     f"the units that call {library} need its development files{wanted} in the "
                     f"toolchain image, which lacks {missing}: build an image from "
                     "codecoremorph-csharp-port with them and set sandbox.image to it (see "
-                    "docs/porting-csharp-to-cpp.md, Native libraries)"
+                    f"{self.guide}, Native libraries)"
                 )
             else:
                 version = f", version {probe.version}" if probe.version else ""
@@ -751,8 +766,8 @@ class _Cut:
                     and not package.version.startswith(probe.version)
                 ):
                     summary += (
-                        f", though the C# loads {package.version}: the C++ tests run the "
-                        "image's version"
+                        f", though the C# loads {package.version}: the {self.target_name} "
+                        "tests run the image's version"
                     )
             if blocked:
                 summary += f"; {_listed(blocked)} stay C# for reasons of their own"
