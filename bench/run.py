@@ -77,6 +77,20 @@ USAGE_LIMIT = re.compile(r"hit your .{0,40}limit|usage limit", re.IGNORECASE)
 LANGUAGES = {"c": "C", "cpp": "C++", "csharp": "C#", "rust": "Rust"}
 
 
+def results_path(out: Path, run_id: str | None) -> Path:
+    """Where run ``run_id``'s results go: ``out`` (named by the day), or the file of that name
+    which already holds this run's results (a resumed run's), or else the first of ``out-2``,
+    ``out-3``, … that is free, so a second run on the same day keeps the first's results."""
+    candidate, n = out, 1
+    while candidate.is_file():
+        found = json.loads(candidate.read_text(encoding="utf-8"))
+        if run_id is not None and found.get("run_id") == run_id:
+            return candidate
+        n += 1
+        candidate = out.with_name(f"{out.stem}-{n}{out.suffix}")
+    return candidate
+
+
 def _standard(name: str) -> str:
     return name.replace("cpp", "C++") if name.startswith("cpp") else name
 
@@ -241,9 +255,9 @@ def main(argv: list[str]) -> int:
             state = "doesn't exist" if parked is None else f"has ended ({parked.status.value})"
             print(f"run {args.resume} {state}: nothing to resume", file=sys.stderr)
             return 1
-        if out.is_file():
-            found = json.loads(out.read_text(encoding="utf-8"))
-            earlier = found if found.get("run_id") == args.resume else None
+        mine = results_path(out, args.resume)
+        if mine.is_file():
+            earlier = json.loads(mine.read_text(encoding="utf-8"))
         prompt = RESUME_PROMPT.format(
             run_id=args.resume, task=what, kind=kind, manifest=config.as_posix()
         )
@@ -298,6 +312,7 @@ def main(argv: list[str]) -> int:
         "claude": claude,
         "claude_sessions": sessions,
     }  # fmt: skip
+    out = results_path(out, record["run_id"])
     out.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     shown = ("claude", "claude_sessions", "work")
     print(json.dumps({k: v for k, v in record.items() if k not in shown}, indent=2))

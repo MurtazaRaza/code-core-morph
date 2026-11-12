@@ -1,0 +1,36 @@
+{
+  "project": "libsodium-core",
+  "url": "https://github.com/ektrah/libsodium-core.git",
+  "tag": "v1.3.1",
+  "commit": "fd6567199b4cd229277dc251fa8b8a370f26674b",
+  "license": "MIT",
+  "milestone": "m12",
+  "migration": {
+    "source": {
+      "language": "csharp",
+      "standard": "csharp9",
+      "build_system": "dotnet"
+    },
+    "target": {
+      "language": "rust",
+      "standard": "rust2021",
+      "rules": [
+        "port_csharp_type_to_rust",
+        "port_csharp_program_to_rust",
+        "port_csharp_tests_to_rust",
+        "retire_csharp_to_rust"
+      ]
+    }
+  },
+  "build": {},
+  "image": {
+    "dockerfile": "images/libsodium/Dockerfile",
+    "toolchain": "csharp-port"
+  },
+  "exclude": [],
+  "test_dirs": [
+    "test"
+  ],
+  "public_api": [],
+  "build_note": "The M12 port benchmark (D-84): the M11 library, libsodium-core 1.3.1 (Sodium.Core) at the same commit, ported to Rust, so the two targets compare. A netstandard2.0 and 2.1 library in C# 9 (37 files, 3.7k lines) over a shared project of 73 P/Invoke declarations into libsodium (src/Interop), with 230 NUnit tests on net6.0 (4.3k lines). The Rust calls libsodium itself, from the crate's native module (bindgen's declarations from sodium.h), so the run's image is M11's: the port image with Ubuntu 22.04's libsodium-dev 1.0.18 (bench/images/libsodium). The project checks integer overflow (CheckForOverflowUnderflow)."
+}

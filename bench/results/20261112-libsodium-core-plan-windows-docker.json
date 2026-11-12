@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-12T08:57:32+00:00",
+  "project": "libsodium-core v1.3.1 (fd6567199b4c)",
+  "migration": "csharp9 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 60.562,
+    "index_s": 5.39,
+    "graph_s": 0.032,
+    "plan_s": 1.64
+  },
+  "baseline": {
+    "passing": 230,
+    "failing": [],
+    "flaky": [],
+    "build_s": 12.735,
+    "test_s": 25.796
+  },
+  "graph": {
+    "files": 99,
+    "edges": 842,
+    "clusters": 95,
+    "cyclic_clusters": 3,
+    "largest_cluster": 3
+  },
+  "rules": [
+    {
+      "id": "port_csharp_type_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 63,
+      "files": 63,
+      "skipped_files": 0,
+      "units": 31
+    },
+    {
+      "id": "port_csharp_program_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "port_csharp_tests_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 240,
+      "files": 36,
+      "skipped_files": 0,
+      "units": 36
+    },
+    {
+      "id": "retire_csharp_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 99,
+      "files": 99,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 68
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 3326198,
+    "cost_usd": 15.49
+  },
+  "duration_estimate_s": 12009.3,
+  "warnings": [
+    "port_csharp_program_to_rust: the detector found no sites, so the rule has no units"
+  ]
+}
