@@ -238,7 +238,8 @@ and the other 9 pass a null, which the C++ API can't receive. Over 24,292 seeded
 nulls and wrong sizes among the arguments, the C++ behind the façades returns or throws
 what the C# did, except where the two libsodium builds differ. The run took 5 h 49 min,
 most of it spent linting all of the port at every unit. A unit now lints its own files
-(D-83).
+(D-83): a second run took 3 h 35 min, within 2% of its estimate, each unit's tools about
+two minutes from the first unit to the last.
 
 ## Limits
 
