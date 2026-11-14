@@ -503,15 +503,25 @@ NATIVE_MOD_DOC = (
 
 
 def with_native_module(text: str, name: str) -> str:
-    """``src/native/mod.rs`` declaring the library's ``<name>_sys`` module and linking it, once."""
-    if re.search(rf"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+{re.escape(name)}_sys\s*;", text):
+    """``src/native/mod.rs`` declaring the library's ``<name>_sys`` module and linking it, once.
+    The module ``include!``s bindgen's file rather than being a module file: cbindgen, which
+    writes the bridge's header from the crate's source, expands no macro, so it doesn't take
+    the library's declarations for the bridge's (the M12 benchmark's first unit calling
+    libsodium found it copying them all into the header)."""
+    if re.search(rf"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+{re.escape(name)}_sys\b", text):
         return text
     return (
         text.rstrip("\n")
         + "\n\n"
+        + f"/// bindgen's declarations of {name} (`{name}_sys.rs`), included rather than a module\n"
+        + "/// file, so cbindgen, which expands no macro, leaves them out of the bridge's header.\n"
+        + "///\n"
+        + "/// cbindgen:ignore\n"
         + "#[allow(non_upper_case_globals, non_camel_case_types, non_snake_case, dead_code)]\n"
         + "#[allow(clippy::all)]\n"
-        + f"pub mod {name}_sys;\n\n"
+        + f"pub mod {name}_sys {{\n"
+        + f'    include!("{name}_sys.rs");\n'
+        + "}\n\n"
         + f'#[link(name = "{name}")]\n'
         + 'unsafe extern "C" {}\n'
     )

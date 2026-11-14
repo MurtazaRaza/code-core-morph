@@ -339,7 +339,9 @@ def test_a_unit_calling_a_native_library_gets_the_native_module(tmp_path: Path) 
     assert {f"{crate}/src/native/mod.rs", f"{crate}/src/native/sodium_sys.rs"} <= set(changed)
     module = _text(root, f"{crate}/src/native/mod.rs")
     assert module.startswith(csharpports.NATIVE_MOD_DOC)
-    assert "\npub mod sodium_sys;\n" in module
+    # Included, so cbindgen (which expands no macro) leaves libsodium out of the bridge's header.
+    assert '\npub mod sodium_sys {\n    include!("sodium_sys.rs");\n}\n' in module
+    assert "/// cbindgen:ignore\n" in module
     assert '#[link(name = "sodium")]\nunsafe extern "C" {}\n' in module
     lib = _text(root, f"{crate}/src/lib.rs")
     assert "#[allow(unsafe_code)]\nmod native;\n#[allow(unsafe_code)]\nmod bridge;\n" in lib
@@ -351,7 +353,7 @@ def test_a_unit_calling_a_native_library_gets_the_native_module(tmp_path: Path) 
     later = {**NATIVE, "module": "cart", "types": "csharp:Shop.Cart", "native": "libsodium,libz"}
     csharpports.scaffold(root, "rust-csharp-type", later, [], "rust2021")
     module = _text(root, f"{crate}/src/native/mod.rs")
-    assert module.count("pub mod sodium_sys;") == 1
+    assert module.count("pub mod sodium_sys {") == 1
     assert '#[link(name = "z")]' in module
     assert _text(root, f"{crate}/src/lib.rs").count("mod native;") == 1
     assert csharpports.native_crates(root) == [(crate, ["sodium", "z"], "2021")]
