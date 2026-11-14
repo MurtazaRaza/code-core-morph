@@ -1,0 +1,2438 @@
+{
+  "date": "2026-11-12T12:15:56+00:00",
+  "project": "libsodium-core v1.3.1 (fd6567199b4c)",
+  "migration": "csharp9 -> rust2021",
+  "agent": "claude-code/claude-opus-5-5",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "fd6567199b4cd229277dc251fa8b8a370f26674b",
+  "seconds": 11891.4,
+  "runs_started": 1,
+  "run_id": "20261112-085817-905c",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 68
+    },
+    "success_rate": 1.0,
+    "agent_units": 67,
+    "attempts_per_agent_unit": 1.04,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "4801fde30eed148063932c5f72436f37043f2303",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 219,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 19.2
+    },
+    "port": {
+      "symbols": 239,
+      "tests_mapped": 219,
+      "tests_without_counterpart": [
+        "dotnet:Tests.UtilitiesExceptionTest#BinaryToBase64NullTest: null data (ArgumentNullException): the Rust takes the data as a slice, which can't be null",
+        "dotnet:Tests.UtilitiesExceptionTest#Base64ToBinaryNullTest: a null base64 string (ArgumentNullException): the Rust takes the string as a str, which can't be null",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptBadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptBadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptChaCha20BadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptChaCha20BadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionEncryptChaCha20IetfBadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.StreamEncryptionExceptionTest#StreamEncryptionDecryptChaCha20IetfBadCrypto: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.PublicKeyAuthExceptionTest#ConvertEd25519PublicKeyToCurve25519PublicKeyWrongKey: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.PublicKeyAuthExceptionTest#ConvertEd25519SecretKeyToCurve25519SecretKeyWrongKey: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.PasswordHashTest#ScryptPasswordNeedsRehashOnStringNullStringTest: a null hash string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the hash as a slice, which can't be null",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryNoPassword: a null password string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the password as a slice, which can't be null",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryNoSalt: a null salt string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the salt as a slice, which can't be null",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashBinaryOutOfMemory: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringNoPassword: a null password (ArgumentNullException): the Rust takes the password as a str, which can't be null",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringOutOfMemory: ignored in C# ('not implemented'): its body is empty, so there is nothing to translate",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringVerifyNoHash: a null hash string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the hash as a slice, which can't be null",
+        "dotnet:Tests.PasswordHashExceptionTest#ScryptHashStringVerifyNoPassword: a null password string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the password as a slice, which can't be null",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoMessage: a null message string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes the message as a slice, which can't be null",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoPersonal: a null personal string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes it as a slice, which can't be null",
+        "dotnet:Tests.GenericHashExceptionTest#GenericHashSaltPersonalNoSalt: a null salt string (ArgumentNullException from the C#'s UTF-8 encoding): the Rust takes it as a slice, which can't be null"
+      ],
+      "deviations": [
+        "csharp:Sodium.DetachedBox.#ctor: the obsolete parameterless constructor: always NotSupportedException, as in C#",
+        "csharp:Sodium.DetachedBox.#ctor(System.Byte[],System.Byte[]): null arguments (ArgumentNullException) are checked by the bridge; the Rust takes owned vectors",
+        "csharp:Sodium.DetachedBox.CipherText: the getter returns a borrowed slice (the fa\u00e7ade copies it); the obsolete setter returns NotSupportedException",
+        "csharp:Sodium.DetachedBox.Mac: the getter returns a borrowed slice (the fa\u00e7ade copies it); the obsolete setter returns NotSupportedException",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.AdditionalDataOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (a length)",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.BytesOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the requested size)",
+        "csharp:Sodium.Exceptions.InvalidPasswordStringException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.InvalidPasswordStringException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.KeyOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the key's length, 0 for null)",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.MacOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the mac's length, 0 for null)",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.NonceOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the nonce's length, 0 for null)",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.PersonalOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the personal string's length)",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.SaltOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the salt's length, 0 for null)",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.SeedOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the seed's length, 0 for null)",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor: the exception stays a C# class (the tests catch it); the Rust raises it as Exception::custom, which CcmExceptions.cs constructs",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor(System.String,System.Exception): Rust's Exception holds no inner exception; nothing in the library uses this constructor (with_message raises the exception with a message)",
+        "csharp:Sodium.Exceptions.SignatureOutOfRangeException.#ctor(System.String,System.Object,System.String): the actual value is the int the library passes (the signature's length, 0 for null)",
+        "csharp:Sodium.KeyPair.#ctor(System.Byte[],System.Byte[]): null arguments (ArgumentNullException) are checked by the bridge; the Rust takes owned vectors",
+        "csharp:Sodium.KeyPair.Dispose: a no-op, as in C#: the fa\u00e7ade keeps its handle, and the keys stay readable",
+        "csharp:Sodium.KeyPair.PrivateKey: returns a borrowed slice; the fa\u00e7ade copies it, as the C# cloned the array",
+        "csharp:Sodium.KeyPair.PublicKey: returns a borrowed slice; the fa\u00e7ade copies it, as the C# cloned the array",
+        "csharp:Sodium.SodiumCore.GetRandomBytes(System.Int32): a negative count is OverflowException, as new byte[count] threw",
+        "csharp:Sodium.SodiumCore.Init: the Rust links libsodium at build time, so the DllNotFoundException and BadImageFormatException the C# turned into PlatformNotSupportedException can't happen; the misuse handler ends the process, as the C# exception thrown from the native callback did; the fa\u00e7ade also initializes the C#'s own copy of libsodium until the retirement",
+        "csharp:Sodium.CryptoHash.Hash(System.Byte[]): a null message is NullReferenceException (checked by the bridge), as the C# dereferenced it",
+        "csharp:Sodium.CryptoHash.Hash(System.String): the fa\u00e7ade encodes the string with Encoding.UTF8, as the C# did, and calls the byte[] overload; the Rust takes the bytes (str::as_bytes)",
+        "csharp:Sodium.CryptoHash.Sha256(System.Byte[]): a null message is NullReferenceException (checked by the bridge), as the C# dereferenced it",
+        "csharp:Sodium.CryptoHash.Sha256(System.String): the fa\u00e7ade encodes the string with Encoding.UTF8, as the C# did, and calls the byte[] overload; the Rust takes the bytes (str::as_bytes)",
+        "csharp:Sodium.CryptoHash.Sha512(System.Byte[]): a null message is NullReferenceException (checked by the bridge), as the C# dereferenced it",
+        "csharp:Sodium.CryptoHash.Sha512(System.String): the fa\u00e7ade encodes the string with Encoding.UTF8, as the C# did, and calls the byte[] overload; the Rust takes the bytes (str::as_bytes)",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.#ctor(System.Byte[],System.Int32): a null key is None; the C# class stays a HashAlgorithm (the fa\u00e7ade) over the Rust state, which is behind a Mutex since C# shares it",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.#ctor(System.String,System.Int32): the fa\u00e7ade encodes the key with Encoding.UTF8, as the C# did, and calls the byte[] constructor",
+        "csharp:Sodium.GenericHash.GenericHashAlgorithm.HashCore(System.Byte[],System.Int32,System.Int32): returns the exceptions new byte[cbSize] and Array.Copy threw for a bad size, a null array or a bad range",
+        "csharp:Sodium.GenericHash.Hash(System.Byte[],System.Byte[],System.Int32): a null key is None; a null message is NullReferenceException after the key and size checks, as the C# dereferenced it there",
+        "csharp:Sodium.GenericHash.Hash(System.String,System.Byte[],System.Int32): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.GenericHash.Hash(System.String,System.String,System.Int32): the fa\u00e7ade encodes the message and the key with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.GenericHash.HashSaltPersonal(System.Byte[],System.Byte[],System.Byte[],System.Byte[],System.Int32): the ArgumentNullExceptions for a null message, salt or personal string are the bridge's, in the C#'s order and with its messages",
+        "csharp:Sodium.GenericHash.HashSaltPersonal(System.String,System.String,System.String,System.String,System.Int32): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.OneTimeAuth.Sign(System.Byte[],System.Byte[]): a null key fails the length check as an empty one (actual value 0); a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.OneTimeAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.OneTimeAuth.Verify(System.Byte[],System.Byte[],System.Byte[]): a null key or signature fails the length check as an empty one (actual value 0); a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.OneTimeAuth.Verify(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonAlgorithm.Argon_2I13: crosses as its value (1); a value the C# enum has no name for is ArgonAlgorithm::Other, which libsodium refuses as before",
+        "csharp:Sodium.PasswordHash.ArgonAlgorithm.Argon_2ID13: crosses as its value (2)",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.Byte[],System.Byte[],Sodium.PasswordHash.StrengthArgon,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): a null password or salt is the bridge's ArgumentNullException, with the C#'s messages",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.Byte[],System.Byte[],System.Int64,System.Int32,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): a null password or salt is the bridge's ArgumentNullException, with the C#'s messages; an output length .NET couldn't allocate is OutOfMemoryException, as new byte[] threw",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.String,System.String,Sodium.PasswordHash.StrengthArgon,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonHashBinary(System.String,System.String,System.Int64,System.Int32,System.Int64,Sodium.PasswordHash.ArgonAlgorithm): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonHashString(System.String,Sodium.PasswordHash.StrengthArgon): the fa\u00e7ade passes the password as its UTF-8 bytes (null for null, the bridge's ArgumentNullException), so NUL characters are kept as Encoding.UTF8 kept them",
+        "csharp:Sodium.PasswordHash.ArgonHashString(System.String,System.Int64,System.Int32): the fa\u00e7ade passes the password as its UTF-8 bytes (null for null, the bridge's ArgumentNullException), so NUL characters are kept as Encoding.UTF8 kept them",
+        "csharp:Sodium.PasswordHash.ArgonHashStringVerify(System.Byte[],System.Byte[]): a null password, then a null hash, is the bridge's ArgumentNullException, with the C#'s messages",
+        "csharp:Sodium.PasswordHash.ArgonHashStringVerify(System.String,System.String): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.Byte[],System.Int64,System.Int32): negative limits are OverflowException, as the C#'s checked conversions threw",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.String,Sodium.PasswordHash.StrengthArgon): the fa\u00e7ade encodes the hash with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ArgonPasswordNeedsRehash(System.String,System.Int64,System.Int32): the fa\u00e7ade encodes the hash with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.HashType.Scrypt: HashType::from_value maps every value but Argon's to Scrypt, as the C# chose",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.Byte[],System.Byte[],Sodium.PasswordHash.Strength,System.Int64): a null password or salt is the bridge's ArgumentNullException, with the C#'s messages",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.Byte[],System.Byte[],System.Int64,System.Int32,System.Int64): a null password or salt is the bridge's ArgumentNullException, with the C#'s messages; an output length .NET couldn't allocate is OutOfMemoryException, as new byte[] threw",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.String,System.String,Sodium.PasswordHash.Strength,System.Int64): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptHashBinary(System.String,System.String,System.Int64,System.Int32,System.Int64): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptHashString(System.String,Sodium.PasswordHash.Strength): the fa\u00e7ade passes the password as its UTF-8 bytes (null for null, the bridge's ArgumentNullException), so NUL characters are kept as Encoding.UTF8 kept them",
+        "csharp:Sodium.PasswordHash.ScryptHashString(System.String,System.Int64,System.Int32): the fa\u00e7ade passes the password as its UTF-8 bytes (null for null, the bridge's ArgumentNullException), so NUL characters are kept as Encoding.UTF8 kept them",
+        "csharp:Sodium.PasswordHash.ScryptHashStringVerify(System.Byte[],System.Byte[]): a null password, then a null hash, is the bridge's ArgumentNullException, with the C#'s messages",
+        "csharp:Sodium.PasswordHash.ScryptHashStringVerify(System.String,System.String): the fa\u00e7ade encodes the strings with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.Byte[],System.Int64,System.Int32): negative limits are OverflowException, as the C#'s checked conversions threw",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.String,Sodium.PasswordHash.Strength): the fa\u00e7ade encodes the hash with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.ScryptPasswordNeedsRehash(System.String,System.Int64,System.Int32): the fa\u00e7ade encodes the hash with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PasswordHash.Strength.Interactive: Strength::from_value maps the values the C# enum has no name for to Interactive, the C# switch's default",
+        "csharp:Sodium.PasswordHash.Strength.Moderate: obsolete in C# (Use Strength.Medium instead), which the Rust says in its doc comment",
+        "csharp:Sodium.PasswordHash.StrengthArgon.Interactive: StrengthArgon::from_value maps the values the C# enum has no name for to Interactive, the C# switch's default",
+        "csharp:Sodium.PublicKeyAuth.ConvertEd25519PublicKeyToCurve25519PublicKey(System.Byte[]): a null key fails the length check as an empty one (actual value 0)",
+        "csharp:Sodium.PublicKeyAuth.ConvertEd25519SecretKeyToCurve25519SecretKey(System.Byte[]): a null key fails the length check as an empty one (actual value 0); libsodium reads the key's first 32 bytes, which the Rust passes",
+        "csharp:Sodium.PublicKeyAuth.GenerateKeyPair(System.Byte[]): a null seed fails the length check as an empty one (actual value 0)",
+        "csharp:Sodium.PublicKeyAuth.Sign(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.PublicKeyAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyAuth.SignDetached(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.PublicKeyAuth.SignDetached(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyAuth.Verify(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null signed message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.PublicKeyAuth.VerifyDetached(System.Byte[],System.Byte[],System.Byte[]): a null signature or key fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.ScalarMult.Base(System.Byte[]): a null key fails the length check as an empty one (actual value 0)",
+        "csharp:Sodium.ScalarMult.Mult(System.Byte[],System.Byte[]): null keys fail the length checks as empty ones (actual value 0)",
+        "csharp:Sodium.SecretAeadAes.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadAes.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadAes.IsAvailable: the answer is kept in a static AtomicI32 once known, as the C# kept it in s_isAvailable; it is the Rust's copy of libsodium that answers, initialized by the Rust",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAead.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): obsolete, as in C#; the fa\u00e7ade forwards to SecretAeadChaCha20Poly1305.Decrypt, as the C# did, and the Rust to secret_aead_cha_cha20_poly1305::decrypt",
+        "csharp:Sodium.SecretAead.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): obsolete, as in C#; the fa\u00e7ade forwards to SecretAeadChaCha20Poly1305.Encrypt, as the C# did, and the Rust to secret_aead_cha_cha20_poly1305::encrypt",
+        "csharp:Sodium.SecretAead.GenerateNonce: obsolete, as in C#; the fa\u00e7ade forwards to SecretAeadChaCha20Poly1305.GenerateNonce, as the C# did, and the Rust to secret_aead_cha_cha20_poly1305::generate_nonce",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305IETF.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadChaCha20Poly1305IETF.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadXChaCha20Poly1305.Decrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretAeadXChaCha20Poly1305.Encrypt(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null additional data is None; a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.Sign(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.Sign(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha256(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha256(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha512(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.SignHmacSha512(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.Verify(System.Byte[],System.Byte[],System.Byte[]): a null key or signature fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.Verify(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha256(System.Byte[],System.Byte[],System.Byte[]): a null key or signature fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha256(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha512(System.Byte[],System.Byte[],System.Byte[]): a null key or signature fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretKeyAuth.VerifyHmacSha512(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.ShortHash.Hash(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.ShortHash.Hash(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.ShortHash.Hash(System.String,System.String): the fa\u00e7ade encodes the key with Encoding.UTF8, as the C# did, and calls the (string, byte[]) overload",
+        "csharp:Sodium.Utilities.Base64ToBinary(System.String,System.String,Sodium.Utilities.Base64Variant): the fa\u00e7ade passes the strings as their UTF-8 bytes (null for null; a null base64 is the bridge's ArgumentNullException, with the C#'s message); the ignored characters reach libsodium NUL-terminated, where the C# passed them unterminated",
+        "csharp:Sodium.Utilities.Base64Variant.Original: crosses as its value (1); a value the C# enum has no name for is Base64Variant::Other, which libsodium treats as a misuse, as before",
+        "csharp:Sodium.Utilities.Base64Variant.OriginalNoPadding: crosses as its value (3)",
+        "csharp:Sodium.Utilities.Base64Variant.UrlSafe: crosses as its value (5)",
+        "csharp:Sodium.Utilities.Base64Variant.UrlSafeNoPadding: crosses as its value (7)",
+        "csharp:Sodium.Utilities.BinaryToBase64(System.Byte[],Sodium.Utilities.Base64Variant): a null array is the bridge's ArgumentNullException, with the C#'s message",
+        "csharp:Sodium.Utilities.BinaryToHex(System.Byte[]): the fa\u00e7ade calls the overload with HexFormat.None and HexCase.Lower, as the C# did",
+        "csharp:Sodium.Utilities.BinaryToHex(System.Byte[],Sodium.Utilities.HexFormat,Sodium.Utilities.HexCase): a null array is NullReferenceException (the bridge's), as the C# dereferenced it; the digits come from a table, as the C#'s bit fiddling computed them",
+        "csharp:Sodium.Utilities.Compare(System.Byte[],System.Byte[]): null arrays are NullReferenceException (the bridge's), as the C# dereferenced them",
+        "csharp:Sodium.Utilities.HexCase.Upper: HexCase::from_value maps every value but Lower's to Upper, the C# switch's default",
+        "csharp:Sodium.Utilities.HexFormat.None: HexFormat::from_value maps the values the C# enum has no name for to None, the C# switch's default",
+        "csharp:Sodium.Utilities.HexToBinary(System.String): the fa\u00e7ade passes the string as its UTF-8 bytes (null is the bridge's NullReferenceException); the Rust decodes its UTF-16 code units, as the C# did; a string with lone surrogates reaches it with U+FFFD in their place",
+        "csharp:Sodium.Utilities.Increment(System.Byte[]): the Rust increments a slice in place; the fa\u00e7ade copies the incremented bytes back into the caller's array and returns it, as the C# incremented it in place",
+        "csharp:Sodium.PublicKeyBox.Create(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null keys or nonce fail the length checks as empty ones; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.PublicKeyBox.Create(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.CreateDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): returns the DetachedBox's handle; libsodium gets the secret key as its public key and the public key as its secret key, as the C# passed them (OpenDetached does the same)",
+        "csharp:Sodium.PublicKeyBox.CreateDetached(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.PublicKeyBox.GenerateKeyPair(System.Byte[]): a null private key fails the length check as an empty one (actual value 0)",
+        "csharp:Sodium.PublicKeyBox.GenerateSeededKeyPair(System.Byte[]): a null seed fails the length check as an empty one (actual value 0)",
+        "csharp:Sodium.PublicKeyBox.Open(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): a null cipher is NullReferenceException after the checks, as the C# dereferenced it there; a box trimmed of its leading zeros to less than a MAC is OverflowException, as new byte[negative] threw",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(Sodium.DetachedBox,System.Byte[],System.Byte[],System.Byte[]): takes the DetachedBox's handle; a null one is NullReferenceException, as the C# read its CipherText",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[],System.Byte[]): a null cipher is NullReferenceException after the checks, as the C# dereferenced it there; the keys reach libsodium in the C#'s order (see CreateDetached)",
+        "csharp:Sodium.PublicKeyBox.OpenDetached(System.String,System.Byte[],System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.Byte[],Sodium.KeyPair): takes the KeyPair's handle; a null one is NullReferenceException, as the C# read its PublicKey",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.Byte[],System.Byte[]): a null key fails the length check as an empty one; a null message is NullReferenceException after the key check, as the C# dereferenced it there",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.String,Sodium.KeyPair): the fa\u00e7ade encodes the message with Encoding.UTF8 and reads the key pair's PublicKey, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Create(System.String,System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.Byte[],Sodium.KeyPair): takes the KeyPair's handle; a null one is NullReferenceException, as the C# read its keys",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.Byte[],System.Byte[],System.Byte[]): null keys fail the length checks as empty ones (the secret key's exception names recipientPublicKey, as the C#'s did); a null cipher is NullReferenceException after the checks",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.String,Sodium.KeyPair): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary and reads the key pair's keys, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.Open(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SealedPublicKeyBox.RecipientPublicKeyBytes: a C# const, which stays a const in the fa\u00e7ade",
+        "csharp:Sodium.SealedPublicKeyBox.RecipientSecretKeyBytes: a C# const, which stays a const in the fa\u00e7ade",
+        "csharp:Sodium.SecretBox.Create(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.SecretBox.Create(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.CreateDetached(System.Byte[],System.Byte[],System.Byte[]): returns the DetachedBox's handle; a null message is NullReferenceException after the checks",
+        "csharp:Sodium.SecretBox.CreateDetached(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.Open(System.Byte[],System.Byte[],System.Byte[]): a null cipher is NullReferenceException after the checks; a box trimmed of its leading zeros to less than a MAC is OverflowException, as new byte[negative] threw",
+        "csharp:Sodium.SecretBox.Open(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.SecretBox.OpenDetached(Sodium.DetachedBox,System.Byte[],System.Byte[]): takes the DetachedBox's handle; a null one is NullReferenceException, as the C# read its CipherText",
+        "csharp:Sodium.SecretBox.OpenDetached(System.Byte[],System.Byte[],System.Byte[],System.Byte[]): null keys, nonce or MAC fail the length checks as empty ones; a null cipher is NullReferenceException after the checks",
+        "csharp:Sodium.SecretBox.OpenDetached(System.String,System.Byte[],System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.Decrypt(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks, as the C# dereferenced it there",
+        "csharp:Sodium.StreamEncryption.Decrypt(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20Ietf(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.DecryptChaCha20Ietf(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.DecryptXChaCha20(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null cipher is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.DecryptXChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade decodes the hex cipher with Utilities.HexToBinary, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.Encrypt(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.Encrypt(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20Ietf(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.EncryptChaCha20Ietf(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "csharp:Sodium.StreamEncryption.EncryptXChaCha20(System.Byte[],System.Byte[],System.Byte[]): a null key or nonce fails the length check as an empty one; a null message is NullReferenceException after the checks",
+        "csharp:Sodium.StreamEncryption.EncryptXChaCha20(System.String,System.Byte[],System.Byte[]): the fa\u00e7ade encodes the message with Encoding.UTF8, as the C# did, and calls the byte[] overload",
+        "dotnet:Tests.SecretBoxExceptionTest#OpenDetachedSecretBoxBadMac: The C# passes a null MAC, which its length check reads as 0 (mac?.Length ?? 0); the Rust test passes an empty slice, which fails the same check.",
+        "dotnet:Tests.RandomNumbersTest#GetRandomNumbersTest: the C# checked the boxed numbers weren't null, which they never are: the Rust checks they aren't negative",
+        "dotnet:Tests.RandomBytesTest#GetRandomBytesTest: the C# checked the arrays weren't null, which a Rust vector never is: the Rust checks they aren't empty",
+        "dotnet:Tests.PublicKeyBoxTest#GenerateKeyPairTest: the C# checked the keys weren't null, which a Rust slice never is: the Rust checks they aren't empty",
+        "dotnet:Tests.PublicKeyBoxExceptionTest#PublicKeyBoxOpenDetachedBadMac: the C#'s null MAC is an empty MAC in Rust: both fail the length check with actual value 0",
+        "dotnet:Tests.PublicKeyAuthTest#GenerateKeyTest: the C# checked the keys weren't null, which a Rust slice never is: the Rust checks they aren't empty",
+        "dotnet:Tests.PasswordHashTest#ArgonHashStringSensitiveTest: where the C# was inconclusive on an OutOfMemoryException, the Rust checks the error is one and passes",
+        "dotnet:Tests.PasswordHashTest#HashArgonLongTest: where the C# was inconclusive on an OutOfMemoryException, the Rust checks the error is one and passes",
+        "dotnet:Tests.PasswordHashTest#ScryptHashStringSensitiveTest: where the C# was inconclusive on an OutOfMemoryException, the Rust checks the error is one and passes",
+        "dotnet:Tests.OneTimeAuthExceptionTest#OneTimeAuthSignNoKey: the C#'s null key is an empty key in Rust: both fail the length check with actual value 0",
+        "dotnet:Tests.GenericHashAlgorithmTest#ComputeHashFromMemoryStream: the Rust hashes the bytes the MemoryStream holds, as ComputeHash(Stream) read them",
+        "dotnet:Tests.GenericHashAlgorithmTest#ComputeHashFromNullStream: Stream.Null has nothing to read: the Rust takes the hash of no part"
+      ],
+      "unsafe": [
+        "rust/sodium_core_rs/src/native/mod.rs:22",
+        "rust/sodium_core_rs/src/native/mod.rs:27",
+        "rust/sodium_core_rs/src/native/mod.rs:33",
+        "rust/sodium_core_rs/src/native/mod.rs:39",
+        "rust/sodium_core_rs/src/native/mod.rs:53",
+        "rust/sodium_core_rs/src/native/mod.rs:61",
+        "rust/sodium_core_rs/src/native/mod.rs:68",
+        "rust/sodium_core_rs/src/native/mod.rs:75",
+        "rust/sodium_core_rs/src/native/mod.rs:83",
+        "rust/sodium_core_rs/src/native/mod.rs:92",
+        "rust/sodium_core_rs/src/native/mod.rs:101",
+        "rust/sodium_core_rs/src/native/mod.rs:127",
+        "rust/sodium_core_rs/src/native/mod.rs:157",
+        "rust/sodium_core_rs/src/native/mod.rs:163",
+        "rust/sodium_core_rs/src/native/mod.rs:171",
+        "rust/sodium_core_rs/src/native/mod.rs:182",
+        "rust/sodium_core_rs/src/native/mod.rs:192",
+        "rust/sodium_core_rs/src/native/mod.rs:208",
+        "rust/sodium_core_rs/src/native/mod.rs:227",
+        "rust/sodium_core_rs/src/native/mod.rs:246",
+        "rust/sodium_core_rs/src/native/mod.rs:256",
+        "rust/sodium_core_rs/src/native/mod.rs:264",
+        "rust/sodium_core_rs/src/native/mod.rs:282",
+        "rust/sodium_core_rs/src/native/mod.rs:301",
+        "rust/sodium_core_rs/src/native/mod.rs:317",
+        "rust/sodium_core_rs/src/native/mod.rs:326",
+        "rust/sodium_core_rs/src/native/mod.rs:336",
+        "rust/sodium_core_rs/src/native/mod.rs:346",
+        "rust/sodium_core_rs/src/native/mod.rs:367",
+        "rust/sodium_core_rs/src/native/mod.rs:386",
+        "rust/sodium_core_rs/src/native/mod.rs:403",
+        "rust/sodium_core_rs/src/native/mod.rs:418",
+        "rust/sodium_core_rs/src/native/mod.rs:429",
+        "rust/sodium_core_rs/src/native/mod.rs:439",
+        "rust/sodium_core_rs/src/native/mod.rs:447",
+        "rust/sodium_core_rs/src/native/mod.rs:455",
+        "rust/sodium_core_rs/src/native/mod.rs:464",
+        "rust/sodium_core_rs/src/native/mod.rs:472",
+        "rust/sodium_core_rs/src/native/mod.rs:488",
+        "rust/sodium_core_rs/src/native/mod.rs:517",
+        "rust/sodium_core_rs/src/native/mod.rs:546",
+        "rust/sodium_core_rs/src/native/mod.rs:575",
+        "rust/sodium_core_rs/src/native/mod.rs:604",
+        "rust/sodium_core_rs/src/native/mod.rs:633",
+        "rust/sodium_core_rs/src/native/mod.rs:662",
+        "rust/sodium_core_rs/src/native/mod.rs:691",
+        "rust/sodium_core_rs/src/native/mod.rs:712",
+        "rust/sodium_core_rs/src/native/mod.rs:720",
+        "rust/sodium_core_rs/src/native/mod.rs:728",
+        "rust/sodium_core_rs/src/native/mod.rs:736",
+        "rust/sodium_core_rs/src/native/mod.rs:744",
+        "rust/sodium_core_rs/src/native/mod.rs:752",
+        "rust/sodium_core_rs/src/native/mod.rs:760",
+        "rust/sodium_core_rs/src/native/mod.rs:767",
+        "rust/sodium_core_rs/src/native/mod.rs:775",
+        "rust/sodium_core_rs/src/native/mod.rs:782",
+        "rust/sodium_core_rs/src/native/mod.rs:790",
+        "rust/sodium_core_rs/src/native/mod.rs:807",
+        "rust/sodium_core_rs/src/native/mod.rs:829",
+        "rust/sodium_core_rs/src/native/mod.rs:838",
+        "rust/sodium_core_rs/src/native/mod.rs:850",
+        "rust/sodium_core_rs/src/native/mod.rs:862",
+        "rust/sodium_core_rs/src/native/mod.rs:875",
+        "rust/sodium_core_rs/src/native/mod.rs:895",
+        "rust/sodium_core_rs/src/native/mod.rs:915",
+        "rust/sodium_core_rs/src/native/mod.rs:926",
+        "rust/sodium_core_rs/src/native/mod.rs:938",
+        "rust/sodium_core_rs/src/native/mod.rs:948",
+        "rust/sodium_core_rs/src/native/mod.rs:961",
+        "rust/sodium_core_rs/src/native/mod.rs:980",
+        "rust/sodium_core_rs/src/native/mod.rs:998",
+        "rust/sodium_core_rs/src/native/mod.rs:1007",
+        "rust/sodium_core_rs/src/native/mod.rs:1016",
+        "rust/sodium_core_rs/src/native/mod.rs:1027",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:68",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:69",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:70",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:71",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:73",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:74",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:456",
+        "rust/sodium_core_rs/src/native/sodium_sys.rs:463"
+      ],
+      "shared_cells": [
+        "rust/sodium_core_rs/src/generic_hash.rs:111: Mutex"
+      ],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_csharp_type_to_rust",
+        "units": 31,
+        "committed": 31,
+        "planned_sites": 37,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_csharp_program_to_rust",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_csharp_tests_to_rust",
+        "units": 36,
+        "committed": 36,
+        "planned_sites": 240,
+        "converted_sites": 240
+      },
+      {
+        "id": "retire_csharp_to_rust",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 99,
+        "converted_sites": 99
+      }
+    ],
+    "review_items": 43,
+    "duration_s": 11814.2,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 224.2,
+        "changed_files": 19,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 187.1,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 122.9,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 129.4,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 136.2,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 115.4,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 125.4,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 133.4,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 130.8,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 128.0,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 128.3,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 135.7,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 224.9,
+        "changed_files": 12,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 158.0,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 597.0,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 149.6,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 712.8,
+        "changed_files": 11,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 276.9,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 114.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 171.2,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 140.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 157.7,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 135.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 133.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 256.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0026",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 86.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0027",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 294.8,
+        "changed_files": 11,
+        "reason": null
+      },
+      {
+        "id": "U-0028",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 249.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0029",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 153.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0030",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 160.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0031",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 259.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0032",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 116.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0033",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 111.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0034",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 125.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0035",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 104.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0036",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 97.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0037",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 101.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0038",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 122.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0039",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 305.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0040",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 137.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0041",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 142.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0042",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 153.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0043",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 139.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0044",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 122.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0045",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 117.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0046",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 119.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0047",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 127.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0048",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 122.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0049",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 139.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0050",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 129.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0051",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 143.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0052",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 136.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0053",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 132.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0054",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 216.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0055",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 143.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0056",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 132.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0057",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 167.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0058",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 140.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0059",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 158.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0060",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 159.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0061",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 167.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0062",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 194.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0063",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 160.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0064",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 168.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0065",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 169.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0066",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 217.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0067",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 164.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0068",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 49.1,
+        "changed_files": 143,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261112-085817-905c\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 99,
+      "project_lines": 8823,
+      "units": 68,
+      "rule_sites": {
+        "port_csharp_type_to_rust": 63,
+        "port_csharp_tests_to_rust": 240,
+        "retire_csharp_to_rust": 99
+      },
+      "sites": 402,
+      "files": 102,
+      "lines": 8823,
+      "expected_agent_attempts": 61.2,
+      "verify_s": 39.0,
+      "estimated_s": 12067.7,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 68
+      },
+      "agent_units": 67,
+      "agent_attempts": 70,
+      "changed_files": 181,
+      "lines_added": 12379,
+      "lines_deleted": 8966
+    },
+    "time": {
+      "run_s": 11814.2,
+      "phases_s": {
+        "baselining": 61.0,
+        "indexing": 6.4,
+        "planning": 1.8,
+        "awaiting_plan_approval": 31.4,
+        "migrating": 11694.1,
+        "verifying": 19.5
+      },
+      "migrating_s": 11694.1,
+      "agent_s": 4755.5,
+      "unit_gates_s": 0.0,
+      "tools_s": 6938.6,
+      "unit_s": {
+        "mean": 171.8,
+        "median": 142.6,
+        "max": 716.0
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.97,
+      "agent_attempts_over_expected": 1.14,
+      "agent_s_per_attempt": 67.9,
+      "migrating_s_per_unit": 172.0,
+      "migrating_s_per_site": 29.1,
+      "migrating_s_per_changed_line": 0.55,
+      "run_min_per_1k_project_lines": 22.32
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 231.1,
+        "agent_s": 116.9,
+        "gate_s": 0.0,
+        "tools_s": 114.2,
+        "lines_changed": 2128
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 190.6,
+        "agent_s": 94.0,
+        "gate_s": 0.0,
+        "tools_s": 96.6,
+        "lines_changed": 105
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 126.6,
+        "agent_s": 27.4,
+        "gate_s": 0.0,
+        "tools_s": 99.2,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 21,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 132.7,
+        "agent_s": 29.3,
+        "gate_s": 0.0,
+        "tools_s": 103.5,
+        "lines_changed": 46
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 139.6,
+        "agent_s": 26.2,
+        "gate_s": 0.0,
+        "tools_s": 113.4,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 119.1,
+        "agent_s": 20.2,
+        "gate_s": 0.0,
+        "tools_s": 98.9,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 129.0,
+        "agent_s": 20.5,
+        "gate_s": 0.0,
+        "tools_s": 108.5,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 136.7,
+        "agent_s": 20.3,
+        "gate_s": 0.0,
+        "tools_s": 116.4,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 134.3,
+        "agent_s": 20.3,
+        "gate_s": 0.0,
+        "tools_s": 114.0,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.5,
+        "agent_s": 20.7,
+        "gate_s": 0.0,
+        "tools_s": 110.8,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 26,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 132.0,
+        "agent_s": 23.0,
+        "gate_s": 0.0,
+        "tools_s": 109.0,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 34,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 139.1,
+        "agent_s": 37.9,
+        "gate_s": 0.0,
+        "tools_s": 101.2,
+        "lines_changed": 245
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 3,
+        "lines": 124,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 228.2,
+        "agent_s": 157.5,
+        "gate_s": 0.0,
+        "tools_s": 70.6,
+        "lines_changed": 2658
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 75,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 161.3,
+        "agent_s": 84.4,
+        "gate_s": 0.0,
+        "tools_s": 76.9,
+        "lines_changed": 183
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 3,
+        "lines": 200,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 191.1,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 3,
+        "actual_s": 600.2,
+        "agent_s": 309.3,
+        "gate_s": 0.0,
+        "tools_s": 290.9,
+        "lines_changed": 641
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 80,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 153.0,
+        "agent_s": 84.0,
+        "gate_s": 0.0,
+        "tools_s": 69.1,
+        "lines_changed": 237
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 4,
+        "lines": 643,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 334.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 716.0,
+        "agent_s": 638.5,
+        "gate_s": 0.0,
+        "tools_s": 77.5,
+        "lines_changed": 1538
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 244,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 205.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 280.3,
+        "agent_s": 218.1,
+        "gate_s": 0.0,
+        "tools_s": 62.2,
+        "lines_changed": 918
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 56,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 118.1,
+        "agent_s": 54.3,
+        "gate_s": 0.0,
+        "tools_s": 63.8,
+        "lines_changed": 225
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 120,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 174.6,
+        "agent_s": 102.7,
+        "gate_s": 0.0,
+        "tools_s": 72.0,
+        "lines_changed": 390
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 95,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 144.3,
+        "agent_s": 64.2,
+        "gate_s": 0.0,
+        "tools_s": 80.1,
+        "lines_changed": 325
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 17,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 161.2,
+        "agent_s": 55.6,
+        "gate_s": 0.0,
+        "tools_s": 105.6,
+        "lines_changed": 47
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 96,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 138.8,
+        "agent_s": 59.2,
+        "gate_s": 0.0,
+        "tools_s": 79.7,
+        "lines_changed": 327
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 96,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 135.8,
+        "agent_s": 57.6,
+        "gate_s": 0.0,
+        "tools_s": 78.2,
+        "lines_changed": 327
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 205,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 192.7,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 259.2,
+        "agent_s": 143.0,
+        "gate_s": 0.0,
+        "tools_s": 116.3,
+        "lines_changed": 516
+      },
+      {
+        "id": "U-0026",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 59,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 88.6,
+        "agent_s": 38.5,
+        "gate_s": 0.0,
+        "tools_s": 50.1,
+        "lines_changed": 142
+      },
+      {
+        "id": "U-0027",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 4,
+        "lines": 262,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 211.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 297.5,
+        "agent_s": 229.0,
+        "gate_s": 0.0,
+        "tools_s": 68.5,
+        "lines_changed": 703
+      },
+      {
+        "id": "U-0028",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 282,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 217.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 251.7,
+        "agent_s": 200.2,
+        "gate_s": 0.0,
+        "tools_s": 51.5,
+        "lines_changed": 870
+      },
+      {
+        "id": "U-0029",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 133,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 169.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 155.5,
+        "agent_s": 96.5,
+        "gate_s": 0.0,
+        "tools_s": 59.0,
+        "lines_changed": 359
+      },
+      {
+        "id": "U-0030",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 235,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 202.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 162.7,
+        "agent_s": 101.2,
+        "gate_s": 0.0,
+        "tools_s": 61.5,
+        "lines_changed": 591
+      },
+      {
+        "id": "U-0031",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 367,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 245.3,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 261.8,
+        "agent_s": 162.5,
+        "gate_s": 0.0,
+        "tools_s": 99.2,
+        "lines_changed": 763
+      },
+      {
+        "id": "U-0032",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 118.5,
+        "agent_s": 38.6,
+        "gate_s": 0.0,
+        "tools_s": 79.9,
+        "lines_changed": 86
+      },
+      {
+        "id": "U-0033",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 113.8,
+        "agent_s": 31.6,
+        "gate_s": 0.0,
+        "tools_s": 82.1,
+        "lines_changed": 66
+      },
+      {
+        "id": "U-0034",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 15,
+        "expected_attempts": 0.9,
+        "estimated_s": 168.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 127.3,
+        "agent_s": 46.1,
+        "gate_s": 0.0,
+        "tools_s": 81.2,
+        "lines_changed": 166
+      },
+      {
+        "id": "U-0035",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 107.2,
+        "agent_s": 26.5,
+        "gate_s": 0.0,
+        "tools_s": 80.7,
+        "lines_changed": 93
+      },
+      {
+        "id": "U-0036",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 100.2,
+        "agent_s": 17.7,
+        "gate_s": 0.0,
+        "tools_s": 82.6,
+        "lines_changed": 30
+      },
+      {
+        "id": "U-0037",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 103.7,
+        "agent_s": 19.4,
+        "gate_s": 0.0,
+        "tools_s": 84.3,
+        "lines_changed": 45
+      },
+      {
+        "id": "U-0038",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 13,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 125.5,
+        "agent_s": 42.1,
+        "gate_s": 0.0,
+        "tools_s": 83.4,
+        "lines_changed": 122
+      },
+      {
+        "id": "U-0039",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 31,
+        "expected_attempts": 0.9,
+        "estimated_s": 347.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 307.5,
+        "agent_s": 199.4,
+        "gate_s": 0.0,
+        "tools_s": 108.1,
+        "lines_changed": 670
+      },
+      {
+        "id": "U-0040",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 171.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 140.1,
+        "agent_s": 40.1,
+        "gate_s": 0.0,
+        "tools_s": 100.0,
+        "lines_changed": 149
+      },
+      {
+        "id": "U-0041",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 145.5,
+        "agent_s": 44.7,
+        "gate_s": 0.0,
+        "tools_s": 100.8,
+        "lines_changed": 186
+      },
+      {
+        "id": "U-0042",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 15,
+        "expected_attempts": 0.9,
+        "estimated_s": 195.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 156.5,
+        "agent_s": 54.3,
+        "gate_s": 0.0,
+        "tools_s": 102.3,
+        "lines_changed": 266
+      },
+      {
+        "id": "U-0043",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 141.6,
+        "agent_s": 37.0,
+        "gate_s": 0.0,
+        "tools_s": 104.6,
+        "lines_changed": 167
+      },
+      {
+        "id": "U-0044",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 125.0,
+        "agent_s": 20.4,
+        "gate_s": 0.0,
+        "tools_s": 104.6,
+        "lines_changed": 29
+      },
+      {
+        "id": "U-0045",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 119.7,
+        "agent_s": 15.3,
+        "gate_s": 0.0,
+        "tools_s": 104.4,
+        "lines_changed": 36
+      },
+      {
+        "id": "U-0046",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 122.3,
+        "agent_s": 19.9,
+        "gate_s": 0.0,
+        "tools_s": 102.4,
+        "lines_changed": 38
+      },
+      {
+        "id": "U-0047",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 130.3,
+        "agent_s": 26.1,
+        "gate_s": 0.0,
+        "tools_s": 104.2,
+        "lines_changed": 76
+      },
+      {
+        "id": "U-0048",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 124.5,
+        "agent_s": 19.0,
+        "gate_s": 0.0,
+        "tools_s": 105.5,
+        "lines_changed": 38
+      },
+      {
+        "id": "U-0049",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 142.0,
+        "agent_s": 35.0,
+        "gate_s": 0.0,
+        "tools_s": 106.9,
+        "lines_changed": 88
+      },
+      {
+        "id": "U-0050",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 132.2,
+        "agent_s": 23.0,
+        "gate_s": 0.0,
+        "tools_s": 109.2,
+        "lines_changed": 49
+      },
+      {
+        "id": "U-0051",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 146.2,
+        "agent_s": 36.2,
+        "gate_s": 0.0,
+        "tools_s": 109.9,
+        "lines_changed": 71
+      },
+      {
+        "id": "U-0052",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 138.8,
+        "agent_s": 29.1,
+        "gate_s": 0.0,
+        "tools_s": 109.7,
+        "lines_changed": 68
+      },
+      {
+        "id": "U-0053",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 134.7,
+        "agent_s": 22.6,
+        "gate_s": 0.0,
+        "tools_s": 112.1,
+        "lines_changed": 45
+      },
+      {
+        "id": "U-0054",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 219.2,
+        "agent_s": 107.8,
+        "gate_s": 0.0,
+        "tools_s": 111.4,
+        "lines_changed": 45
+      },
+      {
+        "id": "U-0055",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 145.7,
+        "agent_s": 34.4,
+        "gate_s": 0.0,
+        "tools_s": 111.3,
+        "lines_changed": 80
+      },
+      {
+        "id": "U-0056",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 134.8,
+        "agent_s": 20.8,
+        "gate_s": 0.0,
+        "tools_s": 114.0,
+        "lines_changed": 52
+      },
+      {
+        "id": "U-0057",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 169.8,
+        "agent_s": 57.6,
+        "gate_s": 0.0,
+        "tools_s": 112.1,
+        "lines_changed": 172
+      },
+      {
+        "id": "U-0058",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 143.1,
+        "agent_s": 25.0,
+        "gate_s": 0.0,
+        "tools_s": 118.1,
+        "lines_changed": 117
+      },
+      {
+        "id": "U-0059",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 161.5,
+        "agent_s": 36.2,
+        "gate_s": 0.0,
+        "tools_s": 125.3,
+        "lines_changed": 137
+      },
+      {
+        "id": "U-0060",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 162.5,
+        "agent_s": 27.5,
+        "gate_s": 0.0,
+        "tools_s": 135.0,
+        "lines_changed": 113
+      },
+      {
+        "id": "U-0061",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 170.9,
+        "agent_s": 26.6,
+        "gate_s": 0.0,
+        "tools_s": 144.3,
+        "lines_changed": 31
+      },
+      {
+        "id": "U-0062",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 18,
+        "expected_attempts": 0.9,
+        "estimated_s": 185.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 197.4,
+        "agent_s": 57.5,
+        "gate_s": 0.0,
+        "tools_s": 139.9,
+        "lines_changed": 214
+      },
+      {
+        "id": "U-0063",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 163.4,
+        "agent_s": 31.5,
+        "gate_s": 0.0,
+        "tools_s": 131.9,
+        "lines_changed": 169
+      },
+      {
+        "id": "U-0064",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 172.0,
+        "agent_s": 33.5,
+        "gate_s": 0.0,
+        "tools_s": 138.5,
+        "lines_changed": 58
+      },
+      {
+        "id": "U-0065",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 171.8,
+        "agent_s": 34.5,
+        "gate_s": 0.0,
+        "tools_s": 137.3,
+        "lines_changed": 15
+      },
+      {
+        "id": "U-0066",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 17,
+        "expected_attempts": 0.9,
+        "estimated_s": 227.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 219.9,
+        "agent_s": 85.1,
+        "gate_s": 0.0,
+        "tools_s": 134.8,
+        "lines_changed": 303
+      },
+      {
+        "id": "U-0067",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 168.0,
+        "agent_s": 20.4,
+        "gate_s": 0.0,
+        "tools_s": 147.6,
+        "lines_changed": 19
+      },
+      {
+        "id": "U-0068",
+        "rules": [
+          "retire_csharp_to_rust"
+        ],
+        "files": 102,
+        "lines": 8823,
+        "sites": 99,
+        "expected_attempts": 0.9,
+        "estimated_s": 166.1,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 49.3,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 49.3,
+        "lines_changed": 12784
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 323,
+    "duration_ms": 11696586,
+    "total_cost_usd_equivalent": 41.879484499999954,
+    "usage": {
+      "input_tokens": 446,
+      "cache_creation_input_tokens": 1038869,
+      "cache_read_input_tokens": 99287301,
+      "output_tokens": 595174,
+      "output_tokens_details": {
+        "thinking_tokens": 135127
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 1038869,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3329,
+          "cache_read_input_tokens": 187483,
+          "cache_creation_input_tokens": 22751,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 22751
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port is finished. The run ended `completed`: all 68 units are committed on branch `codecoremorph/20261112-085817-905c` (last commit `4801fde30eed`). A clean build of that commit then ran 219 tests, and all passed. The run took about 197 minutes, and nothing in the plan was skipped or excluded.\n\n## What the units did\n\n| Units | Work | Attempts | Commits |\n|---|---|---|---|\n| U-0001\u2013U-0031 | Ported each C# type to safe Rust in `rust/sodium_core_rs/src/`, with bridge exports, and turned the C# into a thin layer over them. The 10 exception classes stayed C#, mapped back from the Rust in `CcmExceptions.cs`. | 1 each, except U-0015, U-0025 and U-0031, which took 2 | `d8803404e3ec` \u2026 `7113a3338dc4` |\n| U-0032\u2013U-0067 | Translated the 36 C# test files into `rust/sodium_core_rs/tests/*.rs`, one Rust test per C# case, each recorded in `rust/test-map.toml` | 1 each | `3c35fb92da5c` \u2026 `861b77cecbac` |\n| U-0068 | Retirement: CodeCoreMorph's own tools deleted the C# library, the C# tests, the C#-to-Rust bridge and the project files, and finished the unit without edits from me | 0 | `4801fde30eed` (143 files) |\n\nThe three retries:\n- **U-0015:** my first edits didn't match the file's text, then the second hit a duplicate key in the symbol map.\n- **U-0025 and U-0031:** clippy rejected complex type signatures; I added type aliases.\n\nThe full table, with every commit and summary, is in `E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261112-085817-905c\\report.md`.\n\n## What to check when reviewing\n- **Swapped keys kept on purpose (U-0028):** the original C# passed the secret and public keys in the wrong order to libsodium's detached-box functions. The port keeps that order so existing detached boxes still open. Fixing it would change the box format, so it belongs in a separate change.\n- **One small behavior change (U-0027):** `Base64ToBinary` now passes the ignored characters with a terminating NUL. The C# omitted it, so libsodium read past the end of the array.\n- **Unsafe code:** the report counts 82 unsafe sites. All 20 locations it lists are in `rust/sodium_core_rs/src/native/mod.rs`, the safe wrappers around libsodium calls. U-0013 also changed how that file pulls in the libsodium bindings, because otherwise the bridge-header generator copied all of libsodium's declarations into the header.\n- **Shared state:** there is one `Mutex`, around the BLAKE2b hashing state in `generic_hash.rs`.\n\n## What verification didn't cover\n- **Test coverage:** the baseline was 230 passing C# tests plus 10 skipped; the final run had 219. The 21 cases with no Rust test are:\n  - **11 tests passing `null`:** to GenericHash (3), PasswordHash (6) and Utilities (2). The Rust API takes slices and strings, which can't be null. These checks are gone now that the retirement deleted the C# tests. The report flags each one as an I-4 warning: \"translated tests check less than their originals\".\n  - **10 tests C# skipped as \"not implemented\":** they have empty bodies, so there was nothing to translate (StreamEncryption 6, PasswordHash 2, PublicKeyAuth 2).\n- **No characterization tests:** CodeCoreMorph can't add them to a C# project, so code no test reached got no new tests.\n- **A count I can't explain:** the report shows 0 of 37 planned sites converted for the type-porting rule, although all 31 of its units were committed and verified. The report doesn't say why.\n- **One rule had no work:** the rule for porting C# programs found no programs, so it had no units.\n\nCodeCoreMorph made no model calls, so no source code left this machine through it.\n\n## How to review\n```\ngit diff fd6567199b4cd229277dc251fa8b8a370f26674b codecoremorph/20261112-085817-905c\n```\nYour working tree and branches are unchanged. I haven't merged, pushed or deleted anything; merging is up to you."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 323,
+      "duration_ms": 11696586,
+      "total_cost_usd_equivalent": 41.879484499999954,
+      "usage": {
+        "input_tokens": 446,
+        "cache_creation_input_tokens": 1038869,
+        "cache_read_input_tokens": 99287301,
+        "output_tokens": 595174,
+        "output_tokens_details": {
+          "thinking_tokens": 135127
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 1038869,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3329,
+            "cache_read_input_tokens": 187483,
+            "cache_creation_input_tokens": 22751,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 22751
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port is finished. The run ended `completed`: all 68 units are committed on branch `codecoremorph/20261112-085817-905c` (last commit `4801fde30eed`). A clean build of that commit then ran 219 tests, and all passed. The run took about 197 minutes, and nothing in the plan was skipped or excluded.\n\n## What the units did\n\n| Units | Work | Attempts | Commits |\n|---|---|---|---|\n| U-0001\u2013U-0031 | Ported each C# type to safe Rust in `rust/sodium_core_rs/src/`, with bridge exports, and turned the C# into a thin layer over them. The 10 exception classes stayed C#, mapped back from the Rust in `CcmExceptions.cs`. | 1 each, except U-0015, U-0025 and U-0031, which took 2 | `d8803404e3ec` \u2026 `7113a3338dc4` |\n| U-0032\u2013U-0067 | Translated the 36 C# test files into `rust/sodium_core_rs/tests/*.rs`, one Rust test per C# case, each recorded in `rust/test-map.toml` | 1 each | `3c35fb92da5c` \u2026 `861b77cecbac` |\n| U-0068 | Retirement: CodeCoreMorph's own tools deleted the C# library, the C# tests, the C#-to-Rust bridge and the project files, and finished the unit without edits from me | 0 | `4801fde30eed` (143 files) |\n\nThe three retries:\n- **U-0015:** my first edits didn't match the file's text, then the second hit a duplicate key in the symbol map.\n- **U-0025 and U-0031:** clippy rejected complex type signatures; I added type aliases.\n\nThe full table, with every commit and summary, is in `E:\\codecoremorph-home\\bench\\libsodium-core\\.codecoremorph\\runs\\20261112-085817-905c\\report.md`.\n\n## What to check when reviewing\n- **Swapped keys kept on purpose (U-0028):** the original C# passed the secret and public keys in the wrong order to libsodium's detached-box functions. The port keeps that order so existing detached boxes still open. Fixing it would change the box format, so it belongs in a separate change.\n- **One small behavior change (U-0027):** `Base64ToBinary` now passes the ignored characters with a terminating NUL. The C# omitted it, so libsodium read past the end of the array.\n- **Unsafe code:** the report counts 82 unsafe sites. All 20 locations it lists are in `rust/sodium_core_rs/src/native/mod.rs`, the safe wrappers around libsodium calls. U-0013 also changed how that file pulls in the libsodium bindings, because otherwise the bridge-header generator copied all of libsodium's declarations into the header.\n- **Shared state:** there is one `Mutex`, around the BLAKE2b hashing state in `generic_hash.rs`.\n\n## What verification didn't cover\n- **Test coverage:** the baseline was 230 passing C# tests plus 10 skipped; the final run had 219. The 21 cases with no Rust test are:\n  - **11 tests passing `null`:** to GenericHash (3), PasswordHash (6) and Utilities (2). The Rust API takes slices and strings, which can't be null. These checks are gone now that the retirement deleted the C# tests. The report flags each one as an I-4 warning: \"translated tests check less than their originals\".\n  - **10 tests C# skipped as \"not implemented\":** they have empty bodies, so there was nothing to translate (StreamEncryption 6, PasswordHash 2, PublicKeyAuth 2).\n- **No characterization tests:** CodeCoreMorph can't add them to a C# project, so code no test reached got no new tests.\n- **A count I can't explain:** the report shows 0 of 37 planned sites converted for the type-porting rule, although all 31 of its units were committed and verified. The report doesn't say why.\n- **One rule had no work:** the rule for porting C# programs found no programs, so it had no units.\n\nCodeCoreMorph made no model calls, so no source code left this machine through it.\n\n## How to review\n```\ngit diff fd6567199b4cd229277dc251fa8b8a370f26674b codecoremorph/20261112-085817-905c\n```\nYour working tree and branches are unchanged. I haven't merged, pushed or deleted anything; merging is up to you."
+    }
+  ]
+}
