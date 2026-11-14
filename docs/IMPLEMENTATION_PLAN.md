@@ -880,8 +880,8 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 **Fixtures, benchmark and docs**
 - [x] Phase 17's port fixture and `order-book` ported whole to Rust, replayed from recorded edits (`tests/cassettes/csharp/edits/<fixture>-rust.json`) Done 2026-11-12: parking 17/17 in a host-agent run (all 60 tests translated: the two null tests C++ couldn't have pass `None`), with `keep_source_api` too (`parking-keep-rust.json`, the same edits); order-book 11/11 with headless Claude Code (Opus 5.5, 31 min, 29 of 30 tests), whose replay found I-4 missing a parameterized case's shared helper (D-84 (11)). All three replay in Docker (`tests/integration/test_csharp_to_rust_e2e.py`).
-- [ ] Benchmark (M12): Phase 17's library ported to Rust and measured; SPEC §13 compares the two targets
-- [ ] Docs: `docs/porting-csharp-to-rust.md`, on the ownership redesign, what the report counts, and `keep_source_api` as a .NET library over Rust
+- [x] Benchmark (M12): Phase 17's library ported to Rust and measured; SPEC §13 compares the two targets Done 2026-11-12 (D-85): libsodium-core 1.3.1 to Rust (`bench/csharp-rust-pin.json`), 68 of 68 units with headless Claude Code (Opus 5.5, pinned), 3 h 17 min, 0.97 of its estimate; 219 of 230 tests mapped; unsafe code only in `src/native/` (libsodium's calls).
+- [x] Docs: `docs/porting-csharp-to-rust.md`, on the ownership redesign, what the report counts, and `keep_source_api` as a .NET library over Rust Done 2026-11-12, with both fixtures, native libraries and the benchmark.
 
 ### Tests
 - Unit: the Rust scaffolds of a C# port, the panic-catching exports' shape, the shared-cell count, the retirement's file list
@@ -893,6 +893,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - The port fixture and `order-book` end as Cargo workspaces: every original C# test maps to a passing Rust test, `unsafe` appeared only in the bridges and none is left after the retirement, and the branch was green at every commit
 - With `keep_source_api`, the port fixture ends as a .NET library over the Rust
 - The benchmark is ported and measured; in Docker
+- Met in Docker on Windows 11 (2026-11-12): `parking` ported whole to Rust (17 of 17 units, every commit green, the C# tests passing through the façades until the retirement; all 60 of its C# tests map to passing Rust tests, the two that pass a null string, which C++ couldn't have, passing `None`), ending as a Cargo workspace under `#![forbid(unsafe_code)]`, `unsafe` having appeared only in the bridges; with `keep_source_api`, a .NET library over the Rust whose 60 C# tests pass; `order-book` ported whole (11 of 11 units, 29 of its 30 C# tests mapped, the one that passes a null currency with a note). All three replay from recorded edits (`test_csharp_to_rust_e2e.py`), and the whole Docker suite passes (114 tests). The benchmark, libsodium-core 1.3.1 to Rust, ported whole and measured (68 of 68 units, 3 h 17 min, 0.97 of its estimate; 219 of its 230 C# tests mapped, the 11 that pass a null with notes; unsafe code only in `src/native/`, libsodium's calls, D-84 (9)); SPEC §13 compares the two targets (D-85). Safety: as Phase 17 (the e2e compares the user's checkout byte for byte; crash and resume and path traversal are language-neutral); nothing under `orchestrator/` changed in the phase (NFR-3.1). Open: native Windows; the report's type sites counted as converted (D-85 (4)). D-84 and D-85 await the user's review
 
 ---
 
