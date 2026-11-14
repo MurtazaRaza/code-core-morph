@@ -198,6 +198,21 @@ null currency where the Rust takes a `&str`. No unsafe code is left, and the rep
 shared cells (the book's orders, an order's state). It replays from the recorded edits beside
 parking's.
 
+## The benchmark: libsodium-core
+
+The M12 benchmark is the port to C++'s ([libsodium-core](porting-csharp-to-cpp.md#the-benchmark-libsodium-core))
+with Rust as the target (`bench/csharp-rust-pin.json`): 8.8k lines of C# 9 over libsodium, 230
+NUnit tests, the same plan of 68 units, the same image. Headless Claude Code (Opus 5.5) ported
+it whole in 3 h 17 min, 0.97 of its estimate, three units taking a second attempt. The C# tests
+passed through the façades at every commit; the final Cargo build passes 219 Rust tests, 219 of
+the 230 map to them, and the other 11 pass a null, which a Rust slice can't be. The Rust calls
+libsodium from `src/native/mod.rs` (82 calls, each in a safe wrapper), the crate's only unsafe
+code; the rest is safe Rust with one shared cell, BLAKE2b's state. Over 24,292 seeded calls
+with nulls and wrong sizes among the arguments, the C# façades over the Rust return or throw
+exactly what those over the C++ did, so both differ from the C# only where the two libsodium
+builds do. The port to C++ took 3 h 33 min with the same model: the agent's time was about the
+same, and Cargo's checks cost each unit less than CMake's sanitizer build and clang-tidy.
+
 ## Limits
 
 The first version refuses what a port to C++ refuses ([Limits](porting-csharp-to-cpp.md#limits)):
