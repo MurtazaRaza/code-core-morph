@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -21,15 +22,18 @@ from codecoremorph.core.models import (
     FinalVerification,
     JobResult,
     Plan,
+    PlanRule,
     PortSummary,
     ReviewItem,
     ReviewKind,
+    RuleKind,
     RuleSummary,
     RunReport,
     RunStatus,
     UnitResult,
     UnitStatus,
     UsageTotals,
+    WorkUnit,
 )
 from codecoremorph.core.secrets import Json, Redactor
 from codecoremorph.report.render import render_markdown
@@ -101,6 +105,34 @@ def characterization_summary(
     )
 
 
+def rule_summary(
+    plan_rule: PlanRule, units: Sequence[WorkUnit], results: Mapping[str, UnitResult]
+) -> RuleSummary:
+    """One rule's row of the report: its units, and its planned sites the committed ones
+    converted.
+
+    A unit's ``rule_sites`` count its sites per file; a plan unit has one rule. An upgrade's
+    sites left after a committed unit are its detector's. A port's committed unit converted all
+    of its sites: its post-conditions (the symbol map, the test map, the retirement's empty
+    detector) judged it, and what its detector still finds is the façade kept until the
+    retirement, a ported C# type still declared in C# (D-85 (4)).
+    """
+    mine = [u for u in units if plan_rule.id in u.rules]
+    committed = [u for u in mine if u.status is UnitStatus.COMMITTED]
+    converted = sum(sum(u.rule_sites.values()) for u in committed)
+    if plan_rule.kind is not RuleKind.PORT:
+        converted -= sum(
+            results[u.id].remaining_sites.get(plan_rule.id, 0) for u in committed if u.id in results
+        )
+    return RuleSummary(
+        id=plan_rule.id,
+        units=len(mine),
+        committed=len(committed),
+        planned_sites=sum(sum(u.rule_sites.values()) for u in mine),
+        converted_sites=max(converted, 0),
+    )
+
+
 def build_report(
     store: Store,
     artifacts: RunArtifacts,
@@ -123,25 +155,7 @@ def build_report(
     final = load_final(artifacts)
 
     counts = Counter(u.status.value for u in units)
-    rules: list[RuleSummary] = []
-    for plan_rule in plan.rules:
-        # A unit's rule_sites count its sites per file; a plan unit has one rule.
-        mine = [u for u in units if plan_rule.id in u.rules]
-        committed = [u for u in mine if u.status is UnitStatus.COMMITTED]
-        planned = sum(sum(u.rule_sites.values()) for u in mine)
-        left = sum(
-            results[u.id].remaining_sites.get(plan_rule.id, 0) for u in committed if u.id in results
-        )
-        converted = sum(sum(u.rule_sites.values()) for u in committed) - left
-        rules.append(
-            RuleSummary(
-                id=plan_rule.id,
-                units=len(mine),
-                committed=len(committed),
-                planned_sites=planned,
-                converted_sites=max(converted, 0),
-            )
-        )
+    rules = [rule_summary(plan_rule, units, results) for plan_rule in plan.rules]
 
     calls = store.llm_calls(run_id)
 

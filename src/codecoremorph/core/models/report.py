@@ -124,7 +124,8 @@ class RuleSummary(CoreModel):
     committed: int = 0
     planned_sites: int = 0
     converted_sites: int = Field(
-        default=0, description="Planned sites of committed units, minus the sites left"
+        default=0,
+        description="Planned sites of committed units, minus the sites left (a port's: none)",
     )
 
 
