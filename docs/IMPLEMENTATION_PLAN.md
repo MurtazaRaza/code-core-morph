@@ -2,7 +2,7 @@
 
 This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has a goal, its prerequisites, a task checklist, tests, and exit criteria. Requirement IDs (`FR-`, `NFR-`, `D-`) point back to the spec.
 
-**Order of work (D-21, D-47, changed by D-55, D-67 and D-77).** Language version upgrades come first: C++ in the MVP. Then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14). The v0.1.0 release (Phase 8's publishing steps) waits, and Java (9) and C# (10) follow the Rust phases. Then legacy code to modern languages (D-67): C → Rust (15), then Rust → C (16). Then C# → C++ (17) and C# → Rust (18), the C# side built once for both (D-77). Java → C# (11) is in the Backlog. The phases keep their numbers, so the order of work is 12, 13, 14, 9, 10, 15, 16, 17, 18.
+**Order of work (D-21, D-47, changed by D-55, D-67, D-77 and D-86).** Language version upgrades come first: C++ in the MVP. Then C++ → Rust, from one module behind a C ABI (Phase 12) to a whole project ported (Phases 13 and 14). The v0.1.0 release (Phase 8's publishing steps) waits, and Java (9) and C# (10) follow the Rust phases. Then legacy code to modern languages (D-67): C → Rust (15), then Rust → C (16). Then C# → C++ (17) and C# → Rust (18), the C# side built once for both (D-77). Then six of the first versions' refusals lifted (19, D-86), before the next legacy language. Java → C# (11) is in the Backlog. The phases keep their numbers, so the order of work is 12, 13, 14, 9, 10, 15, 16, 17, 18, 19.
 
 ## How to use this plan
 
@@ -28,6 +28,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | **M10: Rust → C** | 16 | A Rust crate ported to C behind Rust façades, its tests translated, the C checked under sanitizers and clang-tidy |
 | **M11: C# → C++** | 17 | A C# library ported to C++ behind C# façades over P/Invoke, its tests translated to GoogleTest, the C++ checked under sanitizers; or kept as a .NET library over the C++ |
 | **M12: C# → Rust** | 18 | The same port to a Cargo workspace, on Phase 17's C# side; or kept as a .NET library over Rust |
+| **M13: Refusals lifted** | 19 | A Rust crate's own procedural macros, and C# classes overridden in C#, `async`, `dynamic`, .NET packages' APIs and operating systems' own libraries, each ported in a fixture the first versions refused |
 
 ## Phase overview
 
@@ -52,6 +53,7 @@ This plan turns [SPEC.md](SPEC.md) into an ordered set of phases. Each phase has
 | 16 | Rust → C (**M10**) | Rust source index, Rust façades over C, `rust_to_c` pack, sanitizer and clang-tidy checks | §11.8 |
 | 17 | C# → C++ (**M11**) | C# as a port source, C# façades over a C ABI, the generated P/Invoke declarations, calls back into C#, `csharp_to_cpp` pack, GoogleTest translation, a .NET + C++ + Rust image | §11.9 |
 | 18 | C# → Rust (**M12**) | Phase 17's C# side over Rust `cdylib`s, the ownership redesign, `csharp_to_rust` pack | §11.10 |
+| 19 | Refusals lifted (**M13**) | Procedural macros in a port from Rust; directors for C# overrides; `dynamic`; `async`; .NET packages mapped to the target's; operating system calls | §11.11 |
 
 ---
 
@@ -731,7 +733,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 ### Tasks
 **Strategy**
 - [x] Spike on a small crate: one module ported to C behind its Rust façade by hand, with bindgen and a build script linking the C. Settle how Cargo builds the C during the port (the `cc` crate, or CMake first and a build script that links), the Rust source index, the C test library for translated tests, and what the first version refuses (async, procedural macros, heavy generic code) (D-75: `stats`, a module of slices and an owned histogram, ported to C99 in `E:/codecoremorph-trials/rust-spike/rust-to-c`; CMake builds the C first and a build script that runs nothing links it, relinking when the archive changes; the crate's unit and integration tests pass through the façade, clippy is quiet, and the tests run the C under ASan and UBSan, catching a planted heap overflow. A second part tried the rest: the `stats` tests translated to a program over D-74's TAP helper, which gains a case filter, each case a CTest test named as its Rust test, clang-tidy quiet, a planted use-after-free failing its case; and rust-analyzer's SCIP output on two small crates, which gives items, references and trait implementations, but no type arguments at generic call sites)
-- [x] Design settled with a `D-xx` row, and SPEC §11.8 filled in (D-75, built on 2026-11-08 while the user was away and asked for the remaining phases; **for the user's review**: the build at the top level from the first unit, the constant build script I-12 accepts, the `port_target`/`port_source` roles, the refusals)
+- [x] Design settled with a `D-xx` row, and SPEC §11.8 filled in (D-75, built on 2026-11-08 while the user was away and asked for the remaining phases; accepted by D-86: the build at the top level from the first unit, the constant build script I-12 accepts, the `port_target`/`port_source` roles, the refusals)
 
 **Index and adapter**
 - [x] Rust as a source: an index of modules, items, `use` dependencies, trait implementations and the generic instantiations in use (D-75: `rust-analyzer scip` read by `adapters/rust/scip.py`, no protobuf dependency; references onto the item scanner's paths, targets, tests by file, `Cargo.toml`/`Cargo.lock` as build files, public items as `public_api` for I-6 (`adapters/rust/source.py`); instantiations aren't in SCIP, so a unit's note lists a generic item's call sites; rust-analyzer and `rust-src`, which it needs for the standard library's macros, are rustup components in both install scripts; `LanguageConfig.port_target` tells the source adapter it is one. Tests: `test_scip.py`, `test_source.py` on the spike's recorded indexes)
@@ -752,7 +754,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 
 ### Exit criteria (M10)
 - The fixture ends as a C project built by CMake: every original Rust test maps to a passing C test under AddressSanitizer and UndefinedBehaviorSanitizer, and the branch was green at every commit
-- Met in Docker on Windows 11 (2026-11-08) by `rpn`: all 12 Rust tests map to C tests that pass under both sanitizers, every unit's commit was verified green, and the run replays from recorded edits. Also met by the round trip's second leg (39 tests) and by the M10 benchmark, shlex (10 tests). The phase's work is done; D-75 and D-76 await the user's review
+- Met in Docker on Windows 11 (2026-11-08) by `rpn`: all 12 Rust tests map to C tests that pass under both sanitizers, every unit's commit was verified green, and the run replays from recorded edits. Also met by the round trip's second leg (39 tests) and by the M10 benchmark, shlex (10 tests). The phase's work is done; D-75 and D-76 accepted (D-86)
 
 ---
 
@@ -785,7 +787,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
   8. **The image.** One image with the .NET SDK and runtimes and the C++ toolchain, and Rust for Phase 18. Proposed: a new image built by `install-toolchain.sh rust` (which installs C++ too) and `install-toolchain.sh csharp`, so the C#, C++ and Rust images stay as they are. The C++ adapter as the target of a C# port names it (`port_source`, as the C target of a Rust port names the Rust image, D-75).
   9. **The unit cut.** Proposed: one unit per type, leaves first by the index's references. A reference cycle is one unit. A class with virtual members is one unit with the project's classes that derive from it, since the C++ can't dispatch a virtual call to a C# override. An interface is a unit of its own, and C# implementations reach the C++ through point 4. Partial classes are one type. Nested types go with their outer type.
   10. **What the first version refuses.** Proposed: `async` code, `dynamic`, reflection and attribute-driven behavior (serializers, dependency injection), `unsafe` C#, expression trees, and public generic types or methods that nothing in the project instantiates (no instantiation to port, as D-75 for Rust). Platform P/Invoke a project already has stays in the façade.
-- [x] Design settled with a `D-xx` row, and SPEC §11.9 filled in (D-78, for the user's review)
+- [x] Design settled with a `D-xx` row, and SPEC §11.9 filled in (D-78, accepted by D-86)
 
 **Index and adapters**
 - [x] C# as a port source (2026-11-09; `TypeEntry`, `GenericUse` and `TestMethod` in the index, `PortSource` in `CsIndexHelper.cs`; every exact case ID matched the TRX of NUnit 3.14, xUnit 2.4.2, MSTest 2.2.10 and 3.1.1, natively and in Docker; the helper now lets the framework's assemblies win over a `netstandard1.x` package's, without which xUnit 2's and MSTest 2's attributes didn't bind): the Roslyn helper also records what the planner and a unit's context need, when `LanguageConfig.port_target` is set:
@@ -848,7 +850,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - With `keep_source_api`, the port fixture ends as a .NET library over the C++, its C# tests of the public API passing
 - The benchmark is ported and measured, and SPEC §13 has its targets
 - In Docker; native Windows later
-- Met in Docker on Windows 11 (2026-11-10): `parking` ported whole to C++ (17 of 17 units, every commit green, the C# tests passing through the façades until the retirement; 58 of its 60 C# tests map to GoogleTest tests passing under both sanitizers, the two that pass a null string to none, with notes), and with `keep_source_api` to a .NET library over the C++ whose 60 C# tests pass; `order-book` ported whole (11 of 11 units, 29 of its 30 C# tests mapped, the one that passes a null currency with a note). All three replay from recorded edits (`test_csharp_to_cpp_e2e.py`). The benchmark, libsodium-core 1.3.1, ported whole and measured (68 of 68 units, D-83), and again after D-83's fix (3 h 35 min, 0.98 of its estimate, D-83 (7)); SPEC §13 has its targets. Safety: the e2e compares the user's checkout byte for byte; crash and resume and path traversal are language-neutral (`test_crash.py`, the `PatchEngine` fuzz); the scaffolds' files pass I-12 at every stage (`test_the_scaffolds_add_no_build_time_command`); nothing under `orchestrator/` changed in the phase (NFR-3.1). Open: native Windows; `async` and `dynamic` stay refused (D-82). D-78 to D-83 await the user's review
+- Met in Docker on Windows 11 (2026-11-10): `parking` ported whole to C++ (17 of 17 units, every commit green, the C# tests passing through the façades until the retirement; 58 of its 60 C# tests map to GoogleTest tests passing under both sanitizers, the two that pass a null string to none, with notes), and with `keep_source_api` to a .NET library over the C++ whose 60 C# tests pass; `order-book` ported whole (11 of 11 units, 29 of its 30 C# tests mapped, the one that passes a null currency with a note). All three replay from recorded edits (`test_csharp_to_cpp_e2e.py`). The benchmark, libsodium-core 1.3.1, ported whole and measured (68 of 68 units, D-83), and again after D-83's fix (3 h 35 min, 0.98 of its estimate, D-83 (7)); SPEC §13 has its targets. Safety: the e2e compares the user's checkout byte for byte; crash and resume and path traversal are language-neutral (`test_crash.py`, the `PatchEngine` fuzz); the scaffolds' files pass I-12 at every stage (`test_the_scaffolds_add_no_build_time_command`); nothing under `orchestrator/` changed in the phase (NFR-3.1). Open: native Windows; `async` and `dynamic` stay refused (D-82) until Phase 19. D-78 to D-83 accepted (D-86)
 
 ---
 
@@ -868,7 +870,7 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
   3. **Mapping.** Interfaces and class hierarchies → traits (`dyn Trait`), or enums where the set of types is closed; C# implementations of a ported interface reach Rust through a proxy that implements the trait over function pointers and a `GCHandle`. Exceptions → `Result` inside, a status at the boundary, the .NET type rethrown by the façade. `null` → `Option`; LINQ → iterators; delegates and events → closures; properties → methods; `IDisposable` → `Drop`; strings → `String`.
   4. **`decimal`.** `rust_decimal`, whose semantics follow .NET's, added by the scaffold and pinned in `Cargo.lock`. Phase 12's guidance asks ports for no new dependencies, so this needs a decision. The alternative is a module CodeCoreMorph ships, as Phase 17's header.
   5. **Who builds what.** Cargo builds each `cdylib`, offline and `--locked`, before `dotnet build`, and the C# tests load it.
-- [x] Design settled with a `D-xx` row, and SPEC §11.10 filled in (D-84, for the user's review: the bridge is Phase 17's C ABI, so the C# side is reused unchanged; `decimal` shipped as `codecoremorph_runtime::Decimal`, not `rust_decimal`; a type never holds a lock across a call out)
+- [x] Design settled with a `D-xx` row, and SPEC §11.10 filled in (D-84, accepted by D-86: the bridge is Phase 17's C ABI, so the C# side is reused unchanged; `decimal` shipped as `codecoremorph_runtime::Decimal`, not `rust_decimal`; a type never holds a lock across a call out)
 
 **Adapters, rules and checks**
 - [x] The Rust side as the target of a C# port: the `rust/` workspace, one crate `<project>_rs` per C# project with ported types, each a `cdylib` and `rlib` during the port, with its `bridge` module and cbindgen header; the Rust adapter builds before the C# build Done 2026-11-11 (`adapters/rust/csharpports.py`, the runtime in `adapters/rust/csharp_runtime/`, the C# side shared in `adapters/csharp/ports.py`; native libraries in each crate's `src/native/`, bindgen's declarations written at configure, D-84 (9)).
@@ -893,14 +895,74 @@ Landed so far: GoogleTest parsing, the determinism lint and CMake registration (
 - The port fixture and `order-book` end as Cargo workspaces: every original C# test maps to a passing Rust test, `unsafe` appeared only in the bridges and none is left after the retirement, and the branch was green at every commit
 - With `keep_source_api`, the port fixture ends as a .NET library over the Rust
 - The benchmark is ported and measured; in Docker
-- Met in Docker on Windows 11 (2026-11-12): `parking` ported whole to Rust (17 of 17 units, every commit green, the C# tests passing through the façades until the retirement; all 60 of its C# tests map to passing Rust tests, the two that pass a null string, which C++ couldn't have, passing `None`), ending as a Cargo workspace under `#![forbid(unsafe_code)]`, `unsafe` having appeared only in the bridges; with `keep_source_api`, a .NET library over the Rust whose 60 C# tests pass; `order-book` ported whole (11 of 11 units, 29 of its 30 C# tests mapped, the one that passes a null currency with a note). All three replay from recorded edits (`test_csharp_to_rust_e2e.py`), and the whole Docker suite passes (114 tests). The benchmark, libsodium-core 1.3.1 to Rust, ported whole and measured (68 of 68 units, 3 h 17 min, 0.97 of its estimate; 219 of its 230 C# tests mapped, the 11 that pass a null with notes; unsafe code only in `src/native/`, libsodium's calls, D-84 (9)); SPEC §13 compares the two targets (D-85). Safety: as Phase 17 (the e2e compares the user's checkout byte for byte; crash and resume and path traversal are language-neutral); nothing under `orchestrator/` changed in the phase (NFR-3.1). Open: native Windows; the report's type sites counted as converted (D-85 (4)). D-84 and D-85 await the user's review
+- Met in Docker on Windows 11 (2026-11-12): `parking` ported whole to Rust (17 of 17 units, every commit green, the C# tests passing through the façades until the retirement; all 60 of its C# tests map to passing Rust tests, the two that pass a null string, which C++ couldn't have, passing `None`), ending as a Cargo workspace under `#![forbid(unsafe_code)]`, `unsafe` having appeared only in the bridges; with `keep_source_api`, a .NET library over the Rust whose 60 C# tests pass; `order-book` ported whole (11 of 11 units, 29 of its 30 C# tests mapped, the one that passes a null currency with a note). All three replay from recorded edits (`test_csharp_to_rust_e2e.py`), and the whole Docker suite passes (114 tests). The benchmark, libsodium-core 1.3.1 to Rust, ported whole and measured (68 of 68 units, 3 h 17 min, 0.97 of its estimate; 219 of its 230 C# tests mapped, the 11 that pass a null with notes; unsafe code only in `src/native/`, libsodium's calls, D-84 (9)); SPEC §13 compares the two targets (D-85). Safety: as Phase 17 (the e2e compares the user's checkout byte for byte; crash and resume and path traversal are language-neutral); nothing under `orchestrator/` changed in the phase (NFR-3.1). Open: native Windows. The report's type sites now count as converted (D-86 (3)); D-84 and D-85 accepted (D-86)
+
+---
+
+## Phase 19: The first versions' refusals lifted (M13)
+
+**Goal:** six things the first versions of the ports refuse become ported, before the next legacy language (D-86): a Rust crate's own procedural macros in a port to C, and, in a port from C# to either target, a class that C# derives from and overrides, `dynamic`, `async`, a .NET package's API and an operating system's own library (SPEC §11.11).
+
+**Prerequisites:** Phases 16 to 18.
+
+**Reuse:** each port's index, units, façades, bridges, checks and test translation, extended only where a lift needs it; the plan's dependency table (D-82); the C# port image.
+
+**Order inside the phase** (proposed, smallest first; the user's to reorder): directors, `dynamic`, procedural macros, operating system calls, .NET packages, `async`. `async` comes last because what C# awaits is mostly .NET's I/O, which the package and platform lifts cover. Each lift is a spike, a `D-xx` row, the engine work and a fixture, and lands on its own.
+
+### Tasks
+**Directors: a C# class that C# derives from and overrides**
+- [ ] Spike: a ported class with virtual and abstract members, a C# subclass in the tests that overrides them, a constructor that calls a virtual member, `base.M()` from C#; on both targets (SPEC §11.11)
+- [ ] Design settled with a `D-xx` row; the C# index records the classes outside the library that derive from a library class and the members they override; the planner stops refusing the class
+- [ ] The director in the bridge (C++: a derived class over function pointers; Rust: a proxy implementing the trait), the C# façade setting it, `base` calls through exports of their own; the retirement turns the tests' overriding classes into C++ or Rust test doubles
+- [ ] A new port fixture whose tests subclass and override a library class, ported whole to both targets, replayed from recorded edits
+
+**`dynamic`**
+- [ ] Spike: a library's dynamic sites, which of the project's types reach each (the index's assignments and arguments), each turned into a closed sum on both targets
+- [ ] Design settled with a `D-xx` row; the index records each dynamic site with the types that reach it, or why it can't tell; the planner refuses only those it can't
+- [ ] Guidance in both packs; a new port fixture with dynamic sites, ported whole to both targets, replayed
+
+**A crate's own procedural macros (Rust → C)**
+- [ ] Spike: a crate with a derive and an attribute macro of its own, ported to C; where an expansion comes from on the pinned stable toolchain; the macro's crate retired with the Rust
+- [ ] Design settled with a `D-xx` row; the index records each macro site and what it expands to, and the unit's note lists them; the planner stops refusing the crate
+- [ ] A new Rust fixture with a procedural macro crate of its own, ported whole, replayed
+
+**An operating system's own library (C# → C++ and C# → Rust)**
+- [ ] Spike: the `kernel32` and `libSystem` calls of real C# libraries, sorted into those with a portable counterpart and those without; a native Windows C# port run for the second (toolchains under `CODECOREMORPH_HOME`, the 260-character limit)
+- [ ] Design settled with a `D-xx` row; the plan's dependency table says, for each call, whether it is ported to a portable counterpart or needs a run on its own system; native Windows C# port runs if the spike says so (both `install-toolchain` scripts in step)
+- [ ] A new port fixture that calls `kernel32`, ported whole (in Docker for the portable calls, natively on Windows for the rest), replayed
+
+**A .NET package's API (C# → C++ and C# → Rust)**
+- [ ] Spike: the packages real C# libraries use most (from candidate benchmark libraries), each mapped to a counterpart per target; how the counterpart reaches the build (the toolchain image for C++; `Cargo.lock`, fetched at configure, for Rust); the two copies of a package with state (D-82 (4))
+- [ ] Design settled with a `D-xx` row: where the mappings live; the plan's dependency table names each package's counterpart and what has to happen first; Phase 12's guidance against new dependencies relaxed for mapped packages only
+- [ ] A new port fixture that uses a mapped package, ported whole to both targets, replayed
+
+**`async` (C# → C++ and C# → Rust)**
+- [ ] Spike: a small library's async members (the project's own awaits, `Task.WhenAll`, cancellation, an exception from an awaited task) ported to C++20 coroutines and to Rust `async fn`; the task type and the executor; a `Task` across the bridge in both directions; the C# tests passing through the façades
+- [ ] Design settled with a `D-xx` row; the C++ standard an async unit needs (C++20); the index records the async members and what they await; the planner refuses only what the lifts don't cover
+- [ ] A new port fixture with async code, ported whole to both targets, replayed
+
+**Benchmark and docs**
+- [ ] Benchmark (M13): a real C# library the first versions refused for at least two of these, ported whole and measured (chosen at the spikes)
+- [ ] The guides (`docs/porting-rust-to-c.md`, `docs/porting-csharp-to-cpp.md`, `docs/porting-csharp-to-rust.md`) and the skill describe each lift
+
+### Tests
+- Unit: each lift's index records, the planner's decisions (lifted, or still refused with the reason), the scaffolds and the bridge's shapes
+- Integration (`docker`): each lift's construct ported by hand, the original tests passing through the façades
+- End to end: each lift's fixture replays from recorded edits; the existing port fixtures replay unchanged
+- Safety: as Phases 16 to 18
+
+### Exit criteria (M13)
+- Each of the six lifts ports a fixture the first version refused, whole: the branch green at every commit, every original test mapped or noted; the C# lifts on both targets
+- What a lift doesn't cover is still refused by kind and site, and the plan says so
+- The existing port fixtures' and benchmarks' plans don't change
+- The benchmark is ported and measured; in Docker, or natively on Windows for operating system calls that need it
 
 ---
 
 ## Backlog (unscheduled)
 
 - **Java → C#** (Phase 11, moved here by D-67)
-- **The next legacy language after Phase 18** (D-67, D-77), chosen then: Fortran → Rust or C++ (gfortran or flang, with `ISO_C_BINDING` as the bridge), or batch COBOL → Java or C# (GnuCOBOL, which can call C; CICS, DB2 and JCL can't run in a container)
+- **The next legacy language after Phase 19** (D-67, D-77, D-86), chosen then: Fortran → Rust or C++ (gfortran or flang, with `ISO_C_BINDING` as the bridge), or batch COBOL → Java or C# (GnuCOBOL, which can call C; CICS, DB2 and JCL can't run in a container)
 
 - **CI (GitHub Actions)**, deferred from Phase 0 (D-28):
   - lint, type-check and tests on `ubuntu-latest` and `windows-latest`, Python 3.12 and 3.13
