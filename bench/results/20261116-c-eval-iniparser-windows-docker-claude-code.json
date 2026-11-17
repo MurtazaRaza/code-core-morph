@@ -1,0 +1,240 @@
+{
+  "date": "2026-11-16T20:26:45+00:00",
+  "project": "iniparser v4.1 (0a38e85c9cde)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "0a38e85c9cde1e099ca3bf70083bd00f89c3e5b6",
+  "seconds": 1431.4,
+  "runs_started": 1,
+  "run_id": "20261116-200326-48d4",
+  "ended_by_harness": true,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "aborted",
+    "reason": "the benchmark harness ended the run",
+    "unit_counts": {
+      "pending": 5
+    },
+    "success_rate": 0.0,
+    "agent_units": 0,
+    "attempts_per_agent_unit": null,
+    "final": null,
+    "port": null,
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 2,
+        "committed": 0,
+        "planned_sites": 25,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 2,
+        "committed": 0,
+        "planned_sites": 17,
+        "converted_sites": 0
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 0,
+        "planned_sites": 11,
+        "converted_sites": 0
+      }
+    ],
+    "review_items": 0,
+    "duration_s": 1397.6,
+    "units": [],
+    "report": "E:\\codecoremorph-trials\\c-eval\\iniparser\\.codecoremorph\\runs\\20261116-200326-48d4\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 8,
+      "project_lines": 3151,
+      "units": 5,
+      "rule_sites": {
+        "port_c_module": 25,
+        "port_c_executable": 11,
+        "port_c_tests": 17,
+        "retire_c": 11
+      },
+      "sites": 64,
+      "files": 13,
+      "lines": 3151,
+      "expected_agent_attempts": 4.5,
+      "verify_s": 0.7,
+      "estimated_s": 1121.9,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "pending": 5
+      },
+      "agent_units": 1,
+      "agent_attempts": 1,
+      "changed_files": 4,
+      "lines_added": 636,
+      "lines_deleted": 0
+    },
+    "time": {
+      "run_s": 1397.6,
+      "phases_s": {
+        "baselining": 0.8,
+        "indexing": 1.3,
+        "characterizing": 316.9,
+        "planning": 0.0,
+        "awaiting_plan_approval": 17.5,
+        "migrating": 1061.2
+      },
+      "migrating_s": 1061.2,
+      "agent_s": 978.0,
+      "unit_gates_s": 0.0,
+      "tools_s": 83.2,
+      "unit_s": null
+    },
+    "compared": {
+      "migrating_over_estimate": 0.95,
+      "agent_attempts_over_expected": 0.22,
+      "agent_s_per_attempt": 978.0,
+      "migrating_s_per_unit": 212.2,
+      "migrating_s_per_site": 16.6,
+      "migrating_s_per_changed_line": 1.67,
+      "run_min_per_1k_project_lines": 7.39
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 380,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 261.8,
+        "status": "pending",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 0.0,
+        "agent_s": 978.0,
+        "gate_s": 0.0,
+        "tools_s": -978.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 836,
+        "sites": 18,
+        "expected_attempts": 0.9,
+        "estimated_s": 525.6,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 122.9,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 118.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 13,
+        "lines": 3151,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 93.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 4294967295,
+    "is_error": true,
+    "subtype": null,
+    "num_turns": null,
+    "duration_ms": null,
+    "total_cost_usd_equivalent": null,
+    "usage": null,
+    "result": ""
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 4294967295,
+      "is_error": true,
+      "subtype": null,
+      "num_turns": null,
+      "duration_ms": null,
+      "total_cost_usd_equivalent": null,
+      "usage": null,
+      "result": ""
+    }
+  ]
+}

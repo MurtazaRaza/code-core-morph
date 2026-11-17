@@ -1,0 +1,620 @@
+{
+  "date": "2026-11-16T22:59:29+00:00",
+  "project": "cjson v1.7.18 (acc76239bee0)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "acc76239bee01d8e9c858ae2cab296704e52d916",
+  "seconds": 3466.9,
+  "runs_started": 1,
+  "run_id": "20261116-220228-20e4",
+  "ended_by_harness": true,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "aborted",
+    "reason": "the benchmark harness ended the run",
+    "unit_counts": {
+      "pending": 25
+    },
+    "success_rate": 0.0,
+    "agent_units": 0,
+    "attempts_per_agent_unit": null,
+    "final": null,
+    "port": null,
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 2,
+        "committed": 0,
+        "planned_sites": 92,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 22,
+        "committed": 0,
+        "planned_sites": 22,
+        "converted_sites": 0
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 0,
+        "planned_sites": 27,
+        "converted_sites": 0
+      }
+    ],
+    "review_items": 0,
+    "duration_s": 3419.1,
+    "units": [],
+    "report": "E:\\codecoremorph-trials\\c-eval\\cjson\\.codecoremorph\\runs\\20261116-220228-20e4\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 28,
+      "project_lines": 9544,
+      "units": 25,
+      "rule_sites": {
+        "port_c_module": 92,
+        "port_c_executable": 27,
+        "port_c_tests": 22,
+        "retire_c": 27
+      },
+      "sites": 168,
+      "files": 29,
+      "lines": 9541,
+      "expected_agent_attempts": 22.5,
+      "verify_s": 1.2,
+      "estimated_s": 4695.2,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "pending": 25
+      },
+      "agent_units": 1,
+      "agent_attempts": 1,
+      "changed_files": 0,
+      "lines_added": 0,
+      "lines_deleted": 0
+    },
+    "time": {
+      "run_s": 3419.1,
+      "phases_s": {
+        "baselining": 4.3,
+        "indexing": 4.9,
+        "characterizing": 248.2,
+        "planning": 0.1,
+        "awaiting_plan_approval": 19.1,
+        "migrating": 3142.5
+      },
+      "migrating_s": 3142.5,
+      "agent_s": 3119.3,
+      "unit_gates_s": 0.0,
+      "tools_s": 23.2,
+      "unit_s": null
+    },
+    "compared": {
+      "migrating_over_estimate": 0.67,
+      "agent_attempts_over_expected": 0.04,
+      "agent_s_per_attempt": 3119.3,
+      "migrating_s_per_unit": 125.7,
+      "migrating_s_per_site": 18.7,
+      "migrating_s_per_changed_line": null,
+      "run_min_per_1k_project_lines": 5.97
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 3143,
+        "sites": 78,
+        "expected_attempts": 0.9,
+        "estimated_s": 1285.1,
+        "status": "pending",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 0.0,
+        "agent_s": 3119.3,
+        "gate_s": 0.0,
+        "tools_s": -3119.3,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 1481,
+        "sites": 14,
+        "expected_attempts": 0.9,
+        "estimated_s": 775.1,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 127.1,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 192.9,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 107.7,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 119.0,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 96.6,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 294.6,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 113.2,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.4,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 137.1,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 97.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 123.9,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 29,
+        "lines": 9541,
+        "sites": 27,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.3,
+        "status": "pending",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 0.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 0.0,
+        "lines_changed": 0
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 4294967295,
+    "is_error": true,
+    "subtype": null,
+    "num_turns": null,
+    "duration_ms": null,
+    "total_cost_usd_equivalent": null,
+    "usage": null,
+    "result": ""
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 4294967295,
+      "is_error": true,
+      "subtype": null,
+      "num_turns": null,
+      "duration_ms": null,
+      "total_cost_usd_equivalent": null,
+      "usage": null,
+      "result": ""
+    }
+  ]
+}

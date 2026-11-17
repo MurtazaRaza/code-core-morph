@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-16T11:41:32+00:00",
+  "project": "tiny-aes v1.0.0 (e72b6eff0884)",
+  "migration": "c99 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 4.359,
+    "index_s": 0.563,
+    "graph_s": 0.016,
+    "plan_s": 0.015
+  },
+  "baseline": {
+    "passing": 1,
+    "failing": [],
+    "flaky": [],
+    "build_s": 0.094,
+    "test_s": 1.679
+  },
+  "graph": {
+    "files": 3,
+    "edges": 4,
+    "clusters": 2,
+    "cyclic_clusters": 1,
+    "largest_cluster": 2
+  },
+  "rules": [
+    {
+      "id": "port_c_module",
+      "kind": "port",
+      "automatic": false,
+      "sites": 8,
+      "files": 1,
+      "skipped_files": 0,
+      "units": 1
+    },
+    {
+      "id": "port_c_executable",
+      "kind": "port",
+      "automatic": false,
+      "sites": 3,
+      "files": 2,
+      "skipped_files": 1,
+      "units": 0
+    },
+    {
+      "id": "port_c_tests",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "retire_c",
+      "kind": "port",
+      "automatic": false,
+      "sites": 3,
+      "files": 3,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 2
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 108616,
+    "cost_usd": 0.64
+  },
+  "duration_estimate_s": 371.0,
+  "warnings": [
+    "1 code file(s) aren't compiled by this build configuration (another platform's sources or disabled targets), so no unit verifies them: test.cpp. Check changes to them on a platform that builds them",
+    "port_c_tests: the detector found no sites, so the rule has no units"
+  ]
+}

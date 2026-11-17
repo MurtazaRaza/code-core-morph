@@ -1,0 +1,401 @@
+{
+  "date": "2026-11-16T21:20:15+00:00",
+  "project": "iniparser v4.1 (0a38e85c9cde)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "0a38e85c9cde1e099ca3bf70083bd00f89c3e5b6",
+  "seconds": 3157.1,
+  "runs_started": 1,
+  "run_id": "20261116-202816-8c54",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 5
+    },
+    "success_rate": 1.0,
+    "agent_units": 5,
+    "attempts_per_agent_unit": 1.2,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "7a72406e729c992d878643b9712dda7f0e1b30b4",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 52,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 3.9
+    },
+    "port": {
+      "symbols": 25,
+      "tests_mapped": 21,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "dictionary_new: A table of at least DICTMINSZ slots, in a Vec; it grows with dictionary::grow, as the static dictionary_grow did.",
+        "dictionary_del: A Dictionary frees its entries when it is dropped.",
+        "dictionary_get: None for a missing key and Some(None) for a key without value, where the C returned the default or NULL.",
+        "dictionary_set: Keys and values are copied into the table, as the static xstrdup copied them.",
+        "iniparser_set_error_callback: A load reports its errors to the report function it is given (parse, load), as LoadError values; LoadError::message is the text the default callback wrote to stderr.",
+        "iniparser_getsecname: The slot of the section, whose key is its name.",
+        "iniparser_dumpsection_ini: The C wrote the section name into a 1025-byte buffer, which a longer name overflowed; it is written in full now.",
+        "iniparser_getsecnkeys: The number of the slots it returns.",
+        "iniparser_getseckeys: The slots of the keys, in place of the C's array of key pointers.",
+        "iniparser_getlongint: A key without value (a section) reads as an empty value, 0; the C passed NULL to strtol.",
+        "iniparser_getint: A key without value (a section) reads as an empty value, 0; the C passed NULL to strtol.",
+        "iniparser_getdouble: atof in the C locale; a hexadecimal value of more than 16 digits may round differently in its last bit. A key without value reads as an empty value, 0; the C passed NULL to atof.",
+        "iniparser_getboolean: A key without value (a section) is no boolean; the C read through NULL.",
+        "iniparser_set: Lowercasing is ASCII's (lowercase, as the static strlwc did in the C locale).",
+        "iniparser_load: The file is read whole, then parsed as fgets read it line by line; parse_line is the static iniparser_line, strip the static strstrip.",
+        "iniparser_freedict: A Dictionary frees its entries when it is dropped.",
+        "tap:tests/codecoremorph_characterization/iniparser_2_test/dump_lists_every_entry_of_a_grown_dictionary: The C read the struct's size field; the Rust test reads Slots::size. The C checked that the memory stream opened; dump's Result stands for it.",
+        "tap:tests/codecoremorph_characterization/iniparser_test/dump_writes_nothing_for_an_empty_or_null_dictionary: A NULL dictionary has no Rust counterpart (the API takes a reference); the NULL stream is a sink, whose dump must succeed.",
+        "tap:tests/codecoremorph_characterization/iniparser_test/dump_ini_prints_keys_as_they_are_when_no_section_exists: A NULL dictionary has no Rust counterpart (the API takes a reference); the NULL stream is a sink, whose dump must succeed.",
+        "tap:tests/codecoremorph_characterization/iniparser_test/dumpsection_ini_writes_nothing_for_a_missing_section_or_null_arguments: A NULL dictionary has no Rust counterpart (the API takes a reference); the NULL section is None, and the NULL stream a sink, whose dump must succeed.",
+        "make:check: Its TAP programs are mapped point by point; these take over the 20 CuTest cases of test/test_dictionary.c and test/test_iniparser.c it ran, one each. The checks of NULL arguments have no Rust counterpart, and a C error callback is a report function now."
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": [
+        "doc/** (3 files, which project.exclude keeps out of the port)",
+        "example/** (8 files, which project.exclude keeps out of the port)",
+        "html/** (10 files, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 2,
+        "committed": 2,
+        "planned_sites": 25,
+        "converted_sites": 25
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 2,
+        "committed": 2,
+        "planned_sites": 20,
+        "converted_sites": 20
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 11,
+        "converted_sites": 11
+      }
+    ],
+    "review_items": 18,
+    "duration_s": 3095.5,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 1012.1,
+        "changed_files": 14,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 1105.8,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 79.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 92.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 361.6,
+        "changed_files": 26,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-trials\\c-eval\\iniparser\\.codecoremorph\\runs\\20261116-202816-8c54\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 8,
+      "project_lines": 3151,
+      "units": 5,
+      "rule_sites": {
+        "port_c_module": 25,
+        "port_c_executable": 11,
+        "port_c_tests": 20,
+        "retire_c": 11
+      },
+      "sites": 67,
+      "files": 13,
+      "lines": 3151,
+      "expected_agent_attempts": 4.5,
+      "verify_s": 0.5,
+      "estimated_s": 1135.8,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 5
+      },
+      "agent_units": 5,
+      "agent_attempts": 6,
+      "changed_files": 23,
+      "lines_added": 2398,
+      "lines_deleted": 3272
+    },
+    "time": {
+      "run_s": 3095.5,
+      "phases_s": {
+        "baselining": 1.7,
+        "indexing": 0.5,
+        "characterizing": 375.7,
+        "planning": 0.0,
+        "awaiting_plan_approval": 19.3,
+        "migrating": 2694.0,
+        "verifying": 4.2
+      },
+      "migrating_s": 2694.0,
+      "agent_s": 2344.4,
+      "unit_gates_s": 39.0,
+      "tools_s": 310.6,
+      "unit_s": {
+        "mean": 538.6,
+        "median": 380.1,
+        "max": 1106.3
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 2.37,
+      "agent_attempts_over_expected": 1.33,
+      "agent_s_per_attempt": 390.7,
+      "migrating_s_per_unit": 538.8,
+      "migrating_s_per_site": 40.2,
+      "migrating_s_per_changed_line": 0.48,
+      "run_min_per_1k_project_lines": 16.37
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 380,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 261.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 1012.8,
+        "agent_s": 909.3,
+        "gate_s": 0.0,
+        "tools_s": 103.6,
+        "lines_changed": 1523
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 836,
+        "sites": 18,
+        "expected_attempts": 0.9,
+        "estimated_s": 525.3,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 1106.3,
+        "agent_s": 949.9,
+        "gate_s": 0.0,
+        "tools_s": 156.3,
+        "lines_changed": 2367
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 130.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 100.6,
+        "agent_s": 63.6,
+        "gate_s": 21.1,
+        "tools_s": 15.9,
+        "lines_changed": 215
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 125.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 93.3,
+        "agent_s": 76.6,
+        "gate_s": 0.0,
+        "tools_s": 16.7,
+        "lines_changed": 224
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 13,
+        "lines": 3151,
+        "sites": 11,
+        "expected_attempts": 0.9,
+        "estimated_s": 93.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 380.1,
+        "agent_s": 345.0,
+        "gate_s": 17.9,
+        "tools_s": 17.2,
+        "lines_changed": 4766
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 95,
+    "duration_ms": 3155184,
+    "total_cost_usd_equivalent": 13.739095399999997,
+    "usage": {
+      "input_tokens": 164,
+      "cache_creation_input_tokens": 480101,
+      "cache_read_input_tokens": 17720000,
+      "output_tokens": 317674,
+      "output_tokens_details": {
+        "thinking_tokens": 212686
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 480101,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1658,
+          "cache_read_input_tokens": 507103,
+          "cache_creation_input_tokens": 5397,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 5397
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The whole port is done: the iniparser C library is now Rust, built and tested by Cargo alone. All 5 units of the plan are committed on `codecoremorph/20261116-202816-8c54`, and the final clean build ran 52 tests and passed. The full report is at `E:\\codecoremorph-trials\\c-eval\\iniparser\\.codecoremorph\\runs\\20261116-202816-8c54\\report.md`.\n\nBefore planning, the run asked for tests on three dump functions no test covered. I wrote 20 characterization tests in two jobs; all 20 were accepted and committed first (`bf0910ea64ff`).\n\n| Unit | What it did | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | Ported `src/dictionary.c` to `iniparser_rs::dictionary` and deleted the C file | 1 | `0a16eab8b2df` |\n| U-0002 | Ported `src/iniparser.c` to `iniparser_rs::iniparser`; no C had to stay | 2 | `dad0bc9122d4` |\n| U-0003 | Turned the 10 tests of `iniparser_2_test.c` into Rust tests | 1 | `4e27cd71a54a` |\n| U-0004 | Turned the 10 tests of `iniparser_test.c` into Rust tests | 1 | `bc71295a24d9` |\n| U-0005 | Deleted the C, the headers, the Make build and the temporary C\u2194Rust glue | 1 | `7a72406e729c` |\n\nU-0002's first attempt failed only at the interface check: the tool that generates the C header couldn't read one function-pointer type. Spelling the type out fixed it. The finished crate has no `unsafe` code.\n\n**Things you should know:**\n- **The project's own tests needed a workaround during the port.** The 20 CuTest tests in `test/` include the `.c` files directly to test private (static) functions. To keep them running against the Rust code until the C was removed, I added small temporary C files under `rust/c-whitebox/` and test-only exports in the glue. All of it was deleted in the last unit. U-0005 then rewrote those 20 tests as Rust tests (`test_dictionary.rs`, `test_iniparser.rs`), which now stand in for `make check`.\n- **`make check` never failed on a CuTest failure** (the test runner always exits 0). I read its summary after each port instead: `OK (20 tests)` each time.\n- **I approved two commits the tool held for review:**\n  - In U-0003, one Rust test makes 5 checks where the C made 6. The missing one checked that an in-memory stream opened; in Rust that's the dump's result, which the test unwraps, so a failed write still fails the test.\n  - In U-0005, the retirement deleted the C tests' helper header, as it is meant to.\n- **Behavior differs only where the C was undefined:**\n  - Reading a section (a key with no value) as a number or boolean now gives 0 or \"not found\" instead of dereferencing NULL.\n  - A section name over 1023 bytes no longer overflows a buffer in the ini dump.\n  - Lowercasing is ASCII only.\n  - The report lists every such note.\n- **New in the Rust API:** `iniparser::load`. In C, opening the file and parsing it happened inside `iniparser_load`, and that step had no Rust equivalent once the C was gone.\n\n**What wasn't covered:**\n- No tests were excused or flaky, and no unit was skipped or left out.\n- `example/`, `doc/` and `html/` were excluded by the manifest and are untouched; the C examples there no longer have a library to build against.\n- The README and other docs outside the port still describe the C/Make build.\n\nTo review: `git diff 0a38e85 codecoremorph/20261116-202816-8c54`, or `git log` on that branch. Merging is up to you.\n\nI can also turn this summary into a shareable page if it would help."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 95,
+      "duration_ms": 3155184,
+      "total_cost_usd_equivalent": 13.739095399999997,
+      "usage": {
+        "input_tokens": 164,
+        "cache_creation_input_tokens": 480101,
+        "cache_read_input_tokens": 17720000,
+        "output_tokens": 317674,
+        "output_tokens_details": {
+          "thinking_tokens": 212686
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 480101,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1658,
+            "cache_read_input_tokens": 507103,
+            "cache_creation_input_tokens": 5397,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 5397
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The whole port is done: the iniparser C library is now Rust, built and tested by Cargo alone. All 5 units of the plan are committed on `codecoremorph/20261116-202816-8c54`, and the final clean build ran 52 tests and passed. The full report is at `E:\\codecoremorph-trials\\c-eval\\iniparser\\.codecoremorph\\runs\\20261116-202816-8c54\\report.md`.\n\nBefore planning, the run asked for tests on three dump functions no test covered. I wrote 20 characterization tests in two jobs; all 20 were accepted and committed first (`bf0910ea64ff`).\n\n| Unit | What it did | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | Ported `src/dictionary.c` to `iniparser_rs::dictionary` and deleted the C file | 1 | `0a16eab8b2df` |\n| U-0002 | Ported `src/iniparser.c` to `iniparser_rs::iniparser`; no C had to stay | 2 | `dad0bc9122d4` |\n| U-0003 | Turned the 10 tests of `iniparser_2_test.c` into Rust tests | 1 | `4e27cd71a54a` |\n| U-0004 | Turned the 10 tests of `iniparser_test.c` into Rust tests | 1 | `bc71295a24d9` |\n| U-0005 | Deleted the C, the headers, the Make build and the temporary C\u2194Rust glue | 1 | `7a72406e729c` |\n\nU-0002's first attempt failed only at the interface check: the tool that generates the C header couldn't read one function-pointer type. Spelling the type out fixed it. The finished crate has no `unsafe` code.\n\n**Things you should know:**\n- **The project's own tests needed a workaround during the port.** The 20 CuTest tests in `test/` include the `.c` files directly to test private (static) functions. To keep them running against the Rust code until the C was removed, I added small temporary C files under `rust/c-whitebox/` and test-only exports in the glue. All of it was deleted in the last unit. U-0005 then rewrote those 20 tests as Rust tests (`test_dictionary.rs`, `test_iniparser.rs`), which now stand in for `make check`.\n- **`make check` never failed on a CuTest failure** (the test runner always exits 0). I read its summary after each port instead: `OK (20 tests)` each time.\n- **I approved two commits the tool held for review:**\n  - In U-0003, one Rust test makes 5 checks where the C made 6. The missing one checked that an in-memory stream opened; in Rust that's the dump's result, which the test unwraps, so a failed write still fails the test.\n  - In U-0005, the retirement deleted the C tests' helper header, as it is meant to.\n- **Behavior differs only where the C was undefined:**\n  - Reading a section (a key with no value) as a number or boolean now gives 0 or \"not found\" instead of dereferencing NULL.\n  - A section name over 1023 bytes no longer overflows a buffer in the ini dump.\n  - Lowercasing is ASCII only.\n  - The report lists every such note.\n- **New in the Rust API:** `iniparser::load`. In C, opening the file and parsing it happened inside `iniparser_load`, and that step had no Rust equivalent once the C was gone.\n\n**What wasn't covered:**\n- No tests were excused or flaky, and no unit was skipped or left out.\n- `example/`, `doc/` and `html/` were excluded by the manifest and are untouched; the C examples there no longer have a library to build against.\n- The README and other docs outside the port still describe the C/Make build.\n\nTo review: `git diff 0a38e85 codecoremorph/20261116-202816-8c54`, or `git log` on that branch. Merging is up to you.\n\nI can also turn this summary into a shareable page if it would help."
+    }
+  ]
+}

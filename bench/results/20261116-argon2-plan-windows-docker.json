@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-16T13:36:01+00:00",
+  "project": "argon2 20190702 (62358ba2123a)",
+  "migration": "c89 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 25.25,
+    "index_s": 0.719,
+    "graph_s": 0.016,
+    "plan_s": 0.125
+  },
+  "baseline": {
+    "passing": 1,
+    "failing": [],
+    "flaky": [],
+    "build_s": 0.5,
+    "test_s": 10.446
+  },
+  "graph": {
+    "files": 16,
+    "edges": 36,
+    "clusters": 9,
+    "cyclic_clusters": 2,
+    "largest_cluster": 7
+  },
+  "rules": [
+    {
+      "id": "port_c_module",
+      "kind": "port",
+      "automatic": false,
+      "sites": 52,
+      "files": 6,
+      "skipped_files": 0,
+      "units": 6
+    },
+    {
+      "id": "port_c_executable",
+      "kind": "port",
+      "automatic": false,
+      "sites": 16,
+      "files": 15,
+      "skipped_files": 1,
+      "units": 3
+    },
+    {
+      "id": "port_c_tests",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "retire_c",
+      "kind": "port",
+      "automatic": false,
+      "sites": 16,
+      "files": 16,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 10
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 1566264,
+    "cost_usd": 10.9
+  },
+  "duration_estimate_s": 6209.3,
+  "warnings": [
+    "3 code file(s) aren't compiled by this build configuration (another platform's sources or disabled targets), so no unit verifies them: src/blake2/blamka-round-ref.h, src/genkat.h, src/ref.c. Check changes to them on a platform that builds them",
+    "port_c_tests: the detector found no sites, so the rule has no units"
+  ]
+}

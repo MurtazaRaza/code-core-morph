@@ -1,0 +1,965 @@
+{
+  "date": "2026-11-17T06:29:26+00:00",
+  "project": "cjson v1.7.18 (acc76239bee0)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "acc76239bee01d8e9c858ae2cab296704e52d916",
+  "seconds": 25875.3,
+  "runs_started": 1,
+  "run_id": "20261116-231855-1d6d",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 25
+    },
+    "success_rate": 1.0,
+    "agent_units": 24,
+    "attempts_per_agent_unit": 1.12,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "fa128fe65fc2db20304d4d2fcecb0010fe7e2dc7",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 165,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 8.3
+    },
+    "port": {
+      "symbols": 92,
+      "tests_mapped": 22,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "cJSON_GetErrorPtr: A failed parse returns the error's offset; the bridge keeps the input and that offset (cJSON.c's global_error) for cJSON_GetErrorPtr.",
+        "cJSON_InitHooks: cJSON's allocator hooks are C function pointers: the bridge keeps them (cJSON.c's global_hooks) and allocates C items and strings with them; Rust code allocates through its c_json::Store.",
+        "cJSON_malloc: Allocates with cJSON's C allocator hooks, which the bridge keeps; Rust code allocates through its c_json::Store.",
+        "cJSON_free: Frees with cJSON's C allocator hooks, which the bridge keeps; Rust code frees through its c_json::Store.",
+        "ctest:cJSON_test: cJSON_test is one program whose exit status is its result: main prints the version and checks print_preallocated on six items; each of those is a Rust test. The C only compared the preallocated print with cJSON_Print's text when it failed; the Rust tests always compare them.",
+        "ctest:cjson_add: One Rust test per RUN_TEST of the Unity program. Its failing_hooks (cJSON_InitHooks with a malloc that fails) are a Store over an Arena whose allocations fail while set.",
+        "ctest:compare_tests: One Rust test per RUN_TEST of the Unity program; its zeroed cJSON items on the stack are new Arena items.",
+        "ctest:json_patch_tests: One Rust test per RUN_TEST, over the same files of tests/json-patch-tests. cjson_utils_rs's JSON Patch runs over cjson_rs's Arena through a Json adapter in the test, whose object lookup walks the members as cJSON_GetObjectItem does.",
+        "ctest:minify_tests: One Rust test per RUN_TEST of the Unity program, minifying the same bytes as C strings (their NUL included). The last one also checks what the minify leaves.",
+        "ctest:misc_tests: One Rust test per RUN_TEST. Without a Rust meaning, and so not translated: the null pointers the Rust API's slices can't be (cJSON_Parse, cJSON_ParseWithOpts and cJSON_Minify of NULL, cJSON_CreateIntArray and the other array constructors of NULL, cJSON_PrintPreallocated into a NULL buffer), cJSON_InitHooks(NULL), and reading an item cJSON_Delete freed (deallocated_pointers_should_be_set_to_null instead checks that delete frees the item and its string; the Arena refuses freed items). cJSON_SetBoolValue, a macro of cJSON.h, is a helper of the test; failing_realloc is a PrintStorage whose reallocation fails; the deep parse runs on a thread with a large stack, as the C's main thread has.",
+        "ctest:misc_utils_tests: cjson_utils_rs's functions run over cjson_rs's Arena through a Json adapter in the test. The Rust test also checks the statuses of the patches it applies, and that no item is left.",
+        "ctest:old_utils_tests: One Rust test per RUN_TEST, with cjson_utils_rs's functions over cjson_rs's Arena through a Json adapter in the test. sort_tests also checks that it compared all 25 neighbours, and the merge tests that no item is left.",
+        "ctest:parse_array: One Rust test per RUN_TEST, parsing the same C strings (their NUL included) with c_json::parse_array on a ParseBuffer; the static item is an Arena item, and common.h's reset and assertions are helpers of the test.",
+        "ctest:parse_examples: One Rust test per RUN_TEST, over the same files of tests/inputs. Where the C compared cJSON_GetErrorPtr with the input, the Rust tests check the error offset parse returns.",
+        "ctest:parse_hex4: One Rust test per RUN_TEST, with c_json::parse_hex4 on the same digits.",
+        "ctest:parse_number: One Rust test per RUN_TEST, with c_json::parse_number on the same C strings. The C compared the numbers within Unity's double precision; the Rust tests compare them exactly.",
+        "ctest:parse_object: One Rust test per RUN_TEST, parsing the same C strings with c_json::parse_object on a ParseBuffer; the static item is an Arena item, and common.h's reset and assertions are helpers of the test.",
+        "ctest:parse_string: One Rust test per RUN_TEST, parsing the same C strings with c_json::parse_string on a ParseBuffer and comparing the decoded bytes (the UTF-8 of the C's euro sign, cat and cat face spelled as bytes).",
+        "ctest:parse_value: One Rust test per RUN_TEST, with c_json::parse_value on the same C strings.",
+        "ctest:parse_with_opts: One Rust test per RUN_TEST. parse_with_opts returns the parse end, or the error offset that cJSON_GetErrorPtr and return_parse_end point to; a NULL input or error pointer has no Rust meaning, so parse_with_opts_should_handle_null checks the calls with real inputs.",
+        "ctest:print_array: One Rust test per RUN_TEST, with c_json::parse_array and c_json::print_array into 1024 bytes that may not grow, as the C test's printbuffers.",
+        "ctest:print_number: One Rust test per RUN_TEST, with c_json::print_number into the 26 bytes the C prints into. The C's rewrite of three-digit exponents (for MinGW and old MSVC printf) isn't needed: the Rust prints two digits on every platform. print_number_should_print_non_number, ignored in C89, checks that NaN and the infinities print as null.",
+        "ctest:print_object: One Rust test per RUN_TEST, with c_json::parse_object and c_json::print_object into 1024 bytes that may not grow, as the C test's printbuffers.",
+        "ctest:print_string: One Rust test per RUN_TEST, with c_json::print_string_ptr into 1024 bytes that may not grow; the C's NULL string is None.",
+        "ctest:print_value: One Rust test per RUN_TEST, with c_json::parse_value and c_json::print_value into 1024 bytes that may not grow, as the C test's printbuffer.",
+        "ctest:readme_examples: One Rust test per RUN_TEST: the README's examples on the crate's safe API with an Arena, also checking that deleting the monitor frees every item."
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": [
+        "fuzzing/** (23 files, which project.exclude keeps out of the port)",
+        "library_config/** (5 files, which project.exclude keeps out of the port)",
+        "tests/unity/** (127 files, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 2,
+        "committed": 2,
+        "planned_sites": 92,
+        "converted_sites": 92
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 22,
+        "committed": 22,
+        "planned_sites": 22,
+        "converted_sites": 22
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 27,
+        "converted_sites": 27
+      }
+    ],
+    "review_items": 37,
+    "duration_s": 25711.8,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 3,
+        "agent_skipped": false,
+        "duration_s": 22883.2,
+        "changed_files": 15,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 679.2,
+        "changed_files": 11,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 115.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 140.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 80.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 151.5,
+        "changed_files": 4,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 97.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 296.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 83.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 130.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 77.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 70.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 44.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 59.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 74.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 125.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 55.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 58.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 58.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 84.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 61.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 71.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 52.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 89.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 18.7,
+        "changed_files": 40,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-trials\\c-eval\\cjson\\.codecoremorph\\runs\\20261116-231855-1d6d\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 28,
+      "project_lines": 9544,
+      "units": 25,
+      "rule_sites": {
+        "port_c_module": 92,
+        "port_c_executable": 27,
+        "port_c_tests": 22,
+        "retire_c": 27
+      },
+      "sites": 168,
+      "files": 29,
+      "lines": 9541,
+      "expected_agent_attempts": 22.5,
+      "verify_s": 1.0,
+      "estimated_s": 4687.5,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 25
+      },
+      "agent_units": 24,
+      "agent_attempts": 27,
+      "changed_files": 62,
+      "lines_added": 8864,
+      "lines_deleted": 9940
+    },
+    "time": {
+      "run_s": 25711.8,
+      "phases_s": {
+        "baselining": 4.0,
+        "indexing": 3.9,
+        "planning": 0.1,
+        "awaiting_plan_approval": 14.5,
+        "migrating": 25680.8,
+        "verifying": 8.5
+      },
+      "migrating_s": 25680.8,
+      "agent_s": 25059.7,
+      "unit_gates_s": 0.0,
+      "tools_s": 621.1,
+      "unit_s": {
+        "mean": 1027.1,
+        "median": 81.2,
+        "max": 22884.9
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 5.48,
+      "agent_attempts_over_expected": 1.2,
+      "agent_s_per_attempt": 928.1,
+      "migrating_s_per_unit": 1027.2,
+      "migrating_s_per_site": 152.9,
+      "migrating_s_per_changed_line": 1.37,
+      "run_min_per_1k_project_lines": 44.9
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 3143,
+        "sites": 78,
+        "expected_attempts": 0.9,
+        "estimated_s": 1284.8,
+        "status": "committed",
+        "attempts": 3,
+        "agent_waits": 3,
+        "actual_s": 22884.9,
+        "agent_s": 22848.1,
+        "gate_s": 0.0,
+        "tools_s": 36.8,
+        "lines_changed": 7850
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 1481,
+        "sites": 14,
+        "expected_attempts": 0.9,
+        "estimated_s": 774.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 679.8,
+        "agent_s": 663.3,
+        "gate_s": 0.0,
+        "tools_s": 16.5,
+        "lines_changed": 3421
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 126.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 115.9,
+        "agent_s": 102.2,
+        "gate_s": 0.0,
+        "tools_s": 13.6,
+        "lines_changed": 225
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 192.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 140.9,
+        "agent_s": 126.1,
+        "gate_s": 0.0,
+        "tools_s": 14.8,
+        "lines_changed": 610
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 107.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 81.2,
+        "agent_s": 62.7,
+        "gate_s": 0.0,
+        "tools_s": 18.4,
+        "lines_changed": 207
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 118.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 152.1,
+        "agent_s": 134.7,
+        "gate_s": 0.0,
+        "tools_s": 17.4,
+        "lines_changed": 315
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 96.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 98.1,
+        "agent_s": 80.1,
+        "gate_s": 0.0,
+        "tools_s": 18.0,
+        "lines_changed": 166
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 294.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 297.4,
+        "agent_s": 277.8,
+        "gate_s": 0.0,
+        "tools_s": 19.7,
+        "lines_changed": 870
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 84.5,
+        "agent_s": 61.5,
+        "gate_s": 0.0,
+        "tools_s": 23.0,
+        "lines_changed": 220
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 112.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.0,
+        "agent_s": 106.6,
+        "gate_s": 0.0,
+        "tools_s": 24.4,
+        "lines_changed": 407
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 77.9,
+        "agent_s": 55.4,
+        "gate_s": 0.0,
+        "tools_s": 22.6,
+        "lines_changed": 184
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 136.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 70.8,
+        "agent_s": 47.5,
+        "gate_s": 0.0,
+        "tools_s": 23.3,
+        "lines_changed": 194
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 44.8,
+        "agent_s": 21.4,
+        "gate_s": 0.0,
+        "tools_s": 23.3,
+        "lines_changed": 44
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 59.9,
+        "agent_s": 34.2,
+        "gate_s": 0.0,
+        "tools_s": 25.7,
+        "lines_changed": 96
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 97.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 75.3,
+        "agent_s": 47.7,
+        "gate_s": 0.0,
+        "tools_s": 27.5,
+        "lines_changed": 200
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 126.0,
+        "agent_s": 99.8,
+        "gate_s": 0.0,
+        "tools_s": 26.2,
+        "lines_changed": 192
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 56.6,
+        "agent_s": 28.6,
+        "gate_s": 0.0,
+        "tools_s": 27.9,
+        "lines_changed": 118
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 59.1,
+        "agent_s": 31.2,
+        "gate_s": 0.0,
+        "tools_s": 27.9,
+        "lines_changed": 100
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 59.3,
+        "agent_s": 30.8,
+        "gate_s": 0.0,
+        "tools_s": 28.5,
+        "lines_changed": 101
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 85.0,
+        "agent_s": 44.3,
+        "gate_s": 0.0,
+        "tools_s": 40.7,
+        "lines_changed": 82
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 62.3,
+        "agent_s": 32.7,
+        "gate_s": 0.0,
+        "tools_s": 29.6,
+        "lines_changed": 127
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 72.4,
+        "agent_s": 43.0,
+        "gate_s": 0.0,
+        "tools_s": 29.4,
+        "lines_changed": 51
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 52.8,
+        "agent_s": 21.1,
+        "gate_s": 0.0,
+        "tools_s": 31.7,
+        "lines_changed": 103
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 123.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 90.2,
+        "agent_s": 58.9,
+        "gate_s": 0.0,
+        "tools_s": 31.3,
+        "lines_changed": 182
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 29,
+        "lines": 9541,
+        "sites": 27,
+        "expected_attempts": 0.9,
+        "estimated_s": 94.0,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 18.8,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 18.8,
+        "lines_changed": 7885
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 210,
+    "duration_ms": 25877488,
+    "total_cost_usd_equivalent": 36.84784750000001,
+    "usage": {
+      "input_tokens": 304,
+      "cache_creation_input_tokens": 962780,
+      "cache_read_input_tokens": 81972398,
+      "output_tokens": 626587,
+      "output_tokens_details": {
+        "thinking_tokens": 336757
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 962780,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3431,
+          "cache_read_input_tokens": 31604,
+          "cache_creation_input_tokens": 26145,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 26145
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port is finished: all 25 units were committed, and the final clean build passed with 165 Rust tests. The run (`20261116-231855-1d6d`) took about 7 hours and exited with code 0. Everything is on the branch `codecoremorph/20261116-231855-1d6d`, from `acc76239bee0` to `fa128fe65fc2`. Your working tree and `main` are unchanged, and nothing has been merged.\n\n## Units\n\n| Units | What | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `cJSON.c` \u2192 `rust/cjson_rs` | 3 | `40ecc17b04ad` |\n| U-0002 | `cJSON_Utils.c` \u2192 `rust/cjson_utils_rs` | 1 | `3eaa4c503b2a` |\n| U-0003 \u2013 U-0024 | The 22 C test files \u2192 `rust/cjson_rs/tests/*.rs` | 1 each, except U-0020 (2) | `70804e243d69` \u2026 `2cfa6482bc0f` |\n| U-0025 | Deleting the C, the CMake build, the bridges and the C tests (automatic, 40 files) | 0 | `fa128fe65fc2` |\n\nThe three retries:\n- **U-0001, attempt 1:** a test file I wrote kept a `#pragma warning(disable` line copied from `cJSON.c`, and a safety rule rejects any new warning suppression.\n- **U-0001, attempt 2:** the check that exported functions match the C signatures only looks at files changed in that attempt, so it reported every function as missing. Attempt 3 passed.\n- **U-0020, attempt 1:** clippy rejected a hand-written value of \u03c0, so I replaced it with `std::f64::consts::PI`.\n\n## Coverage and parity\n- **Rule coverage:** all 92 sites of the module rule, all 22 test files and all 27 deletions.\n- **Before:** the original build had 22 C tests, all passing, with none failing, flaky or skipped.\n- **After:** the final build ran 165 Rust tests and all passed. Every C function is mapped to Rust (92 entries), every C test is paired with Rust tests (22), and the final code has no `unsafe`.\n\n## What wasn't verified\n- **Output comparison:** CodeCoreMorph didn't run its check that compares the program's output before and after, because that needs a Make build.\n- **`tests/unity_setup.c`:** it is only compiled under MSVC, so it was never built.\n- **Shared libraries:** the shared-library and `BUILD_SHARED_AND_STATIC_LIBS` configurations weren't tested.\n- **Root `Makefile`:** it still names `cJSON.c` and will need updating or removing.\n- **Out of scope:** `fuzzing/`, `library_config/` and `tests/unity/` were excluded by the manifest and left alone.\n\n## Behavior that differs from the C\n- **Number formatting:** printing numbers was reimplemented and ignores the locale's decimal point.\n- **Allocation failure:** if memory runs out while a string is being parsed, the reported error position can differ.\n- **NaN:** the integer value (`valueint`) of a NaN number is `INT_MIN`.\n- **Null strings:** a null string no longer crashes.\n- **`cJSON_Utils` quirks:** these were kept on purpose.\n- **Allocator hooks:** `cJSON_InitHooks`, `cJSON_malloc` and `cJSON_free` existed only for the C side and were deleted with it.\n- **Tests:** C tests that pass NULL weren't translated, because the Rust API can't take a null. A test that read a freed item now checks the deletion instead.\n\n## Follow-up worth doing\n`cjson_utils_rs` works through a `Json` trait. Once the C side was deleted, the only implementations of that trait left are adapters inside `cjson_rs`'s tests. Before anyone uses the utils crate outside the tests, a real implementation for `cjson_rs`'s document type should go into one of the crates.\n\n## How to review\n```\ngit log acc76239bee0..codecoremorph/20261116-231855-1d6d\ngit diff acc76239bee0 codecoremorph/20261116-231855-1d6d\n```\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\cjson\\.codecoremorph\\runs\\20261116-231855-1d6d\\report.md`. I've left the merge to you.\n\nI can turn this summary into a page you can share if it's going to others."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 210,
+      "duration_ms": 25877488,
+      "total_cost_usd_equivalent": 36.84784750000001,
+      "usage": {
+        "input_tokens": 304,
+        "cache_creation_input_tokens": 962780,
+        "cache_read_input_tokens": 81972398,
+        "output_tokens": 626587,
+        "output_tokens_details": {
+          "thinking_tokens": 336757
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 962780,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3431,
+            "cache_read_input_tokens": 31604,
+            "cache_creation_input_tokens": 26145,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 26145
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port is finished: all 25 units were committed, and the final clean build passed with 165 Rust tests. The run (`20261116-231855-1d6d`) took about 7 hours and exited with code 0. Everything is on the branch `codecoremorph/20261116-231855-1d6d`, from `acc76239bee0` to `fa128fe65fc2`. Your working tree and `main` are unchanged, and nothing has been merged.\n\n## Units\n\n| Units | What | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `cJSON.c` \u2192 `rust/cjson_rs` | 3 | `40ecc17b04ad` |\n| U-0002 | `cJSON_Utils.c` \u2192 `rust/cjson_utils_rs` | 1 | `3eaa4c503b2a` |\n| U-0003 \u2013 U-0024 | The 22 C test files \u2192 `rust/cjson_rs/tests/*.rs` | 1 each, except U-0020 (2) | `70804e243d69` \u2026 `2cfa6482bc0f` |\n| U-0025 | Deleting the C, the CMake build, the bridges and the C tests (automatic, 40 files) | 0 | `fa128fe65fc2` |\n\nThe three retries:\n- **U-0001, attempt 1:** a test file I wrote kept a `#pragma warning(disable` line copied from `cJSON.c`, and a safety rule rejects any new warning suppression.\n- **U-0001, attempt 2:** the check that exported functions match the C signatures only looks at files changed in that attempt, so it reported every function as missing. Attempt 3 passed.\n- **U-0020, attempt 1:** clippy rejected a hand-written value of \u03c0, so I replaced it with `std::f64::consts::PI`.\n\n## Coverage and parity\n- **Rule coverage:** all 92 sites of the module rule, all 22 test files and all 27 deletions.\n- **Before:** the original build had 22 C tests, all passing, with none failing, flaky or skipped.\n- **After:** the final build ran 165 Rust tests and all passed. Every C function is mapped to Rust (92 entries), every C test is paired with Rust tests (22), and the final code has no `unsafe`.\n\n## What wasn't verified\n- **Output comparison:** CodeCoreMorph didn't run its check that compares the program's output before and after, because that needs a Make build.\n- **`tests/unity_setup.c`:** it is only compiled under MSVC, so it was never built.\n- **Shared libraries:** the shared-library and `BUILD_SHARED_AND_STATIC_LIBS` configurations weren't tested.\n- **Root `Makefile`:** it still names `cJSON.c` and will need updating or removing.\n- **Out of scope:** `fuzzing/`, `library_config/` and `tests/unity/` were excluded by the manifest and left alone.\n\n## Behavior that differs from the C\n- **Number formatting:** printing numbers was reimplemented and ignores the locale's decimal point.\n- **Allocation failure:** if memory runs out while a string is being parsed, the reported error position can differ.\n- **NaN:** the integer value (`valueint`) of a NaN number is `INT_MIN`.\n- **Null strings:** a null string no longer crashes.\n- **`cJSON_Utils` quirks:** these were kept on purpose.\n- **Allocator hooks:** `cJSON_InitHooks`, `cJSON_malloc` and `cJSON_free` existed only for the C side and were deleted with it.\n- **Tests:** C tests that pass NULL weren't translated, because the Rust API can't take a null. A test that read a freed item now checks the deletion instead.\n\n## Follow-up worth doing\n`cjson_utils_rs` works through a `Json` trait. Once the C side was deleted, the only implementations of that trait left are adapters inside `cjson_rs`'s tests. Before anyone uses the utils crate outside the tests, a real implementation for `cjson_rs`'s document type should go into one of the crates.\n\n## How to review\n```\ngit log acc76239bee0..codecoremorph/20261116-231855-1d6d\ngit diff acc76239bee0 codecoremorph/20261116-231855-1d6d\n```\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\cjson\\.codecoremorph\\runs\\20261116-231855-1d6d\\report.md`. I've left the merge to you.\n\nI can turn this summary into a page you can share if it's going to others."
+    }
+  ]
+}

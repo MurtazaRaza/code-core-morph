@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-16T11:41:45+00:00",
+  "project": "iniparser v4.1 (0a38e85c9cde)",
+  "migration": "c89 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 2.765,
+    "index_s": 0.922,
+    "graph_s": 0.0,
+    "plan_s": 0.016
+  },
+  "baseline": {
+    "passing": 2,
+    "failing": [],
+    "flaky": [],
+    "build_s": 0.094,
+    "test_s": 0.625
+  },
+  "graph": {
+    "files": 8,
+    "edges": 17,
+    "clusters": 6,
+    "cyclic_clusters": 2,
+    "largest_cluster": 2
+  },
+  "rules": [
+    {
+      "id": "port_c_module",
+      "kind": "port",
+      "automatic": false,
+      "sites": 25,
+      "files": 2,
+      "skipped_files": 0,
+      "units": 2
+    },
+    {
+      "id": "port_c_executable",
+      "kind": "port",
+      "automatic": false,
+      "sites": 8,
+      "files": 4,
+      "skipped_files": 4,
+      "units": 0
+    },
+    {
+      "id": "port_c_tests",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "retire_c",
+      "kind": "port",
+      "automatic": false,
+      "sites": 8,
+      "files": 8,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 3
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 244567,
+    "cost_usd": 1.55
+  },
+  "duration_estimate_s": 872.6,
+  "warnings": [
+    "port_c_tests: the detector found no sites, so the rule has no units"
+  ]
+}

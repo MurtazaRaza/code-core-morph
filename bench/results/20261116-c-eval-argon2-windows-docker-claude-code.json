@@ -1,0 +1,828 @@
+{
+  "date": "2026-11-16T17:14:49+00:00",
+  "project": "argon2 20190702 (62358ba2123a)",
+  "migration": "c89 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "62358ba2123abd17fccf2a108a301d4b52c01a7c",
+  "seconds": 8379.6,
+  "runs_started": 1,
+  "run_id": "20261116-145545-6f74",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 19
+    },
+    "success_rate": 1.0,
+    "agent_units": 18,
+    "attempts_per_agent_unit": 1.22,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "558dd54d0f19f4bbe92ace0b48004bfaf0120ff9",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 102,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 20.1
+    },
+    "port": {
+      "symbols": 53,
+      "tests_mapped": 67,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "argon2_thread_create: Rust starts threads with spawn; check_create is the C function's check of its handle and entry point.",
+        "argon2_thread_exit: Rust threads end by returning from their closure; nothing ends a thread from inside.",
+        "blake2b_init_param: Params::to_bytes builds the 64-byte parameter block.",
+        "blake2b_init: A refused length is an Err; State::invalidate is what the C did to the caller's state then.",
+        "blake2b_init_key: A refused length or key is an Err; State::invalidate is what the C did to the caller's state then.",
+        "blake2b_final: A digest_length above 64 (possible only through a parameter block) made the C read past its 64-byte buffer; the port writes the 64 digest bytes only.",
+        "allocate_memory: Rust memory is a Vec, which argon2::ctx allocates (a failed allocation is MemoryAllocationError); there are no allocation callbacks. memory_size is the C's overflow check.",
+        "free_memory: The memory is wiped (when wipe is set) before it is dropped.",
+        "secure_wipe_memory: fill(0) followed by std::hint::black_box, where the C called explicit_bzero.",
+        "FLAG_clear_internal_memory: The global became the wipe argument of the functions that clear internal memory.",
+        "fill_memory_blocks: Scoped std threads where the C used pthreads, in the same order (at most `threads` lanes at once, the slices one after another). With threads > lanes every thread is joined, where the C's unsigned arithmetic skipped the final joins.",
+        "validate_inputs: It takes the context's shape (ContextShape): which buffers are there and their lengths.",
+        "initial_hash: initial_hash only reads its inputs; a caller that clears the password or the secret wipes them afterwards.",
+        "initialize: argon2::ctx allocates the memory, hashes the inputs and builds the first blocks.",
+        "fill_segment: Portable Rust where the C used SSE/AVX2/AVX-512 intrinsics (and src/ref.c without them); the blocks are the same. The fillers of a slice share the memory as relaxed atomic words.",
+        "fBlaMka: The C worked on SSE vectors of two words, the Rust on one word.",
+        "decode_string: argon2::verify validates the decoded fields, then refuses trailing characters, as the C did. A string that fails part-way leaves no fields set.",
+        "argon2_ctx: The memory is rounded down to whole segments and the threads capped at the lanes, as in the C; the wipe flag is an argument.",
+        "argon2i_hash_encoded: argon2::hash with Variant::I and VERSION_NUMBER, the encoding only.",
+        "argon2i_hash_raw: argon2::hash with Variant::I and VERSION_NUMBER, the raw tag only.",
+        "argon2d_hash_encoded: argon2::hash with Variant::D and VERSION_NUMBER, the encoding only.",
+        "argon2d_hash_raw: argon2::hash with Variant::D and VERSION_NUMBER, the raw tag only.",
+        "argon2id_hash_encoded: argon2::hash with Variant::Id and VERSION_NUMBER, the encoding only.",
+        "argon2id_hash_raw: argon2::hash with Variant::Id and VERSION_NUMBER, the raw tag only.",
+        "argon2i_verify: argon2::verify with Variant::I.",
+        "argon2d_verify: argon2::verify with Variant::D.",
+        "argon2id_verify: argon2::verify with Variant::Id.",
+        "argon2d_ctx: argon2::ctx with Variant::D.",
+        "argon2i_ctx: argon2::ctx with Variant::I.",
+        "argon2id_ctx: argon2::ctx with Variant::Id.",
+        "argon2_verify_ctx: argon2::ctx, then the constant-time argon2::compare of the tags.",
+        "argon2d_verify_ctx: With Variant::D.",
+        "argon2i_verify_ctx: With Variant::I.",
+        "argon2id_verify_ctx: With Variant::Id.",
+        "argon2_encodedlen: A type number that names no type counts a name of length 0.",
+        "tap:tests/codecoremorph_characterization/argon2_2_test/block_and_memory_helpers_roundtrip: allocate_memory and free_memory stand for the C allocator, which Rust code doesn't use: the test checks memory_size and fills a Vec of that size.",
+        "tap:tests/codecoremorph_characterization/argon2_3_test/argon2_ctx_uses_the_allocation_callbacks: The allocation callbacks and FLAG_clear_internal_memory are the C interface's; the Rust API allocates a Vec and takes the wipe flag as an argument. The test checks the tags, the memory sizes the callbacks were asked for (instance_for, memory_size) and the tag without wiping.",
+        "tap:tests/codecoremorph_characterization/argon2_3_test/argon2_ctx_reports_a_failed_allocation: A failing allocator callback has no Rust counterpart (the Rust API allocates a Vec, refused with MemoryAllocationError); the test checks the validation of the callbacks, the sizes they are asked for, and an overflowing size.",
+        "tap:tests/codecoremorph_characterization/argon2_4_test/hash_functions_reject_oversized_lengths_before_hashing: A password or salt longer than 32 bits would take 4 GiB in a Rust slice; their bounds are checked with check_hash_lengths, which hash and verify apply before anything else.",
+        "tap:tests/codecoremorph_characterization/argon2_4_test/verify_rejects_more_malformed_strings: A Rust password can't be NULL: the NULL-password case is checked on the validation that reported it.",
+        "tap:tests/codecoremorph_characterization/argon2_test/argon2_hash_reports_parameter_errors: NULL passwords and salts and the type number 3 have no Rust form: they are checked on the validation (PwdPtrMismatch, SaltPtrMismatch) and on Variant::from_code.",
+        "tap:tests/codecoremorph_characterization/argon2_test/argon2_verify_rejects_malformed_strings: A NULL encoded string has no Rust form; the string \"$\" stands for it.",
+        "tap:tests/codecoremorph_characterization/argon2_test/argon2_ctx_functions_match_the_reference_vectors: The Rust context has no clearing flags and is never NULL: the flags are checked with clears_password/clears_secret and secure_wipe, the NULL context on the validation of an empty one, the type number 3 on Variant::from_code.",
+        "tap:tests/codecoremorph_characterization/blake2b_test/blake2b_init_rejects_bad_lengths_and_null_state: A Rust state is never NULL; the NULL-state and NULL-parameter refusals have no counterpart, so the test checks the invalidated state and the parameter blocks further instead.",
+        "tap:tests/codecoremorph_characterization/blake2b_test/blake2b_init_key_rejects_bad_keys_and_buffers_the_key: A NULL key is the empty key in Rust; a NULL state has no counterpart.",
+        "tap:tests/codecoremorph_characterization/blake2b_test/blake2b_final_checks_lengths_and_refuses_reuse: NULL states, outputs and inputs have no Rust form: the empty output stands for the NULL one, and the refusals' effect on the state is checked instead.",
+        "tap:tests/codecoremorph_characterization/blake2b_test/blake2b_simple_api_rejects_bad_arguments: A NULL input or key with a length has no Rust form; the empty and short forms are checked instead.",
+        "tap:tests/codecoremorph_characterization/blamka-round-opt_test/fill_segment_ignores_a_null_instance: A Rust instance is never NULL: the test fills a first segment with no blocks left to build, which leaves the memory untouched as the NULL instance did.",
+        "tap:tests/codecoremorph_characterization/core_test/validate_inputs_reports_pointer_and_length_errors: A Rust context is never NULL: the NULL context's IncorrectParameter has no counterpart, and the emptiest context stands for it.",
+        "tap:tests/codecoremorph_characterization/core_test/allocate_and_free_memory_use_callbacks_and_check_overflow: The allocation callbacks, malloc and free are the C interface's (the bridge's); the Rust API allocates a Vec. The Rust test keeps what has a Rust meaning: the size and overflow check, and the wiping before the memory is given back. The C test's checks of the callbacks' calls and pointers have no counterpart.",
+        "tap:tests/codecoremorph_characterization/core_test/secure_wipe_memory_zeroes_exactly_the_range: FLAG_clear_internal_memory is the C interface's global; in Rust it is clear_internal_memory's wipe argument.",
+        "tap:tests/codecoremorph_characterization/core_test/initial_hash_digests_every_input_and_honors_clear_flags: Rust's initial_hash only reads its inputs and has no NULL arguments; the clearing flags are checked with clears_password/clears_secret and secure_wipe.",
+        "tap:tests/codecoremorph_characterization/core_test/initialize_fill_and_finalize_match_argon2_ctx_single_lane: initialize and finalize work on C instances (with the context's allocator); the Rust test runs their steps (initial_hash, fill_first_blocks, fill_memory_blocks with fill_segment, tag) on Rust memory and checks the same blocks and tag.",
+        "tap:tests/codecoremorph_characterization/core_test/initialize_fill_and_finalize_two_lanes_and_reject_bad_parameters: The allocation callbacks and the NULL instances and contexts of the C test have no Rust counterpart; the Rust test checks the tag, the memory's size, its wiping, and the refusal of an instance without lanes.",
+        "tap:tests/codecoremorph_characterization/thread_test/thread_create_rejects_null_handle: A NULL handle and entry point are None in Rust; the C's void * argument is what the Rust entry point captures.",
+        "make:test: Its characterization programs are mapped point by point. kats/test.sh's comparisons of genkat's output with the kats/ files are genkat_rs's tests, and the testcase program (src/test.c, now testcase_rs) is run by testcase_rs's test. The optional 1 GiB vectors of TEST_LARGE_RAM run when that variable is set."
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": [
+        "latex/** (8 files, which project.exclude keeps out of the port)",
+        "src/bench.c (1 file, which project.exclude keeps out of the port)",
+        "vs2015/** (20 files, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 6,
+        "committed": 6,
+        "planned_sites": 52,
+        "converted_sites": 52
+      },
+      {
+        "id": "port_c_executable",
+        "units": 3,
+        "committed": 3,
+        "planned_sites": 20,
+        "converted_sites": 20
+      },
+      {
+        "id": "port_c_tests",
+        "units": 9,
+        "committed": 9,
+        "planned_sites": 66,
+        "converted_sites": 66
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 26,
+        "converted_sites": 26
+      }
+    ],
+    "review_items": 35,
+    "duration_s": 8300.2,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 454.2,
+        "changed_files": 12,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 629.1,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 911.3,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 502.9,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 390.8,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 609.9,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 309.4,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 179.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 33.2,
+        "changed_files": 4,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 188.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 198.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 182.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 192.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 212.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 190.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 271.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 98.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 106.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 501.3,
+        "changed_files": 43,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-trials\\c-eval\\argon2\\.codecoremorph\\runs\\20261116-145545-6f74\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 19,
+      "project_lines": 4932,
+      "units": 19,
+      "rule_sites": {
+        "port_c_module": 52,
+        "port_c_executable": 26,
+        "port_c_tests": 66,
+        "retire_c": 26
+      },
+      "sites": 170,
+      "files": 27,
+      "lines": 4631,
+      "expected_agent_attempts": 17.1,
+      "verify_s": 11.0,
+      "estimated_s": 7402.2,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 19
+      },
+      "agent_units": 18,
+      "agent_attempts": 22,
+      "changed_files": 48,
+      "lines_added": 6131,
+      "lines_deleted": 4884
+    },
+    "time": {
+      "run_s": 8300.1,
+      "phases_s": {
+        "baselining": 4.3,
+        "indexing": 14.3,
+        "characterizing": 2017.7,
+        "planning": 0.1,
+        "awaiting_plan_approval": 17.8,
+        "migrating": 6225.5,
+        "verifying": 20.5
+      },
+      "migrating_s": 6225.5,
+      "agent_s": 4392.8,
+      "unit_gates_s": 47.1,
+      "tools_s": 1785.6,
+      "unit_s": {
+        "mean": 327.5,
+        "median": 213.1,
+        "max": 912.0
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.84,
+      "agent_attempts_over_expected": 1.29,
+      "agent_s_per_attempt": 199.7,
+      "migrating_s_per_unit": 327.7,
+      "migrating_s_per_site": 36.6,
+      "migrating_s_per_changed_line": 0.57,
+      "run_min_per_1k_project_lines": 28.05
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 57,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 192.0,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 3,
+        "actual_s": 455.5,
+        "agent_s": 299.3,
+        "gate_s": 0.0,
+        "tools_s": 156.1,
+        "lines_changed": 329
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 390,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 499.1,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 629.8,
+        "agent_s": 469.9,
+        "gate_s": 0.0,
+        "tools_s": 159.9,
+        "lines_changed": 1534
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 648,
+        "sites": 15,
+        "expected_attempts": 0.9,
+        "estimated_s": 678.3,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 912.0,
+        "agent_s": 728.0,
+        "gate_s": 0.0,
+        "tools_s": 184.0,
+        "lines_changed": 1906
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 3,
+        "lines": 754,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 691.0,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 503.6,
+        "agent_s": 291.9,
+        "gate_s": 0.0,
+        "tools_s": 211.6,
+        "lines_changed": 1088
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 463,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 535.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 391.5,
+        "agent_s": 261.9,
+        "gate_s": 0.0,
+        "tools_s": 129.7,
+        "lines_changed": 1031
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 452,
+        "sites": 22,
+        "expected_attempts": 0.9,
+        "estimated_s": 532.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 610.6,
+        "agent_s": 477.4,
+        "gate_s": 0.0,
+        "tools_s": 133.2,
+        "lines_changed": 1661
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_c_executable"
+        ],
+        "files": 8,
+        "lines": 2630,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 1003.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 310.1,
+        "agent_s": 243.4,
+        "gate_s": 0.0,
+        "tools_s": 66.6,
+        "lines_changed": 885
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_c_executable"
+        ],
+        "files": 8,
+        "lines": 2500,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 961.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 180.5,
+        "agent_s": 127.8,
+        "gate_s": 0.0,
+        "tools_s": 52.7,
+        "lines_changed": 513
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_c_executable"
+        ],
+        "files": 7,
+        "lines": 2293,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 894.7,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 33.4,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 33.4,
+        "lines_changed": 26
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 137.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 211.0,
+        "agent_s": 126.3,
+        "gate_s": 21.7,
+        "tools_s": 62.9,
+        "lines_changed": 285
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 145.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 199.3,
+        "agent_s": 135.7,
+        "gate_s": 0.0,
+        "tools_s": 63.6,
+        "lines_changed": 318
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 139.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 183.2,
+        "agent_s": 117.8,
+        "gate_s": 0.0,
+        "tools_s": 65.4,
+        "lines_changed": 286
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 151.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 192.8,
+        "agent_s": 125.8,
+        "gate_s": 0.0,
+        "tools_s": 67.1,
+        "lines_changed": 363
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 153.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 213.1,
+        "agent_s": 145.9,
+        "gate_s": 0.0,
+        "tools_s": 67.1,
+        "lines_changed": 373
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 113.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 191.2,
+        "agent_s": 121.9,
+        "gate_s": 0.0,
+        "tools_s": 69.3,
+        "lines_changed": 202
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 233.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 284.0,
+        "agent_s": 200.7,
+        "gate_s": 12.4,
+        "tools_s": 70.9,
+        "lines_changed": 504
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 112.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 99.0,
+        "agent_s": 27.7,
+        "gate_s": 0.0,
+        "tools_s": 71.3,
+        "lines_changed": 66
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_c_tests"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 112.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 106.8,
+        "agent_s": 35.4,
+        "gate_s": 0.0,
+        "tools_s": 71.4,
+        "lines_changed": 63
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 27,
+        "lines": 4631,
+        "sites": 26,
+        "expected_attempts": 0.9,
+        "estimated_s": 112.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 515.0,
+        "agent_s": 456.0,
+        "gate_s": 13.0,
+        "tools_s": 45.9,
+        "lines_changed": 6088
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 199,
+    "duration_ms": 8377403,
+    "total_cost_usd_equivalent": 36.31442780000002,
+    "usage": {
+      "input_tokens": 324,
+      "cache_creation_input_tokens": 1002192,
+      "cache_read_input_tokens": 74000445,
+      "output_tokens": 652883,
+      "output_tokens_details": {
+        "thinking_tokens": 349710
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 1002192,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3685,
+          "cache_read_input_tokens": 96731,
+          "cache_creation_input_tokens": 13339,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 13339
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The run finished: all 19 units are committed on `codecoremorph/20261116-145545-6f74`, and the final verification passed. That was a clean build of the last commit `558dd54d0f19` with all 102 tests. The baseline was 67 passing tests, and every one is paired with a Rust test in `rust/test-map.toml`. There is no `unsafe` code, and CodeCoreMorph made no model calls.\n\n## Units\n\n| Unit | Rule | What it did | Files | Attempts | Commit |\n|---|---|---|---|---|---|\n| U-0001 | port_c_module | `thread.c` \u2192 `libargon2_rs::thread` | 12 | 2 (1st: a declaration clashed with the system's pthread header) | `40115534b193` |\n| U-0002 | port_c_module | `blake2b.c` \u2192 `blake2b` | 9 | 2 (1st: clippy lint) | `1938777f3a2c` |\n| U-0003 | port_c_module | `core.c` \u2192 `core` | 10 | 2 (1st: a Rust copy of a C struct was rejected) | `4604637e6fd6` |\n| U-0004 | port_c_module | `opt.c` and the BlaMka header \u2192 `opt` (portable Rust in place of SSE/AVX) | 10 | 2 (1st: clippy lint) | `3c937c005107` |\n| U-0005 | port_c_module | `encoding.c` \u2192 `encoding` | 10 | 1 | `b0ad7cfe5974` |\n| U-0006 | port_c_module | `argon2.c` \u2192 `argon2`, the safe API | 10 | 1 | `584aa3e23219` |\n| U-0007 | port_c_executable | `run.c` \u2192 `argon2` program, with integration tests | 8 | 1 | `50dd9a1fd6bf` |\n| U-0008 | port_c_executable | `genkat.c` \u2192 `genkat` program, with tests against the `kats/` files | 7 | 1 | `d1f58cdfc550` |\n| U-0009 | port_c_executable | `testcase` scaffold, made entirely by the deterministic tools (`test.c` itself was ported in U-0019) | 4 | 0 | `d74836760d6b` |\n| U-0010\u2013U-0018 | port_c_tests | The 9 C test files \u2192 66 Rust tests, each mapped in `test-map.toml` | 2 each | 1 each | `534c0b1`, `dc820b6`, `cc9f1c5`, `b08a10b`, `0bcf533`, `377c2cc`, `a8763b6`, `1a12b14`, `643ccac` |\n| U-0019 | retire_c | Deletes the C, the Makefile and the bridges. `test.c` \u2192 `testcase` program plus a test that runs it; `make:test` mapped; C references removed from the docs and the symbol map | 43 | 1 | `558dd54d0f19` |\n\n## Gates I approved\n\nThe gate (check I-4) flags any change that reduces what a test checks; I approved it three times:\n- **U-0010:** two translated tests make one check fewer each (9 vs 10, 7 vs 8).\n- **U-0016:** two `core_test` tests check much less: 9 checks vs 24, and 8 vs 18. The checks that went were of the C allocation callbacks and the C allocator, which don't exist in Rust. The memory sizes, overflow check, wiping and tags are still checked.\n- **U-0019:** the C test-helper header was deleted. It contained no tests, only the check macros.\n\n## What verification didn't cover\n\n- **No unit was left out:** none was skipped or too large.\n- **Excluded from the port by the manifest:** `src/bench.c`, `vs2015/**` and `latex/**` remain. The Makefile and `include/argon2.h` are gone, so `bench.c` no longer builds.\n- **Never compiled by any unit:** `src/ref.c`, `src/blake2/blamka-round-ref.h` and `src/genkat.h` aren't built in this configuration. The report lists no C left besides the excluded files.\n- **One unverified change:** the deletion of `src/blake2/blake2-impl.h` in U-0019, which this build doesn't compile.\n- **Characterization tests:** 66 were kept and 2 were dropped. Their expected values were wrong after the 150th hex character, which the harness cut off when printing. Tests added later check those outputs in 64-byte slices. Job C-0010 was given up because it would have duplicated tests already accepted.\n- **Large-memory test vectors:** the 1 GiB `TEST_LARGE_RAM` vectors run only when that environment variable is set, as they ran only under `make testci` before.\n\n## Behaviour differences to review\n\n- **The C interface is gone.** The manifest didn't set `keep_source_api`, so `argon2.h`, `libargon2.a` and `libargon2.so` were deleted, and outside C code can no longer link against this library.\n- **Hashing is slower.** The Rust fills memory with the portable algorithm, where the C used SSE/AVX. The tags are identical.\n- **Timing line:** the `argon2` program's \"seconds\" line now shows wall-clock time instead of CPU time.\n- **Threads:** the `ARGON2_NO_THREADS` build option no longer exists, and with more threads than lanes every thread is now joined.\n- **Odd inputs:** a byte of 0x80 or more in Base64 input still decodes as '/', like the C on x86. A failed decode no longer leaves partly-filled fields behind.\n- **Test builds:** `libargon2_rs` is now optimized in debug and test builds, so the tests' 64\u2013256 MiB hashes finish quickly.\n- **Accepted gaps:** the test-map notes list the C-only inputs that have no Rust form, such as NULL pointers, allocator callbacks and 4 GiB lengths. They're checked through the validation that stands in for them.\n\n## Reviewing\n\n```\ngit diff 62358ba codecoremorph/20261116-145545-6f74\n```\n\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\argon2\\.codecoremorph\\runs\\20261116-145545-6f74\\report.md`. Merging is up to you; I didn't merge, push or delete any branch. I can also put this summary on a shareable page if that would help."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 199,
+      "duration_ms": 8377403,
+      "total_cost_usd_equivalent": 36.31442780000002,
+      "usage": {
+        "input_tokens": 324,
+        "cache_creation_input_tokens": 1002192,
+        "cache_read_input_tokens": 74000445,
+        "output_tokens": 652883,
+        "output_tokens_details": {
+          "thinking_tokens": 349710
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 1002192,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3685,
+            "cache_read_input_tokens": 96731,
+            "cache_creation_input_tokens": 13339,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 13339
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The run finished: all 19 units are committed on `codecoremorph/20261116-145545-6f74`, and the final verification passed. That was a clean build of the last commit `558dd54d0f19` with all 102 tests. The baseline was 67 passing tests, and every one is paired with a Rust test in `rust/test-map.toml`. There is no `unsafe` code, and CodeCoreMorph made no model calls.\n\n## Units\n\n| Unit | Rule | What it did | Files | Attempts | Commit |\n|---|---|---|---|---|---|\n| U-0001 | port_c_module | `thread.c` \u2192 `libargon2_rs::thread` | 12 | 2 (1st: a declaration clashed with the system's pthread header) | `40115534b193` |\n| U-0002 | port_c_module | `blake2b.c` \u2192 `blake2b` | 9 | 2 (1st: clippy lint) | `1938777f3a2c` |\n| U-0003 | port_c_module | `core.c` \u2192 `core` | 10 | 2 (1st: a Rust copy of a C struct was rejected) | `4604637e6fd6` |\n| U-0004 | port_c_module | `opt.c` and the BlaMka header \u2192 `opt` (portable Rust in place of SSE/AVX) | 10 | 2 (1st: clippy lint) | `3c937c005107` |\n| U-0005 | port_c_module | `encoding.c` \u2192 `encoding` | 10 | 1 | `b0ad7cfe5974` |\n| U-0006 | port_c_module | `argon2.c` \u2192 `argon2`, the safe API | 10 | 1 | `584aa3e23219` |\n| U-0007 | port_c_executable | `run.c` \u2192 `argon2` program, with integration tests | 8 | 1 | `50dd9a1fd6bf` |\n| U-0008 | port_c_executable | `genkat.c` \u2192 `genkat` program, with tests against the `kats/` files | 7 | 1 | `d1f58cdfc550` |\n| U-0009 | port_c_executable | `testcase` scaffold, made entirely by the deterministic tools (`test.c` itself was ported in U-0019) | 4 | 0 | `d74836760d6b` |\n| U-0010\u2013U-0018 | port_c_tests | The 9 C test files \u2192 66 Rust tests, each mapped in `test-map.toml` | 2 each | 1 each | `534c0b1`, `dc820b6`, `cc9f1c5`, `b08a10b`, `0bcf533`, `377c2cc`, `a8763b6`, `1a12b14`, `643ccac` |\n| U-0019 | retire_c | Deletes the C, the Makefile and the bridges. `test.c` \u2192 `testcase` program plus a test that runs it; `make:test` mapped; C references removed from the docs and the symbol map | 43 | 1 | `558dd54d0f19` |\n\n## Gates I approved\n\nThe gate (check I-4) flags any change that reduces what a test checks; I approved it three times:\n- **U-0010:** two translated tests make one check fewer each (9 vs 10, 7 vs 8).\n- **U-0016:** two `core_test` tests check much less: 9 checks vs 24, and 8 vs 18. The checks that went were of the C allocation callbacks and the C allocator, which don't exist in Rust. The memory sizes, overflow check, wiping and tags are still checked.\n- **U-0019:** the C test-helper header was deleted. It contained no tests, only the check macros.\n\n## What verification didn't cover\n\n- **No unit was left out:** none was skipped or too large.\n- **Excluded from the port by the manifest:** `src/bench.c`, `vs2015/**` and `latex/**` remain. The Makefile and `include/argon2.h` are gone, so `bench.c` no longer builds.\n- **Never compiled by any unit:** `src/ref.c`, `src/blake2/blamka-round-ref.h` and `src/genkat.h` aren't built in this configuration. The report lists no C left besides the excluded files.\n- **One unverified change:** the deletion of `src/blake2/blake2-impl.h` in U-0019, which this build doesn't compile.\n- **Characterization tests:** 66 were kept and 2 were dropped. Their expected values were wrong after the 150th hex character, which the harness cut off when printing. Tests added later check those outputs in 64-byte slices. Job C-0010 was given up because it would have duplicated tests already accepted.\n- **Large-memory test vectors:** the 1 GiB `TEST_LARGE_RAM` vectors run only when that environment variable is set, as they ran only under `make testci` before.\n\n## Behaviour differences to review\n\n- **The C interface is gone.** The manifest didn't set `keep_source_api`, so `argon2.h`, `libargon2.a` and `libargon2.so` were deleted, and outside C code can no longer link against this library.\n- **Hashing is slower.** The Rust fills memory with the portable algorithm, where the C used SSE/AVX. The tags are identical.\n- **Timing line:** the `argon2` program's \"seconds\" line now shows wall-clock time instead of CPU time.\n- **Threads:** the `ARGON2_NO_THREADS` build option no longer exists, and with more threads than lanes every thread is now joined.\n- **Odd inputs:** a byte of 0x80 or more in Base64 input still decodes as '/', like the C on x86. A failed decode no longer leaves partly-filled fields behind.\n- **Test builds:** `libargon2_rs` is now optimized in debug and test builds, so the tests' 64\u2013256 MiB hashes finish quickly.\n- **Accepted gaps:** the test-map notes list the C-only inputs that have no Rust form, such as NULL pointers, allocator callbacks and 4 GiB lengths. They're checked through the validation that stands in for them.\n\n## Reviewing\n\n```\ngit diff 62358ba codecoremorph/20261116-145545-6f74\n```\n\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\argon2\\.codecoremorph\\runs\\20261116-145545-6f74\\report.md`. Merging is up to you; I didn't merge, push or delete any branch. I can also put this summary on a shareable page if that would help."
+    }
+  ]
+}

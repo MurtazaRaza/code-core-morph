@@ -1,0 +1,537 @@
+{
+  "date": "2026-11-16T14:52:22+00:00",
+  "project": "mxml v3.3.1 (fd47c7d11519)",
+  "migration": "c99 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "fd47c7d115191c8a6bce2c781ffee41e179530f2",
+  "seconds": 6209.2,
+  "runs_started": 1,
+  "run_id": "20261116-130929-5708",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 10
+    },
+    "success_rate": 1.0,
+    "agent_units": 10,
+    "attempts_per_agent_unit": 1.3,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "fdeb8e5a108af3836dd518604d3297289320cb60",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 10,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 3.3
+    },
+    "port": {
+      "symbols": 82,
+      "tests_mapped": 1,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "mxml_error: Takes the message already formatted (format! in Rust code).",
+        "_mxml_global: The per-thread global data is a thread_local RefCell of Global.",
+        "_mxml_strdupf: Formatting a string is format! in Rust; nothing takes this helper's place.",
+        "_mxml_vstrdupf: Formatting a string is format! in Rust; nothing takes this helper's place.",
+        "mxmlElementSetAttrf: Takes the value as format_args!.",
+        "mxmlNewCustom: The custom data is a Box<dyn Any>; dropping it does what the destroy callback did.",
+        "mxmlNewOpaquef: Takes the string as format_args!.",
+        "mxmlNewTextf: Takes the string as format_args!.",
+        "mxmlLoadFd: Reads any std::io::Read, as a file descriptor was read.",
+        "mxmlLoadFile: Reads any std::io::Read, as a FILE was read.",
+        "mxmlSaveFd: Writes to any std::io::Write.",
+        "mxmlSaveFile: Writes to any std::io::Write.",
+        "mxmlIndexDelete: Dropping an Index frees it.",
+        "mxmlSetOpaquef: Takes the string as format_args!.",
+        "mxmlSetTextf: Takes the string as format_args!.",
+        "make:test: make test ran the C program testmxml on test.xml and on its own output; its exit status covered the checks basic_tree, find_path, indexes, delete_children, the two loads and sax_events make, and stdio_file_test, string_test and file_descriptor_test take over its three cmp comparisons of the outputs."
+      ],
+      "unsafe": [],
+      "shared_cells": [
+        "rust/mxml_rs/src/mxml_private.rs:67: RefCell"
+      ],
+      "source_left": [
+        "doc/** (11 files, which project.exclude keeps out of the port)",
+        "vcnet/** (16 files, which project.exclude keeps out of the port)",
+        "xcode/** (2 files, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 9,
+        "committed": 9,
+        "planned_sites": 74,
+        "converted_sites": 74
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 13,
+        "converted_sites": 13
+      }
+    ],
+    "review_items": 20,
+    "duration_s": 6140.5,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 279.2,
+        "changed_files": 12,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 327.2,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 230.9,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 165.8,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 362.3,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 3,
+        "agent_skipped": false,
+        "duration_s": 2746.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 167.1,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 249.4,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 239.8,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 1160.4,
+        "changed_files": 38,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-trials\\c-eval\\mxml\\.codecoremorph\\runs\\20261116-130929-5708\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 13,
+      "project_lines": 8835,
+      "units": 10,
+      "rule_sites": {
+        "port_c_module": 74,
+        "port_c_executable": 13,
+        "retire_c": 13
+      },
+      "sites": 100,
+      "files": 16,
+      "lines": 8835,
+      "expected_agent_attempts": 9.0,
+      "verify_s": 0.3,
+      "estimated_s": 25831.1,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 10
+      },
+      "agent_units": 10,
+      "agent_attempts": 13,
+      "changed_files": 33,
+      "lines_added": 5580,
+      "lines_deleted": 16384
+    },
+    "time": {
+      "run_s": 6140.4,
+      "phases_s": {
+        "baselining": 7.9,
+        "indexing": 1.0,
+        "characterizing": 155.8,
+        "planning": 0.1,
+        "awaiting_plan_approval": 35.7,
+        "migrating": 5936.3,
+        "verifying": 3.7
+      },
+      "migrating_s": 5936.3,
+      "agent_s": 5237.4,
+      "unit_gates_s": 0.0,
+      "tools_s": 698.9,
+      "unit_s": {
+        "mean": 593.4,
+        "median": 265.0,
+        "max": 2747.2
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.23,
+      "agent_attempts_over_expected": 1.44,
+      "agent_s_per_attempt": 402.9,
+      "migrating_s_per_unit": 593.6,
+      "migrating_s_per_site": 59.4,
+      "migrating_s_per_changed_line": 0.27,
+      "run_min_per_1k_project_lines": 11.58
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 307,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 2707.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 280.1,
+        "agent_s": 207.9,
+        "gate_s": 0.0,
+        "tools_s": 72.2,
+        "lines_changed": 1099
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 438,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 2750.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 327.8,
+        "agent_s": 249.8,
+        "gate_s": 0.0,
+        "tools_s": 78.0,
+        "lines_changed": 987
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 349,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 2721.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 231.5,
+        "agent_s": 163.0,
+        "gate_s": 0.0,
+        "tools_s": 68.5,
+        "lines_changed": 650
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 448,
+        "sites": 14,
+        "expected_attempts": 0.9,
+        "estimated_s": 2753.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 166.4,
+        "agent_s": 103.2,
+        "gate_s": 0.0,
+        "tools_s": 63.2,
+        "lines_changed": 784
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 868,
+        "sites": 14,
+        "expected_attempts": 0.9,
+        "estimated_s": 2889.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 362.9,
+        "agent_s": 291.6,
+        "gate_s": 0.0,
+        "tools_s": 71.3,
+        "lines_changed": 1608
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 3164,
+        "sites": 13,
+        "expected_attempts": 0.9,
+        "estimated_s": 3633.4,
+        "status": "committed",
+        "attempts": 3,
+        "agent_waits": 3,
+        "actual_s": 2747.2,
+        "agent_s": 2602.4,
+        "gate_s": 0.0,
+        "tools_s": 144.9,
+        "lines_changed": 6197
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 269,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 2695.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 167.6,
+        "agent_s": 105.9,
+        "gate_s": 0.0,
+        "tools_s": 61.7,
+        "lines_changed": 690
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 651,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 2819.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 249.8,
+        "agent_s": 188.1,
+        "gate_s": 0.0,
+        "tools_s": 61.8,
+        "lines_changed": 1210
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 4,
+        "lines": 495,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 2768.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 240.2,
+        "agent_s": 184.5,
+        "gate_s": 0.0,
+        "tools_s": 55.7,
+        "lines_changed": 1034
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 16,
+        "lines": 8835,
+        "sites": 13,
+        "expected_attempts": 0.9,
+        "estimated_s": 92.6,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 1161.0,
+        "agent_s": 1141.0,
+        "gate_s": 0.0,
+        "tools_s": 20.0,
+        "lines_changed": 15199
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 148,
+    "duration_ms": 6206756,
+    "total_cost_usd_equivalent": 25.097714999999997,
+    "usage": {
+      "input_tokens": 238,
+      "cache_creation_input_tokens": 794937,
+      "cache_read_input_tokens": 39718589,
+      "output_tokens": 539670,
+      "output_tokens_details": {
+        "thinking_tokens": 272747
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 794937,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1839,
+          "cache_read_input_tokens": 816931,
+          "cache_creation_input_tokens": 7671,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 7671
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The whole port is done. The library is now standalone safe Rust (no `unsafe` anywhere), and all 10 planned units are committed on `codecoremorph/20261116-130929-5708`. The final check, a clean build plus the full test run, passed. The run took about 102 minutes and made no model calls.\n\n| Unit | What it ported | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `mxml-private.c`: default type callbacks, per-thread global data | 1 | `378c319` |\n| U-0002 | `mxml-entity.c`: entity callbacks, standard entity table | 1 | `d995dc4` |\n| U-0003 | `mxml-attr.c`: attributes | 1 | `9a5cf50` |\n| U-0004 | `mxml-get.c`: the 14 getters | 1 | `3053024` |\n| U-0005 | `mxml-node.c`: building the tree, deleting, reference counts | 1 | `62b3ff6` |\n| U-0006 | `mxml-file.c`: the XML loader and writer | 3 | `b4fbab8` |\n| U-0007 | `mxml-search.c`: tree walking, find element, find path | 1 | `63867a6` |\n| U-0008 | `mxml-index.c`: indexes | 1 | `c119712` |\n| U-0009 | `mxml-set.c`: the setters | 1 | `824b662` |\n| U-0010 | Retirement: deleted the C and the Make build | 2 | `fdeb8e5` |\n\n**What changed in the retirement (U-0010):**\n- **Node handles:** the API now works on a Rust `Document` holding all the nodes, with node handles in place of C pointers.\n- **Callbacks and I/O:** callbacks are Rust functions and closures. Input is any reader or byte string, output any writer or buffer.\n- **Variadic functions:** the C's `printf`-style functions (`mxml_error`, the `...f` setters) take `format_args!`.\n- **Tests:** the C test program `testmxml.c` was deleted. `rust/mxml_rs/tests/testmxml.rs` (10 tests) takes over the one baseline test, `make test`. It repeats the program's checks and its three output comparisons on `test.xml`, which all passed before the port.\n- **Maps:** `rust/symbol-map.toml` maps all 82 C functions to the Rust that replaced them, and `rust/test-map.toml` maps `make:test` to the 10 tests.\n\n**What the verification didn't cover:**\n- **No characterization tests were written.** The run flagged 47 untested functions, but the tool can't add such tests to this autoconf build yet. The fix it suggested was a manifest setting, and the manifest is outside the folder I can write to, so I dropped all 10 jobs. Those functions were checked only by the existing test and, at the end, the new Rust tests.\n- **Six C++ files aren't built** in this configuration (`test/class.cxx`, `enum.cxx`, `function.cxx`, `functype.cxx`, `struct.cxx`, `type.cxx`). No unit changed them.\n- **Other platforms' build files are stale.** `vcnet/` and `xcode/` were excluded from the port and still list the deleted C files.\n- **No tests were excused.** Nothing was skipped, too large or left out of the plan. The plan had no units for programs or test files because it found none to port.\n\n**Behavior that differs from the C, all recorded in the report:**\n- Several inputs that crashed the C (null strings or file pointers, elements with no name) now get a null result or an error instead.\n- Real numbers are parsed and printed in Rust, matching glibc for ordinary values. Hexadecimal float input is only approximated.\n- Custom node data is now owned and dropped by Rust instead of freed by a destroy callback, and user data is a plain integer.\n- File saves buffer their output and flush at the end.\n\n**Two tool quirks I worked around, both in U-0006:**\n- **Interface check:** the check treated a callback type as changed because the header and the C source spell it differently. I kept six redeclarations in `mxml-file.c` until the retirement deleted it.\n- **ABI check:** this check only looks at files changed in the current attempt, so a retry that doesn't touch the Rust crate fails it falsely.\n\nTo review: `git diff fd47c7d codecoremorph/20261116-130929-5708`, or `git log` on that branch for one commit per unit. Nothing has been merged.\n\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\mxml\\.codecoremorph\\runs\\20261116-130929-5708\\report.md`."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 148,
+      "duration_ms": 6206756,
+      "total_cost_usd_equivalent": 25.097714999999997,
+      "usage": {
+        "input_tokens": 238,
+        "cache_creation_input_tokens": 794937,
+        "cache_read_input_tokens": 39718589,
+        "output_tokens": 539670,
+        "output_tokens_details": {
+          "thinking_tokens": 272747
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 794937,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1839,
+            "cache_read_input_tokens": 816931,
+            "cache_creation_input_tokens": 7671,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 7671
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The whole port is done. The library is now standalone safe Rust (no `unsafe` anywhere), and all 10 planned units are committed on `codecoremorph/20261116-130929-5708`. The final check, a clean build plus the full test run, passed. The run took about 102 minutes and made no model calls.\n\n| Unit | What it ported | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `mxml-private.c`: default type callbacks, per-thread global data | 1 | `378c319` |\n| U-0002 | `mxml-entity.c`: entity callbacks, standard entity table | 1 | `d995dc4` |\n| U-0003 | `mxml-attr.c`: attributes | 1 | `9a5cf50` |\n| U-0004 | `mxml-get.c`: the 14 getters | 1 | `3053024` |\n| U-0005 | `mxml-node.c`: building the tree, deleting, reference counts | 1 | `62b3ff6` |\n| U-0006 | `mxml-file.c`: the XML loader and writer | 3 | `b4fbab8` |\n| U-0007 | `mxml-search.c`: tree walking, find element, find path | 1 | `63867a6` |\n| U-0008 | `mxml-index.c`: indexes | 1 | `c119712` |\n| U-0009 | `mxml-set.c`: the setters | 1 | `824b662` |\n| U-0010 | Retirement: deleted the C and the Make build | 2 | `fdeb8e5` |\n\n**What changed in the retirement (U-0010):**\n- **Node handles:** the API now works on a Rust `Document` holding all the nodes, with node handles in place of C pointers.\n- **Callbacks and I/O:** callbacks are Rust functions and closures. Input is any reader or byte string, output any writer or buffer.\n- **Variadic functions:** the C's `printf`-style functions (`mxml_error`, the `...f` setters) take `format_args!`.\n- **Tests:** the C test program `testmxml.c` was deleted. `rust/mxml_rs/tests/testmxml.rs` (10 tests) takes over the one baseline test, `make test`. It repeats the program's checks and its three output comparisons on `test.xml`, which all passed before the port.\n- **Maps:** `rust/symbol-map.toml` maps all 82 C functions to the Rust that replaced them, and `rust/test-map.toml` maps `make:test` to the 10 tests.\n\n**What the verification didn't cover:**\n- **No characterization tests were written.** The run flagged 47 untested functions, but the tool can't add such tests to this autoconf build yet. The fix it suggested was a manifest setting, and the manifest is outside the folder I can write to, so I dropped all 10 jobs. Those functions were checked only by the existing test and, at the end, the new Rust tests.\n- **Six C++ files aren't built** in this configuration (`test/class.cxx`, `enum.cxx`, `function.cxx`, `functype.cxx`, `struct.cxx`, `type.cxx`). No unit changed them.\n- **Other platforms' build files are stale.** `vcnet/` and `xcode/` were excluded from the port and still list the deleted C files.\n- **No tests were excused.** Nothing was skipped, too large or left out of the plan. The plan had no units for programs or test files because it found none to port.\n\n**Behavior that differs from the C, all recorded in the report:**\n- Several inputs that crashed the C (null strings or file pointers, elements with no name) now get a null result or an error instead.\n- Real numbers are parsed and printed in Rust, matching glibc for ordinary values. Hexadecimal float input is only approximated.\n- Custom node data is now owned and dropped by Rust instead of freed by a destroy callback, and user data is a plain integer.\n- File saves buffer their output and flush at the end.\n\n**Two tool quirks I worked around, both in U-0006:**\n- **Interface check:** the check treated a callback type as changed because the header and the C source spell it differently. I kept six redeclarations in `mxml-file.c` until the retirement deleted it.\n- **ABI check:** this check only looks at files changed in the current attempt, so a retry that doesn't touch the Rust crate fails it falsely.\n\nTo review: `git diff fd47c7d codecoremorph/20261116-130929-5708`, or `git log` on that branch for one commit per unit. Nothing has been merged.\n\nThe full report is at `E:\\codecoremorph-trials\\c-eval\\mxml\\.codecoremorph\\runs\\20261116-130929-5708\\report.md`."
+    }
+  ]
+}

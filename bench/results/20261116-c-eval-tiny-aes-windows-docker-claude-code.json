@@ -1,0 +1,299 @@
+{
+  "date": "2026-11-16T13:01:40+00:00",
+  "project": "tiny-aes v1.0.0 (e72b6eff0884)",
+  "migration": "c99 -> rust2021",
+  "agent": "claude-code/default",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "e72b6eff0884673997d0ca6385169bbd9b31936d",
+  "seconds": 1837.5,
+  "runs_started": 1,
+  "run_id": "20261116-123147-7f9d",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 2
+    },
+    "success_rate": 1.0,
+    "agent_units": 2,
+    "attempts_per_agent_unit": 1.5,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "99f2575c0b16e126e8438db4a825dc3b98062f17",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 29,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 2.1
+    },
+    "port": {
+      "symbols": 8,
+      "tests_mapped": 1,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "AES_init_ctx: The key's length selects the key size (16, 24 or 32 bytes), which the C chose when it was compiled, with the AES192 and AES256 macros; another length is an InvalidKeyLength error. Context::new starts from an IV of zeros, where the C left the context's IV as it was.",
+        "AES_init_ctx_iv: The key's length selects the key size (16, 24 or 32 bytes), which the C chose when it was compiled; another length is an InvalidKeyLength error.",
+        "AES_CBC_encrypt_buffer: The Rust goes through the whole blocks of its slice and leaves a partial last block as it is; the C took a partial last block as a whole one, past the length it was given (its header required a multiple of 16).",
+        "AES_CBC_decrypt_buffer: The Rust goes through the whole blocks of its slice and leaves a partial last block as it is; the C took a partial last block as a whole one, past the length it was given (its header required a multiple of 16).",
+        "make:test: make test built test.c for AES-128, AES-192 and AES-256 and ran it; its exit status counted the failures of six checks of the NIST SP 800-38A vectors: CBC encryption and decryption, CTR encryption and decryption, ECB decryption and encryption. tests/test_c.rs makes those checks for each key size; its CTR encryption encrypts the plaintext, where test.c decrypted the ciphertext for both. test.c's verbose ECB test checked nothing and only printed; encrypt_ecb_verbose checks the AES-128 ciphertext it printed. In the AES-192 and AES-256 builds that test read its 16-byte key past its end, so its output there had no defined value to check."
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": [
+        "CMakeLists.txt (2 files, which project.exclude keeps out of the port)",
+        "aes.hpp (1 file, which project.exclude keeps out of the port)"
+      ]
+    },
+    "rules": [
+      {
+        "id": "port_c_module",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 8,
+        "converted_sites": 8
+      },
+      {
+        "id": "port_c_executable",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_c_tests",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "retire_c",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 3,
+        "converted_sites": 3
+      }
+    ],
+    "review_items": 12,
+    "duration_s": 1765.0,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 1094.8,
+        "changed_files": 12,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 397.1,
+        "changed_files": 13,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-trials\\c-eval\\tiny-aes\\.codecoremorph\\runs\\20261116-123147-7f9d\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 4,
+      "project_lines": 980,
+      "units": 2,
+      "rule_sites": {
+        "port_c_module": 8,
+        "port_c_executable": 3,
+        "retire_c": 3
+      },
+      "sites": 14,
+      "files": 4,
+      "lines": 978,
+      "expected_agent_attempts": 1.8,
+      "verify_s": 1.7,
+      "estimated_s": 370.9,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 2
+      },
+      "agent_units": 2,
+      "agent_attempts": 3,
+      "changed_files": 13,
+      "lines_added": 982,
+      "lines_deleted": 1039
+    },
+    "time": {
+      "run_s": 1765.0,
+      "phases_s": {
+        "baselining": 1.0,
+        "indexing": 1.6,
+        "characterizing": 249.7,
+        "planning": 0.0,
+        "awaiting_plan_approval": 17.3,
+        "migrating": 1493.2,
+        "verifying": 2.2
+      },
+      "migrating_s": 1493.2,
+      "agent_s": 1350.3,
+      "unit_gates_s": 0.0,
+      "tools_s": 142.9,
+      "unit_s": {
+        "mean": 746.5,
+        "median": 746.5,
+        "max": 1095.3
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 4.03,
+      "agent_attempts_over_expected": 1.67,
+      "agent_s_per_attempt": 450.1,
+      "migrating_s_per_unit": 746.6,
+      "migrating_s_per_site": 106.7,
+      "migrating_s_per_changed_line": 0.74,
+      "run_min_per_1k_project_lines": 30.02
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_c_module"
+        ],
+        "files": 2,
+        "lines": 572,
+        "sites": 8,
+        "expected_attempts": 0.9,
+        "estimated_s": 275.6,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 1095.3,
+        "agent_s": 962.3,
+        "gate_s": 0.0,
+        "tools_s": 133.0,
+        "lines_changed": 1455
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "retire_c"
+        ],
+        "files": 4,
+        "lines": 978,
+        "sites": 3,
+        "expected_attempts": 0.9,
+        "estimated_s": 95.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 397.6,
+        "agent_s": 388.0,
+        "gate_s": 0.0,
+        "tools_s": 9.6,
+        "lines_changed": 1428
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 66,
+    "duration_ms": 1835445,
+    "total_cost_usd_equivalent": 7.750930600000003,
+    "usage": {
+      "input_tokens": 102,
+      "cache_creation_input_tokens": 300131,
+      "cache_read_input_tokens": 7990224,
+      "output_tokens": 187564,
+      "output_tokens_details": {
+        "thinking_tokens": 109888
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 300131,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1948,
+          "cache_read_input_tokens": 323918,
+          "cache_creation_input_tokens": 5878,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 5878
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port is done: both units are committed, and the final check (a clean build plus all 29 Rust tests) passed. All of the library's code is now safe Rust with no `unsafe`, in the `aes_rs` crate under `rust/`, on branch `codecoremorph/20261116-123147-7f9d`. Your working tree and branches weren't touched.\n\n| Unit | Rule | Attempts | Commit | Files |\n|---|---|---|---|---|\n| U-0001 | `port_c_module` (`aes.c`, `aes.h`, `Makefile`) | 2 | `1a1e89a9b8c0` | 12 |\n| U-0002 | `retire_c` (deletes the remaining C and the Make build) | 1 | `99f2575c0b16` | 13 |\n\n**U-0001.** I ported `aes.c` to `rust/aes_rs/src/aes.rs` and exported its 8 functions under their C names, so the unchanged `test.c` linked against Rust. `make test` passed for AES-128, AES-192 and AES-256. Attempt 1 failed on two things:\n- **cbindgen:** it wrote `AES_ctx *` without the `struct` tag, and `aes.h` has no typedef for it, so the interface check couldn't parse the generated header. I let cbindgen read the generated bindings module (`bridge::sys`) so it writes `struct AES_ctx *`.\n- **Clippy:** one warning, now fixed.\n\n**U-0002.** With the C gone, the key's length (16, 24 or 32 bytes) now picks the key size at runtime, and a wrong length returns an `InvalidKeyLength` error. Before, the size was fixed when the crate was compiled, which only existed to match the C struct layout. One test run now covers all three sizes:\n- 10 unit tests in `aes.rs`.\n- `tests/test_c.rs` with 19 tests: test.c's six checks for each key size, plus its verbose AES-128 ECB output.\n- `rust/test-map.toml` maps the one baseline test, `make:test`, to those 19 tests.\n\n**Behaviour that differs from the C**\n- **Partial CBC block:** the Rust CBC functions leave a trailing partial block untouched. The C processed it as a whole block, reading and writing past the given length, which the header already forbade.\n- **New context IV:** `Context::new` starts with a zero IV, where the C left it uninitialised.\n- **Rust API changed between the units:** U-0002 replaced the fixed-size `Key`/`RoundKey` types from U-0001 with `KeySize` and `RoundKeys`. The cipher itself is unchanged.\n\n**Not covered by the verification**\n- **Characterization tests:** none were kept. The project's `CFLAGS` includes `-c`, so the tool's generated test rule produced an object file instead of a program (\"Permission denied\"). I aborted the second job for that reason. `AES_ctx_set_iv` therefore had no test pinning its behaviour before the port; the Rust tests cover it now.\n- **Test-assertion warning (I-4):** this flags 5 unit tests whose assertions I rewrote for the new API. None was removed or weakened: each makes the same checks, now for all three key sizes. Please confirm that in the diff.\n- **Files nothing compiles:** `test.cpp` was never built, and the plan excluded `CMakeLists.txt` and `aes.hpp` from the port. Those three, plus `README.md`, `conanfile.py`, `library.json` and `test_package/`, still describe or build the deleted C. Delete or rewrite them as a follow-up.\n- **Skipped or excluded units:** none. `port_c_executable` and `port_c_tests` found nothing to port.\n- **Excused tests:** none; the baseline had one passing test and no failing or flaky ones.\n\nTo review: `git diff e72b6eff0884 codecoremorph/20261116-123147-7f9d`, or `git log` on that branch. Merging is up to you. The full report is at `E:\\codecoremorph-trials\\c-eval\\tiny-aes\\.codecoremorph\\runs\\20261116-123147-7f9d\\report.md`."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 66,
+      "duration_ms": 1835445,
+      "total_cost_usd_equivalent": 7.750930600000003,
+      "usage": {
+        "input_tokens": 102,
+        "cache_creation_input_tokens": 300131,
+        "cache_read_input_tokens": 7990224,
+        "output_tokens": 187564,
+        "output_tokens_details": {
+          "thinking_tokens": 109888
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 300131,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 1948,
+            "cache_read_input_tokens": 323918,
+            "cache_creation_input_tokens": 5878,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 5878
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port is done: both units are committed, and the final check (a clean build plus all 29 Rust tests) passed. All of the library's code is now safe Rust with no `unsafe`, in the `aes_rs` crate under `rust/`, on branch `codecoremorph/20261116-123147-7f9d`. Your working tree and branches weren't touched.\n\n| Unit | Rule | Attempts | Commit | Files |\n|---|---|---|---|---|\n| U-0001 | `port_c_module` (`aes.c`, `aes.h`, `Makefile`) | 2 | `1a1e89a9b8c0` | 12 |\n| U-0002 | `retire_c` (deletes the remaining C and the Make build) | 1 | `99f2575c0b16` | 13 |\n\n**U-0001.** I ported `aes.c` to `rust/aes_rs/src/aes.rs` and exported its 8 functions under their C names, so the unchanged `test.c` linked against Rust. `make test` passed for AES-128, AES-192 and AES-256. Attempt 1 failed on two things:\n- **cbindgen:** it wrote `AES_ctx *` without the `struct` tag, and `aes.h` has no typedef for it, so the interface check couldn't parse the generated header. I let cbindgen read the generated bindings module (`bridge::sys`) so it writes `struct AES_ctx *`.\n- **Clippy:** one warning, now fixed.\n\n**U-0002.** With the C gone, the key's length (16, 24 or 32 bytes) now picks the key size at runtime, and a wrong length returns an `InvalidKeyLength` error. Before, the size was fixed when the crate was compiled, which only existed to match the C struct layout. One test run now covers all three sizes:\n- 10 unit tests in `aes.rs`.\n- `tests/test_c.rs` with 19 tests: test.c's six checks for each key size, plus its verbose AES-128 ECB output.\n- `rust/test-map.toml` maps the one baseline test, `make:test`, to those 19 tests.\n\n**Behaviour that differs from the C**\n- **Partial CBC block:** the Rust CBC functions leave a trailing partial block untouched. The C processed it as a whole block, reading and writing past the given length, which the header already forbade.\n- **New context IV:** `Context::new` starts with a zero IV, where the C left it uninitialised.\n- **Rust API changed between the units:** U-0002 replaced the fixed-size `Key`/`RoundKey` types from U-0001 with `KeySize` and `RoundKeys`. The cipher itself is unchanged.\n\n**Not covered by the verification**\n- **Characterization tests:** none were kept. The project's `CFLAGS` includes `-c`, so the tool's generated test rule produced an object file instead of a program (\"Permission denied\"). I aborted the second job for that reason. `AES_ctx_set_iv` therefore had no test pinning its behaviour before the port; the Rust tests cover it now.\n- **Test-assertion warning (I-4):** this flags 5 unit tests whose assertions I rewrote for the new API. None was removed or weakened: each makes the same checks, now for all three key sizes. Please confirm that in the diff.\n- **Files nothing compiles:** `test.cpp` was never built, and the plan excluded `CMakeLists.txt` and `aes.hpp` from the port. Those three, plus `README.md`, `conanfile.py`, `library.json` and `test_package/`, still describe or build the deleted C. Delete or rewrite them as a follow-up.\n- **Skipped or excluded units:** none. `port_c_executable` and `port_c_tests` found nothing to port.\n- **Excused tests:** none; the baseline had one passing test and no failing or flaky ones.\n\nTo review: `git diff e72b6eff0884 codecoremorph/20261116-123147-7f9d`, or `git log` on that branch. Merging is up to you. The full report is at `E:\\codecoremorph-trials\\c-eval\\tiny-aes\\.codecoremorph\\runs\\20261116-123147-7f9d\\report.md`."
+    }
+  ]
+}
