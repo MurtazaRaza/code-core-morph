@@ -65,3 +65,27 @@ def c_abi_feedback(rule_id: str, headers: Sequence[str], problems: Sequence[str]
     if len(problems) > MAX_SHOWN:
         lines.append(f"- … and {len(problems) - MAX_SHOWN} more")
     return "\n".join(lines)
+
+
+_RUST_TYPE = re.compile(r"unknown type name '(Option|Box|Vec|Result|String|&\w*|\w+<)")
+_CONFLICT = re.compile(r"conflicting types for '(\w+)'")
+
+
+def cbindgen_tip(reason: str) -> str:
+    """A hint for a header cbindgen wrote from the new code that doesn't parse as C, by the
+    parse error (D-89): what cbindgen copied as it was, or a bridge's own C declarations."""
+    if _RUST_TYPE.search(reason):
+        return (
+            " cbindgen copies a type it can't translate into the header as it is: write a "
+            'function pointer parameter as `Option<unsafe extern "C" fn(..) -> T>` in the '
+            "signature itself, not through a type alias, and keep Rust-only types out of "
+            "exported signatures."
+        )
+    found = _CONFLICT.search(reason)
+    if found:
+        return (
+            f" cbindgen wrote the crate's own declaration of `{found.group(1)}` (an "
+            '`extern "C"` block calling C) into the header, where it conflicts with the C '
+            "library's: put such declarations in a module marked `/// cbindgen:ignore`."
+        )
+    return ""

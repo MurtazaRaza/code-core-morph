@@ -15,6 +15,7 @@ from codecoremorph.adapters.rust.cargo import (
     cbindgen_config,
     crate_files,
     edition,
+    feature_runs,
     fetched_packages,
     find_crates,
     library_compiling,
@@ -235,3 +236,47 @@ def test_cbindgen_config() -> None:
     config = cbindgen_config()
     assert 'language = "C"' in config
     assert "usize_is_size_t = true" in config
+
+
+def test_a_c_ports_corrosion_block_links_through_the_targets_properties() -> None:
+    # cJSON links its library with the plain signature, which CMake won't mix with PUBLIC,
+    # and installs it with install(EXPORT), which refuses a crate in no export set (D-89).
+    text = 'add_library(cjson cJSON.h)\ntarget_link_libraries(cjson "${MATH}")\n'
+    once = with_corrosion_block(text, "rust/Cargo.toml", ("cjson", "cjson_rs"), by_property=True)
+    assert once.endswith(
+        "\n".join(
+            [
+                "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)",
+                "set_property(TARGET cjson APPEND PROPERTY LINK_LIBRARIES cjson_rs)",
+                "set_property(TARGET cjson APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
+                "$<BUILD_INTERFACE:cjson_rs>)",
+                CORROSION_END,
+            ]
+        )
+        + "\n"
+    )
+    again = with_corrosion_block(once, "rust/Cargo.toml", ("cjson", "cjson_rs"), by_property=True)
+    assert again == once
+    both = with_corrosion_block(
+        once, "rust/Cargo.toml", ("cjson_utils", "cjson_utils_rs"), by_property=True
+    )
+    assert both.count("corrosion_import_crate(") == 1
+    assert both.count("PROPERTY LINK_LIBRARIES") == 2
+    assert "target_link_libraries(cjson PUBLIC" not in both
+
+
+def test_each_feature_of_a_package_is_a_run_of_its_own() -> None:
+    # http-parser's port: the C built with and without its strict checks (D-89).
+    manifests = {
+        "rust/http_parser_rs": (
+            '[package]\nname = "http_parser_rs"\n\n[features]\ndefault = []\nstrict = []\n'
+        ),
+        "rust/aes_rs": '[package]\nname = "aes_rs"\n\n[features]\naes256 = []\naes192 = []\n',
+        "rust/plain_rs": '[package]\nname = "plain_rs"\n',
+        "rust/broken": "[package\n",
+    }
+    assert feature_runs(manifests) == [
+        ("aes_rs", "aes192"),
+        ("aes_rs", "aes256"),
+        ("http_parser_rs", "strict"),
+    ]

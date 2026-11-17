@@ -198,7 +198,7 @@ def unit_message(
     elif port_units is PortUnits.RETIREMENT:
         note += c_retirement_note(unit) if c_port else retirement_note(unit)
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE and c_port:
-        note += c_executable_note(unit.port)
+        note += c_executable_note(unit.port, cmake=builds_with_cmake(unit))
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE:
         note += executable_note(unit, unit.port)
     elif unit.port is not None and port_units is PortUnits.TESTS:
@@ -283,11 +283,19 @@ def translation_unit_note(
     callers = ", ".join(port.callers) or "none"
     headers = ", ".join(unit.reference_files) or "none"
     automake = any(f.rsplit("/", 1)[-1] == "Makefile.am" for f in unit.files)
-    build = (
-        "with its file in its library's `_SOURCES` in the Makefile.am"
-        if automake
-        else "with its objects in the build files"
-    )
+    cmake = builds_with_cmake(unit)
+    if automake:
+        build = "with its file in its library's `_SOURCES` in the Makefile.am"
+    elif cmake:
+        # A CMake project's crates go in through Corrosion (D-89).
+        build = (
+            "with the file out of its library target's sources in the CMake files: the marked "
+            "Corrosion block at the end of the top-level CMakeLists.txt links the crate into "
+            "that target (don't edit the block), and a target left with no source file keeps "
+            "its headers and gets `LINKER_LANGUAGE C`"
+        )
+    else:
+        build = "with its objects in the build files"
     them = "them" if len(gone) > 1 else "it"
     deletion = f", and delete {them} once Rust does the job, {build}."
     if variadic:
@@ -312,6 +320,44 @@ def translation_unit_note(
         f"headers and don't change: {callers}. The build folds the crate into the library, so "
         "the C callers and tests link against Rust. Add the module's entries to "
         "rust/symbol-map.toml (read it first: it also says where earlier units went).\n\n"
+        f"{white_box_note(gone, port)}"
+    )
+
+
+def builds_with_cmake(unit: WorkUnit) -> bool:
+    """Whether a C port's unit is in a CMake project: its build files are CMake's, with no
+    Makefile among them (D-89)."""
+    names = {f.rsplit("/", 1)[-1] for f in unit.files}
+    return "CMakeLists.txt" in names and not names & {"Makefile", "GNUmakefile", "makefile"}
+
+
+def white_box_note(gone: Sequence[str], port: PortUnit) -> str:
+    """White-box tests that ``#include`` the C file itself (D-89): they stay as they are, and
+    a stand-in the include finds once the file is gone keeps them testing the Rust."""
+    if not port.white_box:
+        return ""
+    crate = port.crate
+    source = next((f for f in gone if f.lower().endswith(".c")), gone[0] if gone else "the file")
+    name = source.rsplit("/", 1)[-1]
+    tests = ", ".join(port.white_box_tests) or "none"
+    uses = ", ".join(f"`{u}`" for u in port.white_box_uses)
+    using = f": {uses}" if uses else ""
+    return (
+        f"**White-box tests.** {', '.join(port.white_box)} `#include` {source} itself, so these "
+        f"tests compile its code into their own and call what it keeps file-local{using}. They "
+        f"are the project's tests and don't change: {tests}. Deleting {source} breaks their "
+        "build, and keeping it would test the C instead of the Rust, so keep them testing the "
+        f"Rust with a stand-in, `rust/c-whitebox/{name}` (more files there if other C files "
+        "need one), that their include finds once the file is gone: a quoted include is searched "
+        "in the including file's own directory first, then in the include path, so the test "
+        "build gets the include directory from which the include's path reaches the stand-in. "
+        "The stand-in has only what the tests use of the file, as the C had it: its macros, its "
+        "types, and its file-local functions and variables as thin wrappers over test hooks the "
+        f'bridge exports (`#[no_mangle] pub extern "C" fn {crate}_test_<name>` over the module\'s '
+        "functions). It defines nothing the library exports, since the tests link the library, "
+        "which is Rust now. Make the module's functions the hooks reach `pub`, so the tests' "
+        "Rust translations can call them too. The retirement deletes rust/c-whitebox/ with the C "
+        "tests. Give the unit up only if a stand-in can't do this.\n\n"
     )
 
 
@@ -334,9 +380,9 @@ def executable_note(unit: WorkUnit, port: PortUnit) -> str:
     )
 
 
-def c_executable_note(port: PortUnit) -> str:
+def c_executable_note(port: PortUnit, *, cmake: bool = False) -> str:
     """A C program's unit (D-68): the program it becomes, where the build puts it, its
-    tests."""
+    tests. In a CMake project, the Rust program takes the executable's name (D-89)."""
     crate = port.crate
     deps = ", ".join(port.dependencies) or "none"
     tests = ", ".join(port.tests)
@@ -346,9 +392,16 @@ def c_executable_note(port: PortUnit) -> str:
         if port.tests
         else ""
     )
+    placed = (
+        "which takes the CMake executable's name: the executable's commands left the CMake "
+        "files, and the marked Corrosion block imports the `bin` under that name, so the tests "
+        "and install rules that name it run Rust"
+        if cmake
+        else f"which the Make build copies to {port.artifact or port.bin}"
+    )
     return (
         f"Port the C program `{port.bin}` to Rust: rust/{crate}/src/main.rs, the `bin` named "
-        f"`{port.bin}`, which the Make build copies to {port.artifact or port.bin}. It calls "
+        f"`{port.bin}`, {placed}. It calls "
         f"the Rust API of its library crates ({deps}), never their `bridge` or `sys` modules. "
         "Delete its C sources (listed under Left to do) once the program does their job, with "
         f"what the build files still say about them.{translate}\n\n"

@@ -127,3 +127,45 @@ def test_the_note_of_a_c_retirement() -> None:
     assert "the C tests that use only it." in note
     assert "Keep exporting every function the kept headers declare (c_abi_kept" in note
     assert "take what the deleted files needed out of the Makefile" in note
+
+
+def test_a_unit_with_white_box_tests_gets_a_stand_in() -> None:
+    """Tests that #include the C file itself (D-89) keep testing the Rust through a stand-in
+    under rust/c-whitebox/; a unit without them gets no such paragraph."""
+    port = PortUnit(
+        build_target="cjson",
+        crate="cjson_rs",
+        module="c_json",
+        exports=["cJSON_Parse"],
+        white_box=["tests/common.h"],
+        white_box_tests=["tests/parse_number.c", "tests/print_number.c"],
+        white_box_uses=["parse_number", "global_hooks"],
+    )
+    unit = WorkUnit(
+        id="U-0001", seq=1, rules=["port_c_module"], files=["CMakeLists.txt", "cJSON.c"],
+        port=port,
+    )  # fmt: skip
+    note = translation_unit_note(unit, port)
+    assert "**White-box tests.** tests/common.h `#include` cJSON.c itself" in note
+    assert ": `parse_number`, `global_hooks`." in note
+    assert "don't change: tests/parse_number.c, tests/print_number.c." in note
+    assert "`rust/c-whitebox/cJSON.c`" in note
+    assert '`#[no_mangle] pub extern "C" fn cjson_rs_test_<name>`' in note
+    plain = port.model_copy(update={"white_box": [], "white_box_tests": [], "white_box_uses": []})
+    assert "White-box" not in translation_unit_note(unit, plain)
+
+
+def test_a_cmake_units_file_leaves_its_target_and_corrosion_links_the_crate() -> None:
+    port = PortUnit(
+        build_target="cjson", crate="cjson_rs", module="c_json", exports=["cJSON_Parse"]
+    )
+    unit = WorkUnit(
+        id="U-0001", seq=1, rules=["port_c_module"],
+        files=["CMakeLists.txt", "cJSON.c", "cJSON.h", "tests/CMakeLists.txt"], port=port,
+    )  # fmt: skip
+    note = translation_unit_note(unit, port)
+    assert "with the file out of its library target's sources in the CMake files" in note
+    assert "marked Corrosion block at the end of the top-level CMakeLists.txt" in note
+    assert "`LINKER_LANGUAGE C`" in note
+    make = unit.model_copy(update={"files": ["CMakeLists.txt", "Makefile", "cJSON.c"]})
+    assert "with its objects in the build files" in translation_unit_note(make, port)

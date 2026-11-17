@@ -527,6 +527,11 @@ class _Former:
             stem = source.rsplit("/", 1)[-1].split(".", 1)[0]
             package, module = self.names(library, stem, taken.setdefault(library, set()))
             taken[library].add(module)
+            # Tests that #include the source file itself compile its code into theirs (D-89).
+            reaching = sorted(self._including(source) - set(library_of))
+            white_box = sorted(p for p in reaching if source in project.includes.get(p, set()))
+            # A header in a test directory has the role of a test: the C files are the tests.
+            white_box_tests = [p for p in reaching if p.lower().endswith(".c")]
             port = PortUnit(
                 build_target=library,
                 crate=package,
@@ -536,6 +541,9 @@ class _Former:
                 exports=[s.name for s in exports],
                 sys_headers=kept,
                 archive=archive_of.get(library),
+                white_box=white_box,
+                white_box_tests=white_box_tests,
+                white_box_uses=project.c_internals_used(source, reaching) if reaching else [],
             )
             functions = sum(s.kind is SymbolKind.FUNCTION for s in exports)
             exported = " and ".join(
@@ -565,6 +573,12 @@ class _Former:
             if callers:
                 keep = "C file keeps" if len(callers) == 1 else "C files keep"
                 note += f"; {len(callers)} {keep} calling it through its headers"
+            if white_box:
+                n = len(white_box_tests)
+                note += (
+                    f"; {n} test file{'' if n == 1 else 's'} compile{'s' if n == 1 else ''} it "
+                    f"in through {', '.join(white_box)} (white-box tests)"
+                )
             draft = _Draft(
                 rule=scan.rule_id,
                 files=sorted({*unit_files, *kept, *project.build_files}),
@@ -605,6 +619,21 @@ class _Former:
             for path in sorted(self.project.includes.get(todo.pop(), set())):
                 entry = self.project.files.get(path)
                 if path not in found and entry is not None and entry.role is FileRole.HEADER:
+                    found.add(path)
+                    todo.append(path)
+        return found
+
+    def _including(self, source: str) -> set[str]:
+        """The files that include ``source``, directly or through files that include it."""
+        includers: dict[str, set[str]] = {}
+        for path, targets in self.project.includes.items():
+            for target in targets:
+                includers.setdefault(target, set()).add(path)
+        found: set[str] = set()
+        todo = [source]
+        while todo:
+            for path in sorted(includers.get(todo.pop(), set())):
+                if path not in found and path != source:
                     found.add(path)
                     todo.append(path)
         return found

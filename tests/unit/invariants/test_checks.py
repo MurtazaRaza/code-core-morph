@@ -34,6 +34,7 @@ from codecoremorph.invariants.checks import (
     check_warnings,
     comparable_signature,
     diff_size,
+    left_to_c_abi_kept,
     patch_lines,
     still_declared,
 )
@@ -285,6 +286,40 @@ def test_a_c_abi_change_is_never_covered() -> None:
     (change,) = api_changes(old, [], files=["include/api.h"])
     result = check_api([change], api_changing=True, covered=lambda _c: True, gated=False)
     assert not result.passed
+
+
+def test_a_ports_c_abi_functions_are_c_abi_kepts() -> None:
+    """I-6 compares spellings, c_abi_kept canonical types: in a port unit, a C ABI function the
+    C still declares (http-parser's header spells `const http_parser *` where the definition had
+    `const struct http_parser *`) and one nothing outside the unit uses (its
+    `http_message_needs_eof`) are c_abi_kept's; a variable, or a function another file still
+    uses, stays I-6's."""
+    c_abi = {"boundary": Boundary.C_ABI}
+    final = symbol("http_body_is_final", "int (const struct http_parser *)", file="p.c", **c_abi)
+    needs = symbol("http_message_needs_eof", "int (const http_parser *)", file="p.c", **c_abi)
+    used = symbol("http_parser_init", "void (http_parser *, int)", file="p.c", **c_abi)
+    flag = symbol("http_flag", "int", file="p.c", kind=SymbolKind.VARIABLE, **c_abi)
+    declared = symbol("http_body_is_final", "int (const http_parser *)", file="p.h", **c_abi)
+    changes = {
+        c.qualified_name: c
+        for c in api_changes([final, needs, used, flag], [declared], files=["p.c"])
+    }
+    assert sorted(changes) == [
+        "http_body_is_final", "http_flag", "http_message_needs_eof", "http_parser_init",
+    ]  # fmt: skip
+    kinds = {s.id: s.kind for s in (final, needs, used, flag)}
+    users = {"http_parser_init": {"test.c"}}
+
+    def left(name: str) -> bool:
+        change = changes[name]
+        return left_to_c_abi_kept(
+            change, kinds=kinds, users=users.get(name, set()), unit_files={"p.c", "p.h"}
+        )
+
+    assert left("http_body_is_final")  # still declared: c_abi_kept compares it
+    assert left("http_message_needs_eof")  # no file outside the unit uses it
+    assert not left("http_parser_init")  # removed, and test.c uses it
+    assert not left("http_flag")  # a variable
 
 
 def test_suppressions() -> None:

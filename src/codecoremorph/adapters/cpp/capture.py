@@ -213,12 +213,14 @@ def build_model(calls: Iterable[Call], *, root: str, compilers: dict[str, str]) 
         found = {rel(object_source[o]) for o in objects if o in object_source}
         return sorted(f for f in found if f is not None)
 
-    targets: dict[str, dict[str, Any]] = {}
+    # By kind and name: a program is often named as its library (argon2 and libargon2.a).
+    targets: dict[tuple[TargetKind, str], dict[str, Any]] = {}
     artifact_target: dict[str, str] = {}
 
     def target(name: str, kind: TargetKind) -> dict[str, Any]:
         return targets.setdefault(
-            name, {"name": name, "kind": kind, "files": set(), "deps": set(), "artifacts": set()}
+            (kind, name),
+            {"name": name, "kind": kind, "files": set(), "deps": set(), "artifacts": set()},
         )
 
     for archive, members in sorted(archives.items()):
@@ -261,14 +263,26 @@ def build_model(calls: Iterable[Call], *, root: str, compilers: dict[str, str]) 
                 if posixpath.dirname(artifact) in link.libdirs and library_name(artifact) == lib:
                     entry["deps"].add(name)
 
+    # Target names are IDs and name the crates: a library that shares its name with a program
+    # takes its file's (libargon2), and the program keeps the name it runs by.
+    programs = {e["name"] for e in targets.values() if e["kind"] is TargetKind.EXECUTABLE}
+    renamed: dict[str, str] = {
+        e["name"]: f"lib{e['name']}"
+        for e in targets.values()
+        if e["kind"] is TargetKind.LIBRARY and e["name"] in programs
+    }
     built: list[BuildTarget] = []
+    for entry in targets.values():
+        if entry["kind"] is TargetKind.LIBRARY:
+            entry["name"] = renamed.get(entry["name"], entry["name"])
     for entry in sorted(targets.values(), key=lambda t: (t["kind"].value, t["name"])):
+        deps: set[str] = {renamed.get(str(d), str(d)) for d in entry["deps"]}
         built.append(
             BuildTarget(
                 name=entry["name"],
                 kind=entry["kind"],
                 files=sorted(entry["files"]),
-                dependencies=sorted(entry["deps"] - {entry["name"]}),
+                dependencies=sorted(deps - {entry["name"]}),
                 artifacts=sorted(a for a in entry["artifacts"] if a is not None),
             )
         )

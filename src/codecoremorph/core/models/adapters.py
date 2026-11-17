@@ -68,6 +68,12 @@ class LanguageConfig(CoreModel):
         "toolchain, so a target whose own image lacks the source's tools names one that has "
         "them (a C target of a Rust port: the Rust image, D-75)",
     )
+    port_build_system: str | None = Field(
+        default=None,
+        description="A port's target: the source project's build system, which the new code "
+        "joins until the retirement (a C port's crates go into CMake through Corrosion, into "
+        "Make through a marked block, D-89)",
+    )
     build_system: str | None = None
     configure_args: list[str] = Field(default_factory=list[str])
     build_targets: list[str] = Field(default_factory=list[str])

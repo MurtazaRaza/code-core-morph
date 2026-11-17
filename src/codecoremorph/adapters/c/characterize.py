@@ -14,12 +14,19 @@ the archives of the libraries that compile the code it tests (and Rust's native 
 once a port folds a crate into them), and runs it before the test target's own recipe, its
 exit status ignored so the project's tests always run: the TAP points judge it. The tests are C
 tests like the project's own, so a port to Rust translates them with the rest (D-60).
+
+The other builds (D-89): an automake project's block goes into its top-level ``Makefile.am``
+(automake copies plain rules through) and runs from ``check-local``; one whose ``configure``
+writes the Makefile has it in ``Makefile.in``; a CMake project's top-level ``CMakeLists.txt``
+gets a block that makes each program an executable linked with the libraries' targets and a
+CTest test named after it, whose output (in CTest's JUnit report) holds its TAP.
 """
 
 from __future__ import annotations
 
 import posixpath
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -291,17 +298,71 @@ def make_block(
     lines = [BEGIN, f"CODECOREMORPH_CHARACTERIZATION = {' '.join(names)}"]
     for test, name in zip(tests, names, strict=True):
         helper = posixpath.join(posixpath.dirname(test), HELPER)
+        # Without -c, which some Makefiles put in CFLAGS (tiny-AES's `CFLAGS = -Wall -Os -c`):
+        # this rule compiles and links in one call.
         lines += [
             f"{name}: {test} {helper} {' '.join(archives)}".rstrip(),
-            f"\t$(CC) $(CPPFLAGS) $(CFLAGS) {includes} -o $@ {test} {' '.join(archives)} "
-            "$(LDFLAGS) $(CODECOREMORPH_RUST_LIBS) $(LDLIBS) $(LIBS)",
+            f"\t$(CC) $(CPPFLAGS) $(filter-out -c,$(CFLAGS)) {includes} -o $@ {test} "
+            f"{' '.join(archives)} $(LDFLAGS) $(CODECOREMORPH_RUST_LIBS) $(LDLIBS) $(LIBS)",
         ]
-    lines += [f"{target}: {TARGET}" for target in test_targets]
+    # Order-only: made before the target's recipe, but not one of its $^ (argon2's test recipe
+    # compiles $^, which would then name the phony target as a file).
+    lines += [f"{target}: | {TARGET}" for target in test_targets]
     lines += [f".PHONY: {TARGET}", f"{TARGET}: $(CODECOREMORPH_CHARACTERIZATION)"]
-    # Run as ./path, which the test results know the program by; failures don't stop make.
-    lines += [f"\t-./{name}" for name in names]
+    # The recipe prints ./path itself, which the test results know the program by, since a
+    # Makefile's `.SILENT:` keeps make from echoing it; failures don't stop make.
+    lines += [f"\t-@echo ./{name}; ./{name}" for name in names]
     lines.append(END)
     return "\n".join(lines) + "\n"
+
+
+def cmake_block(tests: Sequence[str], libraries: Sequence[str], include_dirs: Sequence[str]) -> str:
+    """The marked block of a CMake project's top-level ``CMakeLists.txt`` for ``tests``
+    (worktree paths): each an executable linked with ``libraries`` (the targets of the
+    libraries that compile the code it tests), and a CTest test named after its program, so
+    its TAP points keep their IDs (D-89)."""
+    lines = [BEGIN, "enable_testing()"]
+    for test in tests:
+        name = program(test)
+        target = "codecoremorph_" + re.sub(r"\W", "_", posixpath.basename(name))
+        dirs = " ".join([posixpath.dirname(test) or ".", *include_dirs])
+        lines += [
+            f"add_executable({target} {test})",
+            f"target_include_directories({target} PRIVATE {dirs})",
+        ]
+        if libraries:
+            lines.append(f"target_link_libraries({target} PRIVATE {' '.join(libraries)})")
+        lines.append(f"add_test(NAME {name} COMMAND {target})")
+    lines.append(END)
+    return "\n".join(lines) + "\n"
+
+
+def block_programs(text: str) -> list[str]:
+    """The characterization programs of the marked block in ``text`` (a Makefile, a
+    ``Makefile.am`` or ``Makefile.in``, or a ``CMakeLists.txt``)."""
+    start, end = text.find(BEGIN), text.find(END)
+    if start == -1 or end < start:
+        return []
+    inner = text[start:end]
+    listed = re.search(r"^CODECOREMORPH_CHARACTERIZATION = (.*)$", inner, re.MULTILINE)
+    if listed is not None:
+        return listed.group(1).split()
+    return re.findall(r"^add_test\(NAME (\S+) COMMAND ", inner, re.MULTILINE)
+
+
+def ctest_outputs(junit: bytes) -> dict[str, str]:
+    """Each test's output in CTest's JUnit report, by the test's name."""
+    if re.search(rb"<!(?:DOCTYPE|ENTITY)", junit, re.IGNORECASE):
+        return {}
+    try:
+        root = ET.fromstring(junit)  # noqa: S314 - DTDs rejected above
+    except ET.ParseError:
+        return {}
+    return {
+        name: case.findtext("system-out") or ""
+        for case in root.iter("testcase")
+        if (name := case.get("name"))
+    }
 
 
 def with_block(text: str, block: str | None) -> str:

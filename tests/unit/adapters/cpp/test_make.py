@@ -449,6 +449,17 @@ def test_tap_points_belong_to_the_program_make_ran() -> None:
     }
 
 
+def test_tap_points_are_lowercase() -> None:
+    """Other frameworks' summaries aren't TAP (iniparser's CuTest prints ``OK (20 tests)``);
+    the directives are case-insensitive."""
+    text = "....\n\nOK (20 tests)\nOk then\nok 1 - grows # skip no limit\nok 2 # Todo later\n"
+    cases = parse_tap_output(text, {}, "check")
+    assert [(c.test_id, c.status) for c in cases] == [
+        ("tap:check/grows", TestStatus.SKIPPED),
+        ("tap:check/#2", TestStatus.PASSED),
+    ]
+
+
 def test_tap_without_an_echoed_program_and_repeated_descriptions() -> None:
     cases = parse_tap_output("ok 1 - same\nok 2 - same\nBail out! no database\n", {}, "check")
     assert [(c.test_id, c.status) for c in cases] == [

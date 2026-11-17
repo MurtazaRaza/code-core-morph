@@ -271,6 +271,26 @@ class ProjectModel:
         Rust can define neither, so they stay in the C file, over the Rust code (D-70)."""
         return [s for s in self._c_interface(path) if takes_variable_arguments(s)]
 
+    def c_internals_used(self, path: str, users: Iterable[str]) -> list[str]:
+        """The functions and variables ``path`` defines but doesn't export that a file in
+        ``users`` references, in source order: what white-box tests that ``#include`` the C
+        file use of what it keeps file-local (D-89)."""
+        wanted = set(users)
+        exported = {s.id for s in self._c_interface(path)}
+        found: dict[str, str] = {}
+        with IndexStore.open(self.index_path) as store:
+            for s in store.symbols(file=path):
+                if (
+                    not s.is_definition
+                    or s.kind not in (SymbolKind.FUNCTION, SymbolKind.VARIABLE)
+                    or s.id in exported
+                    or s.id in found
+                ):
+                    continue
+                if any(r.from_file in wanted for r in store.references_to(s.id)):
+                    found[s.id] = s.name
+        return list(dict.fromkeys(found.values()))
+
     def _c_interface(self, path: str) -> list[Symbol]:
         with IndexStore.open(self.index_path) as store:
             return [

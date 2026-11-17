@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from codecoremorph.invariants.abi import MAX_SHOWN, c_abi_differences, c_abi_feedback
+from codecoremorph.invariants.abi import (
+    MAX_SHOWN,
+    c_abi_differences,
+    c_abi_feedback,
+    cbindgen_tip,
+)
 
 HEADER = {
     "tk_ring_new": "struct tk_ring *(unsigned long long)",
@@ -60,3 +65,12 @@ def test_feedback_is_capped() -> None:
     problems = [f"`f{i}` isn't exported" for i in range(MAX_SHOWN + 5)]
     text = c_abi_feedback("port", ["a.h"], problems)
     assert text.endswith("- … and 5 more")
+
+
+def test_cbindgen_tips_name_the_fix_for_what_the_header_shows() -> None:
+    alias = "/cache/rust/cbindgen-rust-a_rs.h:100: unknown type name 'Option'"
+    assert "not through a type alias" in cbindgen_tip(alias)
+    conflict = "/cache/rust/cbindgen-rust-a_rs.h:12: conflicting types for 'pthread_create'"
+    assert "`pthread_create`" in cbindgen_tip(conflict)
+    assert "cbindgen:ignore" in cbindgen_tip(conflict)
+    assert cbindgen_tip("h:3: expected ';' after top level declarator") == ""

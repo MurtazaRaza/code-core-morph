@@ -10,9 +10,12 @@ Before the plan the run carries out, untested code gets tests that pin down its 
    ends with a checkpoint commit (trailer ``CodeCoreMorph-Unit: C-NNNN``), then its result in
    ``attempts/C-NNNN/result.json``; a host job also checkpoints between its attempts, since a
    resumed run goes back to the branch's last commit.
-3. **The end.** The checkpoints become one commit, ``codecoremorph(characterize): …`` with a
-   ``CodeCoreMorph-Characterize`` trailer; the baseline gains the accepted tests (FR-7.4), and
-   the index the new files, so the plan made next puts them in the units whose code they call.
+3. **The end.** With every kept test in the build, the project's own tests run once: when it
+   no longer builds, or a test that passed at the baseline fails, no test is kept (a job's
+   check runs only its own tests). Otherwise the checkpoints become one commit,
+   ``codecoremorph(characterize): …`` with a ``CodeCoreMorph-Characterize`` trailer; the
+   baseline gains the accepted tests (FR-7.4), and the index the new files, so the plan made
+   next puts them in the units whose code they call.
 
 A job with nothing accepted leaves nothing behind. The step is skipped when characterization is
 off, when the adapter can't add tests to the build, or when no symbol is untested.
@@ -51,6 +54,7 @@ from codecoremorph.core.models import (
     JobStatus,
     Role,
     SymbolIndex,
+    TestStatus,
 )
 from codecoremorph.llm.service import LLMService
 from codecoremorph.orchestrator.planning import plan_from, write_baseline
@@ -115,10 +119,7 @@ class Characterization:
         """Why the step doesn't run, if it doesn't."""
         if not self.settings.enabled:
             return "parity.characterization_tests.enabled is false"
-        adapter = self.session.adapter
-        if not adapter.capabilities().register_test_files:
-            return f"the {adapter.language} adapter can't add tests to the build"
-        return None
+        return self.session.adapter.characterization_unavailable(self.session.ctx)
 
     def load(self) -> CharacterizationPlan | None:
         if not self.path.is_file():
@@ -503,6 +504,10 @@ class Characterization:
         commit = self.committed()
         if commit is None and plan.jobs:
             base = session.workspace.base_commit
+            broken = self._breaks_the_project() if tests else None
+            if broken:
+                tests = []
+                plan = self._drop_all(plan, results, broken)
             if tests:
                 worktree.reset_soft(base)
                 commit = worktree.commit(
@@ -534,6 +539,50 @@ class Characterization:
             session.adapter.configure(session.ctx)
             index = session.adapter.index(session.ctx)
         return Finished(commit=commit, baseline=baseline, index=index)
+
+    def _breaks_the_project(self) -> str | None:
+        """Why the kept tests can't be committed: with all of them in the build, the project
+        no longer builds, or a test that passed at the baseline fails. A job's check runs only
+        its own tests; this runs them all once (argon2's test recipe compiled `$^`, which the
+        Makefile block's prerequisite had joined)."""
+        session = self.session
+        adapter, ctx = session.adapter, session.ctx
+        self.step("characterize: the project's own tests, with the characterization tests")
+        configured = adapter.configure(ctx)
+        if not configured.success:
+            return "the project no longer configures"
+        if not adapter.build(ctx).success:
+            return "the project no longer builds"
+        report = adapter.run_tests(ctx)
+        passing = set(self.baseline.tests.passing)
+        failed = sorted(
+            c.test_id
+            for c in report.cases
+            if c.test_id in passing
+            and c.status in (TestStatus.FAILED, TestStatus.ERROR, TestStatus.TIMEOUT)
+        )
+        if failed:
+            listed = ", ".join(failed[:5]) + (
+                f" and {len(failed) - 5} more" if len(failed) > 5 else ""
+            )
+            return f"the project's own tests failed: {listed}"
+        return None
+
+    def _drop_all(
+        self, plan: CharacterizationPlan, results: dict[str, JobResult], why: str
+    ) -> CharacterizationPlan:
+        """Record that no test is kept, since adding them broke the project (``why``)."""
+        reason = f"with the characterization tests in the build, {why}; none was kept"
+        for job_id, result in results.items():
+            if result.tests:
+                dropped = result.model_copy(
+                    update={"status": JobStatus.DROPPED, "tests": [], "reason": reason}
+                )
+                self.result_path(job_id).write_text(
+                    dropped.model_dump_json(indent=2), encoding="utf-8"
+                )
+        self.step(f"characterize: {reason}")
+        return self._save(plan.model_copy(update={"reason": reason}))
 
     def remove(self) -> str | None:
         """``keep: false`` (FR-7.6): a commit taking the tests out again, at the run's end."""

@@ -210,6 +210,14 @@ def test_the_c_retirement(tmp_path: Path) -> None:
             "wordfreq_rs", "2021", "wordfreq", "wordfreq", ["wf_rs"]
         ),
         "rust/wordfreq_rs/src/main.rs": "fn main() {}\n",
+        # A white-box test's stand-in for src/wf.c (D-89): it goes with the C tests.
+        "rust/c-whitebox/wf.c": "int wf_test_hook(void);\n",
+        # Builds the run didn't use (D-89): another platform's makefile goes, an excluded one
+        # and the CI are for review, a Makefile that builds no C stays.
+        "makefile.msc": "wf.lib: src\\wf.obj\n\tlib /out:wf.lib src\\wf.obj\n",
+        "contrib/Makefile": "tool: ../src/wf.c\n\tcc -o tool ../src/wf.c\n",
+        ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: make check\n",
+        "docs/Makefile": "html:\n\tsphinx-build . _build\n",
     }
     for rel, text in files.items():
         (work / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -220,13 +228,28 @@ def test_the_c_retirement(tmp_path: Path) -> None:
         cache_dir=tmp_path / "cache",
         log_dir=tmp_path / "logs",
         executor=NativeExecutor(log_dir=tmp_path / "exec"),
-        lang=LanguageConfig(language="rust", standard="rust2021", target_standard="rust2021"),
+        lang=LanguageConfig(
+            language="rust",
+            standard="rust2021",
+            target_standard="rust2021",
+            exclude=["contrib/**"],
+        ),
     )
     spec = CodemodSpec(tool="rust-retire", options={"language": "c"})
-    RustAdapter().run_codemods(ctx, [spec], ["Makefile", "src/wf.c", "include/wf.h"])
+    result = RustAdapter().run_codemods(ctx, [spec], ["Makefile", "src/wf.c", "include/wf.h"])
     assert not (work / "Makefile").exists()
     assert not (work / "src/wf.c").exists()
     assert not (work / "rust/wf_rs/src/bridge").exists()
+    assert not (work / "rust/c-whitebox").exists()
+    assert "rust/c-whitebox/wf.c" in {c.file for c in result.changes}
+    assert not (work / "makefile.msc").exists()
+    assert "makefile.msc" in {c.file for c in result.changes}
+    assert (work / "contrib/Makefile").exists()
+    assert (work / "docs/Makefile").exists()
+    left = {s.file: s.reason for s in result.skipped}
+    assert sorted(left) == [".github/workflows/ci.yml", "contrib/Makefile"]
+    assert "still builds src/wf.c" in left["contrib/Makefile"]
+    assert "rewrite it for Cargo" in left[".github/workflows/ci.yml"]
     lib = (work / "rust/wf_rs/src/lib.rs").read_text(encoding="utf-8")
     assert lib == (
         "//! The C library `wf`, ported to Rust (CodeCoreMorph, D-68).\n"
@@ -265,6 +288,7 @@ def test_the_c_retirement_that_keeps_the_api(tmp_path: Path) -> None:
         "rust/wf_rs/src/lib.rs": cports.lib_rs("wf"),
         "rust/wf_rs/src/bridge/mod.rs": cports.bridge_mod_rs(),
         "rust/wf_rs/src/bridge/sys.rs": cports.placeholder_sys(),
+        "rust/c-whitebox/wf.c": "int wf_test_hook(void);\n",  # the kept tests still need it
     }
     for rel, text in files.items():
         (work / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -287,6 +311,7 @@ def test_the_c_retirement_that_keeps_the_api(tmp_path: Path) -> None:
     assert (work / "Makefile").exists()
     assert (work / "include/wf.h").exists()
     assert (work / "rust/wf_rs/src/bridge/sys.rs").exists()
+    assert (work / "rust/c-whitebox/wf.c").exists()
     assert (work / "rust/wf_rs/src/lib.rs").read_text(encoding="utf-8") == cports.lib_rs("wf")
     kept = (work / "rust/wf_rs/Cargo.toml").read_text(encoding="utf-8")
     assert cports.manifest_headers(kept) == ["include/wf.h"]
@@ -402,3 +427,65 @@ def test_a_program_of_a_makefile_am_copies_its_rust_bin() -> None:
     assert cports.with_am_program(more, "kvdump") == "kvdump_SOURCES =\nif X\nendif\n"
     full = cports.with_make_block(text, block)
     assert cports.with_am_program(full, "kvdump") == full
+
+
+def test_a_cmake_projects_crates_go_into_cmake(tmp_path: Path) -> None:
+    """A C port of a CMake project (D-89): the crates join the top-level CMakeLists.txt
+    through Corrosion, and a Makefile the project also ships stays as it is."""
+    from codecoremorph.adapters.base import AdapterContext
+    from codecoremorph.adapters.rust import RustAdapter
+    from codecoremorph.core.models import CodemodChange, LanguageConfig
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    work = tmp_path / "work"
+    makefile = "all: libcjson.a\nlibcjson.a: cJSON.o\n\tar rcs $@ $^\n"
+    files = {
+        "CMakeLists.txt": "project(cJSON C)\r\nadd_library(cjson cJSON.c)\r\n",
+        "Makefile": makefile,
+        "rust/Cargo.toml": cports.workspace_manifest(["cjson_rs", "tool_rs"]),
+        "rust/cjson_rs/Cargo.toml": cports.package_manifest(
+            "cjson_rs", "2021", "cjson", "libcjson.a", ["cJSON.h"]
+        ),
+        "rust/tool_rs/Cargo.toml": cports.bin_manifest("tool_rs", "2021", "tool", "tool", []),
+    }
+    for rel, text in files.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_bytes(text.encode("utf-8"))
+    lang = LanguageConfig(
+        language="rust", standard="rust2021", port_source="c", port_build_system="cmake"
+    )
+    ctx = AdapterContext(
+        worktree=work,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=lang,
+    )
+    adapter = RustAdapter()
+    changes: list[CodemodChange] = []
+    problems = adapter._make_integration(ctx, adapter._writer(ctx, changes))  # pyright: ignore[reportPrivateUsage]
+    assert [c.file for c in changes] == ["CMakeLists.txt"]
+    top = (work / "CMakeLists.txt").read_bytes().decode("utf-8")
+    assert top.startswith("project(cJSON C)\r\nadd_library(cjson cJSON.c)\r\n")  # CRLF kept
+    assert "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)\r\n" in top
+    assert "set_property(TARGET cjson APPEND PROPERTY LINK_LIBRARIES cjson_rs)\r\n" in top
+    assert (work / "Makefile").read_text(encoding="utf-8") == makefile
+    assert problems == []  # the program is imported too, under its executable's name
+
+
+def test_what_names_a_deleted_source() -> None:
+    sources = ["src/wf.c", "cJSON.c"]
+    assert cports.names_sources("OBJS = wf.o\n", sources) == ["src/wf.c"]
+    assert cports.names_sources("tool: ../cJSON.c\n", sources) == ["cJSON.c"]
+    assert cports.names_sources("src\\wf.obj libwf.lo\n", sources) == ["src/wf.c"]
+    assert cports.names_sources("SRC = my_wf.c wf.cpp cJSON.cc\n", sources) == []
+    assert cports.is_build_file("Makefile-libbz2_so")
+    assert cports.is_build_file("win/makefile.msc")
+    assert cports.is_build_file("fuzzing/CMakeLists.txt")
+    assert not cports.is_build_file("library_config/libcjson.pc.in")
+    assert cports.is_ci_file(".github/workflows/CI.yml")
+    assert cports.is_ci_file("appveyor.yml")
+    assert not cports.is_ci_file("docs/ci.yml")
+    assert cports.builds_c("script:\n  - cmake ..\n")
+    assert not cports.builds_c("script:\n  - cargo test\n")

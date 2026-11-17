@@ -226,3 +226,45 @@ def test_a_call_cycle_breaks_where_it_costs_least(fake_project: FakeProject) -> 
     assert [u.port.module for u in ported if u.port] == ["b", "a"]
     assert ported[0].note is not None
     assert "calls src/a.c while it is still C (a call cycle)" in ported[0].note
+
+
+def test_tests_that_include_a_source_are_white_box(fake_project: FakeProject) -> None:
+    """cJSON's shape (D-89): a test helper header includes the library's source itself, so
+    every test that includes the helper compiles the C and may call its static functions."""
+    p = fake_project
+    p.file("Makefile", "all: libj.a\n", role="build", language="make")
+    p.file("j.h", "int j_parse(const char *);\n", public_api=True)
+    p.file("j.c", '#include "j.h"\nstatic int parse_number(void) { return 0; }\n')
+    p.file("u.c", '#include "j.h"\n')
+    p.file("tests/common.h", '#include "../j.c"\n')
+    p.file("tests/parse_number.c", '#include "common.h"\n')
+    p.file("tests/misc.c", '#include "common.h"\n')
+    for path in ("j.c", "u.c"):
+        p.dep(path, "j.h")
+    p.dep("tests/common.h", "j.c")
+    for path in ("tests/parse_number.c", "tests/misc.c"):
+        p.dep(path, "tests/common.h")
+    _function(p, "j_parse", "j.h", "j.c", 1)
+    _function(p, "u_go", "j.h", "u.c", 2)
+    p.symbol("c:j.c@F@parse_number", "j.c", (2, 1), (2, 50), boundary="none")  # static
+    p.symbol("c:j.c@F@unused", "j.c", (3, 1), (3, 50), boundary="none")  # static, untested
+    p.ref("j.c", "c:j.c@F@unused", 1)
+    p.ref("tests/parse_number.c", "c:j.c@F@parse_number", 2)
+    p.ref("tests/misc.c", "c:@F@j_parse", 2)
+    p.ref("u.c", "c:@F@j_parse", 3)
+    p.target("j", "library", ["j.c", "u.c"], artifacts=("libj.a",))
+    p.build()
+    project = ProjectModel.load(p.index_path, p.worktree, source_dirs=["."], test_dirs=["tests"])
+    plan = _plan(project, ("j.c", "u.c"))
+    ports = {u.port.module: u for u in plan.units if u.port}
+    j = ports["j"].port
+    assert j is not None
+    assert j.white_box == ["tests/common.h"]
+    assert j.white_box_tests == ["tests/misc.c", "tests/parse_number.c"]
+    assert j.white_box_uses == ["parse_number"]
+    note = ports["j"].note or ""
+    assert "; 2 test files compile it in through tests/common.h (white-box tests)" in note
+    u = ports["u"].port
+    assert u is not None
+    assert (u.white_box, u.white_box_tests, u.white_box_uses) == ([], [], [])
+    assert "white-box" not in (ports["u"].note or "")

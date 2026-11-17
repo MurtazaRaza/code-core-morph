@@ -562,6 +562,27 @@ def still_declared(
     return [s for s in before if s.file not in gone]
 
 
+def left_to_c_abi_kept(
+    change: ApiChange,
+    *,
+    kinds: Mapping[str, SymbolKind],
+    users: Collection[str],
+    unit_files: Collection[str],
+) -> bool:
+    """Whether a port unit's change to a C ABI function isn't I-6's to judge: c_abi_kept
+    compares the port's exports with the C declarations by canonical type, where I-6 compares
+    spellings, before the definition's and after what the C still declares. So a function the C
+    still declares is c_abi_kept's (http-parser's definition spells `const struct http_parser *`,
+    its header `const http_parser *`; mxml's header names a callback typedef the export spells
+    out), and so is one no file outside the unit refers to, which is no interface (http-parser's
+    `http_message_needs_eof`, declared only in its own file). C ABI variables stay I-6's."""
+    if change.boundary is not Boundary.C_ABI:
+        return False
+    if not all(kinds.get(i) is SymbolKind.FUNCTION for i in change.symbol_ids):
+        return False
+    return bool(change.after) or set(users) <= set(unit_files)
+
+
 def check_api(
     changes: Sequence[ApiChange],
     *,

@@ -144,6 +144,14 @@ class LanguageAdapter(ABC):
     # Characterization tests (SPEC §7.11). An adapter that declares ``register_test_files``
     # implements every method in this group; ``extract_assertions`` alone serves I-4.
 
+    def characterization_unavailable(self, ctx: AdapterContext) -> str | None:
+        """Why this project's build can't take characterization tests, if it can't: the step
+        is skipped with that reason rather than having tests written that the build refuses
+        (D-89). By default, whether the adapter declares ``register_test_files``."""
+        if not self.capabilities().register_test_files:
+            return f"the {self.language} adapter can't add tests to the build"
+        return None
+
     def characterization_test_file(self, test_dir: str, stem: str) -> str:
         """The worktree path of a new characterization test file named after ``stem`` (a file
         stem such as ``counter``) in ``test_dir``."""

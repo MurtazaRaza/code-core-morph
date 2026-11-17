@@ -420,6 +420,7 @@ def resume_host_unit(
     runner.configured_standard = state.configured_standard
     runner.error_lines = list(state.error_lines)
     runner.agent_base = state.agent_base
+    runner.unit_base = state.snapshot
     if runner.invariants is not None:
         runner.invariants.snapshot = state.snapshot
     return HostUnit(

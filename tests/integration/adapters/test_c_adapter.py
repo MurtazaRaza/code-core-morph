@@ -142,6 +142,53 @@ def test_a_clean_build_starts_over(ctx: AdapterContext) -> None:
     assert adapter.build(ctx).success
 
 
+def test_tools_a_recipe_names_are_captured(ctx: AdapterContext) -> None:
+    """Recipes that call `gcc` and `ar` by name (argon2's `ar rcs`), not $(CC) and $(AR), are
+    in the build model too, and a program named as its library stays a program of its own."""
+    adapter = CAdapter()
+    makefile = (ctx.worktree / "Makefile").read_text(encoding="utf-8")
+    makefile = makefile.replace("\t$(CC) $(CFLAGS) -c $< -o $@", "\tgcc $(CFLAGS) -c $< -o $@")
+    makefile = makefile.replace("\t$(AR) cq libwf.a", "\tar cq libwf.a")
+    makefile = makefile.replace("all: libwf.a wordfreq", "all: libwf.a wordfreq wf")
+    makefile += (
+        "\nwf: tools/wordfreq.o libwf.a\n\t$(CC) $(CFLAGS) -o wf tools/wordfreq.o -L. -lwf\n"
+    )
+    (ctx.worktree / "Makefile").write_text(makefile, encoding="utf-8")
+    assert adapter.configure(ctx).success
+    built = adapter.build(ctx)
+    assert built.success, built.diagnostics
+    index = adapter.index(ctx)
+    with IndexStore.open(index.path) as store:
+        targets = {t.name: t for t in store.build_targets()}
+    library = targets["libwf"]
+    assert library.kind is TargetKind.LIBRARY
+    assert library.artifacts == ["libwf.a"]
+    assert library.files == [f"src/{m}.c" for m in ("conf", "htab", "sbuf", "tok", "wf")]
+    assert (targets["wf"].kind, targets["wf"].dependencies) == (TargetKind.EXECUTABLE, ["libwf"])
+    assert targets["wordfreq"].dependencies == ["libwf"]
+
+
+def test_a_struct_declared_by_its_tag_alone_compares(ctx: AdapterContext) -> None:
+    """cbindgen names a header's `struct AES_ctx` as `AES_ctx` (tiny-AES has no typedef):
+    c_abi_kept reads the crate's header through a typedef of the tag, the same type."""
+    adapter = CAdapter()
+    assert adapter.configure(ctx).success
+    assert adapter.build(ctx).success
+    kept = ctx.worktree / "include" / "tagged.h"
+    kept.write_text(
+        "struct ctx_s { int n; };\nvoid tag_init(struct ctx_s *c, int n);\n", encoding="utf-8"
+    )
+    exported = ctx.cache_dir / "rust" / "cbindgen-tagged.h"
+    exported.parent.mkdir(parents=True, exist_ok=True)
+    exported.write_text(
+        f'#include <stdint.h>\n#include "{ctx.sandbox(kept)}"\n\nvoid tag_init(ctx_s *c, int n);\n',
+        encoding="utf-8",
+    )
+    expected = {"tag_init": "void (struct ctx_s *, int)"}
+    assert adapter.c_declarations(ctx, kept) == expected
+    assert adapter.c_declarations(ctx, exported) == expected
+
+
 CHARACTERIZATION = """\
 #include "codecoremorph_tap.h"
 #include "wf.h"

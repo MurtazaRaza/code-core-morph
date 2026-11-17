@@ -25,12 +25,14 @@ def target_language_config(config: MigrationConfig) -> LanguageConfig:
     """The target adapter's slice of a port's manifest: the target language and standard,
     with the project's layout and the guardrails' timeouts."""
     target = config.migration.target
+    source = config.migration.source
     project = config.project
     return LanguageConfig(
         language=target.language,
         standard=target.standard,
         target_standard=target.standard,
-        port_source=config.migration.source.language,
+        port_source=source.language,
+        port_build_system=source.build_system or DEFAULT_BUILD_SYSTEMS.get(source.language),
         build_system=target.build_system
         or PORT_TARGET_BUILD_SYSTEMS.get(target.language)
         or DEFAULT_BUILD_SYSTEMS.get(target.language),

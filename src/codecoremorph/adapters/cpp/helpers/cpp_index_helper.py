@@ -881,9 +881,16 @@ def _contains(flags, group):
     return any(flags[i : i + n] == group for i in range(len(flags) - n + 1))
 
 
+_TAG_NEEDED = re.compile(r"must use '(struct|union|enum)' tag to refer to type '(\w+)'")
+
+
 def c_declarations(request):
     """``{"functions": {name: canonical signature}, "problems": [...]}`` for the functions a C
-    header declares (not those it defines), parsed as C11 with the project's include flags."""
+    header declares (not those it defines), parsed as C11 with the project's include flags.
+
+    cbindgen names a C type as the Rust does (``AES_ctx``), which is no C name when the header
+    it includes declares only the tag (``struct AES_ctx``, tiny-AES): then the header is read
+    again after ``typedef struct AES_ctx AES_ctx;``, the same type."""
     from clang import cindex
 
     header = os.path.normpath(request["header"])
@@ -891,11 +898,19 @@ def c_declarations(request):
     args = ["-x", "c", "-std=c11", *flags, "-I", os.path.dirname(header)]
     if compiler:
         args += system_include_args(compiler, "c", query)
-    tu = cindex.Index.create().parse(header, args=args)
+    index = cindex.Index.create()
+    tu = index.parse(header, args=args)
+    errors = [d for d in tu.diagnostics if d.severity >= cindex.Diagnostic.Error]
+    tags = sorted({m.groups() for d in errors for m in [_TAG_NEEDED.search(d.spelling)] if m})
+    if tags:
+        wrapper = os.path.join(os.path.dirname(header), "ccm-tags.h")
+        text = "".join(f"typedef {kind} {name} {name};\n" for kind, name in tags)
+        text += f'#include "{os.path.basename(header)}"\n'
+        tu = index.parse(wrapper, args=args, unsaved_files=[(wrapper, text)])
+        errors = [d for d in tu.diagnostics if d.severity >= cindex.Diagnostic.Error]
     problems = [
         f"{d.location.file.name if d.location.file else header}:{d.location.line}: {d.spelling}"
-        for d in tu.diagnostics
-        if d.severity >= cindex.Diagnostic.Error
+        for d in errors
     ][:MAX_TU_PROBLEMS]
     key = os.path.normcase(os.path.abspath(header))
     functions = {}

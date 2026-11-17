@@ -50,6 +50,7 @@ from codecoremorph.invariants.checks import (
     check_unit_scope,
     check_warnings,
     diff_size,
+    left_to_c_abi_kept,
     patch_lines,
     still_declared,
 )
@@ -426,11 +427,22 @@ class InvariantChecker:
         api_changing = any(r.rule.kind is RuleKind.API_CHANGING for r in rules)
         unit_files = set(unit.files)
 
+        def users(change: ApiChange) -> set[str]:
+            return {f for sid in change.symbol_ids for f in snapshot.referencing.get(sid, [])}
+
+        if any(r.rule.kind is RuleKind.PORT for r in rules):
+            # A port's C ABI functions are c_abi_kept's, which every port rule checks.
+            kinds = {s.id: s.kind for s in snapshot.symbols}
+            changes = [
+                c
+                for c in changes
+                if not left_to_c_abi_kept(c, kinds=kinds, users=users(c), unit_files=unit_files)
+            ]
+
         def covered(change: ApiChange) -> bool:
             if snapshot.project_wide:
                 return True
-            users = {f for sid in change.symbol_ids for f in snapshot.referencing.get(sid, [])}
-            return users <= unit_files
+            return users(change) <= unit_files
 
         return check_api(
             changes,

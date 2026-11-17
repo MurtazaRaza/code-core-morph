@@ -277,3 +277,30 @@ def test_the_cache_keys_on_commit_standard_sandbox_and_build_options(tmp_path: P
     assert stored.tests_from == "baseline 20260101-000000-ffff"
     cache.path("e" * 40, sandbox="docker", lang=lang).write_text("{not json", encoding="utf-8")
     assert cache.get("e" * 40, sandbox="docker", lang=lang) is None
+
+
+def test_a_baseline_another_engine_took_isnt_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The key holds a fingerprint of the code that takes baselines (D-89): iniparser's run
+    reused a baseline that an earlier engine had read a CuTest summary into as a test."""
+    import codecoremorph.parity.baseline as module
+
+    found = module.engine_fingerprint()
+    assert found == module.engine_fingerprint()
+    assert len(found) == 16
+    assert all(ch in "0123456789abcdef" for ch in found)
+    cache = BaselineCache(tmp_path / "baselines")
+    lang = LanguageConfig(language="c", standard="c89")
+    baseline = Baseline(
+        base_commit="c" * 40,
+        standard="c89",
+        tests=TestBaseline(runs=1, passing=["make:check"]),
+        configure_s=1,
+        build_s=1,
+        test_s=1,
+    )
+    cache.put(baseline, sandbox="docker", lang=lang, run_id="20260101-000000-abcd")
+    assert cache.get("c" * 40, sandbox="docker", lang=lang) is not None
+    monkeypatch.setattr(module, "engine_fingerprint", lambda: "0123456789abcdef")
+    assert cache.get("c" * 40, sandbox="docker", lang=lang) is None

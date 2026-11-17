@@ -355,6 +355,42 @@ def test_a_project_without_tests_runs_once_characterization_gives_it_some(
     assert _baseline(world, result.run_id).tests.passing == [TWICE, NEGATIVE]
 
 
+class BreakingAdapter(CharacterizingAdapter):
+    """Registering the characterization tests breaks the project's own tests (argon2's test
+    recipe compiled `$^`, which the Makefile block's prerequisite had joined). A job's check
+    runs only its own tests, so only a run of them all shows it."""
+
+    def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
+        report = super().run_tests(ctx, selection)
+        if not (ctx.worktree / TEST_DIR / "CMakeLists.txt").is_file():
+            return report
+        cases = [
+            c.model_copy(update={"status": TestStatus.FAILED})
+            if c.test_id.startswith("gtest:Geo.")
+            else c
+            for c in report.cases
+        ]
+        return TestReport(cases=cases, duration_s=0, log_path=report.log_path)
+
+
+def test_tests_that_break_the_projects_own_are_not_kept(engine_world: EngineWorld) -> None:
+    world = engine_world
+    world.adapter = BreakingAdapter()
+    script: list[Responder] = [write("t1", create(TESTS.replace("  // WRONG", ""))), fix_macro()]
+    result, _, _ = world.run(world.manifest(), script)
+    assert result.status is RunStatus.COMPLETED, result.reason
+    (unit_message,) = world.log(result.branch)  # no characterization commit
+    assert parse_trailers(unit_message)["CodeCoreMorph-Unit"] == "U-0001"
+    assert TEST_DIR not in world.git(world.repo, "ls-tree", "-r", "--name-only", result.branch)
+    assert _baseline(world, result.run_id).characterization_tests == []
+    summary = _report(world, result.run_id).characterization
+    assert summary is not None
+    assert summary.tests == []
+    (job,) = summary.jobs
+    assert job.status is JobStatus.DROPPED
+    assert "the project's own tests failed: gtest:Geo." in (job.reason or "")
+
+
 def test_a_project_still_without_tests_stops_before_the_plan(engine_world: EngineWorld) -> None:
     world = engine_world
     world.adapter = NoTestsAdapter()

@@ -73,10 +73,11 @@ TESTS_FILE = "make-tests.json"
 _DEFAULT_TEST_TARGETS = ("check", "test")
 _TRS_FAILED = frozenset({"FAIL", "ERROR", "XPASS"})
 _CONFIGURE_ERROR = re.compile(r"^configure: error: (.+)$")
+# TAP's `ok` and `not ok` are lowercase (CuTest's summary `OK (20 tests)` is no test point);
+# only the directives are case-insensitive.
 _TAP_POINT = re.compile(
     r"^(?P<not>not )?ok\b(?:\s+(?P<num>\d+))?(?:\s+-)?\s*(?P<desc>[^#]*?)\s*"
-    r"(?:#\s*(?P<directive>skip|todo)\b.*)?$",
-    re.IGNORECASE,
+    r"(?:#\s*(?P<directive>(?i:skip|todo))\b.*)?$"
 )
 _TAP_PLAN = re.compile(r"^1\.\.(\d+)\b")
 _MAKE_ERROR = re.compile(
@@ -85,15 +86,24 @@ _MAKE_ERROR = re.compile(
 )
 
 
+# capture.sh under the names a recipe may call a tool by, in path/ (first on the PATH).
+_PATH_TOOLS = ("ar", "cc", "gcc", "clang", "c++", "g++", "clang++")
+
+
 def install_capture(cache_dir: Path) -> Path:
-    """Install ``capture.sh`` as ``cc``, ``c++`` and ``ar`` in a directory of the cache."""
+    """Install ``capture.sh`` as ``cc``, ``c++`` and ``ar`` in a directory of the cache (the
+    CC, CXX and AR a Make build gets), and under the tools' own names in its ``path/``, which
+    goes first on the PATH, for recipes that call ``ar`` or ``gcc`` by name."""
     data = resources.files("codecoremorph.adapters.cpp.helpers").joinpath("capture.sh").read_bytes()
     directory = cache_dir / "helpers" / "capture"
-    directory.mkdir(parents=True, exist_ok=True)
-    for name in ("cc", "c++", "ar"):
-        target = directory / name
+    on_path = directory / "path"
+    on_path.mkdir(parents=True, exist_ok=True)
+    for target in [
+        *(directory / n for n in ("cc", "c++", "ar")),
+        *(on_path / n for n in _PATH_TOOLS),
+    ]:
         if not target.is_file() or target.read_bytes() != data:
-            tmp = target.with_name(f".{name}.tmp")
+            tmp = target.with_name(f".{target.name}.tmp")
             tmp.write_bytes(data)
             tmp.chmod(0o755)
             tmp.replace(target)
@@ -101,16 +111,21 @@ def install_capture(cache_dir: Path) -> Path:
 
 
 # Runs a command with the wrappers (in $CODECOREMORPH_TOOLS) as CC, CXX and AR, and the real
-# tools, the toolchain's CC, CXX and AR, named for the wrappers to run. Configure scripts read
-# CC from the environment (zlib's refuses CC= arguments); make also gets them as arguments,
-# which override a Makefile's own CC = gcc.
+# tools, the toolchain's CC, CXX and AR, named for the wrappers to run (by path, since the
+# wrappers' path/ then goes first on the PATH). Configure scripts read CC from the environment
+# (zlib's refuses CC= arguments); make also gets them as arguments, which override a
+# Makefile's own CC = gcc; a recipe that calls `ar` or `gcc` by name (argon2's `ar rcs`) runs
+# the wrapper of that name in path/.
 _WITH_WRAPPERS = (
-    'CODECOREMORPH_CC="${CODECOREMORPH_CC:-${CC:-cc}}"; '
-    'CODECOREMORPH_CXX="${CODECOREMORPH_CXX:-${CXX:-c++}}"; '
-    'CODECOREMORPH_AR="${CODECOREMORPH_AR:-${AR:-ar}}"; '
+    '_ccm_real() { case $1 in */*) printf "%s" "$1" ;; *) command -v "$1" || printf "%s" "$1" ;; '
+    "esac; }; "
+    'CODECOREMORPH_CC=$(_ccm_real "${CODECOREMORPH_CC:-${CC:-cc}}"); '
+    'CODECOREMORPH_CXX=$(_ccm_real "${CODECOREMORPH_CXX:-${CXX:-c++}}"); '
+    'CODECOREMORPH_AR=$(_ccm_real "${CODECOREMORPH_AR:-${AR:-ar}}"); '
     "export CODECOREMORPH_CC CODECOREMORPH_CXX CODECOREMORPH_AR; "
     'CC="$CODECOREMORPH_TOOLS/cc"; CXX="$CODECOREMORPH_TOOLS/c++"; AR="$CODECOREMORPH_TOOLS/ar"; '
-    'export CC CXX AR; exec "$@"'
+    'PATH="$CODECOREMORPH_TOOLS/path:$PATH"; '
+    'export CC CXX AR PATH; exec "$@"'
 )
 
 

@@ -157,6 +157,7 @@ class HostUnit:
         self.files.edits.unlink(missing_ok=True)
         unit = state.unit
         ctx = self.runner.verify_context(self.rules)
+        self.runner.unit_base = state.snapshot
         try:
             self.runner.begin(unit, self.rules)
             codemods = self.runner.codemods(unit, self.rules)

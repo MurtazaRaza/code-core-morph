@@ -66,6 +66,7 @@ from codecoremorph.core.models import (
     ContentBlock,
     DetectorType,
     Diagnostic,
+    DiffResult,
     EditBatch,
     FileRole,
     InvariantResult,
@@ -85,7 +86,7 @@ from codecoremorph.core.models import (
     owned_files,
 )
 from codecoremorph.core.secrets import Json, Redactor
-from codecoremorph.invariants.abi import c_abi_differences, c_abi_feedback
+from codecoremorph.invariants.abi import c_abi_differences, c_abi_feedback, cbindgen_tip
 from codecoremorph.invariants.checker import InvariantChecker
 from codecoremorph.invariants.symbol_map import (
     read_symbol_map,
@@ -368,6 +369,10 @@ class UnitRunner:
         self.deadline = deadline
         # The tree after the codemods: the invariants measure the agent's own diff from it.
         self.agent_base: str | None = None
+        # The commit the unit started from: its new code is the diff from it. A host unit
+        # commits a checkpoint after its codemods and after each failed attempt, so HEAD is
+        # only the last one (D-89).
+        self.unit_base: str | None = None
         self._engine = PatchEngine(worktree.path, exclude=ctx.lang.exclude)
 
     def checkpoint(self) -> None:
@@ -410,8 +415,14 @@ class UnitRunner:
             and not any(r.rule.natural_language_only for r in rules)
         )
 
+    def unit_diff(self) -> DiffResult:
+        """The unit's changes so far: from the commit it started from (``unit_base``), else
+        from HEAD, which the in-process loop never moves during a unit."""
+        return self.worktree.diff(self.unit_base or self.worktree.head())
+
     def run(self, unit: WorkUnit, rules: Sequence[LoadedRule]) -> UnitOutcome:
         snapshot = self.worktree.snapshot()
+        self.unit_base = snapshot
         verify_ctx = self.verify_context(rules)
         outcome = UnitOutcome(unit_id=unit.id, succeeded=False)
         try:
@@ -539,7 +550,7 @@ class UnitRunner:
     def _verify(
         self, unit: WorkUnit, rules: Sequence[LoadedRule], ctx: AdapterContext
     ) -> Verification:
-        changed = {f.path for f in self.worktree.diff(self.worktree.head()).files}
+        changed = {f.path for f in self.unit_diff().files}
         port = self.target_adapter is not None and self.target_ctx is not None
         source = self.source_builds(ctx)
         if self.target_adapter is not None and self.target_ctx is not None:
@@ -801,7 +812,7 @@ class UnitRunner:
                 "and this migration isn't a port (migration.target.language is the source's)"
             )
         scope = PathMatcher(loaded.rule.extra_scope)
-        candidates = [f.path for f in self.worktree.diff(self.worktree.head()).files]
+        candidates = [f.path for f in self.unit_diff().files]
         if unit.kept_api:
             # The retirement may leave a crate as it was: every crate's exports count.
             candidates += self.worktree.tracked_files()
@@ -828,7 +839,8 @@ class UnitRunner:
             # A crate cbindgen can't read, or a generated header C can't parse: the attempt's
             # problem, so it is feedback.
             reason = f": {exc.reason}" if exc.reason else ""
-            return f"{rule_id}: the C interface couldn't be compared. {exc.message}{reason}"
+            tip = cbindgen_tip(exc.reason or "")
+            return f"{rule_id}: the C interface couldn't be compared. {exc.message}{reason}{tip}"
         return c_abi_feedback(rule_id, headers, c_abi_differences(expected, exported))
 
     def _new_code(self, loaded: LoadedRule) -> list[str]:
@@ -836,7 +848,7 @@ class UnitRunner:
         scope = PathMatcher(loaded.rule.extra_scope)
         return sorted(
             f.path
-            for f in self.worktree.diff(self.worktree.head()).files
+            for f in self.unit_diff().files
             if scope.matches(f.path) and (self.worktree.path / f.path).is_file()
         )
 

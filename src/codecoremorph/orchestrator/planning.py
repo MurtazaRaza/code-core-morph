@@ -48,11 +48,11 @@ def baseline_cache(session: RunSession) -> BaselineCache:
 
 
 def characterizes(session: RunSession) -> bool:
-    """Whether the run writes characterization tests (D-46): enabled, and the adapter can
-    add tests to the build."""
+    """Whether the run writes characterization tests (D-46): enabled, and the project's
+    build can take them (D-89)."""
     return (
         session.config.parity.characterization_tests.enabled
-        and session.adapter.capabilities().register_test_files
+        and session.adapter.characterization_unavailable(session.ctx) is None
     )
 
 

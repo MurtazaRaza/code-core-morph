@@ -37,8 +37,15 @@ def test_each_side_of_a_port_has_its_own_language() -> None:
         "rust2021",
     )
     assert target.build_system == "cargo"
+    assert target.port_build_system == "cmake"  # the build the new code joins (D-89)
     assert target.exclude == ["third_party/**"]
     assert language_config(UPGRADE).target_standard == "cpp20"
+    c_port = parse_config(
+        'version: "1.0"\nproject: {name: demo}\nmigration:\n'
+        "  source: {language: c, standard: c89}\n"
+        "  target: {language: rust, standard: rust2021, rules: [port_c_module]}\n"
+    ).config
+    assert target_language_config(c_port).port_build_system == "make"  # C's default build
 
 
 def test_a_port_runs_with_the_target_toolchain_and_both_tools() -> None:

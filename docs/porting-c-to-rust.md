@@ -11,7 +11,8 @@ they are. The Make build folds the Rust crate into the library's archive (`libfo
 that still calls those functions, the C programs and the C tests link against Rust unchanged.
 
 Any C89 or newer project works. Make builds are the usual case for old C: a plain `Makefile`,
-`./configure` and Make, or automake and libtool. They run in Docker for now.
+`./configure` and Make, or automake and libtool. A CMake project's libraries go into CMake
+through Corrosion instead. They run in Docker for now.
 
 ## What you need
 
@@ -50,7 +51,8 @@ headers in place.
 
 CodeCoreMorph builds the project in a copy of the worktree, so the old Makefile's objects never
 reach your branch. Wrapper scripts stand in for the compiler and the archiver during the build
-and the tests and record every call. From them come the compile commands for the index, the
+and the tests and record every call, and shims of the same names first on `PATH` catch the
+recipes that call `ar`, `cc`, `gcc` or `clang` by name. From them come the compile commands for the index, the
 libraries with their source files, the programs and the libraries they link, and the tests and
 the program each test runs.
 
@@ -78,7 +80,14 @@ CodeCoreMorph writes beside it, `codecoremorph_tap.h`: one `static void` functio
 `CCM_CHECK_INT(got, expected)` and its kin as checks, `CCM_RUN(case)` in `main`. A marked block
 at the end of the Makefile builds each program against the library and runs it before the test
 target's own recipe. From then on they are tests like the project's own: they run beside the
-ported code, and the test file units translate them to Rust.
+ported code, and the test file units translate them to Rust. If adding them breaks the
+project's own tests, none is kept.
+
+The other builds take them too. With automake the block goes at the end of the top-level
+`Makefile.am` and runs from `check-local`; a project whose `configure` writes the Makefile
+has it in `Makefile.in`. In a CMake project, a marked block at the end of the top-level
+`CMakeLists.txt` makes each program an executable linked with the library's target and a
+CTest test named after it, and the TAP it prints gives each case its own result.
 
 ## Source file units
 
@@ -86,7 +95,10 @@ ported code, and the test file units translate them to Rust.
    module: `src/<module>.rs` for the port (safe Rust) and `src/bridge/<module>.rs` for the C
    functions it exports, the one place `unsafe` code may go. It writes a marked block at the end
    of the Makefile that builds the workspace, makes the library's archive rule fold the crate
-   into the archive, and adds Rust's native libraries to the links that use the library.
+   into the archive, and adds Rust's native libraries to the links that use the library. In a
+   CMake project, a marked Corrosion block at the end of the top-level `CMakeLists.txt` links
+   the crate into the library's target instead, and the unit takes the file out of the
+   target's sources.
 2. bindgen writes `src/bridge/sys.rs` from the headers the unit keeps, before every build: their
    types, constants and the functions still in C, each type's size and layout checked when the
    crate compiles. The crate uses these types and defines no copy of them.
@@ -108,6 +120,18 @@ define one. The unit says which. They stay in their file, reduced to formatting 
 and calling a function the bridge exports, and the retirement deletes them with the rest of the
 C; Rust code formats with `format!` instead.
 
+## White-box tests
+
+Some projects' tests `#include` a library source itself to call its `static` functions
+(iniparser's `#include "dictionary.c"`, cJSON's `tests/common.h` with
+`#include "../cJSON.c"`). The plan names them in the source's unit ("21 test files compile
+it in through tests/common.h"), with the file-local functions and variables they use. The
+tests don't change: the unit writes a stand-in, `rust/c-whitebox/cJSON.c`, that their
+include finds once the source is gone (an include directory from which the include's path
+reaches it). The stand-in has the file's macros and types, and its file-local functions as
+thin wrappers over test hooks the bridge exports, so the tests run against the Rust. The
+retirement deletes the stand-ins with the C tests.
+
 ## Automake and libtool
 
 With automake, the marked block goes at the end of the library's `Makefile.am`, and
@@ -128,15 +152,23 @@ changes. A project that commits its own `configure` keeps using it until then.
 ## Programs, tests and the retirement
 
 - A **program's unit** gives the program a Rust `bin` of the same name, which the Makefile
-  copies to the program's path, so `make test` and your scripts run the Rust program. The agent
-  ports it on the library crates' Rust API and adds tests for the output the test target
-  compares with files.
+  copies to the program's path, so `make test` and your scripts run the Rust program. In a
+  CMake project the executable's commands leave the CMake files instead, and Corrosion
+  imports the `bin` under the executable's name, so CTest and the install rules run Rust.
+  The agent ports it on the library crates' Rust API and adds tests for the output the test
+  target compares with files.
 - A **test file's unit** translates each test the C program reports into a Rust test of the
   crate's safe API, mapped in `rust/test-map.toml`. A C test that checks something with no Rust
   meaning (a NULL pointer, freeing) is mapped to a note that says why.
 - The **retirement** deletes the C, the headers, the Makefile and the crates' C bridges; the
-  workspace then builds and tests alone. A coarse test such as `make:test` maps to the Rust
-  tests that took over its checks.
+  workspace then builds and tests alone. It also deletes the other build files that still
+  name the deleted C (a Makefile your CMake build didn't use, another platform's
+  `makefile.msc`), and lists for your review the excluded ones and the CI configurations
+  that build C. A coarse test such as `make:test` maps to the Rust tests that took over its
+  checks.
+- A Cargo feature the port gives a crate, for a configuration the C was built in
+  (http-parser's strict checks), is tested too: the tests run with the default features and
+  with each feature alone, `[strict]` ending those tests' IDs.
 
 ## Keeping the C API
 
@@ -216,7 +248,10 @@ did.
 - Make builds run in Docker only; native Windows builds come later.
 - A static automake library (`lib_LIBRARIES`) hands Rust's native libraries only to the links in
   its own `Makefile.am`; a program in another directory that links it needs them added by hand.
-- Characterization tests are written only for a plain Makefile build so far; an automake or
-  CMake C project turns them off (`parity.characterization_tests.enabled: false`).
-- The retirement deletes the Makefile but not other platforms' build files (bzip2's
-  `makefile.msc`, `Makefile-libbz2_so`). Review them.
+- A CMake project's installed static library doesn't hold the Rust code yet.
+- Each C library becomes a crate, but a crate doesn't depend on the crates of the libraries
+  its library links: cJSON's Utils crate came out generic over a trait its users implement.
+- A C test program that prints no TAP is one test, its exit status, and gets no unit of its
+  own; the retirement translates it with the rest.
+- The retirement leaves the build files your manifest excludes and the CI configuration;
+  it lists those that still build the C for you to review.

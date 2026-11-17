@@ -121,6 +121,29 @@ def test_compiling_and_linking_in_one_call() -> None:
     assert sorted(c["file"] for c in model.commands) == ["/m/tool.c", "/m/util.c"]
 
 
+def test_a_program_named_as_its_library_stays_a_program() -> None:
+    """argon2 builds libargon2.a and the program argon2: the library takes its file's name,
+    so the two don't merge into one target (or one crate)."""
+    calls = [
+        Call(tool="cc", cwd="/m", args=("-c", "src/core.c", "-o", "src/core.o")),
+        Call(tool="ar", cwd="/m", args=("rcs", "libargon2.a", "src/core.o")),
+        Call(tool="cc", cwd="/m", args=("-o", "argon2", "src/run.c", "-L.", "-largon2")),
+    ]
+    targets = {t.name: t for t in build_model(calls, root="/m", compilers=COMPILERS).targets}
+    assert sorted(targets) == ["argon2", "libargon2"]
+    library, program = targets["libargon2"], targets["argon2"]
+    assert (library.kind, library.files, library.artifacts) == (
+        TargetKind.LIBRARY,
+        ["src/core.c"],
+        ["libargon2.a"],
+    )
+    assert (program.kind, program.files, program.dependencies) == (
+        TargetKind.EXECUTABLE,
+        ["src/run.c"],
+        ["libargon2"],
+    )
+
+
 def test_a_partial_link_makes_no_program() -> None:
     """A C port's crate becomes one object (``cc -r``) before libtool archives it (D-70)."""
     calls = [

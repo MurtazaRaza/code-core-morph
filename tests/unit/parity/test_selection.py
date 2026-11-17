@@ -137,11 +137,21 @@ def test_one_job_per_pending_unit_with_untested_symbols(store: IndexStore) -> No
     assert jobs[0].max_tests == 10
 
 
-def test_jobs_get_distinct_new_file_names_and_a_symbol_limit(store: IndexStore) -> None:
-    plan = _plan(_unit(1, "src/calc.cpp"), _unit(2, "src/calc.cpp"))
+def test_jobs_get_new_file_names_and_a_symbol_limit(store: IndexStore) -> None:
+    plan = _plan(_unit(1, "src/calc.cpp"))
     jobs = plan_jobs(
         plan, store, test_dir="t", max_tests=1, scope_all=False, test_file=_name,
-        taken=lambda path: path == "t/calc_test.cpp",
+        taken=lambda path: path in ("t/calc_test.cpp", "t/calc_2_test.cpp"),
     )  # fmt: skip
-    assert [j.test_file for j in jobs] == ["t/calc_2_test.cpp", "t/calc_3_test.cpp"]
-    assert [len(j.symbols) for j in jobs] == [3, 3]  # max_tests x 3
+    assert [j.test_file for j in jobs] == ["t/calc_3_test.cpp"]
+    assert [len(j.symbols) for j in jobs] == [3]  # max_tests x 3
+
+
+def test_a_symbol_goes_to_one_job_only(store: IndexStore) -> None:
+    # A port's retirement owns every source again: its job would repeat the module unit's.
+    units = (_unit(1, "src/calc.cpp", "include/calc.h"), _unit(2, "src/calc.cpp", "src/util.cpp"))
+    plan = _plan(*units)
+    jobs = plan_jobs(plan, store, test_dir="t", max_tests=10, scope_all=False, test_file=_name)
+    assert [(j.plan_unit, [s.name for s in j.symbols]) for j in jobs] == [
+        ("U-0001", ["clamp", "ratio", "total"]),
+    ]

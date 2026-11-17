@@ -7,6 +7,7 @@ If the baseline doesn't build, the run stops: there is no green starting point.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 from collections.abc import Callable, Sequence
@@ -252,8 +253,33 @@ def unit_baseline(
     )
 
 
+# The packages whose code decides what a baseline holds: how a project is built and tested and
+# its results read (the adapters, with their helper scripts), how the baseline is taken, and how
+# commands run.
+_FINGERPRINTED = ("adapters", "parity", "sandbox")
+
+
+@functools.cache
+def engine_fingerprint() -> str:
+    """A hash of the engine's version and of the code that decides what a baseline holds
+    (D-89), so that a baseline another engine took isn't reused: development builds keep one
+    version, so the files count, not the version alone."""
+    import codecoremorph
+
+    root = Path(codecoremorph.__file__).parent
+    digest = hashlib.sha256(codecoremorph.__version__.encode("utf-8"))
+    for package in _FINGERPRINTED:
+        for path in sorted((root / package).rglob("*")):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
 class BaselineCache:
-    """Baselines by commit, standard, sandbox and build options, in the state directory.
+    """Baselines by commit, standard, sandbox, build options and engine, in the state
+    directory.
 
     The plan's baseline and each successful unit's final verification are stored, so a unit
     started from that commit (``unit start --base codecoremorph/<run-id>``) reuses the test
@@ -263,7 +289,8 @@ class BaselineCache:
         self.root = root
 
     def path(self, commit: str, *, sandbox: str, lang: LanguageConfig) -> Path:
-        digest = hashlib.sha256(lang.model_dump_json().encode("utf-8")).hexdigest()[:16]
+        key = lang.model_dump_json() + engine_fingerprint()
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
         return self.root / f"{commit}-{sandbox}-{digest}.json"
 
     def get(self, commit: str, *, sandbox: str, lang: LanguageConfig) -> Baseline | None:

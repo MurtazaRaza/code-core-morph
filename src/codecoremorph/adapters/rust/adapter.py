@@ -31,6 +31,7 @@ from codecoremorph.adapters.rust.cargo import (
     cbindgen_config,
     crate_files,
     edition,
+    feature_runs,
     fetched_packages,
     find_crates,
     find_packages,
@@ -428,22 +429,44 @@ class RustAdapter(LanguageAdapter):
         args = ["nextest", "run", "--locked", "--no-tests=pass"]
         args += ["--config-file", ctx.sandbox(config), "--profile", NEXTEST_PROFILE]
         for crate in self.crates(ctx):
-            ok, output, log_path, _ = self._cargo(
-                ctx, crate, args, f"nextest-{_slug(crate)}.log", timeout_s=ctx.lang.test_timeout_s
-            )
-            report = store / NEXTEST_PROFILE / "junit.xml"
-            if report.is_file():
-                cases += parse_nextest_junit(report.read_text(encoding="utf-8"))
-                report.unlink()
-            elif not ok:
-                raise SandboxError(
-                    f"the tests of crate {crate} didn't run",
-                    reason="\n".join(output.strip().splitlines()[-10:]),
+            for suffix, extra in self._feature_runs(ctx, crate):
+                log = f"nextest-{_slug(crate)}{re.sub(r'[^\w.-]', '-', suffix)}.log"
+                ok, output, log_path, _ = self._cargo(
+                    ctx, crate, args + extra, log, timeout_s=ctx.lang.test_timeout_s
                 )
+                report = store / NEXTEST_PROFILE / "junit.xml"
+                if report.is_file():
+                    found = parse_nextest_junit(report.read_text(encoding="utf-8"))
+                    cases += [c.model_copy(update={"test_id": c.test_id + suffix}) for c in found]
+                    report.unlink()
+                elif not ok:
+                    raise SandboxError(
+                        f"the tests of crate {crate} didn't run{suffix and f' with {extra[-1]}'}",
+                        reason="\n".join(output.strip().splitlines()[-10:]),
+                    )
         if selection is not None and selection.test_ids is not None:
             wanted = set(selection.test_ids)
             cases = [c for c in cases if c.test_id in wanted]
         return TestReport(cases=cases, duration_s=time.monotonic() - started, log_path=log_path)
+
+    def _feature_runs(self, ctx: AdapterContext, crate: str) -> list[tuple[str, list[str]]]:
+        """The test runs of ``crate``: the default features, and for a port's new code (Rust
+        is the target) each feature a package of it declares, alone, its tests' IDs ending in
+        ``[<feature>]`` (D-89)."""
+        runs: list[tuple[str, list[str]]] = [("", [])]
+        if ctx.lang.port_source is None:
+            return runs
+        root = "" if crate in ("", ".") else f"{crate}/"
+        manifests = {
+            package: _text(ctx.worktree / package / "Cargo.toml") or ""
+            for package in find_packages(ctx.worktree, ctx.lang.exclude)
+            if not root or package == crate or package.startswith(root)
+        }
+        runs += [
+            (f"[{feature}]", ["-p", package, "--features", feature])
+            for package, feature in feature_runs(manifests)
+        ]
+        return runs
 
     def index(self, ctx: AdapterContext, files: list[str] | None = None) -> SymbolIndex:
         """The packages' Rust files and their items, by path (the scanner of D-58): enough for
@@ -624,7 +647,9 @@ class RustAdapter(LanguageAdapter):
                 changes += found
                 diagnostics += problems
             elif spec.tool == "rust-retire":
-                changes += self._retire(ctx, spec, files)
+                retired, left = self._retire(ctx, spec, files)
+                changes += retired
+                skipped += left
             elif spec.tool in csharpports.SCAFFOLDS:
                 found, problems = self._csharp_scaffold(ctx, spec, files)
                 changes += found
@@ -903,6 +928,13 @@ class RustAdapter(LanguageAdapter):
             write(f"{package}/src/main.rs", cports.main_rs(sources))
         if _text(ctx.worktree / ports.TEST_MAP) is None:
             write(ports.TEST_MAP, cports.TEST_MAP_TEXT)
+        if ctx.lang.port_build_system == "cmake":
+            # The Rust program takes the executable's name, which Corrosion imports (D-89).
+            target = spec.options.get("build_target", "") or name
+            for rel, text in _cmake_files(ctx.worktree):
+                updated = ports.without_cmake_target(text, target)
+                if updated != text:
+                    write(rel, updated)
         problems = self._lock_workspace(ctx, workspace, changes)
         problems += self._make_integration(ctx, write)
         once = {c.file: c for c in changes}
@@ -923,7 +955,10 @@ class RustAdapter(LanguageAdapter):
         """Each C port crate in the Makefile that makes its library's archive (the archive's
         rule folds it in, the links get Rust's native libraries) and each C program's package
         in the Makefile that makes the program (its rule copies the Rust program), with the
-        marked block that builds the workspace (D-68)."""
+        marked block that builds the workspace (D-68). A CMake project's crates go into CMake
+        instead (:meth:`_cmake_integration`)."""
+        if ctx.lang.port_build_system == "cmake":
+            return self._cmake_integration(ctx, write)
         crates: dict[str, list[cports.Crate]] = {}
         programs: dict[str, list[cports.Program]] = {}
         am_libraries: dict[str, list[cports.AmLibrary]] = {}
@@ -1041,6 +1076,41 @@ class RustAdapter(LanguageAdapter):
             text = cports.with_make_block(text, block)
             if text != original:
                 write(makefile, text)
+        return problems
+
+    def _cmake_integration(
+        self, ctx: AdapterContext, write: Callable[[str, str], None]
+    ) -> list[Diagnostic]:
+        """A C port of a CMake project (D-89): the marked Corrosion block at the end of the
+        top-level ``CMakeLists.txt`` imports the workspace and links each C port crate into its
+        library's target, as a C++ module port's (D-58), so whatever links the library links
+        the Rust code, with Rust's native libraries; a C program's ``bin`` is imported under
+        the executable's name, which the scaffold took out of the CMake files. A Makefile the
+        project also has stays as it is: CMake is the build that runs."""
+        if _text(ctx.worktree / "CMakeLists.txt") is None:
+            return [
+                Diagnostic(
+                    file_path="CMakeLists.txt",
+                    severity=Severity.ERROR,
+                    message="the project builds with CMake, but it has no top-level "
+                    "CMakeLists.txt to import the Rust crates into",
+                    origin=DiagnosticOrigin.BUILD_SYSTEM,
+                )
+            ]
+        problems: list[Diagnostic] = []
+        original = _text(ctx.worktree / "CMakeLists.txt") or ""
+        text = original
+        workspace = f"{cports.WORKSPACE_DIR}/Cargo.toml"
+        for package in find_packages(ctx.worktree, ctx.lang.exclude):
+            manifest = _text(ctx.worktree / package / "Cargo.toml") or ""
+            name = (_package_name(manifest) or posixpath.basename(package)).replace("-", "_")
+            library = cports.manifest_library(manifest)
+            if cports.manifest_archive(manifest) is not None and library:
+                text = with_corrosion_block(text, workspace, (library, name), by_property=True)
+            elif cports.manifest_program(manifest) is not None:
+                text = with_corrosion_block(text, workspace, None, by_property=True)
+        if text != original:
+            write("CMakeLists.txt", text)
         return problems
 
     def _makefile_for(self, ctx: AdapterContext, archive: str) -> tuple[str, str] | None:
@@ -1342,7 +1412,7 @@ class RustAdapter(LanguageAdapter):
 
     def _retire(
         self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
-    ) -> list[CodemodChange]:
+    ) -> tuple[list[CodemodChange], list[SkippedReplacement]]:
         """The ``rust-retire`` codemod (D-60): delete the unit's files outside the workspace
         (the C++ and CMake files left, or a C port's C and Make files, D-68) and, unless
         ``keep`` is ``true`` (the kept API needs it), each crate's bridge: ``src/bridge/`` (with a
@@ -1362,12 +1432,21 @@ class RustAdapter(LanguageAdapter):
             gone = [c.file for c in changes]
             for package, manifest in self._c_crates(ctx):
                 write(f"{package}/Cargo.toml", cports.without_headers(manifest, gone))
-            return list({c.file: c for c in changes}.values())
+            return list({c.file: c for c in changes}.values()), []
+        left = self._stale_builds(ctx, [c.file for c in changes], changes)
         root = _text(ctx.worktree / workspace / "Cargo.toml")
         if root is not None:
             write(
                 f"{workspace}/Cargo.toml", cports.retired_workspace(ports.retired_workspace(root))
             )
+        # The C white-box tests' stand-ins (D-89) go with the tests.
+        stand_ins = ctx.worktree / workspace / cports.WHITE_BOX_DIR
+        if stand_ins.is_dir():
+            for file in sorted(stand_ins.rglob("*")):
+                if file.is_file():
+                    rel = file.relative_to(ctx.worktree).as_posix()
+                    changes.append(CodemodChange(file=rel, replacements=1))
+            shutil.rmtree(stand_ins)
         for package in find_packages(ctx.worktree, ctx.lang.exclude):
             if not package.startswith(f"{workspace}/"):
                 continue
@@ -1404,7 +1483,46 @@ class RustAdapter(LanguageAdapter):
             if manifest:
                 write(f"{package}/Cargo.toml", ports.retired_manifest(manifest))
         once = {c.file: c for c in changes}
-        return list(once.values())
+        return list(once.values()), left
+
+    def _stale_builds(
+        self, ctx: AdapterContext, gone: list[str], changes: list[CodemodChange]
+    ) -> list[SkippedReplacement]:
+        """What else still builds the C the retirement deleted (D-89): it deletes the build
+        files in the migration's scope that name a deleted C source (a Makefile the run's
+        build didn't use, another platform's makefile), and lists for review the excluded
+        build files that name one and the CI configurations that build C, which the project
+        rewrites for Cargo itself."""
+        sources = [f for f in gone if f.lower().endswith(".c")]
+        if not sources:
+            return []
+        excluded = PathMatcher(ctx.lang.exclude)
+        workspace = ports.WORKSPACE_DIR
+        left: list[SkippedReplacement] = []
+        for path in sorted(ctx.worktree.rglob("*")):
+            rel = path.relative_to(ctx.worktree).as_posix()
+            if rel.startswith((".git/", f"{workspace}/")) or not path.is_file():
+                continue
+            build, ci = cports.is_build_file(rel), cports.is_ci_file(rel)
+            if not (build or ci):
+                continue
+            text = _text(path)
+            if text is None:
+                continue
+            named = cports.names_sources(text, sources)
+            if build and named and not excluded.matches(rel):
+                path.unlink()
+                changes.append(CodemodChange(file=rel, replacements=1))
+            elif build and named:
+                reason = (
+                    f"still builds {', '.join(named)}, which the retirement deleted; it is "
+                    "excluded from the migration, so review it"
+                )
+                left.append(SkippedReplacement(file=rel, check="rust-retire", reason=reason))
+            elif ci and (named or cports.builds_c(text)):
+                reason = "a CI configuration that builds the C: rewrite it for Cargo"
+                left.append(SkippedReplacement(file=rel, check="rust-retire", reason=reason))
+        return left
 
     def _lock_workspace(
         self, ctx: AdapterContext, workspace: str, changes: list[CodemodChange]

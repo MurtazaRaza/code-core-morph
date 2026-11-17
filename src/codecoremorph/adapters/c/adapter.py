@@ -23,6 +23,7 @@ from codecoremorph.adapters.cpp.detect import masked_comments
 from codecoremorph.adapters.cpp.diagnostics import parse_compiler_output
 from codecoremorph.adapters.cpp.indexing import COMPILE_COMMANDS, build_files
 from codecoremorph.adapters.cpp.make import BUILD_SYSTEM as MAKE
+from codecoremorph.adapters.cpp.make import parse_tap_output
 from codecoremorph.adapters.cpp.tidy import lint_scope
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.globs import PathMatcher
@@ -43,6 +44,8 @@ from codecoremorph.core.models import (
     SymbolKind,
     TargetKind,
     TestAssertions,
+    TestCaseResult,
+    TestReport,
     TestSelection,
     ToolchainSpec,
 )
@@ -52,6 +55,9 @@ from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore, takes_variabl
 
 # GNU make's own order of the names it reads.
 MAKEFILES = ("GNUmakefile", "makefile", "Makefile")
+AUTOMAKE = "Makefile.am"
+CONFIGURED = "Makefile.in"  # the Makefile configure writes
+CMAKE = "cmake"
 RUST_INSTALL_HINT = (
     "A Rust → C port runs with the Rust toolchain, which holds the C one: use Docker "
     "(sandbox.mode: docker) with the codecoremorph-rust image (D-75)."
@@ -213,6 +219,28 @@ class CAdapter(CppAdapter):
 
     # ------------------------------------------------------------------ characterization (D-74)
 
+    def characterization_unavailable(self, ctx: AdapterContext) -> str | None:
+        """The tests go into the top-level build file (D-74, D-89): a Makefile, else
+        automake's ``Makefile.am`` or the ``Makefile.in`` configure writes it from, or a CMake
+        project's ``CMakeLists.txt``."""
+        if self._characterization_file(ctx) is None:
+            return (
+                "characterization tests of a C project go into its top-level build file: a "
+                "Makefile, Makefile.am, Makefile.in or CMakeLists.txt, and this project has none "
+                f"for its {ctx.lang.build_system} build (D-74)"
+            )
+        return super().characterization_unavailable(ctx)
+
+    def _characterization_file(self, ctx: AdapterContext) -> str | None:
+        """The top-level build file the characterization block goes into, by the directory's
+        own entries (Windows finds `makefile` when the file is `Makefile`)."""
+        present = {p.name for p in ctx.worktree.iterdir() if p.is_file()}
+        if ctx.lang.build_system == CMAKE:
+            return "CMakeLists.txt" if "CMakeLists.txt" in present else None
+        if ctx.lang.build_system != MAKE:
+            return None
+        return next((n for n in (*MAKEFILES, AUTOMAKE, CONFIGURED) if n in present), None)
+
     def characterization_test_file(self, test_dir: str, stem: str) -> str:
         return characterize.test_file(test_dir, stem)
 
@@ -221,41 +249,41 @@ class CAdapter(CppAdapter):
     ) -> list[str]:
         """A C characterization test is a TAP program over ``codecoremorph_tap.h``: a marked
         block in the top-level Makefile builds each from its file, linked with the archives
-        of the libraries compiling ``sources``, and runs it before the test target's recipe.
-        Without ``files``, the block and the helper go (and nothing is left to do once a
-        port's retirement deleted the Makefile)."""
-        if ctx.lang.build_system != MAKE:
-            raise ConfigError(
-                "characterization tests of a C project need a Make build for now",
-                hint="Set parity.characterization_tests.enabled to false (D-74).",
-            )
-        # By the directory's own entries: Windows finds `makefile` when the file is `Makefile`.
-        present = {p.name for p in ctx.worktree.iterdir() if p.is_file()}
-        name = next((n for n in MAKEFILES if n in present), None)
+        of the libraries compiling ``sources``, and runs it before the test target's recipe;
+        in automake's ``Makefile.am`` it runs from ``check-local``, and configure's
+        ``Makefile.in`` takes it as a Makefile does; a CMake project's ``CMakeLists.txt``
+        makes each an executable and a CTest test (D-89). Without ``files``, the block and the
+        helper go (and nothing is left to do once a port's retirement deleted the build)."""
+        why = self.characterization_unavailable(ctx)
+        if why is not None and files:
+            raise ConfigError(why, hint="Set parity.characterization_tests.enabled to false.")
+        name = self._characterization_file(ctx)
         helper = PurePosixPath(test_dir.rstrip("/")) / characterize.HELPER
         if name is None:
-            if files:
-                raise ConfigError(
-                    "characterization tests can't be added to an automake build yet",
-                    reason="the project has no top-level Makefile to add them to",
-                    hint="Set parity.characterization_tests.enabled to false (D-74).",
-                )
             (ctx.worktree / helper).unlink(missing_ok=True)
             return [helper.as_posix()]
         path = ctx.worktree / name
         decoded = TextFile.decode(path.read_bytes())
         newline = majority_newline(decoded.text)
         before = decoded.text.replace("\r\n", "\n")
-        if files:
+        block: str | None = None
+        if files and name == "CMakeLists.txt":
+            libraries, includes = self._characterized_targets(ctx, sources)
+            block = characterize.cmake_block(sorted(files), libraries, includes)
+        elif files:
             archives, includes = self._characterized(ctx, sources)
-            targets = characterize.test_targets(before, ctx.lang.test_targets)
+            targets = (
+                ["check-local"]
+                if name == AUTOMAKE
+                else characterize.test_targets(before, ctx.lang.test_targets)
+            )
             block = characterize.make_block(sorted(files), archives, includes, targets)
+        if block is not None:
             (ctx.worktree / helper).parent.mkdir(parents=True, exist_ok=True)
             (ctx.worktree / helper).write_bytes(characterize.HELPER_TEXT.encode("utf-8"))
-            text = characterize.with_block(before, block)
         else:
             (ctx.worktree / helper).unlink(missing_ok=True)
-            text = characterize.with_block(before, None)
+        text = characterize.with_block(before, block)
         if text != before:
             path.write_bytes(decoded.encode(text.replace("\n", newline)))
         return [name, helper.as_posix()]
@@ -264,7 +292,8 @@ class CAdapter(CppAdapter):
         self, ctx: AdapterContext, sources: list[str]
     ) -> tuple[list[str], list[str]]:
         """The archives of the libraries that compile ``sources`` (every library's when none
-        does), and the directories of the project headers those sources include."""
+        does), and the directories of the project headers those sources include, directly or
+        through other headers (c-autotools' public header comes through ``kvint.h``)."""
         index = ctx.cache_dir / INDEX_FILE_NAME
         if not index.is_file():
             return [], []
@@ -272,15 +301,73 @@ class CAdapter(CppAdapter):
         with IndexStore.open(index) as store:
             libraries = [t for t in store.build_targets() if t.kind is TargetKind.LIBRARY]
             roles = {e.path: e.role for e in store.files()}
-            included = {d.to_file for d in store.dependencies() if d.from_file in wanted}
+            edges: dict[str, set[str]] = {}
+            for dep in store.dependencies():
+                edges.setdefault(dep.from_file, set()).add(dep.to_file)
+        included: set[str] = set()
+        todo = list(wanted)
+        while todo:
+            for target in edges.get(todo.pop(), set()) - included:
+                included.add(target)
+                todo.append(target)
         chosen = [t for t in libraries if wanted & set(t.files)] or libraries
         archives = sorted({a for t in chosen for a in t.artifacts if a.endswith(".a")})
         headers = {f for f in included | wanted if roles.get(f) is FileRole.HEADER}
         dirs = sorted({str(PurePosixPath(h).parent) for h in headers} - {"."})
         return archives, dirs
 
+    def _characterized_targets(
+        self, ctx: AdapterContext, sources: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """A CMake project's :meth:`_characterized`: the targets of the libraries that compile
+        ``sources`` (every library's when none does), and the header directories."""
+        index = ctx.cache_dir / INDEX_FILE_NAME
+        if not index.is_file():
+            return [], []
+        wanted = set(sources)
+        with IndexStore.open(index) as store:
+            libraries = [t for t in store.build_targets() if t.kind is TargetKind.LIBRARY]
+        chosen = [t for t in libraries if wanted & set(t.files)] or libraries
+        _, dirs = self._characterized(ctx, sources)
+        return sorted({t.name for t in chosen}), dirs
+
     def characterization_tests(self, test_ids: list[str]) -> TestSelection:
-        return TestSelection(test_ids=list(test_ids))
+        """The cases, and in a CMake project the CTest tests of their programs, which CTest
+        runs alone (D-89)."""
+        programs = {i.removeprefix("tap:").rsplit("/", 1)[0] for i in test_ids if "/" in i}
+        return TestSelection(test_ids=[*test_ids, *sorted(f"ctest:{p}" for p in programs)])
+
+    def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
+        """The build's tests, and the TAP points of the characterization programs where the
+        build's own results don't have them (D-89): in CTest's JUnit report each program's
+        output; under automake's harness, which reads ``.trs`` files, make's output of the
+        ``check-local`` recipe."""
+        report = super().run_tests(ctx, selection)
+        name = self._characterization_file(ctx)
+        if name not in ("CMakeLists.txt", AUTOMAKE):
+            return report
+        text = TextFile.decode((ctx.worktree / name).read_bytes()).text.replace("\r\n", "\n")
+        programs = characterize.block_programs(text)
+        if not programs:
+            return report
+        found: list[TestCaseResult] = []
+        if name == "CMakeLists.txt":
+            junit = ctx.cache_dir / "tests" / "ctest-junit.xml"
+            outputs = characterize.ctest_outputs(junit.read_bytes()) if junit.is_file() else {}
+            for program in programs:
+                if program in outputs:
+                    found += parse_tap_output(outputs[program], {}, program)
+        elif report.log_path is not None and report.log_path.is_file():
+            log = report.log_path.read_text(encoding="utf-8", errors="replace")
+            forms = {form: p for p in programs for form in (p, f"./{p}")}
+            found = [
+                c
+                for c in parse_tap_output(log, forms, "")
+                if any(c.test_id.startswith(f"tap:{p}/") for p in programs)
+            ]
+        known = {c.test_id for c in report.cases}
+        cases = [*report.cases, *(c for c in found if c.test_id not in known)]
+        return report.model_copy(update={"cases": cases})
 
     def drop_tests(self, ctx: AdapterContext, file: str, test_ids: list[str]) -> int:
         path = ctx.worktree / file

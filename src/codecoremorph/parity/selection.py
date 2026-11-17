@@ -122,17 +122,21 @@ def plan_jobs(
     test_file: Callable[[str, str], str],
     taken: Callable[[str], bool] = lambda _path: False,
 ) -> list[CharacterizationJob]:
-    """One job per pending unit of ``plan`` with untested symbols. ``test_file(dir, stem)`` is
-    the adapter's name for a new test file; ``taken(path)`` says a path already exists."""
+    """One job per pending unit of ``plan`` with untested symbols that no earlier job has: a
+    port's retirement owns every source again, and would repeat the module units' jobs.
+    ``test_file(dir, stem)`` is the adapter's name for a new test file; ``taken(path)`` says a
+    path already exists."""
     jobs: list[CharacterizationJob] = []
     used: set[str] = set()
+    covered: set[str] = set()
     for unit in plan.units:
         if unit.status is not UnitStatus.PENDING:
             continue
         symbols = untested_symbols(store, owned_files(unit), scope_all=scope_all)
+        symbols = [s for s in symbols if s.id not in covered][: max_tests * SYMBOLS_PER_TEST]
         if not symbols:
             continue
-        symbols = symbols[: max_tests * SYMBOLS_PER_TEST]
+        covered.update(s.id for s in symbols)
         stem = PurePosixPath(symbols[0].file).stem
         path = test_file(test_dir, stem)
         number = 2

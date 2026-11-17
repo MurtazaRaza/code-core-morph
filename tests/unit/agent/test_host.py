@@ -341,3 +341,19 @@ def test_the_context_marks_reference_files_and_lists_uncompiled_code(world: Worl
     )
     host.rules = [bump]
     assert "- src/geo_win.cpp" in host.context(state)
+
+
+def test_a_host_units_new_code_is_its_whole_diff(world: World) -> None:
+    """A host unit commits a checkpoint after its codemods and after each failed attempt, so
+    the checks of its new code (c_abi_kept, unsafe code, lint fixes) read from the unit's
+    snapshot, not from HEAD: cJSON's attempt that changed only a C stand-in was told its
+    bridge exported nothing (D-89)."""
+    snapshot = world.worktree.head()
+    host = _host(world)
+    state = _start(host, "include/geo.h").state
+    assert state.head != snapshot  # the codemods' checkpoint
+    assert host.runner.unit_base == snapshot
+    scoped = TYPEDEFS.model_copy(
+        update={"rule": TYPEDEFS.rule.model_copy(update={"extra_scope": ["include/**"]})}
+    )
+    assert host.runner._new_code(scoped) == ["include/geo.h"]  # pyright: ignore[reportPrivateUsage]
