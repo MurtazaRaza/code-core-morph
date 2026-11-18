@@ -8,9 +8,19 @@ project's own when it builds one (a vendored ``gtest_main``), else ``find_packag
 
 The top-level ``CMakeLists.txt`` gets a marked block that adds the directory; removing the
 tests removes the block.
+
+A Make build (a Makefile, automake's ``Makefile.am``, or the ``Makefile.in`` configure writes
+the Makefile from) gets a marked block of its own at the end of its top-level file instead
+(D-89): a program per test, compiled with the project's ``CXXFLAGS`` and linked with the
+archives of the libraries that compile the characterized code and the toolchain's GoogleTest,
+run before the test target's recipe, each writing its results as GoogleTest XML.
 """
 
 from __future__ import annotations
+
+import posixpath
+import re
+from collections.abc import Sequence
 
 from codecoremorph.patching.textfile import majority_newline
 
@@ -153,3 +163,100 @@ def with_block(text: str, test_dir: str) -> str:
         base += newline
     block = [BEGIN, "enable_testing()", f"add_subdirectory({_quote(test_dir)})", END]
     return base + newline + newline.join(block) + newline
+
+
+# ------------------------------------------------------------------ a Make build (D-89)
+
+MAKE_TARGET = "codecoremorph-characterization"
+# Where each program writes its GoogleTest XML, from the directory make runs in.
+GTEST_OUTPUT_DIR = "codecoremorph-gtest"
+_LISTED = re.compile(r"^CODECOREMORPH_CHARACTERIZATION = (.*)$", re.MULTILINE)
+
+
+def make_program(path: str) -> str:
+    """The program a characterization test file builds: the file without its extension."""
+    return posixpath.splitext(path)[0]
+
+
+def make_test_targets(makefile: str, configured: Sequence[str]) -> list[str]:
+    """The targets that run the tests: the manifest's, else ``check`` or ``test``, whichever
+    the Makefile has outside the block."""
+    if configured:
+        return list(configured)
+    text = without_block(makefile)
+    for target in ("check", "test"):
+        if re.search(rf"^{target}\s*:", text, re.MULTILINE):
+            return [target]
+    return []
+
+
+def make_block(
+    tests: Sequence[str],
+    archives: Sequence[str],
+    include_dirs: Sequence[str],
+    test_targets: Sequence[str],
+    *,
+    cxx98: bool,
+) -> str:
+    """The marked block for ``tests`` (paths from the Makefile's directory), each built from
+    its file and linked with ``archives`` and GoogleTest, run before each of
+    ``test_targets``. GoogleTest is the toolchain's (the first of ``CMAKE_PREFIX_PATH``), or
+    for a C++98/03 build the release that supports it (``CODECOREMORPH_CXX98_PREFIX_PATH``,
+    D-38)."""
+    names = [make_program(t) for t in tests]
+    prefix = (
+        "$(CODECOREMORPH_CXX98_PREFIX_PATH)"
+        if cxx98
+        else "$(firstword $(subst :, ,$(CMAKE_PREFIX_PATH)))"
+    )
+    includes = " ".join(f"-I{d}" for d in include_dirs)
+    linked = " ".join(archives)
+    lines = [
+        BEGIN,
+        f"CODECOREMORPH_GTEST = {prefix}",
+        f"CODECOREMORPH_CHARACTERIZATION = {' '.join(names)}",
+    ]
+    for test, name in zip(tests, names, strict=True):
+        # Without -c, which some Makefiles put in their flags: this rule compiles and links.
+        lines += [
+            f"{name}: {test} {linked}".rstrip(),
+            f"\t$(CXX) $(CPPFLAGS) $(filter-out -c,$(CXXFLAGS)) -I$(CODECOREMORPH_GTEST)/include "
+            f"{includes} -o $@ {test} {linked} $(LDFLAGS) -L$(CODECOREMORPH_GTEST)/lib "
+            "-L$(CODECOREMORPH_GTEST)/lib64 -lgtest_main -lgtest -pthread "
+            "$(CODECOREMORPH_RUST_LIBS) $(LDLIBS) $(LIBS)",
+        ]
+    # Order-only: made before the target's recipe, but not one of its $^ (a recipe that
+    # compiles $^ would name the phony target as a file).
+    lines += [f"{target}: | {MAKE_TARGET}" for target in test_targets]
+    lines += [f".PHONY: {MAKE_TARGET}", f"{MAKE_TARGET}: $(CODECOREMORPH_CHARACTERIZATION)"]
+    lines.append(f"\t-@mkdir -p {GTEST_OUTPUT_DIR}")
+    # Each program says it runs (whatever `.SILENT:` says); a failure doesn't stop make.
+    lines += [
+        f"\t-@echo ./{name}; ./{name} "
+        f"--gtest_output=xml:{GTEST_OUTPUT_DIR}/{name.replace('/', '_')}.xml"
+        for name in names
+    ]
+    lines.append(END)
+    return "\n".join(lines) + "\n"
+
+
+def make_block_programs(text: str) -> list[str]:
+    """The characterization programs of the marked block in a Makefile's ``text``."""
+    start = text.find(BEGIN)
+    if start < 0:
+        return []
+    listed = _LISTED.search(text, start)
+    return listed.group(1).split() if listed is not None else []
+
+
+def with_make_block(text: str, block: str | None) -> str:
+    """``text`` (a top-level Makefile, ``Makefile.am`` or ``Makefile.in``) with ``block`` at its
+    end in place of the marked block, in the file's line endings; without one when ``block``
+    is None."""
+    base = without_block(text)
+    if block is None:
+        return base
+    newline = majority_newline(text) if "\n" in text else "\n"
+    if base and not base.endswith("\n"):
+        base += newline
+    return base + (newline if base else "") + block.replace("\n", newline)

@@ -46,7 +46,7 @@ PORT = LoadedRule(
 WITH_SITES = ("src/a.cpp", "src/b.cpp", "src/tmpl.h", "src/kept.h", "app/main.cpp")
 
 
-def _project(p: FakeProject) -> ProjectModel:
+def _project(p: FakeProject, *, white_box: bool = False) -> ProjectModel:
     p.file("CMakeLists.txt", "add_library(lib src/a.cpp src/b.cpp)\n")
     p.file("include/m/a.h", 'extern "C" int a_f(void);\n', public_api=True)
     p.file("src/a.cpp", '#include "m/a.h"\n#include "tmpl.h"\nint a_f(void) { return 1; }\n')
@@ -65,9 +65,21 @@ def _project(p: FakeProject) -> ProjectModel:
     p.dep("tests/a_test.cpp", "include/m/a.h")
     p.dep("tests/a_test.cpp", "src/kept.h")
     p.symbol("c:@F@a_f", "include/m/a.h", (1, 12), (1, 24), definition=False, boundary="c_abi")
+    tests = ["tests/a_test.cpp"]
+    if white_box:
+        # A test that includes b.cpp itself, to reach its static helper (D-89).
+        p.file("tests/b_internals_test.cpp", '#include "../src/b.cpp"\nvoid t() { b_helper(); }\n')
+        p.dep("tests/b_internals_test.cpp", "src/b.cpp")
+        p.symbol("c:@F@b_f", "include/m/b.h", (2, 1), (2, 10), definition=False)
+        p.symbol("c:@F@b_f", "src/b.cpp", (3, 1), (3, 30))
+        p.symbol("c:b.cpp@F@b_helper", "src/b.cpp", (4, 1), (4, 40))  # static
+        p.symbol("c:b.cpp@F@b_unused", "src/b.cpp", (5, 1), (5, 40))  # static, untested
+        p.ref("tests/b_internals_test.cpp", "c:b.cpp@F@b_helper", 2)
+        p.ref("tests/b_internals_test.cpp", "c:@F@b_f", 2)
+        tests.append("tests/b_internals_test.cpp")
     p.target("lib", "library", ["src/a.cpp", "src/b.cpp"])
     p.target("app", "executable", ["app/main.cpp"])
-    p.target("tests", "executable", ["tests/a_test.cpp"])
+    p.target("tests", "executable", tests)
     p.build()
     return ProjectModel.load(
         p.index_path, p.worktree, source_dirs=["src", "include", "app"], test_dirs=["tests"]
@@ -144,3 +156,21 @@ def test_the_target_names_packages_and_modules(fake_project: FakeProject) -> Non
         ("lib_pkg", "mod_b"),
     ]
     assert seen == [("lib", "a", frozenset()), ("lib", "b", frozenset({"mod_a"}))]
+
+
+def test_tests_that_include_a_source_are_white_box(fake_project: FakeProject) -> None:
+    """A C++ test that includes a module's source itself compiles the façade it becomes and
+    uses what it keeps to itself (D-89, as for C): the unit's port names both."""
+    plan = _plan(_project(fake_project, white_box=True))
+    ports = {u.port.module: u for u in plan.units if u.port}
+    b = ports["b"].port
+    assert b is not None
+    assert b.white_box == ["tests/b_internals_test.cpp"]
+    assert b.white_box_tests == ["tests/b_internals_test.cpp"]
+    assert b.white_box_uses == ["b_helper"]  # b_f is the header's; b_unused no test uses
+    assert "1 test file compiles its sources in through tests/b_internals_test.cpp" in (
+        ports["b"].note or ""
+    )
+    a = ports["a"].port
+    assert a is not None
+    assert (a.white_box, a.white_box_tests, a.white_box_uses) == ([], [], [])

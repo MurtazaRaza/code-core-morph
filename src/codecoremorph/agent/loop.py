@@ -86,7 +86,12 @@ from codecoremorph.core.models import (
     owned_files,
 )
 from codecoremorph.core.secrets import Json, Redactor
-from codecoremorph.invariants.abi import c_abi_differences, c_abi_feedback, cbindgen_tip
+from codecoremorph.invariants.abi import (
+    c_abi_differences,
+    c_abi_feedback,
+    cbindgen_build_tip,
+    cbindgen_tip,
+)
 from codecoremorph.invariants.checker import InvariantChecker
 from codecoremorph.invariants.symbol_map import (
     read_symbol_map,
@@ -1070,6 +1075,15 @@ class UnitRunner:
             step=step,
             roots=self._roots(self.ctx),
         )
+        heads = {
+            path: (read_text(self.worktree.path, path) or "")[:400]
+            for path in {d.file_path for d in result.errors if d.file_path is not None}
+        }
+        tip = cbindgen_build_tip(
+            [(heads[d.file_path], d.message) for d in result.errors if d.file_path is not None]
+        )
+        if tip:
+            feedback = f"{feedback.rstrip()}\n\n{tip}"
         if self.uncompiled:
             for line in error_lines(result.errors, self.worktree.path):
                 if line not in self.error_lines:

@@ -442,6 +442,50 @@ def test_the_retirement_leaves_a_cmake_project(tmp_path: Path) -> None:
     assert "add_subdirectory(tests)" in cmake
 
 
+def test_what_still_builds_the_retired_csharp_is_listed(tmp_path: Path) -> None:
+    """What the unit doesn't hold that still names a deleted project (a second solution, an
+    excluded benchmark project) and the CI that runs dotnet are the project's to review (D-89,
+    as for the ports to Rust); with ``keep`` the library's C# stays, and so does its CI."""
+    from codecoremorph.adapters.csharp import ports as csharp_ports
+    from codecoremorph.core.models import CodemodSpec
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    root, files = _ported(tmp_path)
+    extra = {
+        "build/Shop.Release.sln": (
+            'Project("{FAE0}") = "Shop", "..\\src\\Shop\\Shop.csproj", "{1}"\n'
+        ),
+        "bench/Shop.Bench.csproj": (
+            '<Project><ItemGroup><ProjectReference Include="..\\src\\Shop\\Shop.csproj" />'
+            "</ItemGroup></Project>\n"
+        ),
+        "other/Other.csproj": '<Project><ItemGroup><ProjectReference Include="MyShop.csproj" />'
+        "</ItemGroup></Project>\n",
+        ".github/workflows/ci.yml": "jobs:\n  test:\n    steps:\n      - run: dotnet test\n",
+    }
+    for rel, text in extra.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(text.encode("utf-8"))
+    ctx = AdapterContext(
+        worktree=root,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(language="cpp", standard="cpp17"),
+    )
+    spec = CodemodSpec(tool="cpp-csharp-retire", options={"keep": "false"})
+    result = CppAdapter().run_codemods(ctx, [spec], files)
+    left = {s.file: s.reason for s in result.skipped}
+    assert sorted(left) == [".github/workflows/ci.yml", "bench/Shop.Bench.csproj",
+                            "build/Shop.Release.sln"]  # fmt: skip
+    assert "rewrite it for the CMake build" in left[".github/workflows/ci.yml"]
+    assert left["bench/Shop.Bench.csproj"].startswith("names Shop.csproj, which the retirement")
+    kept = csharp_ports.retirement_left(root, ["src/Cli/Shop.Cli.csproj"], "Cargo", keep=True)
+    assert kept == []  # nothing left names the program, and the library's CI stays
+    assert csharp_ports.retirement_left(root, ["src/Shop/Money.cs"], "Cargo", keep=False) == []
+
+
 def test_keep_source_api_retires_the_programs_only(tmp_path: Path) -> None:
     root, _ = _ported(tmp_path)
     files = ["Shop.sln", "src/Cli/Program.cs", "src/Cli/Shop.Cli.csproj"]

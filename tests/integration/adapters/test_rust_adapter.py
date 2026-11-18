@@ -253,7 +253,7 @@ def test_the_ffi_module_ported_by_hand(make_contexts: MakeContexts) -> None:
         "rust/textkit_ring/src/lib.rs",
     ]
     top = (root / "CMakeLists.txt").read_text(encoding="utf-8")
-    assert "target_link_libraries(textkit PUBLIC textkit_ring)" in top
+    assert "set_property(TARGET textkit APPEND PROPERTY LINK_LIBRARIES textkit_ring)" in top
     # Running it again changes nothing.
     assert (
         rust.run_codemods(ctx.rust, [CodemodSpec(tool="rust-crate")], ["src/ring.cpp"]).changes
@@ -368,8 +368,11 @@ def test_the_module_scaffold(make_contexts: MakeContexts) -> None:
     assert "typedef struct CalcRsSink {" in header
     top = (root / "CMakeLists.txt").read_text(encoding="utf-8")
     assert "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)" in top
-    assert "target_include_directories(calc PUBLIC rust/calc_rs/include)" in top
-    assert "target_link_libraries(calc PUBLIC calc_rs)" in top
+    assert (
+        "target_include_directories(calc PUBLIC "
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rust/calc_rs/include>)"
+    ) in top
+    assert "set_property(TARGET calc APPEND PROPERTY LINK_LIBRARIES calc_rs)" in top
     assert (root / "rust/calc_rs/src/strutil.rs").read_text(encoding="utf-8") == (
         "//! Ported from include/calc/strutil.h, src/strutil.cpp (CodeCoreMorph, D-58).\n"
     )

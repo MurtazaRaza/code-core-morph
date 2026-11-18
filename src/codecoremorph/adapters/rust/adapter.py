@@ -19,6 +19,7 @@ from collections.abc import Callable, Collection
 from pathlib import Path, PurePath, PurePosixPath
 from typing import cast
 
+from codecoremorph.adapters import leftovers
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.adapters.c import rustports
 from codecoremorph.adapters.cpp import CppAdapter
@@ -450,11 +451,12 @@ class RustAdapter(LanguageAdapter):
         return TestReport(cases=cases, duration_s=time.monotonic() - started, log_path=log_path)
 
     def _feature_runs(self, ctx: AdapterContext, crate: str) -> list[tuple[str, list[str]]]:
-        """The test runs of ``crate``: the default features, and for a port's new code (Rust
-        is the target) each feature a package of it declares, alone, its tests' IDs ending in
-        ``[<feature>]`` (D-89)."""
+        """The test runs of ``crate``: the default features, and in a port (Rust the target, or
+        a crate being ported to C, whose C then keeps what each feature turns on) each
+        feature a package of it declares that the defaults don't turn on, alone, its tests'
+        IDs ending in ``[<feature>]`` (D-89)."""
         runs: list[tuple[str, list[str]]] = [("", [])]
-        if ctx.lang.port_source is None:
+        if ctx.lang.port_source is None and ctx.lang.port_target is None:
             return runs
         root = "" if crate in ("", ".") else f"{crate}/"
         manifests = {
@@ -654,6 +656,16 @@ class RustAdapter(LanguageAdapter):
                 found, problems = self._csharp_scaffold(ctx, spec, files)
                 changes += found
                 diagnostics += problems
+                if spec.tool == "rust-csharp-retire":
+                    # What else still builds the C#: for review (D-89).
+                    deleted = [c.file for c in found if not (ctx.worktree / c.file).exists()]
+                    keep = spec.options.get("keep") == "true"
+                    skipped += [
+                        SkippedReplacement(file=f, check=spec.tool, reason=reason)
+                        for f, reason in csharp_ports.retirement_left(
+                            ctx.worktree, deleted, "Cargo", keep=keep
+                        )
+                    ]
             elif spec.tool == "rustfmt":
                 changes += self._rustfmt(ctx)
             else:
@@ -1106,9 +1118,9 @@ class RustAdapter(LanguageAdapter):
             name = (_package_name(manifest) or posixpath.basename(package)).replace("-", "_")
             library = cports.manifest_library(manifest)
             if cports.manifest_archive(manifest) is not None and library:
-                text = with_corrosion_block(text, workspace, (library, name), by_property=True)
+                text = with_corrosion_block(text, workspace, (library, name))
             elif cports.manifest_program(manifest) is not None:
-                text = with_corrosion_block(text, workspace, None, by_property=True)
+                text = with_corrosion_block(text, workspace, None)
         if text != original:
             write("CMakeLists.txt", text)
         return problems
@@ -1488,12 +1500,12 @@ class RustAdapter(LanguageAdapter):
     def _stale_builds(
         self, ctx: AdapterContext, gone: list[str], changes: list[CodemodChange]
     ) -> list[SkippedReplacement]:
-        """What else still builds the C the retirement deleted (D-89): it deletes the build
-        files in the migration's scope that name a deleted C source (a Makefile the run's
-        build didn't use, another platform's makefile), and lists for review the excluded
-        build files that name one and the CI configurations that build C, which the project
-        rewrites for Cargo itself."""
-        sources = [f for f in gone if f.lower().endswith(".c")]
+        """What else still builds the C or C++ the retirement deleted (D-89): it deletes the
+        build files in the migration's scope that name a deleted source (a Makefile the run's
+        build didn't use, another platform's makefile or Visual Studio project), and lists for
+        review the excluded build files that name one and the CI configurations that build C
+        or C++, which the project rewrites for Cargo itself."""
+        sources = [f for f in gone if f.lower().endswith(cports.NATIVE_SOURCES)]
         if not sources:
             return []
         excluded = PathMatcher(ctx.lang.exclude)
@@ -1503,7 +1515,7 @@ class RustAdapter(LanguageAdapter):
             rel = path.relative_to(ctx.worktree).as_posix()
             if rel.startswith((".git/", f"{workspace}/")) or not path.is_file():
                 continue
-            build, ci = cports.is_build_file(rel), cports.is_ci_file(rel)
+            build, ci = leftovers.is_build_file(rel), leftovers.is_ci_file(rel)
             if not (build or ci):
                 continue
             text = _text(path)
@@ -1520,7 +1532,7 @@ class RustAdapter(LanguageAdapter):
                 )
                 left.append(SkippedReplacement(file=rel, check="rust-retire", reason=reason))
             elif ci and (named or cports.builds_c(text)):
-                reason = "a CI configuration that builds the C: rewrite it for Cargo"
+                reason = "a CI configuration that builds the C or C++: rewrite it for Cargo"
                 left.append(SkippedReplacement(file=rel, check="rust-retire", reason=reason))
         return left
 

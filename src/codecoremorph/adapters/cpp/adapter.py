@@ -58,12 +58,16 @@ from codecoremorph.adapters.cpp.make import MakeBuild
 from codecoremorph.adapters.cpp.makefiles import has_make_build, make_files, standards_in
 from codecoremorph.adapters.cpp.paths import PathMapper
 from codecoremorph.adapters.cpp.ports import unported_definitions
-from codecoremorph.adapters.cpp.registration import TARGET as CHARACTERIZATION_TARGET
 from codecoremorph.adapters.cpp.registration import (
+    GTEST_OUTPUT_DIR,
     characterization_cmake,
+    make_block,
+    make_test_targets,
     with_block,
+    with_make_block,
     without_block,
 )
+from codecoremorph.adapters.cpp.registration import TARGET as CHARACTERIZATION_TARGET
 from codecoremorph.adapters.cpp.testing import (
     ReportParseError,
     ctest_regex,
@@ -73,6 +77,7 @@ from codecoremorph.adapters.cpp.testing import (
     read_gtest_dir,
 )
 from codecoremorph.adapters.cpp.tidy import lint_scope
+from codecoremorph.adapters.csharp import ports as csharp_ports
 from codecoremorph.core.errors import ConfigError, SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -92,6 +97,7 @@ from codecoremorph.core.models import (
     SkippedReplacement,
     SymbolIndex,
     SymbolKind,
+    TargetKind,
     TestAssertions,
     TestCaseResult,
     TestReport,
@@ -100,6 +106,7 @@ from codecoremorph.core.models import (
     ToolchainSpec,
     ToolRequirement,
 )
+from codecoremorph.invariants.abi import cbindgen_tip
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.rules.applicability import StandardOrder
 from codecoremorph.rules.detectors import mask_c_family
@@ -109,6 +116,11 @@ from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore
 log = logging.getLogger(__name__)
 
 MIN_LLVM = "18"
+# The top-level files characterization tests go into (D-74, D-89).
+MAKEFILES = ("GNUmakefile", "makefile", "Makefile")
+AUTOMAKE = "Makefile.am"
+CONFIGURED = "Makefile.in"  # the Makefile configure writes
+CMAKE = "cmake"
 STYLE_FILES = (".clang-format", "_clang-format")
 _STD_FLAG = re.compile(r"[-/]std[:=](c|gnu)\+\+(\w+)")
 # A parameterized case's instances in GoogleTest's reports (test_case_of): a value-parameterized
@@ -365,7 +377,19 @@ class CppAdapter(LanguageAdapter):
 
     def run_tests(self, ctx: AdapterContext, selection: TestSelection | None = None) -> TestReport:
         if (make := self._make_build(ctx)) is not None:
-            return make.run_tests(selection)
+            # The characterization programs a Make build runs write GoogleTest XML (D-89).
+            gtest_out = make.mirror.root / GTEST_OUTPUT_DIR
+            shutil.rmtree(gtest_out, ignore_errors=True)
+            report = make.run_tests(selection)
+            if not gtest_out.is_dir():
+                return report
+            gtest_cases, problems = read_gtest_dir(gtest_out)
+            groups = [
+                report.cases,
+                gtest_cases,
+                [_error_case("gtest:(report)", p) for p in problems[:1]],
+            ]
+            return report.model_copy(update={"cases": merge_cases(groups)})
         work = ctx.cache_dir / "tests"
         shutil.rmtree(work, ignore_errors=True)
         gtest_dir = work / "gtest"
@@ -729,14 +753,86 @@ class CppAdapter(LanguageAdapter):
     def characterization_test_file(self, test_dir: str, stem: str) -> str:
         return f"{test_dir.rstrip('/')}/{stem}_test.cpp"
 
+    def characterization_unavailable(self, ctx: AdapterContext) -> str | None:
+        """The tests go into the top-level build file (D-89): a CMake project's
+        ``CMakeLists.txt``, or a Makefile, automake's ``Makefile.am`` or the ``Makefile.in``
+        configure writes the Makefile from."""
+        if self._characterization_file(ctx) is None:
+            return (
+                "characterization tests go into the project's top-level build file: "
+                "CMakeLists.txt, a Makefile, Makefile.am or Makefile.in, and this project has "
+                f"none for its {ctx.lang.build_system} build (D-89)"
+            )
+        return super().characterization_unavailable(ctx)
+
+    def _characterization_file(self, ctx: AdapterContext) -> str | None:
+        """The top-level build file the characterization block goes into, by the directory's
+        own entries (Windows finds `makefile` when the file is `Makefile`)."""
+        present = {p.name for p in ctx.worktree.iterdir() if p.is_file()}
+        if ctx.lang.build_system == MAKE:
+            return next((n for n in (*MAKEFILES, AUTOMAKE, CONFIGURED) if n in present), None)
+        return "CMakeLists.txt" if "CMakeLists.txt" in present else None
+
+    def _characterized(
+        self, ctx: AdapterContext, sources: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """The archives of the libraries that compile ``sources`` (every library's when none
+        does), and the directories of the project headers those sources include, directly or
+        through other headers (c-autotools' public header comes through ``kvint.h``)."""
+        index = ctx.cache_dir / INDEX_FILE_NAME
+        if not index.is_file():
+            return [], []
+        wanted = set(sources)
+        with IndexStore.open(index) as store:
+            libraries = [t for t in store.build_targets() if t.kind is TargetKind.LIBRARY]
+            roles = {e.path: e.role for e in store.files()}
+            edges: dict[str, set[str]] = {}
+            for dep in store.dependencies():
+                edges.setdefault(dep.from_file, set()).add(dep.to_file)
+        included: set[str] = set()
+        todo = list(wanted)
+        while todo:
+            for target in edges.get(todo.pop(), set()) - included:
+                included.add(target)
+                todo.append(target)
+        chosen = [t for t in libraries if wanted & set(t.files)] or libraries
+        archives = sorted({a for t in chosen for a in t.artifacts if a.endswith(".a")})
+        headers = {f for f in included | wanted if roles.get(f) is FileRole.HEADER}
+        dirs = sorted({str(PurePosixPath(h).parent) for h in headers} - {"."})
+        return archives, dirs
+
     def register_test_files(
         self, ctx: AdapterContext, test_dir: str, files: list[str], sources: list[str]
     ) -> list[str]:
-        if ctx.lang.build_system == MAKE:
-            raise ConfigError(
-                "characterization tests can't be added to a Make build yet",
-                hint="Set parity.characterization_tests.enabled to false (D-68).",
-            )
+        """GoogleTest characterization tests: in a CMake project one executable in the tests'
+        directory, added from a marked block in the top-level ``CMakeLists.txt``; in a Make
+        build (a Makefile, ``Makefile.am``, ``Makefile.in``) a program per test from a marked
+        block at the end of the top-level file, linked with the archives of the libraries that
+        compile ``sources``, run before the test target's recipe (``check-local`` under
+        automake), each writing GoogleTest XML (D-89). Without ``files`` the block goes."""
+        why = self.characterization_unavailable(ctx)
+        if why is not None and files:
+            raise ConfigError(why, hint="Set parity.characterization_tests.enabled to false.")
+        name = self._characterization_file(ctx)
+        if name is None:
+            return []
+        if name != "CMakeLists.txt":
+            path = ctx.worktree / name
+            decoded = TextFile.decode(path.read_bytes())
+            block: str | None = None
+            if files:
+                archives, includes = self._characterized(ctx, sources)
+                targets = (
+                    ["check-local"]
+                    if name == AUTOMAKE
+                    else make_test_targets(decoded.text, ctx.lang.test_targets)
+                )
+                cxx98 = ctx.lang.standard in ("cpp98", "cpp03")
+                block = make_block(sorted(files), archives, includes, targets, cxx98=cxx98)
+            text = with_make_block(decoded.text, block)
+            if text != decoded.text:
+                _write_atomic(path, decoded.encode(text))
+            return [name]
         root_file = ctx.worktree / "CMakeLists.txt"
         root = TextFile.decode(root_file.read_bytes())
         directory = PurePosixPath(test_dir.rstrip("/"))
@@ -993,6 +1089,12 @@ class CppAdapter(LanguageAdapter):
         declared, problems = (
             self._bridge_declarations(ctx, headers, include_dirs) if headers else ({}, [])
         )
+        if target == "Rust":
+            # cbindgen wrote the header from the agent's Rust: say what to change there (D-89).
+            problems = [
+                p.model_copy(update={"message": p.message + cbindgen_tip(p.message)})
+                for p in problems
+            ]
         text, refused = pinvoke.csharp_declarations(declared, library, source, target)
         data = text.encode("utf-8")
         for project in projects:
@@ -1064,17 +1166,33 @@ class CppAdapter(LanguageAdapter):
     ) -> CodemodResult:
         started = time.monotonic()
         changed: list[str] = []
+        left: list[SkippedReplacement] = []
         for spec in codemods:
             if spec.tool in csharpports.SCAFFOLDS:
-                changed += csharpports.scaffold(
+                done = csharpports.scaffold(
                     ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
                 )
+                changed += done
+                if spec.tool == "cpp-csharp-retire":
+                    # What else still builds the C#: for review (D-89).
+                    deleted = [f for f in done if not (ctx.worktree / f).exists()]
+                    keep = spec.options.get("keep") == "true"
+                    left += [
+                        SkippedReplacement(file=f, check=spec.tool, reason=reason)
+                        for f, reason in csharp_ports.retirement_left(
+                            ctx.worktree, deleted, "the CMake build", keep=keep
+                        )
+                    ]
         rest = [s for s in codemods if s.tool not in csharpports.SCAFFOLDS]
         result = self.run_codemods(ctx, rest, files) if rest else None
         changes = [CodemodChange(file=f, replacements=1) for f in sorted(set(changed))]
         if result is None:
-            return CodemodResult(changes=changes, duration_s=time.monotonic() - started)
-        return result.model_copy(update={"changes": [*changes, *result.changes]})
+            return CodemodResult(
+                changes=changes, skipped=left, duration_s=time.monotonic() - started
+            )
+        return result.model_copy(
+            update={"changes": [*changes, *result.changes], "skipped": [*left, *result.skipped]}
+        )
 
     def c_declarations(self, ctx: AdapterContext, header: Path) -> dict[str, str]:
         """libclang parses ``header`` as C11, with the include directories, macros and target

@@ -322,6 +322,20 @@ def test_a_ports_c_abi_functions_are_c_abi_kepts() -> None:
     assert not left("http_flag")  # a variable
 
 
+def test_only_a_rule_that_checks_c_abi_kept_takes_the_c_abi_from_i6() -> None:
+    """A C++ module port keeps its C headers with no c_abi_kept (D-58): its C ABI functions
+    stay I-6's, so a change to them is still caught (D-89)."""
+    from codecoremorph.invariants.checker import c_abi_kept_judges
+    from codecoremorph.rules.registry import RuleRegistry
+
+    registry = RuleRegistry.discover()
+    rule = registry.get
+    assert c_abi_kept_judges([rule("port_c_module")])  # C → Rust
+    assert c_abi_kept_judges([rule("port_c_abi_module")])  # a C++ project's C interface
+    assert not c_abi_kept_judges([rule("port_module")])  # a C++ module's façade
+    assert not c_abi_kept_judges([])
+
+
 def test_suppressions() -> None:
     lines = patch_lines(PATCH)
     found = check_suppressions(lines, allowed=False)

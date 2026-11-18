@@ -29,6 +29,8 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
+from codecoremorph.adapters.leftovers import RUNS_C_BUILD
+
 WORKSPACE_DIR = "rust"
 SYS_MODULE = "sys"
 SYS_FILE = "src/bridge/sys.rs"  # relative to the crate
@@ -877,41 +879,23 @@ def with_native_libs(text: str, crates: Sequence[Crate]) -> str:
 # ------------------------------------------------------------------ what the retirement leaves
 
 # Build files of any build system, and CI configurations (D-89).
-_BUILD_FILE = re.compile(
-    r"(?:^|/)(?:GNUmakefile|[Mm]akefile(?:[.-][^/]*)?|[^/]+\.(?:mk|mak|cmake|vcxproj|vcproj|dsp)"
-    r"|CMakeLists\.txt|meson\.build|configure\.(?:ac|in)|SConstruct|build\.ninja)$"
-)
-_CI_FILE = re.compile(
-    r"(?:^|/)(?:\.github/workflows/[^/]+\.ya?ml|\.travis\.yml|\.?appveyor\.yml|\.gitlab-ci\.yml"
-    r"|azure-pipelines\.yml|\.circleci/config\.yml|Jenkinsfile|\.cirrus\.yml)$"
-)
-_C_BUILD = re.compile(r"(?<![\w-])(?:c?make|\./configure|autoreconf|gcc|clang)(?![\w-])")
-
-
-def is_build_file(path: str) -> bool:
-    """Whether ``path`` is a build file of some build system (a Makefile and its variants, a
-    CMake file, a Visual Studio project, meson, autoconf's input, SCons, ninja)."""
-    return _BUILD_FILE.search(path) is not None
-
-
-def is_ci_file(path: str) -> bool:
-    """Whether ``path`` is a CI configuration (GitHub Actions, Travis, AppVeyor, GitLab, Azure,
-    CircleCI, Jenkins, Cirrus)."""
-    return _CI_FILE.search(path) is not None
+# What a port to Rust retires: C and C++ sources (D-89).
+NATIVE_SOURCES = (".c", ".cc", ".cpp", ".cxx", ".c++")
 
 
 def names_sources(text: str, sources: Collection[str]) -> list[str]:
-    """The C sources of ``sources`` that ``text`` names, as the file (``x.c``, with or
-    without a directory) or its object (``x.o``, ``x.obj``, ``x.lo``)."""
+    """The C or C++ sources of ``sources`` that ``text`` names, as the file (``x.c``,
+    ``x.cpp``, with or without a directory) or its object (``x.o``, ``x.obj``, ``x.lo``)."""
     found: list[str] = []
     for source in sorted(sources):
-        stem = posixpath.basename(source).rsplit(".", 1)[0]
-        if re.search(rf"(?<![\w.-]){re.escape(stem)}\.(?:c|o|obj|lo)\b", text):
+        stem, _, extension = posixpath.basename(source).rpartition(".")
+        suffixes = "|".join(re.escape(e) for e in (extension, "o", "obj", "lo"))
+        if re.search(rf"(?<![\w.-]){re.escape(stem)}\.(?:{suffixes})(?![\w+])", text):
             found.append(source)
     return found
 
 
 def builds_c(text: str) -> bool:
-    """Whether a CI configuration's ``text`` runs a C build (make, CMake, configure, a C
-    compiler)."""
-    return _C_BUILD.search(text) is not None
+    """Whether a CI configuration's ``text`` runs a C or C++ build (make, CMake, configure,
+    MSBuild, meson, ninja, SCons, a compiler)."""
+    return RUNS_C_BUILD.search(text) is not None

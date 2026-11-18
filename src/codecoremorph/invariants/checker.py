@@ -26,6 +26,7 @@ from codecoremorph.core.models import (
     CoreModel,
     InvariantResult,
     LoadedRule,
+    PostconditionType,
     RuleKind,
     Severity,
     Symbol,
@@ -81,6 +82,18 @@ class ApiSnapshot(CoreModel):
     )
     project_wide: bool = Field(
         default=False, description="A project rule's unit: every in-scope file is in it"
+    )
+
+
+def c_abi_kept_judges(rules: Sequence[LoadedRule]) -> bool:
+    """Whether one of a unit's port rules checks ``c_abi_kept``, which then judges the unit's
+    changes to C ABI functions instead of I-6 (D-89). A port rule without it (a C++ module
+    port, whose C headers the façade keeps, D-58) leaves them to I-6."""
+    return any(
+        p.type is PostconditionType.C_ABI_KEPT
+        for r in rules
+        if r.rule.kind is RuleKind.PORT
+        for p in r.rule.postconditions
     )
 
 
@@ -430,8 +443,9 @@ class InvariantChecker:
         def users(change: ApiChange) -> set[str]:
             return {f for sid in change.symbol_ids for f in snapshot.referencing.get(sid, [])}
 
-        if any(r.rule.kind is RuleKind.PORT for r in rules):
-            # A port's C ABI functions are c_abi_kept's, which every port rule checks.
+        if c_abi_kept_judges(rules):
+            # A port's C ABI functions are c_abi_kept's where a rule checks it; elsewhere (a
+            # C++ module port's C headers, D-58) they stay I-6's (D-89).
             kinds = {s.id: s.kind for s in snapshot.symbols}
             changes = [
                 c

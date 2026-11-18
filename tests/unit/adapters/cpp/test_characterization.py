@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from codecoremorph.adapters.base import AdapterContext
 from codecoremorph.adapters.cpp.adapter import CppAdapter
@@ -12,9 +15,12 @@ from codecoremorph.adapters.cpp.gtest import assertions, drop_tests, find_cases
 from codecoremorph.adapters.cpp.registration import (
     BEGIN,
     characterization_cmake,
+    make_block_programs,
+    make_test_targets,
     with_block,
     without_block,
 )
+from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.models import LanguageConfig
 
 TESTS = """\
@@ -180,6 +186,71 @@ def test_adapter_registers_and_unregisters_test_files(tmp_path: Path) -> None:
     adapter.register_test_files(ctx, tests_dir, [], [])
     assert not (tmp_path / tests_dir / "CMakeLists.txt").exists()
     assert (tmp_path / "CMakeLists.txt").read_bytes() == b"project(P CXX)\r\n"
+
+
+def _make_ctx(root: Path, standard: str = "cpp11") -> AdapterContext:
+    ctx = _ctx(root)
+    lang = LanguageConfig(language="cpp", standard=standard, build_system="make")
+    return replace(ctx, lang=lang)
+
+
+def test_a_make_builds_characterization_block(tmp_path: Path) -> None:
+    """A Make build takes the tests (D-89): a program per test in a block at the end of the
+    Makefile, before the test target's recipe, writing GoogleTest XML."""
+    makefile = "CXXFLAGS = -O2 -c\r\nall: libcounter.a\r\n\r\ncheck: all\r\n\t./run-tests\r\n"
+    (tmp_path / "Makefile").write_bytes(makefile.encode("utf-8"))
+    adapter = CppAdapter()
+    ctx = _make_ctx(tmp_path)
+    assert adapter.characterization_unavailable(ctx) is None
+    tests_dir = "tests/codecoremorph_characterization"
+    test = f"{tests_dir}/counter_test.cpp"
+    assert adapter.register_test_files(ctx, tests_dir, [test], ["src/counter.cpp"]) == ["Makefile"]
+    data = (tmp_path / "Makefile").read_bytes()
+    assert data.startswith(makefile.encode("utf-8"))
+    assert b"\n" not in data.replace(b"\r\n", b"")  # the Makefile's CRLF
+    text = data.decode("utf-8").replace("\r\n", "\n")
+    program = f"{tests_dir}/counter_test"
+    assert f"CODECOREMORPH_CHARACTERIZATION = {program}\n" in text
+    assert "$(filter-out -c,$(CXXFLAGS))" in text
+    assert "-lgtest_main -lgtest -pthread" in text
+    assert "CODECOREMORPH_GTEST = $(firstword $(subst :, ,$(CMAKE_PREFIX_PATH)))" in text
+    assert "check: | codecoremorph-characterization\n" in text
+    assert (
+        f"\t-@echo ./{program}; ./{program} --gtest_output=xml:codecoremorph-gtest/"
+        "tests_codecoremorph_characterization_counter_test.xml\n"
+    ) in text
+    assert make_block_programs(text) == [program]
+    assert adapter.register_test_files(ctx, tests_dir, [], []) == ["Makefile"]
+    assert (tmp_path / "Makefile").read_bytes() == makefile.encode("utf-8")
+
+
+def test_a_cxx98_make_build_links_the_googletest_that_supports_it(tmp_path: Path) -> None:
+    (tmp_path / "Makefile.am").write_text("check_PROGRAMS = t\n", encoding="utf-8")
+    ctx = _make_ctx(tmp_path, "cpp98")
+    tests_dir = "tests/ccm"
+    CppAdapter().register_test_files(ctx, tests_dir, [f"{tests_dir}/a_test.cpp"], [])
+    text = (tmp_path / "Makefile.am").read_text(encoding="utf-8")
+    assert "CODECOREMORPH_GTEST = $(CODECOREMORPH_CXX98_PREFIX_PATH)" in text
+    assert "check-local: | codecoremorph-characterization" in text  # automake runs it there
+
+
+def test_a_build_without_a_top_level_file_is_refused_up_front(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Makefile").write_text("all:\n", encoding="utf-8")
+    adapter = CppAdapter()
+    for ctx in (_make_ctx(tmp_path), _ctx(tmp_path)):
+        why = adapter.characterization_unavailable(ctx)
+        assert why is not None
+        assert "top-level build file" in why
+        with pytest.raises(ConfigError):
+            adapter.register_test_files(ctx, "tests/ccm", ["tests/ccm/a_test.cpp"], [])
+
+
+def test_make_test_targets() -> None:
+    assert make_test_targets("all:\n\ntest: all\n\t./t\n", []) == ["test"]
+    assert make_test_targets("check:\ntest:\n", []) == ["check"]
+    assert make_test_targets("all:\n", ["unit"]) == ["unit"]
+    assert make_test_targets("all:\n", []) == []
 
 
 def test_adapter_extracts_assertions_and_drops_tests(tmp_path: Path) -> None:

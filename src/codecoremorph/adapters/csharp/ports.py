@@ -16,6 +16,7 @@ from collections.abc import Collection, Mapping, Sequence
 from importlib import resources
 from pathlib import Path, PurePosixPath
 
+from codecoremorph.adapters import leftovers
 from codecoremorph.core.errors import ConfigError
 
 SUPPORT_FILE = "CodeCoreMorph.Interop.cs"
@@ -284,3 +285,44 @@ def retire_csharp(out: Writer, files: Sequence[str], *, keep: bool) -> None:
         prefix = "" if directory == "." else f"{directory}/"
         for file_name in FACADE_FILES:
             out.delete(f"{prefix}{file_name}")
+
+
+# What still references a deleted project: another solution or project, a solution filter or
+# MSBuild's own files.
+_REFERENCING = (*PROJECT_SUFFIXES, *SOLUTION_SUFFIXES, ".slnf", ".proj", ".props", ".targets")
+
+
+def retirement_left(
+    worktree: Path, deleted: Collection[str], build: str, *, keep: bool
+) -> list[tuple[str, str]]:
+    """What still builds or uses the C# a retirement deleted, for review (D-89, as for the
+    ports to Rust): the solutions and projects left (excluded ones, a second solution) that
+    name a deleted project, and, unless ``keep`` leaves the library's C#, the CI configurations
+    that run ``dotnet``, which the project rewrites for ``build`` (the CMake build, Cargo).
+    (file, reason) pairs."""
+    projects = sorted(
+        posixpath.basename(f) for f in deleted if f.lower().endswith(PROJECT_SUFFIXES)
+    )
+    if not projects:
+        return []
+    named = [
+        (p, re.compile(rf"(?<![\w.-]){re.escape(p)}(?![\w.-])", re.IGNORECASE)) for p in projects
+    ]
+    left: list[tuple[str, str]] = []
+    for rel, path in leftovers.worktree_files(worktree):
+        ci = leftovers.is_ci_file(rel)
+        if not (ci or rel.lower().endswith(_REFERENCING)):
+            continue
+        text = leftovers.read_text(path)
+        if text is None:
+            continue
+        if ci:
+            if not keep and leftovers.RUNS_DOTNET.search(text):
+                reason = f"a CI configuration that builds the C#: rewrite it for {build}"
+                left.append((rel, reason))
+            continue
+        used = [p for p, pattern in named if pattern.search(text)]
+        if used:
+            reason = f"names {', '.join(used)}, which the retirement deleted: review it"
+            left.append((rel, reason))
+    return left

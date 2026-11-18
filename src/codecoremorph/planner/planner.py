@@ -58,6 +58,7 @@ from codecoremorph.planner.csharp import (
     cut_retirement,
     cut_tests,
     cut_types,
+    dynamic_notes,
     project_name,
 )
 from codecoremorph.planner.csharp import display as csharp_display
@@ -70,6 +71,15 @@ DEFAULT_MAX_UNIT_FILES = 20  # NFR-1.3 sizes incremental re-indexing for units o
 DEFAULT_MERGE_TOKENS = 40_000  # small clusters merge up to this much context
 
 _ABI_BOUNDARIES = frozenset({Boundary.C_ABI, Boundary.JNI, Boundary.PINVOKE})
+# A white-box test's own files, among what reaches a source it includes (D-89).
+_SOURCE_SUFFIXES = (".c", ".cc", ".cpp", ".cxx", ".c++")
+
+
+def _listed_names(names: Sequence[str], shown: int = 3) -> str:
+    more = len(names) - shown
+    return ", ".join(names[:shown]) + (f" and {more} more" if more > 0 else "")
+
+
 _LANGUAGE_NAMES = {"cpp": "C++", "c": "C", "csharp": "C#", "java": "Java", "rust": "Rust"}
 _SKIP_FLAGS = {
     SkipCondition.C_COMPATIBLE: UnitFlag.C_COMPATIBLE,
@@ -439,6 +449,20 @@ class _Former:
                 - set(unit_files)
             )
             headers = [f for f in unit_files if project.files[f].role is FileRole.HEADER]
+            # Tests that #include one of the module's sources itself compile its code, and its
+            # façade's once ported, into theirs (D-89, as for C).
+            own = [f for f in unit_files if project.files[f].role is FileRole.SOURCE]
+            reaching = sorted(
+                {p for s in own for p in self._including(s)} - set(library_of) - set(unit_files)
+            )
+            white_box = sorted(
+                p for p in reaching if any(s in project.includes.get(p, set()) for s in own)
+            )
+            uses = (
+                [u for s in own for u in project.cpp_internals_used(s, reaching)]
+                if reaching
+                else []
+            )
             port = PortUnit(
                 build_target=library,
                 crate=package,
@@ -447,6 +471,9 @@ class _Former:
                 c_headers=[
                     f for f in headers if Boundary.C_ABI in project.boundaries.get(f, set())
                 ],
+                white_box=white_box,
+                white_box_tests=[p for p in reaching if p.lower().endswith(_SOURCE_SUFFIXES)],
+                white_box_uses=list(dict.fromkeys(uses)),
             )
             units.append((position, unit_files, port))
         unit_ids = {i: f"the unit that ports {modules[i][1][0]}" for i in range(len(modules))}
@@ -463,6 +490,12 @@ class _Former:
                 )
             if port.callers:
                 note += f"; {len(port.callers)} C++ files keep using it through its headers"
+            if port.white_box:
+                n = len(port.white_box_tests)
+                note += (
+                    f"; {n} test file{'' if n == 1 else 's'} compile{'s' if n == 1 else ''} its "
+                    f"sources in through {', '.join(port.white_box)} (white-box tests)"
+                )
             draft = _Draft(
                 rule=scan.rule_id,
                 files=sorted({*unit_files, *self.project.build_files}),
@@ -1364,6 +1397,14 @@ class _Former:
                     f"{self._type_unit_files(language, module)}, the C# types keeping their API "
                     f"as façades over them; {'; '.join(unit.details)}"
                 )
+                # Tests that reach what the types keep internal (InternalsVisibleTo, D-89).
+                testing, internals = self.project.internals_tests_use(unit.files)
+                if internals:
+                    n = len(testing)
+                    note += (
+                        f"; {n} test file{'' if n == 1 else 's'} use{'s' if n == 1 else ''} what "
+                        f"it keeps internal ({_listed_names(internals)})"
+                    )
                 draft = _Draft(
                     rule=scan.rule_id,
                     files=unit_files,
@@ -1377,6 +1418,9 @@ class _Former:
                         exports=unit.exports,
                         types=[t.id for t in unit.types],
                         native_libraries=unit.native(result.imports),
+                        white_box=testing,
+                        white_box_tests=testing,
+                        white_box_uses=internals,
                     ),
                 )
             draft.needs = [drafts[i] for i in unit.needs]
@@ -1454,6 +1498,9 @@ class _Former:
                 )
             if unit.helpers:
                 note += f"; with the test doubles and helpers of {', '.join(unit.helpers)}"
+            dynamic = dynamic_notes(self.project.types, {unit.file, *unit.helpers})
+            if dynamic:
+                note += "; " + "; ".join(dynamic)
             drafts.append(
                 _Draft(
                     rule=scan.rule_id,

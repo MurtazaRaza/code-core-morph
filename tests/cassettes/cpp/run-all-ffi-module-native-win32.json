@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "6b65176969d1c488a26e49a78019651b6986193f8e331f663c606bec4b16a1a3",
+      "key": "325e99e3147b816b8815bd6ab6242840959408caeddccc8c54046f7541f3a073",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_c_abi_module\\n\\nKept as they are: include/textkit/ring.h. They declare the interface the new code must ",

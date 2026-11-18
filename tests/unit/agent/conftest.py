@@ -113,7 +113,10 @@ class FakeAdapter(LanguageAdapter):
                 line=number,
                 column=1,
                 severity=Severity.ERROR,
-                message="use of undeclared identifier 'BROKEN'",
+                # As a compiler says it of a Rust type cbindgen copied into a header (D-89).
+                message="unknown type name 'Option'"
+                if "Option<" in line
+                else "use of undeclared identifier 'BROKEN'",
                 origin=DiagnosticOrigin.COMPILER,
             )
             for path, text in sorted(self._files(ctx).items())

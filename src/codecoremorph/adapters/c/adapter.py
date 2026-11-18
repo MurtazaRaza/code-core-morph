@@ -18,7 +18,7 @@ from codecoremorph.adapters.c import characterize, rustports
 from codecoremorph.adapters.c.detect import C_STANDARDS, CMAKE_C_STANDARD, normalized
 from codecoremorph.adapters.c.detect import detect as detect_project
 from codecoremorph.adapters.c.tests import disabled_markers, test_assertions
-from codecoremorph.adapters.cpp.adapter import CppAdapter
+from codecoremorph.adapters.cpp.adapter import AUTOMAKE, CppAdapter
 from codecoremorph.adapters.cpp.detect import masked_comments
 from codecoremorph.adapters.cpp.diagnostics import parse_compiler_output
 from codecoremorph.adapters.cpp.indexing import COMPILE_COMMANDS, build_files
@@ -41,6 +41,7 @@ from codecoremorph.core.models import (
     ProjectDetection,
     RuleSite,
     Severity,
+    SkippedReplacement,
     SymbolKind,
     TargetKind,
     TestAssertions,
@@ -54,10 +55,6 @@ from codecoremorph.sandbox.executor import full_output
 from codecoremorph.store.index import INDEX_FILE_NAME, IndexStore, takes_variable_arguments
 
 # GNU make's own order of the names it reads.
-MAKEFILES = ("GNUmakefile", "makefile", "Makefile")
-AUTOMAKE = "Makefile.am"
-CONFIGURED = "Makefile.in"  # the Makefile configure writes
-CMAKE = "cmake"
 RUST_INSTALL_HINT = (
     "A Rust → C port runs with the Rust toolchain, which holds the C one: use Docker "
     "(sandbox.mode: docker) with the codecoremorph-rust image (D-75)."
@@ -184,16 +181,29 @@ class CAdapter(CppAdapter):
             return super().run_codemods(ctx, codemods, files)
         started = time.monotonic()
         changed: list[str] = []
+        left: list[SkippedReplacement] = []
         for spec in mine:
-            changed += rustports.scaffold(
+            done = rustports.scaffold(
                 ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
             )
+            changed += done
+            if spec.tool == "c-retire":
+                # What else still builds the Rust: for review (D-89).
+                deleted = [f for f in done if not (ctx.worktree / f).exists()]
+                left += [
+                    SkippedReplacement(file=f, check="c-retire", reason=reason)
+                    for f, reason in rustports.retirement_left(ctx.worktree, deleted)
+                ]
         rest = [s for s in codemods if s.tool not in rustports.SCAFFOLDS]
         result = super().run_codemods(ctx, rest, files) if rest else None
         changes = [CodemodChange(file=f, replacements=1) for f in sorted(set(changed))]
         if result is None:
-            return CodemodResult(changes=changes, duration_s=time.monotonic() - started)
-        return result.model_copy(update={"changes": [*changes, *result.changes]})
+            return CodemodResult(
+                changes=changes, skipped=left, duration_s=time.monotonic() - started
+            )
+        return result.model_copy(
+            update={"changes": [*changes, *result.changes], "skipped": [*left, *result.skipped]}
+        )
 
     def detect_project(self, root: Path, files: list[str]) -> ProjectDetection | None:
         """Make or CMake, the standard the build files set (or one guessed from the code) and
@@ -230,16 +240,6 @@ class CAdapter(CppAdapter):
                 f"for its {ctx.lang.build_system} build (D-74)"
             )
         return super().characterization_unavailable(ctx)
-
-    def _characterization_file(self, ctx: AdapterContext) -> str | None:
-        """The top-level build file the characterization block goes into, by the directory's
-        own entries (Windows finds `makefile` when the file is `Makefile`)."""
-        present = {p.name for p in ctx.worktree.iterdir() if p.is_file()}
-        if ctx.lang.build_system == CMAKE:
-            return "CMakeLists.txt" if "CMakeLists.txt" in present else None
-        if ctx.lang.build_system != MAKE:
-            return None
-        return next((n for n in (*MAKEFILES, AUTOMAKE, CONFIGURED) if n in present), None)
 
     def characterization_test_file(self, test_dir: str, stem: str) -> str:
         return characterize.test_file(test_dir, stem)
@@ -287,34 +287,6 @@ class CAdapter(CppAdapter):
         if text != before:
             path.write_bytes(decoded.encode(text.replace("\n", newline)))
         return [name, helper.as_posix()]
-
-    def _characterized(
-        self, ctx: AdapterContext, sources: list[str]
-    ) -> tuple[list[str], list[str]]:
-        """The archives of the libraries that compile ``sources`` (every library's when none
-        does), and the directories of the project headers those sources include, directly or
-        through other headers (c-autotools' public header comes through ``kvint.h``)."""
-        index = ctx.cache_dir / INDEX_FILE_NAME
-        if not index.is_file():
-            return [], []
-        wanted = set(sources)
-        with IndexStore.open(index) as store:
-            libraries = [t for t in store.build_targets() if t.kind is TargetKind.LIBRARY]
-            roles = {e.path: e.role for e in store.files()}
-            edges: dict[str, set[str]] = {}
-            for dep in store.dependencies():
-                edges.setdefault(dep.from_file, set()).add(dep.to_file)
-        included: set[str] = set()
-        todo = list(wanted)
-        while todo:
-            for target in edges.get(todo.pop(), set()) - included:
-                included.add(target)
-                todo.append(target)
-        chosen = [t for t in libraries if wanted & set(t.files)] or libraries
-        archives = sorted({a for t in chosen for a in t.artifacts if a.endswith(".a")})
-        headers = {f for f in included | wanted if roles.get(f) is FileRole.HEADER}
-        dirs = sorted({str(PurePosixPath(h).parent) for h in headers} - {"."})
-        return archives, dirs
 
     def _characterized_targets(
         self, ctx: AdapterContext, sources: list[str]

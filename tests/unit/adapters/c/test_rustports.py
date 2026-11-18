@@ -256,6 +256,63 @@ def test_the_retirement_deletes_the_packages_its_unit_names(tmp_path: Path) -> N
     assert left == ["fuzz/Cargo.lock", "fuzz/Cargo.toml", "fuzz/fuzz_targets/fuzz_next.rs"]
 
 
+def test_what_still_builds_the_retired_rust_is_listed(tmp_path: Path) -> None:
+    """After the retirement, what else still builds or uses the Rust is the project's to
+    review (D-89, as for the ports to Rust): an excluded fuzz workspace that takes the crate by
+    its path, the CI and a Makefile that run Cargo. The CMake build the port wrote doesn't
+    count, nor a CI that runs no Cargo."""
+    files = {
+        "CMakeLists.txt": rustports.top_cmake("rpn", "c99"),
+        "c/CMakeLists.txt": rustports.c_cmake("rpn", ["src/lexer.c"]),
+        "fuzz/Cargo.toml": (
+            '[package]\nname = "rpn-fuzz"\n\n[dependencies]\nlibfuzzer-sys = "0.4"\n'
+            'rpn = { path = ".." }\n\n[workspace]\nmembers = ["."]\n'
+        ),
+        "tools/Cargo.toml": '[package]\nname = "tools"\n\n[dependencies]\nother = { path = "x" }\n',
+        ".github/workflows/ci.yml": "jobs:\n  test:\n    steps:\n      - run: cargo test\n",
+        ".github/workflows/docs.yml": "jobs:\n  docs:\n    steps:\n      - run: mdbook build\n",
+        "Makefile": "release:\n\tcargo build --release\n",
+    }
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    left = dict(rustports.retirement_left(tmp_path, ["Cargo.toml", "src/lib.rs"]))
+    assert sorted(left) == [".github/workflows/ci.yml", "Makefile", "fuzz/Cargo.toml"]
+    assert left["fuzz/Cargo.toml"].startswith("takes . by its path")
+    assert "rewrite it for the CMake build" in left[".github/workflows/ci.yml"]
+    assert rustports.retirement_left(tmp_path, ["src/lib.rs"]) == []  # no package went
+    assert rustports.path_dependencies("fuzz/Cargo.toml", files["fuzz/Cargo.toml"]) == ["."]
+    target = "[target.'cfg(unix)'.dev-dependencies]\nrpn = { path = \"../rpn\" }\n"
+    assert rustports.path_dependencies("tests/Cargo.toml", target) == ["rpn"]
+
+
+def test_the_retirement_codemod_reports_them_as_skipped(tmp_path: Path) -> None:
+    from codecoremorph.adapters.base import AdapterContext
+    from codecoremorph.adapters.c import CAdapter
+    from codecoremorph.core.models import CodemodSpec, LanguageConfig
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    work = tmp_path / "work"
+    for rel, text in {
+        "Cargo.toml": '[package]\nname = "rpn"\n',
+        "src/lib.rs": "pub fn f() {}\n",
+        ".travis.yml": "script:\n  - cargo test\n",
+    }.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_text(text, encoding="utf-8")
+    ctx = AdapterContext(
+        worktree=work,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(language="c", standard="c99", build_system="cmake"),
+    )
+    result = CAdapter().run_codemods(ctx, [CodemodSpec(tool="c-retire")], [])
+    assert not (work / "Cargo.toml").exists()
+    assert [(s.file, s.check) for s in result.skipped] == [(".travis.yml", "c-retire")]
+
+
 def test_clang_tidy_checks_bugs_and_warnings_not_cs_idioms() -> None:
     """The compiler's warnings count (``-*`` alone would turn them off), and what the
     bug-finding checks say of C's idioms doesn't (D-80)."""

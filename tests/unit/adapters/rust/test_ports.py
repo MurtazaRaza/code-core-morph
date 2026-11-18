@@ -90,8 +90,11 @@ def test_corrosion_block_with_include_directories() -> None:
     )
     assert once.endswith(
         "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)\n"
-        "target_include_directories(calc PUBLIC rust/calc_rs/include)\n"
-        "target_link_libraries(calc PUBLIC calc_rs)\n"
+        "target_include_directories(calc PUBLIC "
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rust/calc_rs/include>)\n"
+        "set_property(TARGET calc APPEND PROPERTY LINK_LIBRARIES calc_rs)\n"
+        "set_property(TARGET calc APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
+        "$<BUILD_INTERFACE:calc_rs>)\n"
         "# <<< CodeCoreMorph: the Rust crates\n"
     )
     again = with_corrosion_block(
@@ -182,3 +185,59 @@ def test_retired_crates() -> None:
     )
     masked = mask("fn f() { unsafe { g() } }\n// unsafe\n#![forbid(unsafe_code)]\n")
     assert ports.unsafe_keywords("x.rs", masked) == [("x.rs", 1, "uses unsafe code")]
+
+
+def test_the_cpp_retirement_clears_the_builds_the_run_didnt_use(tmp_path: Path) -> None:
+    """A C++ port's retirement deletes the other build files in scope that still name its
+    C++ (a Visual Studio project, a spare Makefile), and lists the excluded ones and the CI
+    that builds C++ for review (D-89, as for C)."""
+    from codecoremorph.adapters.base import AdapterContext
+    from codecoremorph.adapters.rust import RustAdapter
+    from codecoremorph.core.models import CodemodSpec, LanguageConfig
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    work = tmp_path / "work"
+    files = {
+        "CMakeLists.txt": "add_library(calc src/ring.cpp)\n",
+        "src/ring.cpp": "int x;\n",
+        "include/ring.hpp": "int x();\n",
+        "rust/Cargo.toml": ports.workspace_manifest(["calc_rs"]),
+        "rust/calc_rs/Cargo.toml": ports.package_manifest("calc_rs", "2021", "calc"),
+        "rust/calc_rs/src/lib.rs": ports.lib_rs("calc_rs", "calc"),
+        "rust/calc_rs/src/bridge/mod.rs": ports.bridge_mod_rs("calc_rs"),
+        "msvc/calc.vcxproj": '<ClCompile Include="..\\src\\ring.cpp" />\n',
+        "Makefile.gcc": "libcalc.a: src/ring.o\n\tar rcs $@ src/ring.o\n",
+        "vendor/Makefile": "ring: ../src/ring.cpp\n\tg++ -o ring ../src/ring.cpp\n",
+        ".travis.yml": "script:\n  - g++ -std=c++98 -c src/ring.cpp\n",
+        # Names another file than the one deleted: it stays.
+        "tools/Makefile": "gen: gen.cpp ring.c\n\tg++ -o gen gen.cpp\n",
+    }
+    for rel, text in files.items():
+        (work / rel).parent.mkdir(parents=True, exist_ok=True)
+        (work / rel).write_bytes(text.encode("utf-8"))
+    ctx = AdapterContext(
+        worktree=work,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(
+            language="rust",
+            standard="rust2021",
+            target_standard="rust2021",
+            exclude=["vendor/**"],
+        ),
+    )
+    spec = CodemodSpec(tool="rust-retire", options={"keep": "false"})
+    result = RustAdapter().run_codemods(
+        ctx, [spec], ["CMakeLists.txt", "src/ring.cpp", "include/ring.hpp"]
+    )
+    changed = {c.file for c in result.changes}
+    for gone in ("msvc/calc.vcxproj", "Makefile.gcc"):
+        assert not (work / gone).exists()
+        assert gone in changed
+    assert (work / "vendor/Makefile").exists()
+    assert (work / "tools/Makefile").exists()
+    left = {s.file: s.reason for s in result.skipped}
+    assert sorted(left) == [".travis.yml", "vendor/Makefile"]
+    assert "builds the C or C++" in left[".travis.yml"]

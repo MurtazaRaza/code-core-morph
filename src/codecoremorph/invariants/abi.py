@@ -67,13 +67,19 @@ def c_abi_feedback(rule_id: str, headers: Sequence[str], problems: Sequence[str]
     return "\n".join(lines)
 
 
-_RUST_TYPE = re.compile(r"unknown type name '(Option|Box|Vec|Result|String|&\w*|\w+<)")
-_CONFLICT = re.compile(r"conflicting types for '(\w+)'")
+_RUST_TYPES = r"(?:Option|Box|Vec|Result|String|&\w*|\w+<)"
+# clang's in C and C++, gcc's in C, and gcc's in C++.
+_RUST_TYPE = re.compile(
+    rf"unknown type name '{_RUST_TYPES}|'{_RUST_TYPES}[^']*' does not name a type"
+)
+_CONFLICT = re.compile(r"conflicting (?:types for|declaration of C function) '(?:[^'(]*\s)?(\w+)")
+CBINDGEN_MARK = "cbindgen"  # in the warning at the top of each header cbindgen writes for a port
 
 
 def cbindgen_tip(reason: str) -> str:
-    """A hint for a header cbindgen wrote from the new code that doesn't parse as C, by the
-    parse error (D-89): what cbindgen copied as it was, or a bridge's own C declarations."""
+    """A hint for a header cbindgen wrote from the new code that doesn't parse as C (or
+    compile in the C++ that includes it), by the error (D-89): what cbindgen copied as it was,
+    or a bridge's own C declarations."""
     if _RUST_TYPE.search(reason):
         return (
             " cbindgen copies a type it can't translate into the header as it is: write a "
@@ -88,4 +94,16 @@ def cbindgen_tip(reason: str) -> str:
             '`extern "C"` block calling C) into the header, where it conflicts with the C '
             "library's: put such declarations in a module marked `/// cbindgen:ignore`."
         )
+    return ""
+
+
+def cbindgen_build_tip(errors: Sequence[tuple[str, str]]) -> str:
+    """The hint for a build's errors in a header cbindgen wrote (a C++ port's bridge header,
+    which the C++ includes, D-89): ``errors`` are (the start of the file the error is in,
+    its message). Empty when no error is in such a header or none has a hint."""
+    for head, message in errors:
+        if CBINDGEN_MARK in head:
+            tip = cbindgen_tip(message)
+            if tip:
+                return f"Those errors are in a header cbindgen writes from the Rust.{tip}"
     return ""

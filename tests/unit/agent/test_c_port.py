@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from codecoremorph.agent.context import translation_unit_note
+from codecoremorph.agent.context import module_port_note, translation_unit_note
 from codecoremorph.core.models import PortUnit, WorkUnit
 
 
@@ -153,6 +153,26 @@ def test_a_unit_with_white_box_tests_gets_a_stand_in() -> None:
     assert '`#[no_mangle] pub extern "C" fn cjson_rs_test_<name>`' in note
     plain = port.model_copy(update={"white_box": [], "white_box_tests": [], "white_box_uses": []})
     assert "White-box" not in translation_unit_note(unit, plain)
+
+
+def test_a_cpp_module_with_white_box_tests_keeps_what_they_use_in_its_facade() -> None:
+    """A C++ test that includes the module's source (D-89): the source stays as the façade
+    until the retirement, so it keeps what the test uses, over the bridge's test hooks."""
+    port = PortUnit(
+        build_target="lib",
+        crate="lib_rs",
+        module="b",
+        white_box=["tests/b_internals_test.cpp"],
+        white_box_tests=["tests/b_internals_test.cpp"],
+        white_box_uses=["b_helper"],
+    )
+    note = module_port_note(port)
+    assert "**White-box tests.** tests/b_internals_test.cpp `#include` one of the module's" in note
+    assert "(a `static` function, an anonymous namespace's): `b_helper`." in note
+    assert '`#[no_mangle] pub extern "C" fn lib_rs_test_<name>`' in note
+    assert "c-whitebox" not in note  # the façade is the stand-in
+    plain = port.model_copy(update={"white_box": [], "white_box_tests": [], "white_box_uses": []})
+    assert "White-box" not in module_port_note(plain)
 
 
 def test_a_cmake_units_file_leaves_its_target_and_corrosion_links_the_crate() -> None:

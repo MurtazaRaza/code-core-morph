@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codecoremorph.adapters import leftovers
 from codecoremorph.adapters.rust import cports
 
 C_LEGACY = Path(__file__).resolve().parents[4] / "fixtures" / "c" / "c-legacy" / "Makefile"
@@ -480,12 +481,20 @@ def test_what_names_a_deleted_source() -> None:
     assert cports.names_sources("tool: ../cJSON.c\n", sources) == ["cJSON.c"]
     assert cports.names_sources("src\\wf.obj libwf.lo\n", sources) == ["src/wf.c"]
     assert cports.names_sources("SRC = my_wf.c wf.cpp cJSON.cc\n", sources) == []
-    assert cports.is_build_file("Makefile-libbz2_so")
-    assert cports.is_build_file("win/makefile.msc")
-    assert cports.is_build_file("fuzzing/CMakeLists.txt")
-    assert not cports.is_build_file("library_config/libcjson.pc.in")
-    assert cports.is_ci_file(".github/workflows/CI.yml")
-    assert cports.is_ci_file("appveyor.yml")
-    assert not cports.is_ci_file("docs/ci.yml")
+    # A C++ port's sources (D-89): by their own extension, or their objects.
+    cpp = ["src/ring.cpp", "lib/x.cc"]
+    assert cports.names_sources('Include="..\\src\\ring.cpp"', cpp) == ["src/ring.cpp"]
+    assert cports.names_sources("OBJS = x.o\n", cpp) == ["lib/x.cc"]
+    assert cports.names_sources("SRC = ring.c ring.cppm x.cc++\n", cpp) == []
+    assert cports.builds_c("script:\n  - g++ -c a.cpp\n")
+    assert cports.builds_c("- run: MSBuild calc.sln\n")
+    assert not cports.builds_c("# Make sure the docs build\n- run: sphinx-build\n")
+    assert leftovers.is_build_file("Makefile-libbz2_so")
+    assert leftovers.is_build_file("win/makefile.msc")
+    assert leftovers.is_build_file("fuzzing/CMakeLists.txt")
+    assert not leftovers.is_build_file("library_config/libcjson.pc.in")
+    assert leftovers.is_ci_file(".github/workflows/CI.yml")
+    assert leftovers.is_ci_file("appveyor.yml")
+    assert not leftovers.is_ci_file("docs/ci.yml")
     assert cports.builds_c("script:\n  - cmake ..\n")
     assert not cports.builds_c("script:\n  - cargo test\n")

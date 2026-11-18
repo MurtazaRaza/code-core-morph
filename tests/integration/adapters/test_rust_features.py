@@ -1,8 +1,8 @@
 """A port's crate with a Cargo feature for a configuration of the source (D-89): the tests
 run with the default features and again with each feature alone, its IDs ending in
 ``[<feature>]``, so a configuration's tests are checked like the others (http-parser's
-strict checks ran in nothing before). Only a port's new code gets the extra runs. Marked
-``docker``."""
+strict checks ran in nothing before). A crate being ported to C gets them too, since its C
+keeps what each feature turns on; a Rust project with no port doesn't. Marked ``docker``."""
 
 from __future__ import annotations
 
@@ -101,6 +101,9 @@ def test_a_ports_features_are_tested_alone(ctx: AdapterContext) -> None:
         f"{test}the_mode_is_the_features[strict]": TestStatus.PASSED,
         f"{test}strict_checks_hold[strict]": TestStatus.PASSED,
     }
-    source = ctx.lang.model_copy(update={"port_source": None})  # Rust as a port's source
-    plain = {t.test_id for t in rust.run_tests(replace(ctx, lang=source)).cases}
+    # A crate being ported to C: its C keeps what each feature turns on, so the same runs.
+    to_c = ctx.lang.model_copy(update={"port_source": None, "port_target": "c"})
+    assert {t.test_id for t in rust.run_tests(replace(ctx, lang=to_c)).cases} == set(statuses)
+    alone = ctx.lang.model_copy(update={"port_source": None})  # no port: the crate's own tests
+    plain = {t.test_id for t in rust.run_tests(replace(ctx, lang=alone)).cases}
     assert plain == {f"{test}the_mode_is_the_features"}

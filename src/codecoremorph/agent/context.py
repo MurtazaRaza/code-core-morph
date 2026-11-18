@@ -251,6 +251,30 @@ def module_port_note(port: PortUnit) -> str:
         f"{crate}/bridge.hpp. These files keep using the module through its headers and "
         f"don't change: {callers}.{kept_c} Add the module's entries to rust/symbol-map.toml "
         "(read it first: it also says where earlier modules went).\n\n"
+        f"{cpp_white_box_note(port)}"
+    )
+
+
+def cpp_white_box_note(port: PortUnit) -> str:
+    """White-box tests that ``#include`` one of a C++ module's sources itself (D-89, as for
+    C): the façade the source becomes still compiles into them, so it keeps what they use."""
+    if not port.white_box:
+        return ""
+    crate = port.crate
+    tests = ", ".join(port.white_box_tests) or "none"
+    uses = ", ".join(f"`{u}`" for u in port.white_box_uses)
+    using = f": {uses}" if uses else ""
+    return (
+        f"**White-box tests.** {', '.join(port.white_box)} `#include` one of the module's "
+        "sources itself, so these tests compile its code into their own and use what it keeps "
+        f"to itself (a `static` function, an anonymous namespace's){using}. They are the "
+        f"project's tests and don't change: {tests}. The source stays as the façade, which "
+        "they still compile, so keep in it what they use, with the names, types and signatures "
+        "the C++ had: its types, and its file-local functions and variables as thin wrappers "
+        f'over test hooks the bridge exports (`#[no_mangle] pub extern "C" fn {crate}_test_'
+        "<name>` over the module's functions). Make the module's functions the hooks reach "
+        "`pub`, so the tests' Rust translations can call them too. The retirement deletes the "
+        "façade with the C++ tests. Give the unit up only if the façade can't do this.\n\n"
     )
 
 
@@ -588,13 +612,25 @@ def csharp_port_note(unit: WorkUnit, port_units: PortUnits | None, target: str) 
             f"it also says where earlier units went):\n{members}\n\n"
         )
     callers = ", ".join(port.callers) or "none"
+    internals = ""
+    if port.white_box_uses:
+        # Tests that reach the library's internals through InternalsVisibleTo (D-89).
+        used = ", ".join(f"`{u}`" for u in port.white_box_uses)
+        internals = (
+            f" The tests reach what these types keep `internal`, through the library's "
+            f"`InternalsVisibleTo`: {used} (in {', '.join(port.white_box_tests)}). Keep those "
+            "in the façades too, `internal` as the C# had them, calling the bridge as the "
+            "public members do, and map them as well; the tests' translations reach them in "
+            f"the {name} directly."
+        )
     return (
         f"The façades: {', '.join(sources)}. Each C# type keeps every public and protected "
         "member with its signature, modifiers, XML docs and attributes, its body calling the "
         "bridge through `CcmNative` (CodeCoreMorph.Native.g.cs, generated from the bridge's "
-        "headers at each configure: never edit it). These files keep using the types through "
-        f"the façades and don't change: {callers}. Map each of these members in {symbols} by "
-        f"its ID (read it first: it also says where earlier units went):\n{members}\n\n"
+        f"headers at each configure: never edit it).{internals} These files keep using the "
+        f"types through the façades and don't change: {callers}. Map each of these members in "
+        f"{symbols} by its ID (read it first: it also says where earlier units went):"
+        f"\n{members}\n\n"
     )
 
 

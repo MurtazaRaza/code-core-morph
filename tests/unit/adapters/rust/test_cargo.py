@@ -187,7 +187,9 @@ def test_corrosion_block_is_appended_once_and_grows() -> None:
                 CORROSION_BEGIN,
                 "find_package(Corrosion REQUIRED)",
                 "corrosion_import_crate(MANIFEST_PATH rust/a/Cargo.toml FROZEN)",
-                "target_link_libraries(textkit PUBLIC textkit_a)",
+                "set_property(TARGET textkit APPEND PROPERTY LINK_LIBRARIES textkit_a)",
+                "set_property(TARGET textkit APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
+                "$<BUILD_INTERFACE:textkit_a>)",
                 CORROSION_END,
             ]
         )
@@ -198,10 +200,10 @@ def test_corrosion_block_is_appended_once_and_grows() -> None:
     assert twice.count(CORROSION_BEGIN) == 1
     assert "corrosion_import_crate(MANIFEST_PATH rust/b/Cargo.toml FROZEN)" in twice
     assert twice.count("rust/a/Cargo.toml") == 1
-    assert "target_link_libraries(textkit PUBLIC textkit_a)" in twice
+    assert "set_property(TARGET textkit APPEND PROPERTY LINK_LIBRARIES textkit_a)" in twice
     base, inner = without_corrosion_block(twice)
     assert base == text
-    assert len(inner) == 4
+    assert len(inner) == 5
 
 
 def test_corrosion_block_keeps_crlf() -> None:
@@ -238,11 +240,11 @@ def test_cbindgen_config() -> None:
     assert "usize_is_size_t = true" in config
 
 
-def test_a_c_ports_corrosion_block_links_through_the_targets_properties() -> None:
+def test_a_ports_corrosion_block_links_through_the_targets_properties() -> None:
     # cJSON links its library with the plain signature, which CMake won't mix with PUBLIC,
     # and installs it with install(EXPORT), which refuses a crate in no export set (D-89).
     text = 'add_library(cjson cJSON.h)\ntarget_link_libraries(cjson "${MATH}")\n'
-    once = with_corrosion_block(text, "rust/Cargo.toml", ("cjson", "cjson_rs"), by_property=True)
+    once = with_corrosion_block(text, "rust/Cargo.toml", ("cjson", "cjson_rs"))
     assert once.endswith(
         "\n".join(
             [
@@ -255,14 +257,36 @@ def test_a_c_ports_corrosion_block_links_through_the_targets_properties() -> Non
         )
         + "\n"
     )
-    again = with_corrosion_block(once, "rust/Cargo.toml", ("cjson", "cjson_rs"), by_property=True)
+    again = with_corrosion_block(once, "rust/Cargo.toml", ("cjson", "cjson_rs"))
     assert again == once
-    both = with_corrosion_block(
-        once, "rust/Cargo.toml", ("cjson_utils", "cjson_utils_rs"), by_property=True
-    )
+    both = with_corrosion_block(once, "rust/Cargo.toml", ("cjson_utils", "cjson_utils_rs"))
     assert both.count("corrosion_import_crate(") == 1
     assert both.count("PROPERTY LINK_LIBRARIES") == 2
     assert "target_link_libraries(cjson PUBLIC" not in both
+
+
+def test_a_block_an_earlier_version_wrote_is_rewritten_with_its_crates() -> None:
+    # A C++ port's block from before D-89 links with PUBLIC and names a source directory in
+    # the target's interface, which a project's install(EXPORT) refuses.
+    old = (
+        "project(T CXX)\n"
+        f"{CORROSION_BEGIN}\nfind_package(Corrosion REQUIRED)\n"
+        "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)\n"
+        "target_include_directories(calc PUBLIC rust/calc_rs/include)\n"
+        f"target_link_libraries(calc PUBLIC calc_rs)\n{CORROSION_END}\n"
+    )
+    updated = with_corrosion_block(old, "rust/Cargo.toml", ("calc", "calc_rs"))
+    _, inner = without_corrosion_block(updated)
+    assert inner == [
+        "find_package(Corrosion REQUIRED)",
+        "corrosion_import_crate(MANIFEST_PATH rust/Cargo.toml FROZEN)",
+        "target_include_directories(calc PUBLIC "
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rust/calc_rs/include>)",
+        "set_property(TARGET calc APPEND PROPERTY LINK_LIBRARIES calc_rs)",
+        "set_property(TARGET calc APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
+        "$<BUILD_INTERFACE:calc_rs>)",
+    ]
+    assert with_corrosion_block(updated, "rust/Cargo.toml", ("calc", "calc_rs")) == updated
 
 
 def test_each_feature_of_a_package_is_a_run_of_its_own() -> None:
@@ -280,3 +304,12 @@ def test_each_feature_of_a_package_is_a_run_of_its_own() -> None:
         ("aes_rs", "aes256"),
         ("http_parser_rs", "strict"),
     ]
+
+
+def test_a_feature_the_defaults_turn_on_is_no_run_of_its_own() -> None:
+    # shlex's `default = ["std"]`, and a feature the defaults reach through another.
+    manifest = (
+        '[package]\nname = "shlex"\n\n[features]\ndefault = ["std"]\nstd = ["alloc"]\n'
+        'alloc = []\nserde = ["dep:serde", "alloc"]\n'
+    )
+    assert feature_runs({".": manifest}) == [("shlex", "serde")]

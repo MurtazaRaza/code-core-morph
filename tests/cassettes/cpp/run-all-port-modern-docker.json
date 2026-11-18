@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "c1a0e77048600688996a3c3ec5313aacf997661cdb47d3ebb16b2f81a63c4b92",
+      "key": "638c9a3c560676b51d0292e3c366f78132e2f2de82ac7547d90243c2b0656910",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::document` (rust/jobs_rs/src/document.rs,",
@@ -65,7 +65,7 @@
       }
     },
     {
-      "key": "a84875861efe09a50c9bf90fbdeeca96bda67b237c4a4fe7f65249ff2a351508",
+      "key": "6b3d84998ce58c68dbd8ba46dbb6f31175390400731300ec136700e167251a04",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::events` (rust/jobs_rs/src/events.rs, saf",
@@ -128,7 +128,7 @@
       }
     },
     {
-      "key": "effdbd19200eeb71cded35aa88fddc7b06ea373601cba9c4a6ef6344274215c9",
+      "key": "3217f26ff662a7e7f103248d6e80132599803b9ab30438a0192b07c316075f62",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::ids` (rust/jobs_rs/src/ids.rs, safe Rust",
@@ -185,7 +185,7 @@
       }
     },
     {
-      "key": "621bc68579af5ec391deca2b3eb1413d452fe4be87b5121eb7c89518034e8e03",
+      "key": "0e72ce041a2c08941dbdc27ca44f2743551435d33e317839f220a44aa04d514d",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::job` (rust/jobs_rs/src/job.rs, safe Rust",
@@ -247,7 +247,7 @@
       }
     },
     {
-      "key": "2f3a34cbd594dfdc39c1208948def42c3dcc2c41d926cc02f9459c2ba3f710e5",
+      "key": "48dd7fe536b20fa663ac258f1519a8f3b6c5ddb3cee39e9389a847302f34a17b",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::queue` (rust/jobs_rs/src/queue.rs, safe ",
@@ -310,7 +310,7 @@
       }
     },
     {
-      "key": "bbeeb52c4a7226de654713bb2ebf125cf5e19969d617604aa1d1dee76988d55c",
+      "key": "e9e8cb8a3352c17df74dc3ccec87616ebb649341be67c741f2174d2b3fe8ebc2",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `jobs_rs::worker` (rust/jobs_rs/src/worker.rs, saf",
@@ -373,7 +373,7 @@
       }
     },
     {
-      "key": "dd57dc974066628c63f6b3089af1bc4a6ee7058985b45d907c4d062f591ad76c",
+      "key": "0ce2142f37478a3c7f1c00b9a4cea7620b35a23345e0f71df1bcb77aec07e513",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_executable\\n\\nPort the program `jobrun` to Rust: rust/jobrun_rs/src/main.rs, the `bin` named `jobrun`, ",

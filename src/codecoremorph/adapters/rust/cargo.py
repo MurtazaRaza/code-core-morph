@@ -219,10 +219,11 @@ def nextest_config(store_dir: str, junit_name: str = "junit.xml") -> str:
 
 
 def feature_runs(manifests: Mapping[str, str]) -> list[tuple[str, str]]:
-    """``(package, feature)`` for each feature the packages declare, ``default`` aside, from
-    their manifests' text: a port writes a Cargo feature for each configuration the source
-    was built in (http-parser's strict checks), and the tests run with each alone, since
-    such features may exclude each other (tiny-AES's key sizes) (D-89)."""
+    """``(package, feature)`` for each feature the packages declare that the default features
+    don't already turn on (``default = ["std"]`` adds no run), from their manifests' text: a
+    port writes a Cargo feature for each configuration the source was built in (http-parser's
+    strict checks), and a crate being ported to C keeps its own, so the tests run with each
+    alone, since such features may exclude each other (tiny-AES's key sizes) (D-89)."""
     runs: list[tuple[str, str]] = []
     for text in manifests.values():
         try:
@@ -234,8 +235,24 @@ def feature_runs(manifests: Mapping[str, str]) -> list[tuple[str, str]]:
         if not isinstance(package, str) or not isinstance(features, dict):
             continue
         names = cast(dict[str, object], features)
-        runs += [(package, name) for name in names if name != "default"]
+        on = _enabled_by_default(names)
+        runs += [(package, name) for name in names if name != "default" and name not in on]
     return sorted(runs)
+
+
+def _enabled_by_default(features: Mapping[str, object]) -> set[str]:
+    """The features ``default`` turns on, directly or through the features they turn on."""
+    found: set[str] = set()
+    todo = ["default"]
+    while todo:
+        listed = features.get(todo.pop())
+        if not isinstance(listed, list):
+            continue
+        for item in cast(list[object], listed):
+            if isinstance(item, str) and item in features and item not in found:
+                found.add(item)
+                todo.append(item)
+    return found
 
 
 def parse_nextest_junit(xml: str) -> list[TestCaseResult]:
@@ -314,31 +331,28 @@ def corrosion_block(
     manifests: Sequence[str],
     links: Sequence[tuple[str, str]],
     includes: Sequence[tuple[str, str]] = (),
-    *,
-    by_property: bool = False,
 ) -> list[str]:
-    """The lines of the marked block: import each crate, give each C++ target its bridge
-    headers' directory, link each (target, crate) pair. ``by_property`` links through the
-    target's link properties, what ``PUBLIC`` sets, since CMake refuses a keyword
-    ``target_link_libraries`` on a target its project links with the plain signature, as
-    old C projects do (D-89)."""
+    """The lines of the marked block: import each crate, give each target its bridge headers'
+    directory, link each (target, crate) pair. The link goes through the target's link
+    properties, what ``PUBLIC`` sets, since CMake refuses a keyword ``target_link_libraries`` on
+    a target its project links with the plain signature, as old C and C++ projects do; and the
+    interface (the crate, the headers' directory) is the build's only, since Corrosion's targets
+    are in no export set and a source directory is no installed one, so a project's
+    ``install(EXPORT)`` of the target would refuse either (D-89)."""
     # FROZEN: Cargo neither rewrites Cargo.lock in the worktree nor reaches the network.
     lines = [CORROSION_BEGIN, "find_package(Corrosion REQUIRED)"]
     lines += [f"corrosion_import_crate(MANIFEST_PATH {m} FROZEN)" for m in manifests]
     lines += [
-        f"target_include_directories({target} PUBLIC {directory})" for target, directory in includes
+        f"target_include_directories({target} PUBLIC "
+        f"$<BUILD_INTERFACE:${{CMAKE_CURRENT_SOURCE_DIR}}/{directory}>)"
+        for target, directory in includes
     ]
     for target, crate in links:
-        if by_property:
-            # The interface is the build's only: Corrosion's targets are in no export set, so
-            # a project's install(EXPORT) of the library would refuse the crate.
-            lines += [
-                f"set_property(TARGET {target} APPEND PROPERTY LINK_LIBRARIES {crate})",
-                f"set_property(TARGET {target} APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
-                f"$<BUILD_INTERFACE:{crate}>)",
-            ]
-        else:
-            lines.append(f"target_link_libraries({target} PUBLIC {crate})")
+        lines += [
+            f"set_property(TARGET {target} APPEND PROPERTY LINK_LIBRARIES {crate})",
+            f"set_property(TARGET {target} APPEND PROPERTY INTERFACE_LINK_LIBRARIES "
+            f"$<BUILD_INTERFACE:{crate}>)",
+        ]
     return [*lines, CORROSION_END]
 
 
@@ -364,12 +378,10 @@ def with_corrosion_block(
     manifest: str,
     link: tuple[str, str] | None,
     include: tuple[str, str] | None = None,
-    *,
-    by_property: bool = False,
 ) -> str:
-    """``text`` (the top-level ``CMakeLists.txt``) with ``manifest`` imported, linked to its C++
+    """``text`` (the top-level ``CMakeLists.txt``) with ``manifest`` imported, linked to its
     target, and that target given ``include`` (target, directory), in the marked block at the
-    end; earlier crates stay."""
+    end; earlier crates stay, whichever form an earlier version wrote them in."""
     newline = "\r\n" if "\r\n" in text else "\n"
     base, inner = without_corrosion_block(text)
     manifests = [
@@ -383,9 +395,13 @@ def with_corrosion_block(
         )
         if found and (found.group(1), found.group(2)) not in links:
             links.append((found.group(1), found.group(2)))
-        found = re.match(r"target_include_directories\((\S+) PUBLIC (\S+)\)", line)
-        if found:
-            includes.append((found.group(1), found.group(2)))
+        found = re.match(
+            r"target_include_directories\((\S+) PUBLIC "
+            r"(?:\$<BUILD_INTERFACE:\$\{CMAKE_CURRENT_SOURCE_DIR\}/([^\s>]+)>|(\S+))\)",
+            line,
+        )
+        if found and (found.group(1), found.group(2) or found.group(3)) not in includes:
+            includes.append((found.group(1), found.group(2) or found.group(3)))
     if manifest not in manifests:
         manifests.append(manifest)
     if link is not None and link not in links:
@@ -394,7 +410,7 @@ def with_corrosion_block(
         includes.append(include)
     if base and not base.endswith(("\n", "\r\n")):
         base += newline
-    block = newline.join(corrosion_block(manifests, links, includes, by_property=by_property))
+    block = newline.join(corrosion_block(manifests, links, includes))
     return f"{base}{newline}{block}{newline}"
 
 

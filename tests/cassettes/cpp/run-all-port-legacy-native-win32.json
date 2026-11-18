@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "55ebf0b05d56ef644f64eab71acbc2c42389b93fc370831c62bb43c1a98c989a",
+      "key": "33d024f5f8b6ba9a406b52073a2e789a4f10c523c55035208b18c3ba6d37d263",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::strutil` (rust/calc_rs/src/strutil.rs, s",
@@ -59,7 +59,7 @@
       }
     },
     {
-      "key": "65a5e837f3a8f4378f5de337a054a57a39c19c163493a23483088a2556c1609d",
+      "key": "45ab6a8c10b302f1d73bf44d5b6accd4966ca2391fd44f8e7ab0fc8b42613670",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::lexer` (rust/calc_rs/src/lexer.rs, safe ",
@@ -116,7 +116,7 @@
       }
     },
     {
-      "key": "182415b09f7ec00cacb20d8ecc4de9415c0725ae0de96980ef95d7109cbb6e96",
+      "key": "23c26a505fd46c4dc7f0e6428d9335e970cabffb636f1f0f7e6fe54bf800187c",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::rational` (rust/calc_rs/src/rational.rs,",
@@ -178,7 +178,7 @@
       }
     },
     {
-      "key": "d932d0f39488c48e426eb876acca90b0d6fd6067d6d80faba1491035a7239afb",
+      "key": "7c025fd448322e7f762cd0211279889b74eb3312d2072908862e1eaa313cc887",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::expr` (rust/calc_rs/src/expr.rs, safe Ru",
@@ -246,7 +246,7 @@
       }
     },
     {
-      "key": "7827a6a9b60e04fc6685ba624db2c70a0f6902fadca41a61c7e1412042c81c34",
+      "key": "ffbe1cbf10274258ec1b8f7b7bd9bc6cb74eb92fc7def309edac7249f2afbb6f",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::parser` (rust/calc_rs/src/parser.rs, saf",
@@ -303,7 +303,7 @@
       }
     },
     {
-      "key": "7b24029631aa40f711da73b542de6a1f1abd28bd39036f8b28a037d7ceb6776c",
+      "key": "b60ec62ad3ce4baf125e1ca14e819d6fadf9fa414462cb8332b4867b03436e69",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_module\\n\\nPort the module's logic to the Rust module `calc_rs::calc` (rust/calc_rs/src/calc.rs, safe Ru",
@@ -368,7 +368,7 @@
       }
     },
     {
-      "key": "4101871e686a90a75e267b25ce584684a1621345642b58e9c9e3e0a8e556733b",
+      "key": "66dd6fef60e5ac6c085cdaca700e47b07e78c3477307c6eba8f2064baaad1dec",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_executable\\n\\nPort the program `tinycalc` to Rust: rust/tinycalc_rs/src/main.rs, the `bin` named `tinyc",

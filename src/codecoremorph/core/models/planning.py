@@ -97,19 +97,20 @@ class PortUnit(CoreModel):
     )
     white_box: list[WorktreePath] = Field(
         default_factory=list[WorktreePath],
-        description="A C translation unit's: the files that `#include` its source file itself "
-        "(white-box tests, or a helper header they share), so the tests compile its code into "
-        "theirs; a stand-in keeps them testing the Rust (D-89)",
+        description="A C translation unit's or a C++ module's: the files that `#include` its "
+        "source file itself (white-box tests, or a helper header they share), so the tests "
+        "compile its code into theirs; a stand-in (C) or the façade (C++) keeps them testing the "
+        "Rust (D-89)",
     )
     white_box_tests: list[WorktreePath] = Field(
         default_factory=list[WorktreePath],
-        description="A C translation unit's: the test files that reach its source through those "
-        "includes (D-89)",
+        description="A C translation unit's or a C++ module's: the test files that reach its "
+        "source through those includes (D-89)",
     )
     white_box_uses: list[str] = Field(
         default_factory=list[str],
-        description="A C translation unit's: the functions and variables its source keeps "
-        "file-local that those tests use (D-89)",
+        description="A C translation unit's or a C++ module's: what its source keeps file-local "
+        "(functions and variables, and a C++ source's types) that those tests use (D-89)",
     )
     artifact: str | None = Field(
         default=None,

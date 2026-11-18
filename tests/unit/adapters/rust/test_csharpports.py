@@ -139,9 +139,12 @@ def test_the_runtime_is_shipped_whole() -> None:
     assert "pub use decimal::Decimal;" in lib
     ccm = csharpports.runtime_text("ccm.rs")
     # Edition-neutral exports (2018 to 2024), each named as codecoremorph_bridge.h declares it.
-    for export in ("ccm_error_part", "ccm_free", "ccm_strdup"):
-        assert f"#[unsafe(no_mangle)]\npub {'unsafe ' if export != 'ccm_error_part' else ''}" in ccm
+    for export in ("ccm_error_part", "ccm_free", "ccm_strdup", "ccm_director_shared"):
+        unsafe = "" if export == "ccm_error_part" else "unsafe "
+        assert f'#[unsafe(no_mangle)]\npub {unsafe}extern "C" fn {export}(' in ccm
         assert export in csharp.runtime_text(csharp.BRIDGE_RUNTIME_HEADER)
+        # cbindgen leaves the runtime's own exports to the header its header includes.
+        assert export in csharpports.CBINDGEN_EXCLUDED
     assert "catch_unwind" in ccm
     assert "#[no_mangle]" not in ccm
 
@@ -245,6 +248,34 @@ def test_the_retirement_leaves_a_cargo_workspace_without_unsafe_code(tmp_path: P
     assert "lib" not in crate  # Cargo's default rlib
     assert "metadata" not in crate["package"]
     assert crate["dependencies"]["codecoremorph_runtime"] == {"path": "../codecoremorph_runtime"}
+
+
+def test_the_rust_retirement_lists_what_still_builds_the_csharp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CI that runs dotnet is the project's to rewrite for Cargo (D-89)."""
+    from codecoremorph.core.models import CodemodSpec
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    root, files = _ported(tmp_path)
+    ci = root / ".github/workflows/ci.yml"
+    ci.parent.mkdir(parents=True)
+    ci.write_text("jobs:\n  test:\n    steps:\n      - run: dotnet test Shop.sln\n", "utf-8")
+    monkeypatch.setattr(RustAdapter, "_lock_workspace", lambda *_: [])  # no Cargo here
+    ctx = AdapterContext(
+        worktree=root,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(language="rust", standard="rust2021"),
+    )
+    spec = CodemodSpec(tool="rust-csharp-retire", options={"keep": "false"})
+    result = RustAdapter().run_codemods(ctx, [spec], files)
+    assert [(s.file, s.check) for s in result.skipped] == [
+        (".github/workflows/ci.yml", "rust-csharp-retire")
+    ]
+    assert result.skipped[0].reason.endswith("rewrite it for Cargo")
 
 
 def test_keep_source_api_keeps_the_bridge_for_the_facades(tmp_path: Path) -> None:

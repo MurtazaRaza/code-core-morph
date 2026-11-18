@@ -24,6 +24,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import cast
 
+from codecoremorph.adapters import leftovers
 from codecoremorph.adapters.c.characterize import HELPER, HELPER_TEXT
 from codecoremorph.adapters.rust.cargo import find_crates, find_packages
 from codecoremorph.adapters.rust.symbols import module_path
@@ -636,6 +637,62 @@ def _retire(out: _Writer, files: Sequence[str]) -> None:
         directory = out.worktree / package
         if package not in ("", ".") and directory.is_dir() and not any(directory.iterdir()):
             directory.rmdir()
+
+
+def retirement_left(worktree: Path, deleted: Iterable[str]) -> list[tuple[str, str]]:
+    """What still builds or uses the Rust a retirement deleted, for review (D-89): the CI
+    configurations and other build files that run Cargo, which the project rewrites for its
+    CMake build, and the manifests left (an excluded workspace's, a fuzz target's) that take a
+    deleted package by its path. (file, reason) pairs; the C and the CMake build the port wrote
+    don't count."""
+    gone = {posixpath.dirname(f) or "." for f in deleted if posixpath.basename(f) == "Cargo.toml"}
+    if not gone:
+        return []
+    left: list[tuple[str, str]] = []
+    for rel, path in leftovers.worktree_files(worktree, (f"{C_DIR}/",)):
+        manifest = posixpath.basename(rel) == "Cargo.toml"
+        ci = leftovers.is_ci_file(rel)
+        if not (manifest or ci or leftovers.is_build_file(rel)):
+            continue
+        text = leftovers.read_text(path)
+        if text is None or TOP_MARK in text:
+            continue
+        if manifest:
+            used = sorted({d for d in path_dependencies(rel, text) if d in gone})
+            if used:
+                reason = f"takes {', '.join(used)} by its path, which the retirement deleted"
+                left.append((rel, f"{reason}: review it"))
+        elif leftovers.RUNS_CARGO.search(text):
+            kind = "a CI configuration" if ci else "a build file"
+            left.append((rel, f"{kind} that runs Cargo: rewrite it for the CMake build"))
+    return left
+
+
+def path_dependencies(manifest: str, text: str) -> list[str]:
+    """The worktree directories of the packages a manifest (at worktree path ``manifest``)
+    takes by path, from any of its dependency tables."""
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return []
+    kinds = ("dependencies", "dev-dependencies", "build-dependencies")
+    tables: list[object] = [data.get(k) for k in kinds]
+    targets = data.get("target")
+    if isinstance(targets, dict):
+        for target in cast(dict[str, object], targets).values():
+            if isinstance(target, dict):
+                tables += [cast(dict[str, object], target).get(k) for k in kinds]
+    base = posixpath.dirname(manifest)
+    found: list[str] = []
+    for table in tables:
+        if not isinstance(table, dict):
+            continue
+        for spec in cast(dict[str, object], table).values():
+            if isinstance(spec, dict):
+                path = cast(dict[str, object], spec).get("path")
+                if isinstance(path, str):
+                    found.append(posixpath.normpath(posixpath.join(base, path)))
+    return found
 
 
 def scaffold(

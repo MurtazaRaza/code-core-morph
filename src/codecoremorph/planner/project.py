@@ -45,6 +45,20 @@ from codecoremorph.planner.graph import ClusterGraph, condense
 from codecoremorph.store.index import IndexStore, takes_variable_arguments
 
 CODE_ROLES = frozenset({FileRole.SOURCE, FileRole.HEADER, FileRole.TEST})
+# What a white-box test can use of a source it #includes that its file keeps to itself (D-89).
+_C_INTERNAL = frozenset({SymbolKind.FUNCTION, SymbolKind.VARIABLE})
+_CPP_INTERNAL = frozenset(
+    {
+        SymbolKind.FUNCTION,
+        SymbolKind.VARIABLE,
+        SymbolKind.CLASS,
+        SymbolKind.STRUCT,
+        SymbolKind.UNION,
+        SymbolKind.ENUM,
+        SymbolKind.TYPEDEF,
+        SymbolKind.ALIAS,
+    }
+)
 
 
 def _stem(path: str) -> str:
@@ -275,17 +289,65 @@ class ProjectModel:
         """The functions and variables ``path`` defines but doesn't export that a file in
         ``users`` references, in source order: what white-box tests that ``#include`` the C
         file use of what it keeps file-local (D-89)."""
-        wanted = set(users)
         exported = {s.id for s in self._c_interface(path)}
+        return self._internals_used(path, users, exported, _C_INTERNAL)
+
+    def cpp_internals_used(self, path: str, users: Iterable[str]) -> list[str]:
+        """The functions, variables and types the C++ source ``path`` defines that no header
+        declares (a ``static`` function, an anonymous namespace's) and a file in ``users``
+        references, in source order: what white-box tests that ``#include`` the source use of
+        what it keeps file-local (D-89)."""
+        with IndexStore.open(self.index_path) as store:
+            defined = [s.id for s in store.symbols(file=path) if s.is_definition]
+            exported = {
+                sid
+                for sid in defined
+                if any(
+                    (entry := self.files.get(f)) is not None and entry.role is FileRole.HEADER
+                    for f in store.files_declaring([sid])
+                )
+            }
+        return self._internals_used(path, users, exported, _CPP_INTERNAL)
+
+    def internals_tests_use(self, files: Iterable[str]) -> tuple[list[str], list[str]]:
+        """What ``files`` define but keep from other assemblies (C#'s ``internal``, which the
+        index records as private) that the tests use all the same, through
+        ``InternalsVisibleTo`` (D-89): the test files, and those members and types by their
+        qualified names, in source order."""
+        users: set[str] = set()
+        found: dict[str, str] = {}
+        with IndexStore.open(self.index_path) as store:
+            for path in files:
+                for s in store.symbols(file=path):
+                    if (
+                        not s.is_definition
+                        or s.visibility is not Visibility.PRIVATE
+                        or s.id in found
+                    ):
+                        continue
+                    tests = {
+                        r.from_file
+                        for r in store.references_to(s.id)
+                        if (entry := self.files.get(r.from_file)) is not None
+                        and entry.role is FileRole.TEST
+                    }
+                    if tests:
+                        found[s.id] = s.qualified_name
+                        users |= tests
+        return sorted(users), list(found.values())
+
+    def _internals_used(
+        self,
+        path: str,
+        users: Iterable[str],
+        exported: set[str],
+        kinds: frozenset[SymbolKind],
+    ) -> list[str]:
+        wanted = set(users)
         found: dict[str, str] = {}
         with IndexStore.open(self.index_path) as store:
             for s in store.symbols(file=path):
-                if (
-                    not s.is_definition
-                    or s.kind not in (SymbolKind.FUNCTION, SymbolKind.VARIABLE)
-                    or s.id in exported
-                    or s.id in found
-                ):
+                if not s.is_definition or s.kind not in kinds or s.id in exported or s.id in found:
                     continue
                 if any(r.from_file in wanted for r in store.references_to(s.id)):
                     found[s.id] = s.name
