@@ -66,7 +66,10 @@ A unit lists the units it needs; if one of them doesn't commit, the run skips it
 
 Each module's code goes to a Cargo workspace beside the CMake project, one crate per CMake
 library target (`rust/<target>_rs/`), which CMake builds and links into that target with
-[Corrosion](https://github.com/corrosion-rs/corrosion).
+[Corrosion](https://github.com/corrosion-rs/corrosion). The crate goes in through the target's
+link properties, so a project that links its targets with the plain `target_link_libraries`
+signature keeps building, and into the target's build interface only, so its `install(EXPORT)`
+still works.
 
 ## Module units
 
@@ -92,6 +95,11 @@ library target (`rust/<target>_rs/`), which CMake builds and links into that tar
 The unit may edit the module's own files, the CMake files and anything under `rust/`, but not
 the tests or the C++ that uses the module. Builds run offline and `--locked`. New crates from
 crates.io, build scripts (`build.rs`) and procedural macros are refused.
+
+A test that `#include`s one of the module's sources itself, to reach a `static` function, compiles
+the façade the source becomes. The plan names such **white-box tests** and what they use, and the
+agent keeps that in the façade, as thin wrappers over test hooks the bridge exports, until the
+retirement translates the tests.
 
 The rule's guidance tells the agent how C++ maps to Rust: ownership (`unique_ptr` → `Box`,
 `shared_ptr` → `Arc`), errors (exceptions → `Result`, with the façade throwing the same
@@ -134,6 +142,9 @@ crate's C bridge (`src/bridge/`, `include/`, `cbindgen.toml`, the `staticlib` cr
 makes each crate root `#![forbid(unsafe_code)]`. The agent fixes what is left: code only the
 bridge used, docs that describe the C++. From then on Cargo alone builds and tests the project,
 and the final verification builds and tests the workspace from clean, `--locked` and offline.
+The retirement also deletes the other build files that still name the deleted C++ (a Visual
+Studio project, a spare Makefile), and lists for your review the excluded ones and the CI
+configurations that build C++.
 
 To keep a C++ API for outside consumers, set `migration.target.keep_source_api: true`: the
 public headers stay, with the sources and bridge behind them, the CMake build and the C++ tests
@@ -172,9 +183,10 @@ build:
   characterization tests CodeCoreMorph writes count as tests whatever `test_dirs` says.
 - What the build doesn't compile (the benchmark, the fuzzers) can't be checked, so it stays out
   of the port through `exclude`; the report lists it as left.
-- A CMake install step that exports the library fails once the library links a Rust crate
-  (Corrosion's imported targets can't join an export set): turn it off for the port, or make
-  it the agent's to fix.
+- A CMake install step that exports the library kept failing once the library linked a Rust
+  crate (Corrosion's imported targets can't join an export set), so the run turned it off. The
+  crate is now in the library's build interface only, and the step works; the installed
+  library doesn't hold the Rust code yet.
 
 The port took 12 units: the four modules (the compressor among them, 2.2k lines of C++), the
 test tool as a Rust program, six test files (snappy's own and five of characterization tests)

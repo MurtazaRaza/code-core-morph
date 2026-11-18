@@ -129,7 +129,12 @@ The mapping, in short:
 - The **retirement** deletes every package's manifest, build script and Rust files, the
   workspace's manifest and lock, and the link list. The CMake build at the top level stays,
   and builds and tests the C alone. Files Cargo didn't own stay where they were: a workspace's
-  `.gitignore`, the maps of an earlier port to Rust.
+  `.gitignore`, the maps of an earlier port to Rust. It lists for your review what still builds
+  the Rust: the CI and any build file that runs Cargo, and a manifest it left (an excluded fuzz
+  workspace) that takes a deleted package by its path.
+- A crate's **Cargo features** are tested too: the tests run with the default features and
+  again with each feature the defaults don't turn on, alone, their IDs ending in `[<feature>]`.
+  The C keeps what each feature turns on, and the test map maps those IDs as well.
 
 ## Reviewing the result
 
@@ -183,6 +188,8 @@ pointer or freeing, which the first leg mapped to notes.
   over a given item, conversions or closures.
 - A changed signature of a public item shows in the build and the tests, not in I-6: the Rust
   index records items, not their signatures.
+- The index sees the default features only: code behind another feature isn't in the plan,
+  though its tests run. How the C keeps what such a feature changes is the agent's to work out.
 - `unsafe` in the façades isn't checked: the Rust is retired anyway, and the façades are the
   only place the port adds it.
 - Docker only, for now: a native Windows run (the sanitizers with llvm-mingw and Rust's

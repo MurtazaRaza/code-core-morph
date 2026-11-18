@@ -110,7 +110,10 @@ The codemod makes the C++ build on the first unit and adds to it on each:
 - `cpp/symbol-map.toml`: where each C# member went, by its symbol ID.
 
 The agent writes the C++ and the bridge, turns each C# type into its façade, and maps every
-public and protected member. The mapping, in short:
+public and protected member. Tests that reach what the library keeps `internal`, through its `InternalsVisibleTo`, are named in
+the type's unit with what they use, and the façades keep those members `internal`, over the
+bridge, until the tests are translated.
+The mapping, in short:
 
 | C# | C++ |
 |---|---|
@@ -144,7 +147,9 @@ C++ class lists its constructor's arguments, and `CcmExceptions.cs` makes the C#
   (`Directory.Build.*`, `global.json`, `nuget.config`), the façades' support and the bridge, so
   CMake builds and tests the C++ alone. With `keep_source_api` only the programs go, with the
   test projects that need them: the library, its façades, the bridge and its C# tests stay,
-  and the final verification runs both builds.
+  and the final verification runs both builds. It lists for your review what still names a
+  deleted project (a second solution, an excluded project) and, unless the C# stays, the CI
+  that runs `dotnet`.
 
 ## The checks of each unit
 
@@ -244,16 +249,33 @@ two minutes from the first unit to the last.
 ## Limits
 
 - One library project per port: types to port in several are refused.
-- Refused, with the reason in the plan: `async` code, `dynamic`, reflection, serializers and
+- Refused, with the reason in the plan: `async` code, `dynamic` the index can't settle (below),
+  reflection, serializers and
   dependency injection with their attributes (a serializer's round trip in memory is a deep
   copy, which ports), expression trees, a public generic type or method nothing in the project
   instantiates, a class with non-private instance fields (a façade can't forward a field), a
-  class that C# outside the port derives from and overrides, a type that uses a .NET package's
-  API or calls an operating system's own library, and a type that uses a refused one.
+  ported constructor that calls a virtual member a C# class overrides, a type that uses a .NET
+  package's API or calls an operating system's own library, and a type that uses a refused one.
 - Ported, with a note: `unsafe` code is plain C++ (`fixed` pins nothing, a pointer cast that
   reads one type as another becomes `std::memcpy`).
-- A façade's protected constructor is kept, but a C# class deriving from a ported class outside
-  the library has no C++ to run.
+- A C# class outside the port (the tests, a program) that derives from a ported class and
+  overrides it runs on a **director** (D-87): a C++ object of the class it derives from whose
+  virtual members call the C# object's, so the ported code runs the C# overrides, and C#'s
+  `base.M()` runs the ported implementation through a base export of its own. The C# object
+  lives as long as the C++ holds its director (a ported collection keeps it) and is collected
+  as any C# object once only its façade does. At the retirement, a test's subclass becomes a
+  C++ subclass in its test file.
+- **`dynamic`** is ported where the index can tell which of the solution's types reach each
+  dynamic site (D-88): for each it records what C#'s runtime binder binds there, by binding
+  the site again for that type, and the unit's note lists it. The C++ is that closed sum: a
+  `dynamic_cast` chain for a dispatch on a hierarchy's runtime type, a `std::variant` for
+  values of unrelated types (a field that is an `int` until a `decimal` comes in, a
+  `List<dynamic>`), and `ccm::RuntimeBinderException` where the binder failed for a type that
+  reaches the site. A public dynamic parameter takes the types the solution passes it, through
+  an export per kind; another type gets `NotSupportedException` from the façade. Refused: a
+  value any type outside the solution can be (an `object`), late binding the port can't see
+  (`ExpandoObject`, `DynamicObject`, COM), a type that stays C# reaching a ported site, and
+  generic arithmetic through `dynamic` (its bindings depend on the type argument).
 - Strings are UTF-8 in C++: C#'s lengths and indices count UTF-16 units, and `ToUpperInvariant`
   and ordinal comparison agree with the C++ for ASCII; the symbol map notes where code depends on
   more.

@@ -71,6 +71,11 @@ code and use no clock, randomness, files or network. Accepted tests are committe
 guard every later unit. `parity.characterization_tests` turns this off, or removes the tests at
 the end.
 
+The tests go into the project's own build: a CMake project's `CMakeLists.txt`, or a
+Makefile, automake's `Makefile.am` or the `Makefile.in` that `configure` writes the Makefile
+from, for C (TAP programs) and C++ (GoogleTest). Java and C# runs, and ports from Rust, skip
+the step for now, and the report says so.
+
 ## Where the work happens
 
 CodeCoreMorph never touches your checkout. A run creates a git worktree on the branch

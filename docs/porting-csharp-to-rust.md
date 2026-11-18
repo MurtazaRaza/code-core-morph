@@ -107,7 +107,10 @@ The codemod makes the workspace on the first unit and adds to it on each:
   Ubuntu's `libsodium-dev`).
 
 The agent writes the Rust and the bridge, turns each C# type into its façade, and maps every
-public and protected member. The mapping, in short:
+public and protected member. Tests that reach what the library keeps `internal`, through its `InternalsVisibleTo`, are named in
+the type's unit with what they use, and the façades keep those members `internal`, over the
+bridge, until the tests are translated.
+The mapping, in short:
 
 | C# | Rust |
 |---|---|
@@ -147,7 +150,8 @@ Rust returns an `Exception` of its .NET type with its constructor's arguments as
   bindgen last wrote them, and denies unsafe code elsewhere), so Cargo builds and tests the
   Rust alone, `--locked` and offline. With `keep_source_api` only the programs go, with the test projects that need them:
   the library, its façades, the bridge, the `cdylib` and its C# tests stay, and the final
-  verification runs both builds.
+  verification runs both builds. It lists for your review what still names a deleted project
+  (a second solution, an excluded project) and, unless the C# stays, the CI that runs `dotnet`.
 
 ## The checks of each unit
 
@@ -216,10 +220,18 @@ same, and Cargo's checks cost each unit less than CMake's sanitizer build and cl
 ## Limits
 
 The first version refuses what a port to C++ refuses ([Limits](porting-csharp-to-cpp.md#limits)):
-`async` and `dynamic`, reflection and attribute-driven behavior, expression trees, a type that
+`async`, `dynamic` the index can't settle, reflection and attribute-driven behavior, expression trees, a type that
 uses a .NET package's API or an operating system's own library, public generic types nothing
-instantiates, a class C# outside the port derives from, a class with non-private instance
-fields, and types in more than one library project. Also:
+instantiates, a ported constructor that calls a virtual member a C# class overrides, a class
+with non-private instance fields, and types in more than one library project. A C# class
+outside the port that derives from a ported class runs on a director, as for C++ (D-87): here
+the hierarchy is a trait over the base's state whose virtual members return `Result` (a C#
+override may throw), and each class's own implementations take the object they run on, so a
+base call made for a C# subclass's object still reaches its other overrides; at the retirement
+a test's subclass is a struct holding the ported class it derived from. `dynamic` is ported
+where the index settles it, as for C++ (D-88): a dispatch on a hierarchy's runtime type
+downcasts the trait object, values of unrelated types are an `enum` matched at each site,
+and a binder error is `Exception::runtime_binder`. Also:
 
 - No registry dependency: a port adds no crate, so it builds offline.
 - Strings are UTF-8: C#'s lengths and indices count UTF-16 units, the same for ASCII; the symbol
