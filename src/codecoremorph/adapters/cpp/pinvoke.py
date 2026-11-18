@@ -142,6 +142,8 @@ class _Param:
     wrapper: str  # in the wrapper, with C# types
     arg: str  # what the wrapper passes
     strings: bool = False  # a string array, copied to native strings for the call
+    # A handle of a hierarchy with directors: its C# object is held for the call (D-87).
+    directed: bool = False
 
 
 def csharp_name(name: str) -> str:
@@ -178,7 +180,7 @@ def _plain(decl: str, arg: str) -> _Param:
     return _Param(decl, decl.replace(U1, ""), arg)
 
 
-def _param(t: Type, name: str, arrays: set[str]) -> _Param:
+def _param(t: Type, name: str, arrays: set[str], directed: set[str]) -> _Param:
     kind = _kind(t)
     scalar = _scalar(t)
     if name in arrays:
@@ -221,7 +223,8 @@ def _param(t: Type, name: str, arrays: set[str]) -> _Param:
         if target == "void":
             return _plain(f"IntPtr {name}", name)
         if target == "handle":
-            return _plain(f"{to['name']}Handle {name}", name)
+            decl = f"{to['name']}Handle {name}"
+            return _Param(decl, decl, name, directed=str(to["name"]) in directed)
         if not t.get("const"):
             if _scalar(to):
                 return _plain(f"out {_scalar(to)} {name}", f"out {name}")
@@ -284,7 +287,7 @@ def _arrays(names: Sequence[str]) -> set[str]:
     }
 
 
-def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
+def _function(entry: Mapping[str, Any], handles: set[str], directed: set[str]) -> list[str]:
     name = str(entry["name"])
     returns = _returns(cast(Type, entry["returns"]))
     params_in = cast(list[Mapping[str, Any]], entry.get("params") or [])
@@ -293,8 +296,11 @@ def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
     else:
         names = [str(p["name"]) for p in params_in]
         arrays = _arrays(names)
+        # A handle's identity passes nothing to native code to keep.
+        held = set() if name.endswith("_key") else directed
         params = [
-            _param(cast(Type, p["type"]), csharp_name(str(p["name"])), arrays) for p in params_in
+            _param(cast(Type, p["type"]), csharp_name(str(p["name"])), arrays, held)
+            for p in params_in
         ]
     attribute = (
         "        [DllImport(Library, CallingConvention = CallingConvention.Cdecl, "
@@ -302,7 +308,7 @@ def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
     )
     raw = ", ".join(p.raw for p in params)
     if all(p.raw.replace(U1, "") == p.wrapper for p in params) and not any(
-        p.strings for p in params
+        p.strings or p.directed for p in params
     ):
         return ["", attribute + ")]", f"        internal static extern {returns} {name}({raw});"]
     lines = [
@@ -316,13 +322,23 @@ def _function(entry: Mapping[str, Any], handles: set[str]) -> list[str]:
     call = f"{name}_raw({', '.join(p.arg for p in params)})"
     result = "return " if returns != "void" else ""
     copies = [p.wrapper.split()[-1] for p in params if p.strings]
+    # A director's C# object stays strongly held while native code may take the handle: for the
+    # call, and until the sweep after next (D-87).
+    held = [p.arg for p in params if p.directed]
+    pad = "            "
+    lines += [f"{pad}using (CcmDirectors.Passing({h}))" for h in held]
+    if held:
+        lines.append(f"{pad}{{")
+        pad += "    "
     if not copies:
-        lines.append(f"            {result}{call};")
+        lines.append(f"{pad}{result}{call};")
     else:
-        lines += [f"            IntPtr[] {c}_utf8 = CcmInterop.NewStrings({c});" for c in copies]
-        lines += ["            try", "            {", f"                {result}{call};"]
-        lines += ["            }", "            finally", "            {"]
-        lines += [f"                CcmInterop.FreeStrings({c}_utf8);" for c in copies]
+        lines += [f"{pad}IntPtr[] {c}_utf8 = CcmInterop.NewStrings({c});" for c in copies]
+        lines += [f"{pad}try", f"{pad}{{", f"{pad}    {result}{call};"]
+        lines += [f"{pad}}}", f"{pad}finally", f"{pad}{{"]
+        lines += [f"{pad}    CcmInterop.FreeStrings({c}_utf8);" for c in copies]
+        lines.append(f"{pad}}}")
+    if held:
         lines.append("            }")
     lines.append("        }")
     return lines
@@ -341,10 +357,22 @@ def _callback(entry: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _handle(name: str) -> list[str]:
+def _handle(name: str, directed: bool = False) -> list[str]:
+    # A handle of a hierarchy with directors carries its object's director, if it is one's.
+    director = (
+        [
+            "",
+            "        /// <summary>The director of a C# subclass's object, or null "
+            "(D-87).</summary>",
+            "        public CcmDirector Director { get; set; }",
+        ]
+        if directed
+        else []
+    )
     return [
         "",
-        f"    internal sealed class {name}Handle : SafeHandle, ICcmHandle",
+        f"    internal sealed class {name}Handle : SafeHandle, "
+        f"{'ICcmDirected' if directed else 'ICcmHandle'}",
         "    {",
         f"        public {name}Handle() : base(IntPtr.Zero, true)",
         "        {",
@@ -370,6 +398,7 @@ def _handle(name: str) -> list[str]:
         "        {",
         f"            get {{ return CcmNative.{name}_key(this); }}",
         "        }",
+        *director,
         "",
         "        protected override bool ReleaseHandle()",
         "        {",
@@ -424,13 +453,22 @@ def csharp_declarations(
         for n in names
         if n in used or f"{n}_release" in exported or f"{n}_key" in exported
     }
+    # A hierarchy with directors (D-87): the handle types a director export makes.
+    directed: set[str] = set()
+    for decl in headers.values():
+        for entry in cast(list[Mapping[str, Any]], decl.get("functions") or []):
+            if str(entry["name"]).endswith("_new_director"):
+                for param in cast(list[Mapping[str, Any]], entry.get("params") or []):
+                    kind = cast(Type, param["type"])
+                    if _kind(kind) == "ptr" and _kind(cast(Type, kind["to"])) == "ptr":
+                        directed |= _handles_in(kind) & handles
     functions: list[str] = []
     callbacks: list[str] = []
     for header in sorted(headers):
         decl = headers[header]
         for entry in cast(list[Mapping[str, Any]], decl.get("functions") or []):
             try:
-                functions += _function(entry, handles)
+                functions += _function(entry, handles, directed)
             except _RefusedError as exc:
                 problems.append(
                     BridgeProblem(header, int(entry.get("line", 1)), f"{entry['name']}: {exc}")
@@ -472,6 +510,6 @@ def csharp_declarations(
         *callbacks,
     ]
     for handle in sorted(handles):
-        lines += _handle(handle)
+        lines += _handle(handle, handle in directed)
     lines.append("}")
     return "\n".join(lines) + "\n", problems

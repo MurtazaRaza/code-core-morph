@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace CodeCoreMorph.Interop
 {
@@ -39,6 +40,13 @@ namespace CodeCoreMorph.Interop
     internal interface ICcmHandle
     {
         ulong Key { get; }
+    }
+
+    /// <summary>A handle of a hierarchy C# classes derive from: the director of a C# subclass's
+    /// object, or null for a ported class's own object (D-87).</summary>
+    internal interface ICcmDirected : ICcmHandle
+    {
+        CcmDirector Director { get; set; }
     }
 
     /// <summary>The error a native call reported.</summary>
@@ -403,6 +411,232 @@ namespace CodeCoreMorph.Interop
                 Facades.Remove(key);
             }
             pruneAt = Math.Max(64, Facades.Count * 2);
+        }
+    }
+
+    /// <summary>The C# side of a director (D-87): the native object of a C# class derived from a
+    /// ported class, whose virtual members call the C# object's overrides through its context.
+    ///
+    /// The C# object owns the director through its façade's handle, and the director reaches the
+    /// C# object through a GCHandle to this record. The record holds the C# object strongly while
+    /// native code may hold the director besides the façade's handle (a ported collection), so
+    /// the object lives as long as native code can call it, and weakly otherwise, so it is
+    /// collected as a C# object would be: strongly from its creation, during a call that passes
+    /// its handle to native code (the generated declarations' CcmDirectors.Passing) and until
+    /// the sweep after next; after each collection a sweep makes it weak where nothing but the
+    /// façade's handle holds the director (ccm_director_shared).</summary>
+    internal sealed class CcmDirector
+    {
+        private readonly WeakReference weak;
+        private readonly object gate = new object();
+        private object strong;
+        private int calls;
+        private bool passed;
+        private IntPtr native;
+        private GCHandle self;
+
+        private CcmDirector(object target)
+        {
+            weak = new WeakReference(target);
+            strong = target;
+            self = GCHandle.Alloc(this);
+        }
+
+        /// <summary>A director's record for the C# object a façade's constructor is making:
+        /// pass its Context and CcmDirectors.Release to the director export, then Attach.</summary>
+        public static CcmDirector Create(object target)
+        {
+            return new CcmDirector(target);
+        }
+
+        /// <summary>The context a director export takes; the director releases it.</summary>
+        public IntPtr Context
+        {
+            get { return GCHandle.ToIntPtr(self); }
+        }
+
+        /// <summary>The handle and director the export made (its result and result_director).</summary>
+        public void Attach(ICcmDirected handle, IntPtr director)
+        {
+            handle.Director = this;
+            native = director;
+            CcmDirectors.Add(this);
+        }
+
+        /// <summary>The C# object, for a call from native code; null once collected.</summary>
+        internal object Target
+        {
+            get { return strong ?? weak.Target; }
+        }
+
+        internal void Enter()
+        {
+            lock (gate)
+            {
+                object target = weak.Target;
+                if (target != null)
+                {
+                    strong = target;
+                }
+                calls++;
+            }
+        }
+
+        internal void Exit()
+        {
+            lock (gate)
+            {
+                calls--;
+                passed = true;
+            }
+        }
+
+        /// <summary>After a collection: weak, unless a call is passing the object, one passed it
+        /// since the last sweep, or native code holds the director.</summary>
+        internal void Sweep()
+        {
+            lock (gate)
+            {
+                if (strong == null || calls > 0 || native == IntPtr.Zero)
+                {
+                    return;
+                }
+                if (passed)
+                {
+                    passed = false;
+                    return;
+                }
+                if (!CcmDirectors.Shared(native))
+                {
+                    strong = null;
+                }
+            }
+        }
+
+        internal void Released()
+        {
+            CcmDirectors.Remove(this);
+            lock (gate)
+            {
+                strong = null;
+                native = IntPtr.Zero;
+            }
+            self.Free();
+        }
+    }
+
+    /// <summary>A call that passes a director's handle to native code (CcmDirectors.Passing).</summary>
+    internal struct CcmPassing : IDisposable
+    {
+        private readonly CcmDirector director;
+
+        internal CcmPassing(CcmDirector director)
+        {
+            this.director = director;
+            if (director != null)
+            {
+                director.Enter();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (director != null)
+            {
+                director.Exit();
+            }
+        }
+    }
+
+    internal static class CcmDirectors
+    {
+        [DllImport(CcmNative.Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        private static extern bool ccm_director_shared(IntPtr director);
+
+        private static readonly HashSet<CcmDirector> Live = new HashSet<CcmDirector>();
+        private static int sentinel;
+
+        /// <summary>The release a director calls when it goes: the record and its GCHandle.</summary>
+        public static readonly CcmReleaseFn Release = ReleaseDirector;
+
+        /// <summary>The C# object behind a director's context, for a call from native code.</summary>
+        public static T Target<T>(IntPtr context) where T : class
+        {
+            var director = (CcmDirector)GCHandle.FromIntPtr(context).Target;
+            var target = director.Target as T;
+            if (target == null)
+            {
+                throw new InvalidOperationException(
+                    "native code called a C# object that was collected: its director outlived it");
+            }
+            return target;
+        }
+
+        /// <summary>Holds a director's C# object for a call that passes its handle; nothing for
+        /// a ported class's own object or a null handle.</summary>
+        public static CcmPassing Passing(ICcmDirected handle)
+        {
+            return new CcmPassing(handle == null ? null : handle.Director);
+        }
+
+        internal static bool Shared(IntPtr director)
+        {
+            return ccm_director_shared(director);
+        }
+
+        internal static void Add(CcmDirector director)
+        {
+            lock (Live)
+            {
+                Live.Add(director);
+            }
+            if (Interlocked.Exchange(ref sentinel, 1) == 0)
+            {
+                new Sentinel();
+            }
+        }
+
+        internal static void Remove(CcmDirector director)
+        {
+            lock (Live)
+            {
+                Live.Remove(director);
+            }
+        }
+
+        private static void Sweep()
+        {
+            CcmDirector[] directors;
+            lock (Live)
+            {
+                directors = new CcmDirector[Live.Count];
+                Live.CopyTo(directors);
+            }
+            foreach (CcmDirector director in directors)
+            {
+                director.Sweep();
+            }
+        }
+
+        private static void ReleaseDirector(IntPtr context)
+        {
+            ((CcmDirector)GCHandle.FromIntPtr(context).Target).Released();
+        }
+
+        /// <summary>Finalized after each garbage collection (once promoted, after full ones),
+        /// which is when the sweep runs.</summary>
+        private sealed class Sentinel
+        {
+            ~Sentinel()
+            {
+                if (Environment.HasShutdownStarted)
+                {
+                    return;
+                }
+                Sweep();
+                GC.ReRegisterForFinalize(this);
+            }
         }
     }
 }

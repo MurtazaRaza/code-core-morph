@@ -199,6 +199,14 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
         "Query": {PortRefusal.EXPRESSION_TREE},
         "Record": {PortRefusal.SERIALIZATION},
     }
+    # Dynamo's dynamic parameter is public and no caller in the solution passes it a value, so
+    # the types that reach it are unknown (D-88).
+    assert {r.detail for r in types["csharp:Zoo.Dynamo"].refusals} == {
+        "parameter value of Zoo.Dynamo.Twice(dynamic): no caller in the solution passes it a "
+        "value, so the types that reach it are unknown",
+        "value + value: no caller in the solution passes it a value, so the types that reach it "
+        "are unknown",
+    }
     assert not any(
         types[f"csharp:Zoo.{n}"].refusals for n in ("Animal", "Keeper", "Pen`1", "Pointer")
     )

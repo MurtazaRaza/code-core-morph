@@ -3,16 +3,18 @@ programs, its test files and the retirement, the same whatever the port's target
 
 One unit per type, leaves first by the references between the types. A reference cycle is one
 unit. So is a class with virtual members together with the project's classes that derive from
-it, since the target can't dispatch a virtual call to a C# override. Nested types go with their
+it, so a hierarchy ports at once (C# classes outside the library that derive from it run on
+directors, D-87). Nested types go with their
 outer type, and a partial type is one type. An interface is a unit of its own: the C# classes
 that implement it reach the ported code through calls back into C#.
 
 What the first version refuses, a unit at a time and with the reason (D-78): what the index's
 refusal sites name (``async`` code, ``dynamic``, reflection, serializers and dependency
-injection, ``unsafe`` code, expression trees); public generic types and methods that nothing in
-the project instantiates; a class with non-private instance fields; a class that C# staying C#
-(the tests, a program) derives from and overrides; and a unit that uses a refused one. Types to
-port in more than one library project are refused whole.
+injection, expression trees); public generic types and methods that nothing in the project
+instantiates; a class with non-private instance fields; a ported constructor that calls a
+virtual member a C# class staying C# overrides; and a unit that uses a refused one. Types to
+port in more than one library project are refused whole. A C# class staying C# (the tests, a
+program) that derives from a ported class and overrides runs on a director (D-87).
 
 A program (a project whose output is an executable) is one unit with all of its types, after the
 library types it uses; its code moves whole, so C# outside the program that uses its types
@@ -30,6 +32,7 @@ from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from codecoremorph.core.models import (
+    DynamicSite,
     FileRole,
     GenericUse,
     NativeImport,
@@ -175,6 +178,78 @@ def _plural(n: int, one: str, many: str | None = None) -> str:
     return f"{n} {one if n == 1 else (many or one + 's')}"
 
 
+_DYNAMIC_SHOWN = 12  # dynamic sites a note names before "and N more" (D-88)
+
+
+def dynamic_notes(types: Iterable[TypeEntry], files: Collection[str] | None = None) -> list[str]:
+    """What a unit's note says of its dynamic sites and values (D-88): the types that reach
+    each site and what C#'s runtime binder binds for each, which the new code makes a closed
+    sum. ``files`` limits them to a test unit's files. A site that binds one way for its one
+    type is plain code, so the note only counts those."""
+    entries = list(types)
+    sites = [s for t in entries for s in t.dynamic_sites if files is None or s.file in files]
+    values = [
+        v
+        for t in entries
+        for v in t.dynamic_values
+        if (files is None or v.file in files) and not v.what.startswith("local ")
+    ]
+    out: list[str] = []
+    telling = [s for s in sites if len(s.bindings) > 1 or any(b.error for b in s.bindings)]
+    if telling:
+        shown = "; ".join(_dynamic_site(s) for s in telling[:_DYNAMIC_SHOWN])
+        more = len(telling) - _DYNAMIC_SHOWN
+        out.append(
+            "dynamic sites, each a closed sum in the new code over the types that reach it, "
+            f"bound as C#'s runtime binder binds them (D-88): {shown}"
+            + (f"; and {more} more (the index has them)" if more > 0 else "")
+        )
+    plain = len(sites) - len(telling)
+    if plain:
+        out.append(f"{_plural(plain, 'other dynamic site')} with one type and one binding each")
+    if values:
+        out.append(
+            "dynamic values and the types that reach them: "
+            + "; ".join(
+                f"{v.what} ({v.file}:{v.line}{', public' if v.public else ''}): "
+                f"{', '.join(v.types) or 'none'}"
+                for v in values
+            )
+        )
+    if any(v.public and v.what.startswith("parameter ") for v in values):
+        out.append(
+            "a public dynamic parameter takes the types the solution passes it and no other: an "
+            "export per kind, the façade switching on the object's type (null throws the "
+            "binder's RuntimeBinderException, another type NotSupportedException naming the "
+            "types it takes)"
+        )
+    if any(v.public and not v.what.startswith("parameter ") for v in values):
+        out.append(
+            "a public dynamic result crosses the bridge as a kind (result_kind) and an out "
+            "parameter per kind, the façade returning the boxed value"
+        )
+    if any(b.error for s in sites for b in s.bindings):
+        out.append(
+            "where the binder fails for a type that reaches a site, the new code throws "
+            "Microsoft.CSharp.RuntimeBinder.RuntimeBinderException there with the binder's "
+            "message (the runtime's mirror; CcmExceptions.cs maps it)"
+        )
+    return out
+
+
+def _dynamic_site(site: DynamicSite) -> str:
+    outcomes: dict[str, list[str]] = {}
+    for binding in site.bindings:
+        types = " and ".join(binding.types) or "nothing"
+        if binding.error:
+            outcome = f"RuntimeBinderException ({binding.error})"
+        else:
+            outcome = binding.member or "nothing"
+        outcomes.setdefault(outcome, []).append(types)
+    shown = ", ".join(f"{_listed(types, 8)} → {outcome}" for outcome, types in outcomes.items())
+    return f"{site.text} ({site.file}:{site.line}): {shown}"
+
+
 def owner_of(types: Mapping[str, TypeEntry], symbol: str | None) -> str | None:
     """The type a symbol is (or is a member of), when ``types`` has it."""
     head = (symbol or "").split("(", 1)[0]
@@ -225,6 +300,9 @@ class _Cut:
         self.project = project
         self.target_name, self.guide = _TARGETS.get(target, (target, "the porting guide"))
         self.types = {t.id: t for t in project.types}
+        # What each symbol calls (the index's references by enclosing symbol), read when a
+        # director's constructors are checked (D-87).
+        self.calls: dict[str, set[str]] | None = None
         kinds = {t.name: t.kind for t in project.targets}
         wanted = set(files)
 
@@ -363,6 +441,16 @@ class _Cut:
             if from_root is not None:
                 edges[from_root].add(to_root)
             users[to_root].add((from_file, from_root))
+        # The types that reach a type's dynamic values and sites (D-88): its new code names
+        # each, as a closed sum, so they go first, as a reference makes them.
+        by_name = {t.name: i for i, t in ported.items()}
+        for entry in ported.values():
+            reached = {n for v in entry.dynamic_values for n in v.types}
+            reached.update(n for s in entry.dynamic_sites for b in s.bindings for n in b.types)
+            from_root = self.root(entry.id)
+            for name in sorted(reached):
+                if name in by_name and (to_root := self.root(by_name[name])) != from_root:
+                    edges[from_root].add(to_root)
         graph = condense(roots, edges)
         definitions = self.project.definitions(
             {i for t in self.types.values() for i in (t.id, *t.members)}
@@ -436,21 +524,59 @@ class _Cut:
                 f"{display(unit.lead)} calls {platform}'s own API ({shown}): the port builds and "
                 "tests on Linux, where the new code can't call it"
             )
+        # A C# subclass that overrides gets a director (D-87), unless a ported constructor calls
+        # what it overrides: C# runs the override before the subclass's constructor, and a
+        # ported constructor runs its own class's.
+        for other, overrides in self.subclasses(unit):
+            suffixes = {m[len(other.id) :] for m in overrides}
+            for ctor, called in self.constructor_calls(other.base or "", suffixes):
+                reasons.append(
+                    f"{member_name(ctor)} calls {member_name(called)}, which {other.name} "
+                    f"({_listed(other.files)}) overrides: C# runs the override before "
+                    f"{other.name}'s constructor, and the ported constructor can't (D-87)"
+                )
+        if not reasons:
+            return None
+        return "; ".join(reasons) + " (D-78)"
+
+    def subclasses(self, unit: TypeUnit) -> list[tuple[TypeEntry, list[str]]]:
+        """The C# classes that stay C# (the tests, a program) and derive from one of the
+        unit's types, overriding some of its virtual members: each one's object runs on a
+        director (D-87). With the members each overrides."""
         members = {t.id for t in unit.types}
+        found: list[tuple[TypeEntry, list[str]]] = []
         for other in sorted(self.types.values(), key=lambda t: t.id):
             if other.id in self.ported or other.base not in members:
                 continue
             overrides = self.overrides(other)
             if overrides:
-                names = _listed(member_name(m).rsplit(".", 1)[-1] for m in overrides)
-                reasons.append(
-                    f"{self.types[other.base or ''].name} has a subclass that stays C# and "
-                    f"overrides it, {other.name} ({_listed(other.files)}, overriding {names}): "
-                    "the ported code can't call a C# override"
-                )
-        if not reasons:
-            return None
-        return "; ".join(reasons) + " (D-78)"
+                found.append((other, overrides))
+        return found
+
+    def constructor_calls(self, type_id: str, suffixes: set[str]) -> list[tuple[str, str]]:
+        """The calls from a constructor of ``type_id`` or a ported base to one of their virtual
+        members whose name and parameters ``suffixes`` holds (``.Sound``), as (constructor,
+        member)."""
+        if self.calls is None:
+            self.calls = {}
+            for _file, from_symbol, to_symbol in self.project.symbol_references():
+                self.calls.setdefault(from_symbol, set()).add(to_symbol)
+        chain: list[TypeEntry] = []
+        seen: set[str] = set()
+        current: str | None = type_id
+        while current is not None and current in self.ported and current not in seen:
+            seen.add(current)
+            chain.append(self.ported[current])
+            current = self.ported[current].base
+        virtual = {f"{t.id}{s}" for t in chain for s in suffixes} & {
+            m for t in chain for m in t.virtual_members
+        }
+        found: list[tuple[str, str]] = []
+        for entry in chain:
+            for ctor in entry.members:
+                if ctor.startswith(f"{entry.id}.#ctor"):
+                    found += [(ctor, m) for m in sorted(self.calls.get(ctor, set()) & virtual)]
+        return found
 
     def overrides(self, derived: TypeEntry) -> list[str]:
         """The members of ``derived`` that override a ported base's virtual members."""
@@ -579,6 +705,15 @@ class _Cut:
         callbacks = self.callbacks(unit, definitions)
         if callbacks:
             out.append(f"calls into C#: {'; '.join(callbacks)}")
+        for other, overrides in self.subclasses(unit):
+            names = _listed(member_name(m).rsplit(".", 1)[-1] for m in overrides)
+            out.append(
+                f"{other.name} ({_listed(other.files)}) stays C# and derives from "
+                f"{ported[other.base or ''].name}, overriding {names}: its objects run on a "
+                f"director of {ported[other.base or ''].name}, whose virtual members call the C# "
+                "object's, with a base export per virtual member (D-87)"
+            )
+        out += dynamic_notes(unit.types)
         out += self.takeovers(unit)
         if callers:
             out.append(

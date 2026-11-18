@@ -11,6 +11,9 @@ from collections.abc import Sequence
 from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.csharp.adapter import port_type_sites, program_sites
 from codecoremorph.core.models import (
+    DynamicBinding,
+    DynamicSite,
+    DynamicValue,
     GenericUse,
     Plan,
     PortRefusal,
@@ -343,30 +346,120 @@ def test_what_the_first_version_refuses(fake_project: FakeProject) -> None:
     assert units["Zoo.Keeper"].status is UnitStatus.PENDING
 
 
-def test_a_class_the_tests_derive_from_and_override_is_refused(fake_project: FakeProject) -> None:
-    """The ported code can't call a C# override (D-78); deriving without overriding is fine."""
+def test_a_class_the_tests_derive_from_and_override_runs_on_a_director(
+    fake_project: FakeProject,
+) -> None:
+    """D-87: a C# subclass that overrides a ported class's virtual members runs on a director,
+    which the unit's note names; deriving without overriding needs none."""
     lib = _zoo(fake_project)
     lib.type("Zoo.Tests.Puppy", "tests/Zoo.Tests/Puppy.cs", project=TESTS,
              base="csharp:Zoo.Dog", members=["#ctor(System.String)"])  # fmt: skip
-    assert _by_type(_plan(lib.load()))["Zoo.Animal"].status is UnitStatus.PENDING
+    animal = _by_type(_plan(lib.load()))["Zoo.Animal"]
+    assert animal.status is UnitStatus.PENDING
+    assert "director" not in (animal.note or "")
     lib.type("Zoo.Tests.Robot", "tests/Zoo.Tests/Robot.cs", project=TESTS,
              base="csharp:Zoo.Dog", members=["Sound", "Legs"])  # fmt: skip
     units = _by_type(_plan(lib.load()))
-    animal = units["Zoo.Dog"]
-    assert animal.status is UnitStatus.SKIPPED
+    animal = units["Zoo.Animal"]
+    assert animal.status is UnitStatus.PENDING
     assert animal.files == ["src/Zoo/Animal.cs", LIB]
-    assert animal.note == (
-        "skipped: Zoo.Dog has a subclass that stays C# and overrides it, Zoo.Tests.Robot "
-        "(tests/Zoo.Tests/Robot.cs, overriding Sound, Legs): the ported code can't call a C# "
-        "override (D-78)"
-    )
-    # What uses the hierarchy can't be ported either; Ticket uses none of it.
-    assert units["Zoo.Keeper"].status is UnitStatus.SKIPPED
-    assert units["Zoo.Keeper"].note == (
-        "skipped: Zoo.Keeper uses Zoo.Animal, Zoo.IFeeder, Zoo.Pen<T>, which this port refuses "
-        "(see their units)"
-    )
+    assert (
+        "Zoo.Tests.Robot (tests/Zoo.Tests/Robot.cs) stays C# and derives from Zoo.Dog, "
+        "overriding Sound, Legs: its objects run on a director of Zoo.Dog, whose virtual members "
+        "call the C# object's, with a base export per virtual member (D-87)"
+    ) in (animal.note or "")
+    # What uses the hierarchy is ported as before.
+    assert units["Zoo.Keeper"].status is UnitStatus.PENDING
     assert units["Zoo.Ticket"].status is UnitStatus.PENDING
+
+
+def test_a_constructor_calling_what_a_csharp_subclass_overrides_is_refused(
+    fake_project: FakeProject,
+) -> None:
+    """D-87: C# runs the override before the subclass's constructor; a ported constructor runs
+    its own class's member, so the director can't keep it."""
+    lib = _zoo(fake_project)
+    lib.uses("src/Zoo/Animal.cs", "csharp:Zoo.Animal.#ctor(System.String)",
+             "csharp:Zoo.Animal.Legs")  # fmt: skip
+    lib.type("Zoo.Tests.Robot", "tests/Zoo.Tests/Robot.cs", project=TESTS,
+             base="csharp:Zoo.Dog", members=["Sound"])  # fmt: skip
+    # Robot overrides Sound only: Animal's constructor calls Legs, which runs as in C#.
+    assert _by_type(_plan(lib.load()))["Zoo.Animal"].status is UnitStatus.PENDING
+    lib.type("Zoo.Tests.Spider", "tests/Zoo.Tests/Spider.cs", project=TESTS,
+             base="csharp:Zoo.Dog", members=["Legs"])  # fmt: skip
+    plan = _plan(lib.load())
+    (animal,) = [u for u in plan.units if u.files[0] == "src/Zoo/Animal.cs"]
+    assert animal.status is UnitStatus.SKIPPED
+    assert animal.note == (
+        "skipped: Zoo.Animal.#ctor calls Zoo.Animal.Legs, which Zoo.Tests.Spider "
+        "(tests/Zoo.Tests/Spider.cs) overrides: C# runs the override before Zoo.Tests.Spider's "
+        "constructor, and the ported constructor can't (D-87) (D-78)"
+    )
+    assert _by_type(plan)["Zoo.Keeper"].status is UnitStatus.SKIPPED
+
+
+def test_a_types_dynamic_sites_go_in_its_note(fake_project: FakeProject) -> None:
+    """D-88: a dynamic site the index settled is ported, its unit's note naming what the binder
+    binds for each type that reaches it, and the dynamic values with their types."""
+    lib = _zoo(fake_project)
+    dispatch = DynamicSite(
+        kind="invoke", text="Feed((dynamic)animal)", operands=["(dynamic)animal"],
+        file="src/Zoo/Feeding.cs", line=9, member="csharp:Zoo.Feeding.Of(Zoo.Animal)",
+        bindings=[
+            DynamicBinding(types=["Zoo.Bird"], member="Zoo.Feeding.Feed(Zoo.Animal)",
+                           result=["int"]),
+            DynamicBinding(types=["Zoo.Dog"], member="Zoo.Feeding.Feed(Zoo.Dog)", result=["int"]),
+        ],
+    )  # fmt: skip
+    plain = DynamicSite(
+        kind="member", text="bowl.Size", operands=["bowl"], file="src/Zoo/Feeding.cs", line=12,
+        bindings=[DynamicBinding(types=["Zoo.Bowl"], member="Zoo.Bowl.Size", result=["int"])],
+    )  # fmt: skip
+    failing = DynamicSite(
+        kind="member", text="thing.Legs", operands=["thing"], file="src/Zoo/Feeding.cs", line=15,
+        bindings=[
+            DynamicBinding(types=["Zoo.Dog"], member="Zoo.Animal.Legs", result=["int"]),
+            DynamicBinding(types=["Zoo.Ticket"],
+                           error="'Zoo.Ticket' does not contain a definition for 'Legs'"),
+        ],
+    )  # fmt: skip
+    thing = DynamicValue(
+        what="parameter thing of Zoo.Feeding.Legs(dynamic)", symbol=None, public=True,
+        types=["Zoo.Dog", "Zoo.Ticket"], file="src/Zoo/Feeding.cs", line=14,
+    )  # fmt: skip
+    lib.type("Zoo.Feeding", "src/Zoo/Feeding.cs", static=True, members=["Of(Zoo.Animal)"],
+             dynamic_sites=[dispatch, plain, failing], dynamic_values=[thing])  # fmt: skip
+    units = _by_type(_plan(lib.load()))
+    feeding = units["Zoo.Feeding"]
+    assert feeding.status is UnitStatus.PENDING
+    # The types that reach its dynamic values go first: its new code names them.
+    assert {units["Zoo.Animal"].id, units["Zoo.Ticket"].id} <= set(feeding.needs)
+    note = feeding.note or ""
+    assert (
+        "dynamic sites, each a closed sum in the new code over the types that reach it, bound as "
+        "C#'s runtime binder binds them (D-88): Feed((dynamic)animal) (src/Zoo/Feeding.cs:9): "
+        "Zoo.Bird → Zoo.Feeding.Feed(Zoo.Animal), Zoo.Dog → Zoo.Feeding.Feed(Zoo.Dog); "
+        "thing.Legs (src/Zoo/Feeding.cs:15): Zoo.Dog → Zoo.Animal.Legs, Zoo.Ticket → "
+        "RuntimeBinderException ('Zoo.Ticket' does not contain a definition for 'Legs')"
+    ) in note
+    assert "1 other dynamic site with one type and one binding each" in note
+    assert (
+        "dynamic values and the types that reach them: parameter thing of "
+        "Zoo.Feeding.Legs(dynamic) (src/Zoo/Feeding.cs:14, public): Zoo.Dog, Zoo.Ticket"
+    ) in note
+    assert "a public dynamic parameter takes the types the solution passes it" in note
+    assert "Microsoft.CSharp.RuntimeBinder.RuntimeBinderException" in note
+    # A site the index couldn't settle is a refusal like any other (the helper's).
+    lib.type("Zoo.Bag", "src/Zoo/Bag.cs", members=["Name"], refusals=[RefusalSite(
+        what=PortRefusal.DYNAMIC, file="src/Zoo/Bag.cs", line=4,
+        detail="bag.Name: late binding to System.Dynamic.ExpandoObject (an "
+               "IDynamicMetaObjectProvider), which the port can't see")])  # fmt: skip
+    plan = _plan(lib.load())
+    (bag,) = [u for u in plan.units if u.files[0] == "src/Zoo/Bag.cs"]
+    assert bag.note == (
+        "skipped: Zoo.Bag uses dynamic: bag.Name: late binding to System.Dynamic.ExpandoObject "
+        "(an IDynamicMetaObjectProvider), which the port can't see (src/Zoo/Bag.cs:4) (D-78)"
+    )
 
 
 def test_types_in_two_library_projects_are_refused(fake_project: FakeProject) -> None:

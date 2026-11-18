@@ -35,6 +35,9 @@ from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
     BuildTarget,
+    DynamicBinding,
+    DynamicSite,
+    DynamicValue,
     FileRole,
     GenericUse,
     IndexMeta,
@@ -477,10 +480,10 @@ def probe_native(ctx: AdapterContext, libraries: Sequence[str]) -> list[NativeLi
 
 def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> PortRecords:
     """The helper's ``type``, ``inst``, ``refuse``, ``throw``, ``test``, ``notice``, ``native``,
-    ``pkguse`` and ``pkg`` rows (``port=1``) as the index's models, for the files the index has
-    (``known``). A refusal, a throw, a notice, a P/Invoke declaration or a package use goes to
-    the type it is in; a generic's uses with the same type arguments keep their first
-    :data:`MAX_USES`."""
+    ``pkguse``, ``pkg``, ``dyn`` and ``dynval`` rows (``port=1``) as the index's models, for the
+    files the index has (``known``). A refusal, a throw, a notice, a P/Invoke declaration, a
+    package use, a dynamic site or a dynamic value (D-88) goes to the type it is in; a
+    generic's uses with the same type arguments keep their first :data:`MAX_USES`."""
     types: dict[str, TypeEntry] = {}
     uses: list[GenericUse] = []
     tests: list[TestMethod] = []
@@ -490,6 +493,8 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
     notices: list[tuple[str, PortNotice]] = []
     imports: list[tuple[str, NativeImport]] = []
     package_uses: list[tuple[str, PackageUse]] = []
+    dynamic_sites: list[tuple[str, DynamicSite]] = []
+    dynamic_values: list[tuple[str, DynamicValue]] = []
     counts: dict[tuple[str, tuple[str, ...]], int] = {}
     for row in rows:
         kind = row.get("t")
@@ -554,6 +559,27 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
                 member=_optional(row.get("member")),
             )
             package_uses.append((str(row["type"]), used))
+        elif kind == "dyn" and row.get("file") in known:
+            dynamic_site = DynamicSite(
+                kind=str(row["kind"]),
+                text=str(row.get("text") or ""),
+                operands=_strings(row.get("operands")),
+                bindings=[_binding(b) for b in _mappings(row.get("bindings"))],
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+                member=_optional(row.get("member")),
+            )
+            dynamic_sites.append((str(row["type"]), dynamic_site))
+        elif kind == "dynval" and row.get("file") in known:
+            value = DynamicValue(
+                what=str(row["what"]),
+                symbol=_optional(row.get("symbol")),
+                public=bool(row.get("public")),
+                types=_strings(row.get("types")),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+            )
+            dynamic_values.append((str(row["type"]), value))
         elif kind == "pkg":
             packages.append(
                 PackageEntry(
@@ -616,6 +642,12 @@ def port_records(rows: Iterable[Mapping[str, Any]], known: Collection[str]) -> P
     for owner, used in package_uses:
         if owner in types:
             types[owner].package_uses.append(used)
+    for owner, dynamic_site in dynamic_sites:
+        if owner in types:
+            types[owner].dynamic_sites.append(dynamic_site)
+    for owner, value in dynamic_values:
+        if owner in types:
+            types[owner].dynamic_values.append(value)
     return PortRecords(
         types=sorted(types.values(), key=lambda t: t.id),
         uses=sorted(uses, key=lambda u: (u.symbol, u.file, u.line, u.arguments)),
@@ -630,3 +662,19 @@ def _optional(value: object) -> str | None:
 
 def _strings(value: object) -> list[str]:
     return [str(v) for v in cast(list[object], value)] if isinstance(value, list) else []
+
+
+def _mappings(value: object) -> list[Mapping[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [cast(Mapping[str, Any], v) for v in cast(list[object], value) if isinstance(v, dict)]
+
+
+def _binding(row: Mapping[str, Any]) -> DynamicBinding:
+    return DynamicBinding(
+        types=_strings(row.get("types")),
+        member=_optional(row.get("member")),
+        member_id=_optional(row.get("member_id")),
+        result=_strings(row.get("result")),
+        error=_optional(row.get("error")),
+    )

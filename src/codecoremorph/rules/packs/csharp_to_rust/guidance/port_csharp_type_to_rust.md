@@ -118,6 +118,46 @@ that: return the exception the C# threw.
   fn, token: *mut i32)` and `_unsubscribe_<event>(self_, token)`: the façade keeps its C#
   subscribers and holds one native subscription while it has any; the Rust type holds
   `Arc<dyn Fn(&Arc<CartLine>) -> Result<()> + Send + Sync>` subscribers by token.
+- **A C# class that derives from a ported one** (the note names it and what it overrides) runs
+  on a **director** (D-87): a native object of the ported class it derives from, whose virtual
+  members call the C# object's, so the Rust that calls them (a template method, a collection of
+  the trait) runs the C# override. The hierarchy is a trait over the base's state (the mapping,
+  below). In the bridge, for the hierarchy's trait `R`:
+  - A function pointer type per virtual member, and a `#[derive(Clone, Copy)] struct RCalls` of
+    them, each checked with `ccm::callback(f)?` when the director is made.
+  - A bridge trait `RState: Send + Sync + 'static` implemented for the state of each class C#
+    derives from (`RBase` for an abstract base, or the ported subclass's struct): `rule_base()`
+    and a base call per virtual member taking the object, `fn base_sound(&self, this: &dyn R)
+    -> Result<String>`, which runs that class's own implementation with `this` (for a member
+    abstract there, `Err(Exception::invalid_operation(...))`: no façade calls it).
+  - `struct RDirector<S: RState> { director: ccm::Director, calls: RCalls, state: S }`,
+    implementing `R`: `base()` gives the state's, each virtual member calls the C#
+    (`ccm::check_managed(unsafe { (self.calls.sound)(self.director.context(), &mut result) })?`,
+    a string back through `ccm::take_str`); and a bridge trait `RDirected` of base calls
+    without the object, implemented by `RDirector<S>` with itself as `this`.
+  - An export per class C# derives from, `<name>_<C>_new_director(<C's constructor's arguments>,
+    context, release, <a function pointer per virtual member>, result_director: *mut *mut
+    c_void, result)`: `let managed = ManagedRef::new(context, release);` **first**, so the
+    context is released however the export fails, then the state (its checks with `?`), then
+    `Arc::new_cyclic(|this| RDirector { director: ccm::Director::new(managed, this.clone()),
+    calls, state })`, `ccm::put(result_director, d.director.id())` and the root's handle to it.
+  - An export per virtual member, `<name>_R_base_<member>(self_, ...)`, through a function that
+    finds the director behind a handle by trait upcasting, `let rule: &dyn Any =
+    &**ccm::from_handle(self_)?;`, then `rule.downcast_ref::<RDirector<S>>()` for each `S`
+    (none: `InvalidOperationException`, a base call on an object no C# class derives from);
+    the `_kind` export names a director's object too, and a member of a ported subclass
+    downcasts to the subclass or to its director's state.
+
+  Refused, and not yours to work around: a ported constructor that calls a virtual member a C#
+  class overrides (C# runs the override before the derived constructor; Rust has no object yet).
+- **A public dynamic parameter or result** (D-88; the note names the types that reach it).
+  A parameter gets an export per kind of value the solution passes it, named after the kind
+  (`zoo_Labels_line_Animal(item: *const zoo_Animal, result: *mut *mut c_char)`,
+  `zoo_Labels_line_Ticket(...)`; a hierarchy's classes share their root's handle, and the export
+  builds the enum's variant of the object's type), and the façade picks one. A result is a
+  `result_kind: *mut i32` and an out parameter per kind (`result_int: *mut i32,
+  result_decimal: *mut ccm_decimal`): set them all, the ones the kind doesn't name to zero, and
+  say in the doc comment which kind is which.
 - **Exceptions.** Return what the C# threw, where it threw it, with the same message and
   parameter name: `Err(Exception::argument_null("name"))`,
   `Exception::argument_out_of_range("index", "...")`, `Exception::invalid_operation("an empty
@@ -172,6 +212,40 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the R
 - A hierarchy's façades stay a hierarchy: the base holds the handle, and a derived class passes
   its handle to the base's protected constructor. An `abstract` or `virtual` member keeps its
   modifiers, and each override's body calls the export.
+- **A hierarchy C# classes derive from** (directors, D-87): the base's handle field isn't
+  `readonly`; the ported subclasses' façades call an `internal` parameterless constructor of the
+  base and attach their handle in their body, through an internal `Attach(handle, director,
+  native)` that sets `Handle`, calls `director.Attach(handle, native)` for a director and
+  `CcmObjects.Register`. A constructor C# subclasses call makes a director: an abstract base's
+  protected one always (only C# subclasses call it), a concrete class's when
+  `GetType() != typeof(C)`, else the class's own object:
+
+  ```csharp
+  CcmDirector director = CcmDirector.Create(this);
+  IntPtr native;
+  zoo_AnimalHandle handle;
+  CcmInterop.Check(CcmNative.zoo_Dog_new_director(name, director.Context, CcmDirectors.Release,
+      SoundCall, LegsCall, out native, out handle));
+  Attach(handle, director, native);
+  ```
+
+  The callbacks are static methods in `internal static readonly` fields of the base, each calling
+  the C# object's member inside `CcmInterop.Callback` through
+  `CcmDirectors.Target<Animal>(context)` (a string back is `CcmInterop.NewString(...)`). Each
+  virtual member's body calls the base export when its object is a director's and the virtual
+  one otherwise, so C#'s `base.Sound()` runs the ported code and nothing loops back into C#:
+  `CcmInterop.Check(Handle.Director != null ? CcmNative.zoo_Animal_base_sound(Handle, out r) :
+  CcmNative.zoo_Animal_sound(Handle, out r));`. The generated declarations hold a director's C#
+  object for each call that passes its handle (`CcmDirectors.Passing`), so a ported collection
+  keeps it alive: nothing to write.
+- **A public dynamic parameter** (D-88) keeps `dynamic` in its signature, and the body switches
+  on the object's type, an export per case, with nothing of the binder (no member access on
+  the dynamic value): `switch ((object)item) { case Animal a: ...; case Ticket t: ...; case
+  null: throw new RuntimeBinderException("Cannot perform runtime binding on a null
+  reference"); default: throw new NotSupportedException("Labels.Line is ported for Animal and
+  Ticket, the types the solution passes it; not for " + ((object)item).GetType().FullName); }`.
+  A dynamic result reads the kind and returns the boxed value of that kind
+  (`case 0: return whole; case 1: return amount.ToDecimal();`).
 - Static members call exports that use the Rust's static state; static fields the C# exposes
   become what they were (a `const` stays a `const`).
 
@@ -200,6 +274,20 @@ drop the guard, then call. The report counts each unit's shared cells (`Mutex`, 
   where a C# implementation needs the same object back; a hierarchy with overrides is a trait
   for its virtual members with a struct for the base's state, or an enum where the set of types
   is closed.
+- **A hierarchy C# classes derive from** (the note names them; D-87) is a trait, never an enum:
+  `pub trait FeeRule: Any + Send + Sync` (`Any` lets the bridge downcast a trait object), with
+  `fn base(&self) -> &FeeRuleBase` giving the base's fields (`FeeRuleBase::new(...)` public,
+  for the C# subclasses' translations at the retirement). Its virtual members return `Result`
+  even where the ported code can't fail: a C# override may throw. Its non-virtual members are
+  default methods that no implementation overrides. Each class's own implementation of a
+  virtual member is a method of its state that takes the object it runs on, so a base call made
+  for a C# subclass's object still sends the other members to its overrides:
+  `pub fn applies_impl(&self, this: &(impl FeeRule + ?Sized), amount: Decimal) -> Result<bool>`
+  on `FeeRuleBase` for the base's, called by the trait's default method as
+  `self.base().applies_impl(self, amount)`, and on the subclass's struct for its own, called by
+  its trait impl as `self.applies_impl(self, amount)`; an override's base call is
+  `self.base.applies_impl(this, amount)`. (Not a module named after the base: in a unit of the
+  same name, clippy's `module_inception` refuses it.)
 - Properties are methods (`name()`, `set_name()`); an indexer is `at()` or `get()`; operators
   are `std::ops` traits where they can't fail, methods returning `Result` where the C# could
   throw; `Equals` and `GetHashCode` are `PartialEq`, `Eq` and `Hash`; `ToString` is `Display`.
@@ -235,6 +323,24 @@ drop the guard, then call. The report counts each unit's shared cells (`Mutex`, 
 
 The unit's note names each of these where the C# has them (D-82).
 
+- **Dynamic** (D-88). The note lists the dynamic sites with what C#'s runtime binder binds at
+  each for each type that reaches it, and the dynamic values with their types: port each site
+  as that closed sum, nothing more general. A dispatch on a hierarchy's runtime type
+  (`Feed((dynamic)animal)` over overloads) downcasts the trait object (`let any: &dyn Any =
+  animal;` then `any.downcast_ref::<Dog>()`), each type the note lists calling the overload it
+  names, the rest the base's. Values of unrelated types or of several built-in types (a field
+  that holds an `int` or a `decimal`, a `List<dynamic>`, a parameter that takes a `Ticket` or
+  an `Animal`) are an `enum` with a variant per type the note lists (`Arc<T>` for a class, the
+  value for a struct or number), and each site a `match` doing what the binding says. Where
+  the binder fails for a type (the note gives its message), return
+  `Exception::runtime_binder(message)` where the C# would have thrown, after what the C#
+  evaluated first; `CcmExceptions.cs` maps it (`case
+  "Microsoft.CSharp.RuntimeBinder.RuntimeBinderException": result = new
+  Microsoft.CSharp.RuntimeBinder.RuntimeBinderException(error.Message);`). Integer arithmetic
+  at a dynamic site wraps as unchecked C# does (`wrapping_add`), and a conversion the note
+  names (`an explicit numeric conversion to int` of a `decimal`) is that conversion. The C#
+  is the binder's rules applied to what the note lists: a type the note doesn't name never
+  reaches the site.
 - **Native calls.** A P/Invoke (`[DllImport("libsodium")] static extern int
   crypto_box_easy(...)`) becomes a call of the C function from the crate's `native` module,
   which the scaffold made when the unit's types call a native library: `src/native/mod.rs`, and

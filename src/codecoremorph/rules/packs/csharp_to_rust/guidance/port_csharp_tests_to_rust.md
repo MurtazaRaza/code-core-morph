@@ -34,6 +34,18 @@ them.
   (`e.field("sku")`).
 - Test doubles (C# classes implementing an interface of the library) are Rust types
   implementing its trait, in the test file.
+- A C# test class that derives from a ported class (a director until now, D-87) is a struct in
+  the test file holding the class it derived from (`FeeRuleBase::new(name)` for an abstract
+  base, else the ported struct), implementing the trait by that class's own implementations
+  with itself as the object (`self.flat.fee_impl(self, amount)`), but for what it overrides
+  (a base call is that implementation: `self.base.applies_impl(self, amount)` for the
+  abstract base's).
+- A dynamic value the test reads (D-88; the note names its sites and types) is the enum the
+  Rust returns: a check of its type (`Assert.IsInstanceOf<int>(total)`) is
+  `assert!(matches!(total, TallyTotal::Int(_)))`, a cast (`(int)tally.Total`) is a `let`-`else` on the variant where the note says it
+  is an `int` (`let TallyTotal::Int(whole) = tally.total() else { panic!(...) };`), and the
+  conversion the note names where it isn't. A dynamic argument is the variant of the value's
+  type.
 - Keep every check: I-4 compares how many assertions each C# test and its Rust tests make
   together, and a translation that checks less is refused.
 

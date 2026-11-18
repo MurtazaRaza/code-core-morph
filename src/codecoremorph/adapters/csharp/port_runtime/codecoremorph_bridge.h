@@ -51,6 +51,12 @@ CCM_EXPORT const char *ccm_error_part(int32_t part);
 CCM_EXPORT void ccm_free(void *memory);
 CCM_EXPORT char *ccm_strdup(const char *text);
 
+/* Whether native code holds a director's object besides its C# façade's handle. A director is
+ * the native object of a C# class that derives from a ported one: its virtual members call the
+ * C# object's (D-87). The façades' support asks after each garbage collection, and holds the C#
+ * object weakly while only its façade holds the director. */
+CCM_EXPORT bool ccm_director_shared(const void *director);
+
 #ifdef __cplusplus
 }
 

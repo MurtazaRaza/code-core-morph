@@ -3,7 +3,10 @@ index helper writes for the bridge headers."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+import pytest
 
 from codecoremorph.adapters.cpp.pinvoke import BridgeProblem, csharp_declarations
 
@@ -308,3 +311,121 @@ def test_csharp_keywords_as_parameter_names_are_escaped() -> None:
     assert "zoo_Pen_name(zoo_PenHandle @this, out IntPtr @string);" in text
     assert "delegate int zoo_Pen_visit_fn(IntPtr context, IntPtr @object);" in text
     assert "(rust/zoo_rs/include/zoo_rs/bridge.h) when the Rust is" in text
+
+
+def test_a_hierarchy_with_directors_holds_its_csharp_objects_for_each_call() -> None:
+    """D-87: a handle type a director export makes carries its director, and every export that
+    takes one holds a director's C# object for the call; other handles stay plain."""
+    fee_fn = {
+        "name": "fees_FeeRule_fee_fn",
+        "line": 3,
+        "returns": STATUS,
+        "params": [
+            {"name": "context", "type": ptr(VOID)},
+            {"name": "amount", "type": DECIMAL},
+            {"name": "result", "type": ptr(DECIMAL)},
+        ],
+    }
+    rule = handle("fees_FeeRule")
+    schedule = handle("fees_Schedule")
+    headers = {
+        "cpp/bridge/fees.h": {
+            "handles": ["fees_FeeRule", "fees_Schedule"],
+            "callbacks": [fee_fn],
+            "functions": [
+                *handle_exports("fees_FeeRule"),
+                *handle_exports("fees_Schedule"),
+                fn(
+                    "fees_FeeRule_new_director",
+                    [
+                        ("name", STR_IN),
+                        ("context", ptr(VOID)),
+                        ("release", {"k": "release"}),
+                        ("fee", {"k": "callback", "name": "fees_FeeRule_fee_fn"}),
+                        ("result_director", ptr(ptr(VOID))),
+                        ("result", ptr(ptr(rule))),
+                    ],
+                ),
+                fn(
+                    "fees_FeeRule_charge",
+                    [
+                        ("self", ptr(rule, const=True)),
+                        ("amount", DECIMAL),
+                        ("result", ptr(DECIMAL)),
+                    ],
+                ),
+                fn("fees_Schedule_add", [("self", ptr(schedule)), ("rule", ptr(rule))]),
+                fn(
+                    "fees_Schedule_count",
+                    [("self", ptr(schedule, const=True)), ("result", ptr(INT32))],
+                ),
+            ],
+        }
+    }
+    text, problems = csharp_declarations(headers, "fees_native")
+    assert problems == []
+    assert "internal sealed class fees_FeeRuleHandle : SafeHandle, ICcmDirected" in text
+    assert "public CcmDirector Director { get; set; }" in text
+    assert "internal sealed class fees_ScheduleHandle : SafeHandle, ICcmHandle" in text
+    # A director's object is held while native code may take its handle, self included.
+    assert (
+        "        internal static int fees_Schedule_add(fees_ScheduleHandle self, "
+        "fees_FeeRuleHandle rule)\n"
+        "        {\n"
+        "            using (CcmDirectors.Passing(rule))\n"
+        "            {\n"
+        "                return fees_Schedule_add_raw(self, rule);\n"
+        "            }\n"
+        "        }\n"
+    ) in text
+    assert "using (CcmDirectors.Passing(self))\n" in text  # fees_FeeRule_charge
+    # Strings and a director's handle out: the wrapper converts, and holds nothing.
+    assert (
+        "return fees_FeeRule_new_director_raw(CcmInterop.Utf8Z(name), context, release, fee, "
+        "out result_director, out result);"
+    ) in text
+    assert "Passing(result)" not in text
+    # A handle's identity and a plain handle's exports take no wrapper.
+    assert "internal static extern ulong fees_FeeRule_key(fees_FeeRuleHandle handle);" in text
+    assert (
+        "internal static extern int fees_Schedule_count(fees_ScheduleHandle self, out int result);"
+    ) in text
+
+
+def test_a_rust_bridges_header_problems_name_the_fix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cbindgen writes a C# port's Rust bridge header from the agent's Rust: what libclang can't
+    read in it comes back with what to change in the Rust (D-89, as for a C port); a C++
+    bridge's own header gets no such hint."""
+    from codecoremorph.adapters.base import AdapterContext
+    from codecoremorph.adapters.cpp import CppAdapter
+    from codecoremorph.core.models import Diagnostic, DiagnosticOrigin, LanguageConfig, Severity
+    from codecoremorph.sandbox.native import NativeExecutor
+
+    problem = Diagnostic(
+        file_path="shop_rs/include/shop/bridge.h",
+        line=9,
+        severity=Severity.ERROR,
+        message="unknown type name 'Option'",
+        origin=DiagnosticOrigin.COMPILER,
+    )
+
+    def read(*_: object) -> tuple[dict[str, Any], list[Diagnostic]]:
+        return {}, [problem]
+
+    monkeypatch.setattr(CppAdapter, "_bridge_declarations", read)
+    ctx = AdapterContext(
+        worktree=tmp_path,
+        build_dir=tmp_path / "build",
+        cache_dir=tmp_path / "cache",
+        log_dir=tmp_path / "logs",
+        executor=NativeExecutor(log_dir=tmp_path / "exec"),
+        lang=LanguageConfig(language="csharp", standard="csharp12"),
+    )
+    header = "shop_rs/include/shop/bridge.h"
+    rust = CppAdapter().write_csharp_declarations(ctx, [header], [], "shop", [], header, "Rust")
+    assert [d.line for d in rust] == [9]
+    assert "not through a type alias" in rust[0].message
+    cpp = CppAdapter().write_csharp_declarations(ctx, [header], [], "shop", [], header, "C++")
+    assert [d.message for d in cpp] == ["unknown type name 'Option'"]

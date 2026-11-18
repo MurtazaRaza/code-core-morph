@@ -90,4 +90,8 @@ CCM_EXPORT char* ccm_strdup(const char* text) {
     }
 }
 
+CCM_EXPORT bool ccm_director_shared(const void* director) {
+    return director != nullptr && static_cast<const ccm::bridge::Director*>(director)->shared();
+}
+
 }  // extern "C"

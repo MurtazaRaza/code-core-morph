@@ -102,6 +102,48 @@ the top-level `CMakeLists.txt`.
   `_subscribe_<event>(self, context, release, fn, int32_t *token)` and
   `_unsubscribe_<event>(self, token)`: the façade keeps its C# subscribers and holds one native
   subscription while it has any.
+- **A C# class that derives from a ported one** (the note names it and what it overrides) runs
+  on a **director** (D-87): a native object of the ported class it derives from, whose virtual
+  members call the C# object's, so the C++ that calls them (a template method, a collection of
+  the base type) runs the C# override. In the bridge's `.cpp`, for the hierarchy's root `R`:
+  - `struct RCalls` of the function pointer typedefs, one per virtual member of the hierarchy
+    (`typedef ccm_status (*zoo_Animal_sound_fn)(void *context, char **result);`).
+  - `class RDirected`, an interface of base calls, `virtual std::string base_sound() const = 0;`
+    and so on.
+  - `template <class P> class RDirector final : public P, public RDirected, public bridge::Director`,
+    over the ported class `P` the C# class derives from (`R` or a ported subclass): its
+    constructor takes `bridge::ManagedRef managed, RCalls calls, A&&... args` and passes the
+    arguments to `P`'s (protected or not); each virtual member calls the C#
+    (`bridge::check_managed(calls_.sound(context(), &result))`, a string back through
+    `bridge::take_str`); each base call is `P::sound()`, qualified (for a member abstract in `P`,
+    `if constexpr (std::is_same_v<P, R>) throw ccm::InvalidOperationException(...)`: no façade
+    calls it).
+  - An export per class C# derives from, `<name>_<C>_new_director(<C's constructor's
+    arguments>, void *context, ccm_release_fn release, <a function pointer per virtual
+    member>, void **result_director, <name>_R **result)`. Its body takes the context into a
+    ManagedRef **first** (`bridge::ManagedRef managed(context, release);`), so the context is
+    released however the export fails, then `auto d = bridge::make_director<RDirector<C>>(managed,
+    calls, args...)`, `*result_director = static_cast<bridge::Director&>(*d).id();` and the root's
+    handle to it.
+  - An export per virtual member, `<name>_R_base_<member>(self, ...)`, that runs
+    `dynamic_cast<const RDirected*>(bridge::from_handle(self).get())->base_<member>(...)` (null:
+    `InvalidOperationException`, a base call on an object no C# class derives from); the
+    `_kind` export names a director's object too (the façade never wraps one: it is the C#
+    object).
+  - Protected members stay protected: only C# subclasses call them, so the director reaches the
+    instance ones, and a protected static goes through
+    `struct RProtected : ns::R { using ns::R::round; };`.
+
+  Refused, and not yours to work around: a ported constructor that calls a virtual member a C#
+  class overrides (C# runs the override before the derived constructor; C++ can't).
+- **A public dynamic parameter or result** (D-88; the note names the types that reach it).
+  A parameter gets an export per kind of value the solution passes it, named after the kind
+  (`zoo_Labels_line_Animal(const zoo_Animal *item, char **result)`,
+  `zoo_Labels_line_Ticket(...)`; a hierarchy's classes share their root's handle, and the export
+  builds the C++ value of the object's class), and the façade picks one. A result is an
+  `int32_t *result_kind` and an out parameter per kind (`int32_t *result_int, ccm_decimal
+  *result_decimal`): set them all, the ones the kind doesn't name to zero, and say in the
+  header's comment which kind is which.
 - **Exceptions.** The C++ throws the mirror of what the C# threw, where it threw it, with the
   same message and parameter name: `ccm::ArgumentNullException("name")`,
   `ccm::InvalidOperationException("an empty pen")`, `ccm::KeyNotFoundException(...)`. The
@@ -152,6 +194,40 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
 - A hierarchy's façades stay a hierarchy: the base holds the handle, and a derived class passes
   its handle to the base's protected constructor. An `abstract` or `virtual` member keeps its
   modifiers, and each override's body calls the export.
+- **A hierarchy C# classes derive from** (directors, D-87): the base's handle field isn't
+  `readonly`; the ported subclasses' façades call an `internal` parameterless constructor of the
+  base and attach their handle in their body, through an internal `Attach(handle, director,
+  native)` that sets `Handle`, calls `director.Attach(handle, native)` for a director and
+  `CcmObjects.Register`. A constructor C# subclasses call makes a director: an abstract base's
+  protected one always (only C# subclasses call it), a concrete class's when
+  `GetType() != typeof(C)`, else the class's own object:
+
+  ```csharp
+  CcmDirector director = CcmDirector.Create(this);
+  IntPtr native;
+  zoo_AnimalHandle handle;
+  CcmInterop.Check(CcmNative.zoo_Dog_new_director(name, director.Context, CcmDirectors.Release,
+      SoundCall, LegsCall, out native, out handle));
+  Attach(handle, director, native);
+  ```
+
+  The callbacks are static methods in `internal static readonly` fields of the base, each calling
+  the C# object's member inside `CcmInterop.Callback` through
+  `CcmDirectors.Target<Animal>(context)` (a string back is `CcmInterop.NewString(...)`). Each
+  virtual member's body calls the base export when its object is a director's and the virtual
+  one otherwise, so C#'s `base.Sound()` runs the ported code and nothing loops back into C#:
+  `CcmInterop.Check(Handle.Director != null ? CcmNative.zoo_Animal_base_sound(Handle, out r) :
+  CcmNative.zoo_Animal_sound(Handle, out r));`. The generated declarations hold a director's C#
+  object for each call that passes its handle (`CcmDirectors.Passing`), so a ported collection
+  keeps it alive: nothing to write.
+- **A public dynamic parameter** (D-88) keeps `dynamic` in its signature, and the body switches
+  on the object's type, an export per case, with nothing of the binder (no member access on
+  the dynamic value): `switch ((object)item) { case Animal a: ...; case Ticket t: ...; case
+  null: throw new RuntimeBinderException("Cannot perform runtime binding on a null
+  reference"); default: throw new NotSupportedException("Labels.Line is ported for Animal and
+  Ticket, the types the solution passes it; not for " + ((object)item).GetType().FullName); }`.
+  A dynamic result reads the kind and returns the boxed value of that kind
+  (`case 0: return whole; case 1: return amount.ToDecimal();`).
 - Static members call exports that use the C++ static state; static fields the C# exposes
   become what they were (a `const` stays a `const`).
 
@@ -195,6 +271,27 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
 
 The unit's note names each of these where the C# has them (D-82).
 
+- **Dynamic** (D-88). The note lists the dynamic sites with what C#'s runtime binder binds at
+  each for each type that reaches it, and the dynamic values with their types: port each site
+  as that closed sum, nothing more general. A dispatch on a hierarchy's runtime type
+  (`Feed((dynamic)animal)` over overloads) is a `dynamic_cast` chain, most derived class first,
+  each case calling the overload the note names (a class the note gives the base's overload
+  goes to the last case). Values of unrelated types or of several built-in types (a field that
+  holds an `int` or a `decimal`, a `List<dynamic>`, a parameter that takes a `Ticket` or an
+  `Animal`) are a `std::variant` of what the note lists (`std::shared_ptr<const T>` for a
+  class, the value for a struct or number), visited with `std::visit` and an overload set of
+  lambdas (`template <class... F> struct Overloaded : F... { using F::operator()...; };`),
+  each case doing what the binding says. A class the note binds the same way at every site
+  of the value may share another's alternative (a `PartialRefund` as the `Refund` it binds
+  as). Where the binder fails for a type (the note gives its message), throw
+  `ccm::RuntimeBinderException` with that message where the C# would have thrown, after what
+  the C# evaluated first; `CcmExceptions.cs` maps it (`case
+  "Microsoft.CSharp.RuntimeBinder.RuntimeBinderException": result = new
+  Microsoft.CSharp.RuntimeBinder.RuntimeBinderException(error.Message);`). Integer arithmetic
+  at a dynamic site wraps as unchecked C# does (unsigned arithmetic, converted back), and a
+  conversion the note names (`an explicit numeric conversion to int` of a `decimal`) is that
+  conversion. The C# is the binder's rules applied to what the note lists: a type the note
+  doesn't name never reaches the site.
 - **Native calls.** A P/Invoke (`[DllImport("libsodium")] static extern int
   crypto_box_easy(...)`) becomes a plain call of the C function: include the library's own
   header (`#include <sodium.h>`) in the `.cpp` that calls it, and pass `std::vector<uint8_t>`'s

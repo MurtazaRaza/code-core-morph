@@ -121,6 +121,7 @@ CBINDGEN_EXCLUDED = (
     "ccm_error_part",
     "ccm_free",
     "ccm_strdup",
+    "ccm_director_shared",
     "CCM_OK",
     "CCM_ERROR",
     "CCM_MANAGED",

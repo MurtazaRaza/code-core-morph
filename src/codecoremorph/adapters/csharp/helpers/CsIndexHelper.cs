@@ -9,8 +9,9 @@
 // declaration), ref (a reference to a project symbol), dep (a file using a type another file
 // declares) and problem. With port=1, the source of a port (D-78) also gets type (a type, its
 // hierarchy and members), inst (a use of a generic type or method with its type arguments),
-// refuse (what a port's first version refuses), throw (an exception a member throws) and test
-// (a test method and the TRX names of its cases).
+// refuse (what a port's first version refuses), throw (an exception a member throws), test
+// (a test method and the TRX names of its cases), dyn (a dynamic site and what the runtime binder
+// binds there for each type that reaches it) and dynval (a dynamic value and its types, D-88).
 
 using System;
 using System.Collections.Generic;
@@ -23,6 +24,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 public static class CsIndexHelper
 {
@@ -184,6 +186,11 @@ internal static class Indexer
                         PortSource.Walk(compilation, tree, project.Path);
                     }
                 }
+            }
+            if (port)
+            {
+                // The whole solution's flows: the tests' calls decide what reaches the library.
+                DynamicSites.Finish();
             }
         }
         return 0;
@@ -712,6 +719,7 @@ internal static class PortSource
     {
         var model = compilation.GetSemanticModel(tree, ignoreAccessibility: true);
         string file = tree.FilePath;
+        DynamicSites.Collect(compilation, tree);
         RoundTrips.Clear();
         foreach (var body in tree.GetRoot().DescendantNodes().Where(n => n is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax or LocalFunctionStatementSyntax))
         {
@@ -738,6 +746,8 @@ internal static class PortSource
         symbol.OriginalDefinition.Locations.Any(l => l.IsInSource && Indexer.Known.Contains(l.SourceTree?.FilePath ?? ""));
 
     private static int Line(SyntaxNode node) => node.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+
+    internal static string? TypeOf(SemanticModel model, SyntaxNode node) => EnclosingType(model, node);
 
     // The type a node is in (itself, for a type's declaration).
     private static string? EnclosingType(SemanticModel model, SyntaxNode node)
@@ -944,10 +954,6 @@ internal static class PortSource
             case FunctionPointerTypeSyntax:
                 Notice(model, file, node, "unsafe", "a function pointer");
                 break;
-            case IdentifierNameSyntax word when word.Identifier.ValueText == "dynamic"
-                && (model.GetTypeInfo(word).Type?.TypeKind == TypeKind.Dynamic || model.GetSymbolInfo(word).Symbol is IDynamicTypeSymbol):
-                Refuse(model, file, node, "dynamic", "dynamic");
-                break;
             case InvocationExpressionSyntax call when model.GetSymbolInfo(call).Symbol is IMethodSymbol method:
                 var owner = method.ContainingType;
                 string space = owner?.ContainingNamespace?.ToDisplayString() ?? "";
@@ -980,7 +986,7 @@ internal static class PortSource
         return SerializerNamespaces.Any(n => space == n || space.StartsWith(n + ".", StringComparison.Ordinal));
     }
 
-    private static void Refuse(SemanticModel model, string file, SyntaxNode node, string what, string detail)
+    internal static void Refuse(SemanticModel model, string file, SyntaxNode node, string what, string detail)
     {
         string? type = EnclosingType(model, node);
         if (type == null)
@@ -1850,4 +1856,1245 @@ internal static class TestNames
         };
     }
 
+}
+
+// A port's dynamic sites (D-88): which of the solution's types reach each, and what C#'s runtime
+// binder binds there for each, so a port makes each site a closed sum.
+//
+// The values that are dynamic live in nodes: a local, parameter, field, property or method
+// return of type dynamic, and the elements of a List<dynamic> or dynamic[]. A node's types are
+// the union of what flows into it: a value of a static type brings that type when nothing can
+// derive from it (a struct, a sealed class, a built-in type) and otherwise the solution's
+// concrete classes assignable to it; a site brings what it binds to. Each site is bound once per
+// combination of its dynamic operands' types by speculative binding, each operand replaced by
+// default(T): what the compiler binds for a T is what the binder binds for a value of runtime
+// type T. Iterated to a fixed point. What it can't settle is a dynamic refusal at its site.
+internal static class DynamicSites
+{
+    private const int MaxTypes = 16;
+    private const int MaxCombinations = 64;
+    private const int MaxRounds = 200;
+
+    private static readonly SymbolDisplayFormat TypeName = new SymbolDisplayFormat(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    private static readonly SymbolDisplayFormat MemberName = new SymbolDisplayFormat(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType | SymbolDisplayMemberOptions.IncludeParameters,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
+
+    // The members of a List<dynamic> or dynamic[] the analysis follows; any other use of one
+    // makes its elements unknown.
+    private static readonly HashSet<string> ListMembers = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Add", "Insert", "Clear", "Remove", "RemoveAt", "Contains", "IndexOf", "Count", "Length",
+        "this[]",
+    };
+
+    private sealed class TypeSet
+    {
+        public readonly SortedSet<string> Types = new SortedSet<string>(StringComparer.Ordinal);
+        public string? Unknown;
+
+        public bool Add(string type)
+        {
+            if (Unknown != null || !Types.Add(type))
+            {
+                return false;
+            }
+            if (Types.Count > MaxTypes)
+            {
+                Unknown = "more than " + MaxTypes + " types reach it";
+            }
+            return true;
+        }
+
+        public bool AddAll(TypeSet other)
+        {
+            if (Unknown != null)
+            {
+                return false;
+            }
+            if (other.Unknown != null)
+            {
+                Unknown = other.Unknown;
+                return true;
+            }
+            bool changed = false;
+            foreach (string t in other.Types)
+            {
+                changed |= Add(t);
+            }
+            return changed;
+        }
+
+        public static TypeSet Of(string? unknown) => new TypeSet { Unknown = unknown };
+    }
+
+    // Where a dynamic value comes from.
+    private abstract class Source { }
+    private sealed class StaticSource : Source { public ITypeSymbol Type = null!; }
+    private sealed class NodeSource : Source { public string Node = ""; }
+    private sealed class SiteSource : Source { public Site Site = null!; }
+    private sealed class UnionSource : Source { public List<Source> Parts = new List<Source>(); }
+    private sealed class UnknownSource : Source { public string Reason = ""; }
+
+    private sealed class Binding
+    {
+        public List<string> Types = new List<string>();
+        public string? Member;
+        public string? MemberId;
+        public TypeSet? Result;
+        public string? ResultNode;
+        public string? Error;
+        public string? Unseen;
+        public List<(string Node, string Type)> Into = new List<(string, string)>();
+    }
+
+    private sealed class Site
+    {
+        public IOperation Op = null!;
+        public SemanticModel Model = null!;
+        public string File = "";
+        public SyntaxNode Node = null!;
+        public string Kind = "";
+        public List<IOperation> Operands = new List<IOperation>();
+        public List<Source> Sources = new List<Source>();
+        public ITypeSymbol? ConvertTo;
+        public List<Binding> Bindings = new List<Binding>();
+        public string Signature = "";
+        public TypeSet Result = new TypeSet();
+        public string? Unknown;
+    }
+
+    private sealed class Node
+    {
+        public TypeSet Types = new TypeSet();
+        public ISymbol? Symbol;
+        public string What = "";
+        public string? File;
+        public SyntaxNode? Declaration;
+        public SemanticModel? Model;
+        public bool Public;
+        public bool Called;
+        public bool Elements;
+    }
+
+    private static readonly Dictionary<string, Node> Nodes = new Dictionary<string, Node>(StringComparer.Ordinal);
+    private static readonly List<(string Node, Source From)> Flows = new List<(string, Source)>();
+    private static readonly List<Site> Sites = new List<Site>();
+    private static readonly Dictionary<IOperation, Site> SiteOf = new Dictionary<IOperation, Site>();
+    private static readonly Dictionary<string, ITypeSymbol> TypeOf = new Dictionary<string, ITypeSymbol>(StringComparer.Ordinal);
+    private static readonly List<INamedTypeSymbol> SourceTypes = new List<INamedTypeSymbol>();
+    private static readonly List<(SemanticModel Model, string File, SyntaxNode Node, string Detail)> Uncovered = new List<(SemanticModel, string, SyntaxNode, string)>();
+    private static readonly List<(SemanticModel Model, string File, IOperation Op)> Dynamic = new List<(SemanticModel, string, IOperation)>();
+    // Each collected tree's model: a symbol another project's code reaches is declared in its
+    // own project's tree.
+    private static readonly Dictionary<SyntaxTree, SemanticModel> Models = new Dictionary<SyntaxTree, SemanticModel>();
+
+    /// <summary>Collects a tree's dynamic values, flows and sites (port=1).</summary>
+    public static void Collect(CSharpCompilation compilation, SyntaxTree tree)
+    {
+        // The binder checks accessibility from the call site: so does the speculative binding.
+        var model = compilation.GetSemanticModel(tree);
+        Models[tree] = model;
+        string file = tree.FilePath;
+        foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+        {
+            if (model.GetDeclaredSymbol(declaration) is INamedTypeSymbol type)
+            {
+                SourceTypes.Add(type);
+            }
+        }
+        var roots = tree.GetRoot().DescendantNodes().Where(n =>
+            n is BaseMethodDeclarationSyntax || n is AccessorDeclarationSyntax
+            || (n is ArrowExpressionClauseSyntax && n.Parent is BasePropertyDeclarationSyntax)
+            || (n is EqualsValueClauseSyntax && (n.Parent is VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: FieldDeclarationSyntax } } || n.Parent is PropertyDeclarationSyntax)));
+        foreach (var node in roots)
+        {
+            IOperation? body;
+            try
+            {
+                body = model.GetOperation(node);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+            if (body == null)
+            {
+                continue;
+            }
+            foreach (var op in body.DescendantsAndSelf())
+            {
+                Visit(model, file, op);
+            }
+        }
+    }
+
+    private static void Visit(SemanticModel model, string file, IOperation op)
+    {
+        if (Dyn(op.Type))
+        {
+            Dynamic.Add((model, file, op));
+        }
+        switch (op)
+        {
+            case IFieldInitializerOperation init:
+                foreach (var f in init.InitializedFields.Where(f => Dyn(f.Type)))
+                {
+                    Flow(Declare(f, model), init.Value);
+                }
+                break;
+            case IPropertyInitializerOperation init:
+                foreach (var p in init.InitializedProperties.Where(p => Dyn(p.Type)))
+                {
+                    Flow(Declare(p, model), init.Value);
+                }
+                break;
+            case IVariableDeclaratorOperation v when v.Initializer != null && Dyn(v.Symbol.Type):
+                Flow(Declare(v.Symbol, model), v.Initializer.Value);
+                break;
+            case ISimpleAssignmentOperation a when Dyn(a.Target.Type) && Target(a.Target, model) is string target:
+                Flow(target, a.Value);
+                break;
+            case ICompoundAssignmentOperation c when (Dyn(c.Target.Type) && Target(c.Target, model) is string compound):
+                Flow(compound, new SiteSource { Site = SiteFor(model, file, op) });
+                break;
+            case ICompoundAssignmentOperation c when Dyn(c.Value.Type):
+                SiteFor(model, file, op);
+                break;
+            case IArgumentOperation arg when arg.Parameter != null && Dyn(arg.Parameter.Type) && InSource(arg.Parameter):
+                Flow(Declare(arg.Parameter.OriginalDefinition, model), arg.Value);
+                Nodes[NodeKey(arg.Parameter.OriginalDefinition)].Called = true;
+                break;
+            case IReturnOperation ret when ret.ReturnedValue != null && EnclosingMethod(model, op) is IMethodSymbol m && Dyn(m.ReturnType):
+                Flow(m.AssociatedSymbol is IPropertySymbol owner ? Declare(owner.OriginalDefinition, model) : Declare(m.OriginalDefinition, model, returns: true), ret.ReturnedValue);
+                break;
+            case IInvocationOperation call when call.Instance != null && Elements(call.Instance, model) is string elements
+                && (call.TargetMethod.Name == "Add" || call.TargetMethod.Name == "Insert"):
+                Flow(elements, call.Arguments.Last().Value);
+                break;
+            case IForEachLoopOperation loop when Elements(loop.Collection, model) is string looped:
+                foreach (var local in loop.Locals)
+                {
+                    Flow(Declare(local, model), new NodeSource { Node = looped });
+                }
+                break;
+            case IMethodReferenceOperation reference when reference.Method.Parameters.Any(p => Dyn(p.Type)) && InSource(reference.Method)
+                && reference.Parent is not IDynamicInvocationOperation:
+                // Used as a delegate: its callers aren't the solution's calls.
+                foreach (var p in reference.Method.OriginalDefinition.Parameters.Where(p => Dyn(p.Type)))
+                {
+                    Flow(Declare(p, model), new UnknownSource { Reason = reference.Method.ToDisplayString(MemberName) + " is used as a delegate, whose callers the port can't follow" });
+                }
+                break;
+            case IConversionOperation conv when Dyn(conv.Operand.Type) && !Dyn(conv.Type) && conv.Type?.SpecialType != SpecialType.System_Object:
+                SiteFor(model, file, op);
+                break;
+            case IDynamicInvocationOperation:
+            case IDynamicIndexerAccessOperation:
+            case IDynamicObjectCreationOperation:
+                SiteFor(model, file, op);
+                break;
+            case IDynamicMemberReferenceOperation member when !(member.Parent is IDynamicInvocationOperation inv && inv.Operation == member):
+                SiteFor(model, file, op);
+                break;
+            case IBinaryOperation bin when Dyn(bin.Type) || Dyn(bin.LeftOperand.Type) || Dyn(bin.RightOperand.Type):
+                SiteFor(model, file, op);
+                break;
+            case IUnaryOperation un when Dyn(un.Operand.Type):
+                SiteFor(model, file, op);
+                break;
+            case IInterpolationOperation interpolation when Dyn(interpolation.Expression.Type):
+                SiteFor(model, file, op);
+                break;
+            case IIncrementOrDecrementOperation step when Dyn(step.Target.Type):
+                if (Target(step.Target, model) is string stepped)
+                {
+                    Flow(stepped, new SiteSource { Site = SiteFor(model, file, op) });
+                }
+                else
+                {
+                    SiteFor(model, file, op);
+                }
+                break;
+        }
+        // A List<dynamic> the analysis can't follow: its elements are unknown.
+        if (CollectionSymbol(op) is ISymbol collection && !Followed(op))
+        {
+            string key = "elements:" + NodeKey(collection.OriginalDefinition);
+            Flow(DeclareElements(key, collection, model), new UnknownSource { Reason = "the list " + collection.Name + " is used where the port can't follow its elements (" + (op.Parent?.Kind.ToString() ?? "") + ")" });
+        }
+    }
+
+    // The symbol of a reference to a List<dynamic> or dynamic[], or null.
+    private static ISymbol? CollectionSymbol(IOperation op)
+    {
+        ISymbol? symbol = op switch
+        {
+            IFieldReferenceOperation f => f.Field,
+            ILocalReferenceOperation l => l.Local,
+            IPropertyReferenceOperation { Arguments.Length: 0 } p => p.Property,
+            IParameterReferenceOperation p => p.Parameter,
+            _ => null,
+        };
+        return symbol != null && DynamicElements(op.Type) ? symbol : null;
+    }
+
+    // Whether a reference to a List<dynamic> is a use the analysis follows.
+    private static bool Followed(IOperation reference)
+    {
+        var parent = reference.Parent;
+        while (parent is IConversionOperation { IsImplicit: true } c && c.Operand == reference)
+        {
+            reference = parent;
+            parent = parent.Parent;
+        }
+        switch (parent)
+        {
+            case IInvocationOperation call when call.Instance == reference:
+                return ListMembers.Contains(call.TargetMethod.Name);
+            case IPropertyReferenceOperation property when property.Instance == reference:
+                return ListMembers.Contains(property.Property.IsIndexer ? "this[]" : property.Property.Name);
+            case IArrayElementReferenceOperation element when element.ArrayReference == reference:
+                return true;
+            case IForEachLoopOperation loop when loop.Collection == reference:
+                return true;
+            case ISimpleAssignmentOperation assignment when assignment.Target == reference:
+                return assignment.Value is IObjectCreationOperation { Initializer: null } or IArrayCreationOperation { Initializer: null };
+            case IPropertyReferenceOperation:
+                return false;
+        }
+        return false;
+    }
+
+    private static bool DynamicElements(ITypeSymbol? type) =>
+        type is IArrayTypeSymbol a && Dyn(a.ElementType)
+        || type is INamedTypeSymbol { IsGenericType: true } g && g.TypeArguments.Length == 1 && Dyn(g.TypeArguments[0])
+            && g.ContainingNamespace?.ToDisplayString() == "System.Collections.Generic";
+
+    // The elements' node of a List<dynamic> or dynamic[] the expression reads or writes.
+    private static string? Elements(IOperation collection, SemanticModel model)
+    {
+        while (collection is IConversionOperation { IsImplicit: true } c)
+        {
+            collection = c.Operand;
+        }
+        if (collection is IPropertyReferenceOperation { Property.IsIndexer: true, Instance: { } indexed })
+        {
+            return Elements(indexed, model) is string inner ? inner : null;
+        }
+        if (collection is IArrayElementReferenceOperation element)
+        {
+            return Elements(element.ArrayReference, model);
+        }
+        var symbol = CollectionSymbol(collection);
+        if (symbol == null)
+        {
+            return null;
+        }
+        string key = "elements:" + NodeKey(symbol.OriginalDefinition);
+        return DeclareElements(key, symbol, model);
+    }
+
+    private static string? Target(IOperation target, SemanticModel model) => target switch
+    {
+        ILocalReferenceOperation l => Declare(l.Local, model),
+        IFieldReferenceOperation f => Declare(f.Field.OriginalDefinition, model),
+        IPropertyReferenceOperation { Arguments.Length: 0 } p => Declare(p.Property.OriginalDefinition, model),
+        IParameterReferenceOperation p => Declare(p.Parameter.OriginalDefinition, model),
+        IPropertyReferenceOperation { Property.IsIndexer: true } or IArrayElementReferenceOperation => Elements(target, model),
+        _ => null,
+    };
+
+    private static string Declare(ISymbol symbol, SemanticModel model, bool returns = false)
+    {
+        string key = returns ? "return:" + NodeKey(symbol) : NodeKey(symbol);
+        if (Nodes.ContainsKey(key))
+        {
+            return key;
+        }
+        var node = new Node { Symbol = symbol };
+        Place(node, symbol, model);
+        switch (symbol)
+        {
+            case IParameterSymbol p:
+                var method = p.ContainingSymbol as IMethodSymbol;
+                node.What = "parameter " + p.Name + " of " + p.ContainingSymbol.ToDisplayString(MemberName);
+                node.Public = method != null && Exposed(method);
+                if (method != null && (method.IsVirtual || method.IsAbstract || method.IsOverride || Implements(method)))
+                {
+                    Flows.Add((key, new UnknownSource { Reason = "a dynamic parameter of the virtual member " + method.ToDisplayString(MemberName) + ", whose callers through its base the port can't follow" }));
+                }
+                if (method is { MethodKind: MethodKind.AnonymousFunction })
+                {
+                    Flows.Add((key, new UnknownSource { Reason = "a lambda's dynamic parameter, whose callers the port can't follow" }));
+                }
+                if (p.RefKind != RefKind.None)
+                {
+                    Flows.Add((key, new UnknownSource { Reason = "a dynamic " + p.RefKind.ToString().ToLowerInvariant() + " parameter" }));
+                }
+                break;
+            case IMethodSymbol m:
+                node.What = "the return of " + m.ToDisplayString(MemberName);
+                node.Public = Exposed(m);
+                break;
+            case IPropertySymbol prop:
+                node.What = "property " + prop.ToDisplayString(MemberName);
+                node.Public = Exposed(prop);
+                if (prop.SetMethod != null && Exposed(prop.SetMethod))
+                {
+                    Flows.Add((key, new UnknownSource { Reason = "the public setter of " + prop.ToDisplayString(MemberName) + ", which callers outside the solution can set" }));
+                }
+                break;
+            case IFieldSymbol field:
+                node.What = "field " + field.ToDisplayString(MemberName);
+                node.Public = Exposed(field);
+                if (node.Public && !field.IsReadOnly)
+                {
+                    Flows.Add((key, new UnknownSource { Reason = "the public field " + field.ToDisplayString(MemberName) + ", which callers outside the solution can set" }));
+                }
+                break;
+            case ILocalSymbol local:
+                node.What = "local " + local.Name + " of " + (local.ContainingSymbol?.ToDisplayString(MemberName) ?? "");
+                break;
+        }
+        Nodes[key] = node;
+        return key;
+    }
+
+    private static string DeclareElements(string key, ISymbol collection, SemanticModel model)
+    {
+        if (!Nodes.ContainsKey(key))
+        {
+            collection = collection.OriginalDefinition;
+            var node = new Node { Symbol = collection, Elements = true };
+            Place(node, collection, model);
+            string what = collection switch
+            {
+                IFieldSymbol f => "field " + f.ToDisplayString(MemberName),
+                IPropertySymbol p => "property " + p.ToDisplayString(MemberName),
+                ILocalSymbol l => "local " + l.Name + " of " + (l.ContainingSymbol?.ToDisplayString(MemberName) ?? ""),
+                IParameterSymbol p => "parameter " + p.Name + " of " + p.ContainingSymbol.ToDisplayString(MemberName),
+                _ => collection.Name,
+            };
+            node.What = "the elements of " + what;
+            node.Public = collection is not ILocalSymbol && Exposed(collection);
+            Nodes[key] = node;
+            if (node.Public || collection is IParameterSymbol)
+            {
+                Flows.Add((key, new UnknownSource { Reason = "the list " + collection.ToDisplayString(MemberName) + ", which callers outside the type can fill" }));
+            }
+        }
+        return key;
+    }
+
+    // Where a node's symbol is declared.
+    private static void Place(Node node, ISymbol symbol, SemanticModel model)
+    {
+        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+        var tree = location?.SourceTree;
+        if (tree == null)
+        {
+            return;
+        }
+        if (!Models.TryGetValue(tree, out var own))
+        {
+            // Not a tree of the projects walked so far: only its own compilation has a model.
+            own = model.Compilation.ContainsSyntaxTree(tree) ? model.Compilation.GetSemanticModel(tree) : null;
+        }
+        if (own == null)
+        {
+            return;
+        }
+        node.File = tree.FilePath;
+        node.Declaration = tree.GetRoot().FindNode(location!.SourceSpan);
+        node.Model = own;
+    }
+
+    private static void Flow(string node, IOperation value)
+    {
+        Flows.Add((node, SourceOf(value)));
+    }
+
+    private static void Flow(string node, Source from)
+    {
+        Flows.Add((node, from));
+    }
+
+    // Where a value that is, or becomes, dynamic comes from.
+    private static Source SourceOf(IOperation value)
+    {
+        while (value is IConversionOperation conv && Dyn(conv.Type))
+        {
+            value = conv.Operand; // to dynamic: the operand's type
+        }
+        if (value is IParenthesizedOperation parenthesized)
+        {
+            return SourceOf(parenthesized.Operand);
+        }
+        if (SiteOf.TryGetValue(value, out var known))
+        {
+            return new SiteSource { Site = known };
+        }
+        if (value is ILiteralOperation { ConstantValue: { HasValue: true, Value: null } })
+        {
+            return new UnknownSource { Reason = "a null the port can't type" };
+        }
+        if (!Dyn(value.Type))
+        {
+            return value.Type == null || value.Type.TypeKind == TypeKind.Error
+                ? new UnknownSource { Reason = "a value without a type" }
+                : new StaticSource { Type = value.Type };
+        }
+        var model = value.SemanticModel!;
+        ISymbol? outside = value switch
+        {
+            IFieldReferenceOperation f => f.Field,
+            IPropertyReferenceOperation { Arguments.Length: 0 } p => p.Property,
+            IInvocationOperation call => call.TargetMethod,
+            _ => null,
+        };
+        if (outside != null && !InSource(outside))
+        {
+            return new UnknownSource { Reason = "the dynamic value of " + outside.ToDisplayString(MemberName) + ", from outside the solution" };
+        }
+        switch (value)
+        {
+            case ILocalReferenceOperation l: return new NodeSource { Node = Declare(l.Local, model) };
+            case IParameterReferenceOperation p: return new NodeSource { Node = Declare(p.Parameter.OriginalDefinition, model) };
+            case IFieldReferenceOperation f: return new NodeSource { Node = Declare(f.Field.OriginalDefinition, model) };
+            case IPropertyReferenceOperation { Arguments.Length: 0 } p: return new NodeSource { Node = Declare(p.Property.OriginalDefinition, model) };
+            case IPropertyReferenceOperation { Property.IsIndexer: true } when Elements(value, model) is string indexed:
+                return new NodeSource { Node = indexed };
+            case IArrayElementReferenceOperation when Elements(value, model) is string element:
+                return new NodeSource { Node = element };
+            case IInvocationOperation call: return new NodeSource { Node = Declare(call.TargetMethod.OriginalDefinition, model, returns: true) };
+            case IConditionalOperation choice when choice.WhenFalse != null:
+                return new UnionSource { Parts = { SourceOf(choice.WhenTrue), SourceOf(choice.WhenFalse) } };
+            case ICoalesceOperation coalesce:
+                return new UnionSource { Parts = { SourceOf(coalesce.Value), SourceOf(coalesce.WhenNull) } };
+            case IDynamicInvocationOperation:
+            case IDynamicMemberReferenceOperation:
+            case IDynamicIndexerAccessOperation:
+            case IBinaryOperation:
+            case IUnaryOperation:
+            case ICompoundAssignmentOperation:
+            case IIncrementOrDecrementOperation:
+                return new SiteSource { Site = SiteFor(model, value.Syntax.SyntaxTree.FilePath, value) };
+        }
+        return new UnknownSource { Reason = "a dynamic " + value.Kind };
+    }
+
+    private static Site SiteFor(SemanticModel model, string file, IOperation op)
+    {
+        if (SiteOf.TryGetValue(op, out var known))
+        {
+            return known;
+        }
+        var site = new Site { Op = op, Model = model, File = file, Node = op.Syntax };
+        SiteOf[op] = site;
+        Sites.Add(site);
+        switch (op)
+        {
+            case IDynamicInvocationOperation inv:
+                site.Kind = "invoke";
+                if (inv.Operation is IDynamicMemberReferenceOperation callee)
+                {
+                    if (callee.Instance != null && Dyn(callee.Instance.Type))
+                    {
+                        site.Operands.Add(callee.Instance);
+                    }
+                }
+                else if (Dyn(inv.Operation.Type))
+                {
+                    site.Operands.Add(inv.Operation); // a dynamic delegate
+                }
+                site.Operands.AddRange(inv.Arguments.Where(a => Dyn(a.Type)));
+                break;
+            case IDynamicMemberReferenceOperation member:
+                site.Kind = "member";
+                if (member.Instance != null)
+                {
+                    site.Operands.Add(member.Instance);
+                }
+                break;
+            case IDynamicIndexerAccessOperation index:
+                site.Kind = "index";
+                if (Dyn(index.Operation.Type))
+                {
+                    site.Operands.Add(index.Operation);
+                }
+                site.Operands.AddRange(index.Arguments.Where(a => Dyn(a.Type)));
+                break;
+            case IDynamicObjectCreationOperation create:
+                site.Kind = "new";
+                site.Operands.AddRange(create.Arguments.Where(a => Dyn(a.Type)));
+                break;
+            case IBinaryOperation bin:
+                site.Kind = "binary";
+                if (Dyn(bin.LeftOperand.Type)) site.Operands.Add(bin.LeftOperand);
+                if (Dyn(bin.RightOperand.Type)) site.Operands.Add(bin.RightOperand);
+                break;
+            case IUnaryOperation un:
+                site.Kind = "unary";
+                site.Operands.Add(un.Operand);
+                break;
+            case ICompoundAssignmentOperation c:
+                site.Kind = "compound";
+                if (Dyn(c.Target.Type)) site.Operands.Add(c.Target);
+                if (Dyn(c.Value.Type)) site.Operands.Add(c.Value);
+                break;
+            case IIncrementOrDecrementOperation step:
+                site.Kind = "step";
+                site.Operands.Add(step.Target);
+                break;
+            case IInterpolationOperation interpolation:
+                site.Kind = "format";
+                site.Operands.Add(interpolation.Expression);
+                break;
+            case IConversionOperation conv:
+                site.Kind = conv.IsImplicit ? "convert" : "cast";
+                site.Operands.Add(conv.Operand);
+                site.ConvertTo = conv.Type;
+                break;
+        }
+        foreach (var operand in site.Operands)
+        {
+            site.Sources.Add(SourceOf(operand));
+        }
+        return site;
+    }
+
+    /// <summary>Solves the flows and writes the dyn and dynval records and the refusals.</summary>
+    public static void Finish()
+    {
+        if (Sites.Count == 0 && Nodes.Count == 0)
+        {
+            return;
+        }
+        Cover();
+        Solve();
+        // A public dynamic parameter no caller in the solution passes: callers outside it decide.
+        bool uncalled = false;
+        foreach (var node in Nodes.Values)
+        {
+            if (node.Symbol is IParameterSymbol && node.Public && node.Types.Unknown == null && node.Types.Types.Count == 0 && !node.Called)
+            {
+                node.Types.Unknown = "no caller in the solution passes it a value, so the types that reach it are unknown";
+                uncalled = true;
+            }
+        }
+        if (uncalled)
+        {
+            Solve();
+        }
+        foreach (var (model, file, node, detail) in Uncovered)
+        {
+            PortSource.Refuse(model, file, node, "dynamic", detail);
+        }
+        WriteValues();
+        WriteSites();
+    }
+
+    private static void Solve()
+    {
+        for (int round = 0; ; round++)
+        {
+            bool changed = false;
+            foreach (var (node, from) in Flows)
+            {
+                changed |= Nodes[node].Types.AddAll(Eval(from));
+            }
+            foreach (var site in Sites)
+            {
+                changed |= Bind(site);
+            }
+            if (!changed)
+            {
+                return;
+            }
+            if (round == MaxRounds)
+            {
+                foreach (var site in Sites)
+                {
+                    site.Unknown ??= "the analysis found no fixed point";
+                }
+                return;
+            }
+        }
+    }
+
+    // Each dynamic value is used where the analysis follows it; anything else is a refusal.
+    private static void Cover()
+    {
+        foreach (var (model, file, op) in Dynamic)
+        {
+            if (Covered(op))
+            {
+                continue;
+            }
+            string where = op.Parent == null ? "" : " in a " + Words(op.Parent.Kind.ToString());
+            Uncovered.Add((model, file, op.Syntax, op.Syntax + ": a dynamic value" + where + ", which the port doesn't cover"));
+        }
+    }
+
+    private static bool Covered(IOperation op)
+    {
+        var parent = op.Parent;
+        if (parent == null)
+        {
+            return true;
+        }
+        if (SiteOf.TryGetValue(parent, out var site) && site.Operands.Contains(op))
+        {
+            return true;
+        }
+        switch (parent)
+        {
+            case IDynamicMemberReferenceOperation callee when callee.Parent is IDynamicInvocationOperation call
+                && call.Operation == callee && SiteOf.TryGetValue(call, out var invoked) && invoked.Operands.Contains(op):
+                return true; // the receiver of a dynamic call
+            case IDynamicInvocationOperation inv when inv.Operation == op && op is IDynamicMemberReferenceOperation:
+            case IConversionOperation:
+            case ISimpleAssignmentOperation:
+            case ICompoundAssignmentOperation:
+            case IVariableInitializerOperation:
+            case IFieldInitializerOperation:
+            case IPropertyInitializerOperation:
+            case IArgumentOperation:
+            case IReturnOperation:
+            case IExpressionStatementOperation:
+            case IParenthesizedOperation:
+            case IIsTypeOperation:
+            case IIsPatternOperation:
+            case IIncrementOrDecrementOperation:
+                return true;
+            case IConditionalOperation choice:
+                return choice.Condition != op && Covered(parent);
+            case ICoalesceOperation:
+                return Covered(parent);
+        }
+        return false;
+    }
+
+    private static TypeSet Eval(Source from)
+    {
+        switch (from)
+        {
+            case StaticSource s:
+                return Concrete(s.Type);
+            case NodeSource n:
+                return Nodes.TryGetValue(n.Node, out var node) ? node.Types : new TypeSet();
+            case SiteSource s:
+                return s.Site.Result;
+            case UnionSource u:
+                var all = new TypeSet();
+                foreach (var part in u.Parts)
+                {
+                    all.AddAll(Eval(part));
+                }
+                return all;
+            case UnknownSource unknown:
+                return TypeSet.Of(unknown.Reason);
+        }
+        throw new InvalidOperationException("an unknown source");
+    }
+
+    // The runtime types of a value of static type T.
+    private static TypeSet Concrete(ITypeSymbol type)
+    {
+        var set = new TypeSet();
+        if (type.IsAnonymousType)
+        {
+            return TypeSet.Of("a value of an anonymous type, which the port can't name");
+        }
+        if (type.TypeKind == TypeKind.TypeParameter)
+        {
+            return TypeSet.Of("a value of the type parameter " + type.Name + " (generic arithmetic through dynamic binds per type argument)");
+        }
+        if (LateBound(type) is string late)
+        {
+            return TypeSet.Of(late);
+        }
+        if (type.IsValueType || type.IsSealed || type.SpecialType == SpecialType.System_String || type.TypeKind == TypeKind.Array)
+        {
+            set.Add(Remember(type));
+            return set;
+        }
+        string key = Key(type);
+        if (!SourceTypes.Any(t => Key(t) == key))
+        {
+            return TypeSet.Of("a value of type " + type.ToDisplayString(TypeName) + ", which a type outside the solution can be");
+        }
+        foreach (var t in SourceTypes.Where(t => !t.IsAbstract && t.TypeKind != TypeKind.Interface && t.TypeKind != TypeKind.Delegate && Assignable(t, key)))
+        {
+            if (LateBound(t) is string derived)
+            {
+                return TypeSet.Of(derived);
+            }
+            set.Add(Remember(t));
+        }
+        return set;
+    }
+
+    // A type whose members bind at run time by its own rules, which the port can't see.
+    private static string? LateBound(ITypeSymbol type)
+    {
+        if (type.AllInterfaces.Any(i => i.ToDisplayString() == "System.Dynamic.IDynamicMetaObjectProvider"))
+        {
+            return "late binding to " + type.ToDisplayString(TypeName) + " (an IDynamicMetaObjectProvider), which the port can't see";
+        }
+        if (type.GetAttributes().Any(a => a.AttributeClass?.Name == "ComImportAttribute"))
+        {
+            return "late binding to the COM object " + type.ToDisplayString(TypeName);
+        }
+        return null;
+    }
+
+    private static bool Assignable(INamedTypeSymbol t, string target)
+    {
+        for (ITypeSymbol? b = t; b != null; b = b.BaseType)
+        {
+            if (Key(b) == target)
+            {
+                return true;
+            }
+        }
+        return t.AllInterfaces.Any(i => Key(i) == target);
+    }
+
+    private static string Remember(ITypeSymbol type)
+    {
+        string key = Key(type);
+        if (!TypeOf.ContainsKey(key))
+        {
+            TypeOf[key] = type;
+        }
+        return key;
+    }
+
+    // Binds the site for each combination of its dynamic operands' types; true if anything grew.
+    private static bool Bind(Site site)
+    {
+        var sets = site.Sources.Select(Eval).ToList();
+        string? unknown = sets.FirstOrDefault(s => s.Unknown != null)?.Unknown;
+        if (unknown != null)
+        {
+            bool fresh = site.Unknown == null;
+            site.Unknown ??= unknown;
+            site.Result.Unknown ??= site.Unknown;
+            return fresh;
+        }
+        var combinations = new List<List<string>> { new List<string>() };
+        foreach (var set in sets)
+        {
+            combinations = combinations.SelectMany(c => set.Types.Select(t => new List<string>(c) { t })).ToList();
+            if (combinations.Count > MaxCombinations)
+            {
+                bool fresh = site.Unknown == null;
+                site.Unknown ??= "more than " + MaxCombinations + " combinations of types reach it";
+                site.Result.Unknown ??= site.Unknown;
+                return fresh;
+            }
+        }
+        string signature = string.Join(";", combinations.Select(c => string.Join(",", c)));
+        bool changed = false;
+        if (signature != site.Signature)
+        {
+            site.Signature = signature;
+            site.Bindings = combinations.Where(c => c.Count == site.Operands.Count).Select(c => BindOne(site, c)).ToList();
+            changed = true;
+        }
+        foreach (var b in site.Bindings)
+        {
+            if (b.Result != null)
+            {
+                changed |= site.Result.AddAll(b.Result);
+            }
+            if (b.ResultNode != null && Nodes.TryGetValue(b.ResultNode, out var returned))
+            {
+                changed |= site.Result.AddAll(returned.Types);
+            }
+            foreach (var (node, type) in b.Into)
+            {
+                if (Nodes.TryGetValue(node, out var into))
+                {
+                    changed |= into.Types.Add(type);
+                    into.Called = true;
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static Binding BindOne(Site site, List<string> types)
+    {
+        var binding = new Binding { Types = types };
+        var unseen = types.Where(t => !Visible(TypeOf[t], site.Model.Compilation)).ToList();
+        if (unseen.Count > 0)
+        {
+            binding.Unseen = string.Join(", ", unseen.Select(t => Display(TypeOf[t]) + Where(TypeOf[t])));
+            return binding;
+        }
+        if (site.ConvertTo != null)
+        {
+            var from = TypeOf[types[0]];
+            var conversion = site.Model.Compilation.ClassifyConversion(from, site.ConvertTo);
+            bool ok = conversion.Exists && (site.Kind == "cast" || conversion.IsImplicit);
+            if (!ok)
+            {
+                binding.Error = "Cannot " + (site.Kind == "cast" ? "convert" : "implicitly convert") + " type '"
+                    + from.ToDisplayString() + "' to '" + site.ConvertTo.ToDisplayString() + "'";
+                return binding;
+            }
+            binding.Member = conversion.IsUserDefined && conversion.MethodSymbol != null
+                ? conversion.MethodSymbol.ToDisplayString(MemberName)
+                : Describe(conversion) + " conversion to " + site.ConvertTo.ToDisplayString(TypeName);
+            binding.Result = Concrete(site.ConvertTo);
+            return binding;
+        }
+        // The site's expression with each dynamic operand replaced by default(T).
+        var expression = (ExpressionSyntax)site.Op.Syntax;
+        var replacements = new Dictionary<SyntaxNode, SyntaxNode>();
+        for (int i = 0; i < site.Operands.Count; i++)
+        {
+            var typed = SyntaxFactory.ParseExpression("default(" + TypeOf[types[i]].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + ")");
+            replacements[site.Operands[i].Syntax] = SyntaxFactory.ParenthesizedExpression(typed);
+        }
+        if (site.Op is ICompoundAssignmentOperation)
+        {
+            // The binder computes target op value, then assigns it: bind the operation.
+            var assignment = (AssignmentExpressionSyntax)expression;
+            var left = replacements.TryGetValue(assignment.Left, out var l) ? (ExpressionSyntax)l : assignment.Left;
+            var right = replacements.TryGetValue(assignment.Right, out var r) ? (ExpressionSyntax)r : assignment.Right;
+            string op = assignment.OperatorToken.ValueText.Substring(0, assignment.OperatorToken.ValueText.Length - 1);
+            expression = SyntaxFactory.ParseExpression("(" + left + ") " + op + " (" + right + ")");
+        }
+        else if (site.Op is IInterpolationOperation)
+        {
+            // An interpolation formats the value with its ToString.
+            expression = SyntaxFactory.ParseExpression("(" + replacements.Values.First() + ").ToString()");
+        }
+        else if (site.Op is IIncrementOrDecrementOperation step)
+        {
+            expression = SyntaxFactory.ParseExpression("(" + replacements.Values.First() + ") " + (step.Kind == OperationKind.Increment ? "+" : "-") + " 1");
+        }
+        else
+        {
+            expression = expression.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]);
+        }
+        var statement = SyntaxFactory.ExpressionStatement(expression);
+        if (!site.Model.TryGetSpeculativeSemanticModel(site.Op.Syntax.SpanStart, statement, out var speculative) || speculative == null)
+        {
+            binding.Error = "the binder finds nothing for " + string.Join(", ", types.Select(t => Display(TypeOf[t])));
+            return binding;
+        }
+        var bound = ((ExpressionStatementSyntax)statement).Expression;
+        var info = speculative.GetSymbolInfo(bound);
+        var typeInfo = speculative.GetTypeInfo(bound);
+        var symbol = info.Symbol;
+        if (symbol == null && speculative.GetOperation(bound) is IBinaryOperation { OperatorMethod: null } builtin
+            && builtin.Type != null && builtin.Type.TypeKind != TypeKind.Error)
+        {
+            binding.Member = "built-in " + Words(builtin.OperatorKind.ToString()) + " of " + Display(builtin.LeftOperand.Type) + " and " + Display(builtin.RightOperand.Type);
+        }
+        else if (symbol == null)
+        {
+            binding.Error = BinderMessage(site, types, info);
+            return binding;
+        }
+        else
+        {
+            binding.Member = symbol.ToDisplayString(MemberName);
+            binding.MemberId = InSource(symbol) ? Indexer.Id(symbol.OriginalDefinition) : null;
+        }
+        var resultType = typeInfo.Type;
+        if (symbol is IMethodSymbol method && method.MethodKind is not (MethodKind.BuiltinOperator or MethodKind.UserDefinedOperator))
+        {
+            resultType = method.ReturnType;
+            var parameters = method.OriginalDefinition.Parameters;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                // A dynamic call into the solution's method: its dynamic parameters get the
+                // arguments' types.
+                if (Dyn(parameters[i].Type) && InSource(method) && DynamicArgument(site, i) is int argument && argument >= 0)
+                {
+                    binding.Into.Add((Declare(parameters[i], site.Model), types[argument]));
+                }
+            }
+            if (Dyn(method.ReturnType))
+            {
+                binding.ResultNode = method.AssociatedSymbol is IPropertySymbol owner
+                    ? Declare(owner.OriginalDefinition, site.Model)
+                    : Declare(method.OriginalDefinition, site.Model, returns: true);
+                return binding;
+            }
+        }
+        if (symbol is IPropertySymbol property && Dyn(property.Type))
+        {
+            binding.ResultNode = Declare(property.OriginalDefinition, site.Model);
+            return binding;
+        }
+        if (symbol is IFieldSymbol field && Dyn(field.Type))
+        {
+            binding.ResultNode = Declare(field.OriginalDefinition, site.Model);
+            return binding;
+        }
+        if (resultType != null && resultType.SpecialType != SpecialType.System_Void)
+        {
+            if (resultType.TypeKind == TypeKind.Error)
+            {
+                binding.Error = BinderMessage(site, types, info);
+                binding.Member = null;
+                binding.MemberId = null;
+                return binding;
+            }
+            binding.Result = Concrete(resultType);
+        }
+        return binding;
+    }
+
+    // The index among the site's dynamic operands of the call's argument i, or -1.
+    private static int DynamicArgument(Site site, int i)
+    {
+        if (site.Op is not IDynamicInvocationOperation inv || i >= inv.Arguments.Length)
+        {
+            return -1;
+        }
+        return site.Operands.IndexOf(inv.Arguments[i]);
+    }
+
+    private static string BinderMessage(Site site, List<string> types, SymbolInfo info)
+    {
+        string why = info.CandidateReason != CandidateReason.None ? " (" + Words(info.CandidateReason.ToString()) + ")" : "";
+        string Of(IOperation? operand, ITypeSymbol? fallback)
+        {
+            int i = operand == null ? -1 : site.Operands.IndexOf(operand);
+            return i >= 0 ? TypeOf[types[i]].ToDisplayString() : fallback?.ToDisplayString() ?? "";
+        }
+        switch (site.Op)
+        {
+            case IDynamicMemberReferenceOperation m:
+                return "'" + Of(m.Instance, m.ContainingType) + "' does not contain a definition for '" + m.MemberName + "'";
+            case IDynamicInvocationOperation { Operation: IDynamicMemberReferenceOperation m }:
+                return info.CandidateSymbols.Length == 0
+                    ? "'" + Of(m.Instance, m.ContainingType) + "' does not contain a definition for '" + m.MemberName + "'"
+                    : "The best overloaded method match for '" + m.MemberName + "' has some invalid arguments" + why;
+            case IBinaryOperation bin:
+                return "Operator '" + Operator(bin.OperatorKind) + "' cannot be applied to operands of type '"
+                    + Of(bin.LeftOperand, bin.LeftOperand.Type) + "' and '" + Of(bin.RightOperand, bin.RightOperand.Type) + "'";
+            default:
+                return "the binder finds nothing for " + string.Join(", ", types.Select(t => Display(TypeOf[t]))) + why;
+        }
+    }
+
+    // ------------------------------------------------------------------ output
+
+    private static void WriteValues()
+    {
+        foreach (var entry in Nodes.OrderBy(n => n.Key, StringComparer.Ordinal))
+        {
+            var node = entry.Value;
+            if (node.File == null || node.Declaration == null || node.Model == null || !Indexer.Known.Contains(node.File))
+            {
+                continue;
+            }
+            if (node.Types.Unknown != null)
+            {
+                PortSource.Refuse(node.Model, node.File, node.Declaration, "dynamic", node.What + ": " + node.Types.Unknown);
+                continue;
+            }
+            string? type = PortSource.TypeOf(node.Model, node.Declaration);
+            if (type == null)
+            {
+                continue;
+            }
+            Indexer.Write(new Dictionary<string, object?>
+            {
+                ["t"] = "dynval",
+                ["type"] = type,
+                ["what"] = node.What,
+                ["symbol"] = node.Symbol == null || node.Symbol is ILocalSymbol ? null : Indexer.Id(node.Symbol),
+                ["public"] = node.Public,
+                ["types"] = node.Types.Types.Select(t => Display(TypeOf[t])).ToList(),
+                ["file"] = node.File,
+                ["line"] = node.Declaration.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            });
+        }
+    }
+
+    private static void WriteSites()
+    {
+        foreach (var site in Sites.OrderBy(s => s.File, StringComparer.Ordinal).ThenBy(s => s.Node.SpanStart))
+        {
+            if (!Indexer.Known.Contains(site.File))
+            {
+                continue;
+            }
+            string text = Shorten(site.Node.ToString());
+            if (site.Unknown != null)
+            {
+                PortSource.Refuse(site.Model, site.File, site.Node, "dynamic", text + ": " + site.Unknown);
+                continue;
+            }
+            var unseen = site.Bindings.Where(b => b.Unseen != null).Select(b => b.Unseen!).Distinct().ToList();
+            if (unseen.Count > 0)
+            {
+                PortSource.Refuse(site.Model, site.File, site.Node, "dynamic", text + ": " + string.Join(", ", unseen) + " stays C# and reaches it");
+                continue;
+            }
+            string? type = PortSource.TypeOf(site.Model, site.Node);
+            if (type == null || site.Bindings.Count == 0
+                || (site.ConvertTo != null && site.Bindings.All(b => b.Member != null && b.Member.StartsWith("an identity", StringComparison.Ordinal))))
+            {
+                continue; // nothing reaches it, or an identity conversion: nothing to tell the port
+            }
+            Indexer.Write(new Dictionary<string, object?>
+            {
+                ["t"] = "dyn",
+                ["type"] = type,
+                ["member"] = Indexer.Enclosing(site.Model, site.Node),
+                ["kind"] = site.Kind,
+                ["text"] = text,
+                ["operands"] = site.Operands.Select(o => Shorten(o.Syntax.ToString())).ToList(),
+                ["bindings"] = site.Bindings.Select(b => (object)new Dictionary<string, object?>
+                {
+                    ["types"] = b.Types.Select(t => Display(TypeOf[t])).ToList(),
+                    ["member"] = b.Member,
+                    ["member_id"] = b.MemberId,
+                    ["result"] = b.Result != null ? b.Result.Types.Select(t => Display(TypeOf[t])).ToList()
+                        : b.ResultNode != null && Nodes.TryGetValue(b.ResultNode, out var returned) ? returned.Types.Types.Select(t => Display(TypeOf[t])).ToList()
+                        : new List<string>(),
+                    ["error"] = b.Error,
+                }).ToList(),
+                ["file"] = site.File,
+                ["line"] = site.Node.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
+            });
+        }
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    private static bool Dyn(ITypeSymbol? type) => type?.TypeKind == TypeKind.Dynamic;
+
+    private static bool InSource(ISymbol symbol) => symbol.OriginalDefinition.Locations.Any(l => l.IsInSource);
+
+    private static string Key(ITypeSymbol type) => type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+    private static string Display(ITypeSymbol? type) => type?.ToDisplayString(TypeName) ?? "?";
+
+    // " (src/Fees/Fee.cs)": where a type of the solution is declared.
+    private static string Where(ITypeSymbol type)
+    {
+        var location = type.Locations.FirstOrDefault(l => l.IsInSource);
+        return location?.SourceTree == null ? "" : " (" + location.SourceTree.FilePath + ")";
+    }
+
+    // Whether the site's code can name the type: its own assembly's, or one it references.
+    private static bool Visible(ITypeSymbol type, Compilation compilation)
+    {
+        if (type.SpecialType != SpecialType.None || type.ContainingAssembly == null)
+        {
+            return true;
+        }
+        if (type is IArrayTypeSymbol array)
+        {
+            return Visible(array.ElementType, compilation);
+        }
+        string assembly = type.ContainingAssembly.Name;
+        if (type.IsAnonymousType)
+        {
+            return assembly == compilation.AssemblyName;
+        }
+        return assembly == compilation.AssemblyName || compilation.ReferencedAssemblyNames.Any(a => a.Name == assembly);
+    }
+
+    private static bool Implements(IMethodSymbol method) =>
+        method.ContainingType != null && method.ContainingType.AllInterfaces.SelectMany(i => i.GetMembers())
+            .Any(m => SymbolEqualityComparer.Default.Equals(method.ContainingType.FindImplementationForInterfaceMember(m), method));
+
+    private static bool Exposed(ISymbol symbol)
+    {
+        for (ISymbol? s = symbol; s != null && s is not INamespaceSymbol; s = s.ContainingSymbol)
+        {
+            if (s.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static IMethodSymbol? EnclosingMethod(SemanticModel model, IOperation op)
+    {
+        var symbol = model.GetEnclosingSymbol(op.Syntax.SpanStart);
+        while (symbol is IMethodSymbol { MethodKind: MethodKind.AnonymousFunction or MethodKind.LocalFunction } inner)
+        {
+            if (inner.MethodKind == MethodKind.LocalFunction)
+            {
+                return inner;
+            }
+            return null; // a lambda's return isn't its method's
+        }
+        return symbol as IMethodSymbol;
+    }
+
+    private static string NodeKey(ISymbol symbol)
+    {
+        var location = symbol.Locations.FirstOrDefault();
+        string where = symbol is ILocalSymbol && location != null
+            ? "@" + location.GetLineSpan().Path + ":" + location.SourceSpan.Start
+            : "";
+        string owner = symbol is ILocalSymbol || symbol is IParameterSymbol
+            ? (symbol.ContainingSymbol?.ToDisplayString(MemberName) ?? "") + "/"
+            : "";
+        string name = symbol is ILocalSymbol || symbol is IParameterSymbol ? symbol.Name : symbol.ToDisplayString(MemberName);
+        return symbol.Kind.ToString().ToLowerInvariant() + ":" + owner + name + where;
+    }
+
+    private static string Describe(Conversion c) =>
+        c.IsIdentity ? "an identity" : c.IsNumeric ? (c.IsImplicit ? "an implicit numeric" : "an explicit numeric")
+        : c.IsBoxing ? "a boxing" : c.IsUnboxing ? "an unboxing" : c.IsReference ? "a reference"
+        : c.IsNullable ? "a nullable" : c.IsEnumeration ? "an enumeration" : "a";
+
+    private static string Operator(BinaryOperatorKind kind) => kind switch
+    {
+        BinaryOperatorKind.Add => "+", BinaryOperatorKind.Subtract => "-", BinaryOperatorKind.Multiply => "*",
+        BinaryOperatorKind.Divide => "/", BinaryOperatorKind.Remainder => "%", BinaryOperatorKind.And => "&",
+        BinaryOperatorKind.Or => "|", BinaryOperatorKind.ExclusiveOr => "^", BinaryOperatorKind.LeftShift => "<<",
+        BinaryOperatorKind.RightShift => ">>", BinaryOperatorKind.Equals => "==", BinaryOperatorKind.NotEquals => "!=",
+        BinaryOperatorKind.LessThan => "<", BinaryOperatorKind.LessThanOrEqual => "<=",
+        BinaryOperatorKind.GreaterThan => ">", BinaryOperatorKind.GreaterThanOrEqual => ">=",
+        BinaryOperatorKind.ConditionalAnd => "&&", BinaryOperatorKind.ConditionalOr => "||",
+        _ => kind.ToString(),
+    };
+
+    // "ConditionalAccess" as "conditional access".
+    private static string Words(string name)
+    {
+        var text = new StringBuilder();
+        foreach (char c in name)
+        {
+            if (char.IsUpper(c) && text.Length > 0)
+            {
+                text.Append(' ');
+            }
+            text.Append(char.ToLowerInvariant(c));
+        }
+        return text.ToString();
+    }
+
+    private static string Shorten(string text)
+    {
+        string one = string.Join(" ", text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()));
+        return one.Length <= 120 ? one : one.Substring(0, 117) + "...";
+    }
 }

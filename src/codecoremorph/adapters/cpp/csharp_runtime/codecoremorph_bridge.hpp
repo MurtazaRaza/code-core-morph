@@ -118,6 +118,17 @@ inline void out_opt_str(char** out, const std::optional<std::string>& text) {
     *out = text ? dup(*text) : nullptr;
 }
 
+// A string a call into C# returned (CcmInterop.NewString), freed once read; null for null.
+inline std::optional<std::string> take_opt_str(char* text) {
+    if (text == nullptr) return std::nullopt;
+    std::string copy(text);
+    std::free(text);  // NOLINT(cppcoreguidelines-no-malloc): ccm_strdup's copy
+    return copy;
+}
+
+// The same, where C# would treat null as the empty string (a concatenation).
+inline std::string take_str(char* text) { return take_opt_str(text).value_or(std::string()); }
+
 // --- arrays: in as a pointer and a count, out as a copy the façade frees (D-82) --------------
 
 // An array parameter C# requires: the façade passes a count of -1 for null, which throws
@@ -166,6 +177,46 @@ public:
 private:
     std::shared_ptr<void> context_;
 };
+
+// --- directors: a C# class that derives from a ported one (D-87) -----------------------------
+
+// What a director's class derives from beside the ported class: the C# object's context (a
+// GCHandle, released when the director goes) and whether native code holds the director
+// besides the façade's handle (ccm_director_shared). Make one with make_director. The export
+// that makes it takes the context into a ManagedRef first, so the context is released however
+// the export fails (an argument C# refuses, the ported constructor throwing).
+class Director {
+public:
+    explicit Director(ManagedRef managed) : managed_(std::move(managed)) {}
+    Director(const Director&) = delete;
+    Director& operator=(const Director&) = delete;
+    Director(Director&&) = delete;
+    Director& operator=(Director&&) = delete;
+    virtual ~Director() = default;
+
+    // The C# object's context, for the calls into C#.
+    void* context() const { return managed_.get(); }
+    // Whether a shared_ptr besides the façade's handle holds the object.
+    bool shared() const { return self_.use_count() > 1; }
+    // What the façade's support passes to ccm_director_shared.
+    void* id() { return this; }
+
+private:
+    template <class D, class... A>
+    friend std::shared_ptr<D> make_director(A&&... args);
+
+    ManagedRef managed_;
+    std::weak_ptr<const void> self_;
+};
+
+// A new director of class D (deriving from a ported class and from Director).
+template <class D, class... A>
+std::shared_ptr<D> make_director(A&&... args) {
+    static_assert(std::is_base_of_v<Director, D>, "a director derives from ccm::bridge::Director");
+    auto object = std::make_shared<D>(std::forward<A>(args)...);
+    static_cast<Director&>(*object).self_ = object;
+    return object;
+}
 
 }  // namespace ccm::bridge
 

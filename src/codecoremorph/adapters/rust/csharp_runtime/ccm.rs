@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 
 use codecoremorph_runtime::{Decimal, Exception};
 
@@ -367,4 +367,52 @@ pub fn unregister_managed(address: usize) {
 /// The C# object a proxy stands for, or null for a native object.
 pub fn managed_of(address: usize) -> *mut c_void {
     lock(managed_objects()).get(&address).map_or(std::ptr::null_mut(), |&c| c as *mut c_void)
+}
+
+// ------------------------------------------------------------------ directors (D-87)
+
+/// What a director holds beside the ported state: the C# object's context (a GCHandle,
+/// released when the director goes) and a weak reference to the director itself, for
+/// [`ccm_director_shared`]. A director is the native object of a C# class derived from a ported
+/// one: it implements the class's trait by calling the C# object's overrides. The export that
+/// makes it takes the context into a [`ManagedRef`] first, so the context is released however
+/// the export fails.
+pub struct Director {
+    managed: Arc<ManagedRef>,
+    this: Weak<dyn Any + Send + Sync>,
+}
+
+impl Director {
+    /// `this` is the director's own weak reference (`Arc::new_cyclic`'s).
+    pub fn new<T: Any + Send + Sync>(managed: Arc<ManagedRef>, this: Weak<T>) -> Director {
+        let this: Weak<dyn Any + Send + Sync> = this;
+        Director { managed, this }
+    }
+
+    /// The C# object's context, for the calls into C#.
+    pub fn context(&self) -> *mut c_void {
+        self.managed.context()
+    }
+
+    /// Whether an `Arc` besides the façade's handle holds the director.
+    pub fn shared(&self) -> bool {
+        self.this.strong_count() > 1
+    }
+
+    /// What the façades' support passes to [`ccm_director_shared`].
+    pub fn id(&self) -> *mut c_void {
+        std::ptr::from_ref(self).cast_mut().cast::<c_void>()
+    }
+}
+
+/// Whether native code holds a director's object besides its C# façade's handle; the façades'
+/// support asks after each garbage collection.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ccm_director_shared(director: *const c_void) -> bool {
+    if director.is_null() {
+        return false;
+    }
+    // SAFETY: a Director's id, which the support passes only while the director lives (its C#
+    // object, and so the façade's handle, is held).
+    unsafe { &*director.cast::<Director>() }.shared()
 }

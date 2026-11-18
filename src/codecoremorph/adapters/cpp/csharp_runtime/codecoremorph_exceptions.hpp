@@ -71,6 +71,11 @@ CCM_MIRROR_EXCEPTION(FormatException, Exception, "System.FormatException");
 CCM_MIRROR_EXCEPTION(ArithmeticException, Exception, "System.ArithmeticException");
 CCM_MIRROR_EXCEPTION(OverflowException, ArithmeticException, "System.OverflowException");
 CCM_MIRROR_EXCEPTION(DivideByZeroException, ArithmeticException, "System.DivideByZeroException");
+// What C#'s runtime binder throws where a dynamic site binds nothing for the value's type
+// (D-88). The façade's project maps it (CcmExceptions.cs): only a project that uses dynamic
+// references Microsoft.CSharp.
+CCM_MIRROR_EXCEPTION(RuntimeBinderException, Exception,
+                     "Microsoft.CSharp.RuntimeBinder.RuntimeBinderException");
 
 }  // namespace ccm
 

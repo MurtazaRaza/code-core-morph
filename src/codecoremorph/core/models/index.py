@@ -302,6 +302,61 @@ class GenericUse(CoreModel):
     member: str | None = Field(default=None, description="The member that uses it, by ID")
 
 
+class DynamicBinding(CoreModel):
+    """What C#'s runtime binder binds at a dynamic site for one combination of the types of its
+    dynamic operands (D-88)."""
+
+    types: list[str] = Field(
+        default_factory=list[str],
+        description="The operands' runtime types: Ledger.Sale, int",
+    )
+    member: str | None = Field(
+        default=None,
+        description='What it binds: "Ledger.Totals.Signed(Ledger.Sale)", '
+        '"int.operator +(int, int)", "an explicit numeric conversion to int"',
+    )
+    member_id: str | None = Field(default=None, description="The member's ID, when the project's")
+    result: list[str] = Field(default_factory=list[str], description="The result's runtime types")
+    error: str | None = Field(
+        default=None,
+        description="The binder's error, which the port throws as RuntimeBinderException: "
+        "'Ledger.Note' does not contain a definition for 'Amount'",
+    )
+
+
+class DynamicSite(CoreModel):
+    """A dynamic operation of a port's source, with what it binds for each type that reaches
+    it (D-88): the port makes it a closed sum."""
+
+    kind: str = Field(
+        description="invoke, member, index, new, binary, unary, compound, step, convert, cast "
+        "or format"
+    )
+    text: str = Field(description='The expression: "Signed((dynamic)entry)"')
+    operands: list[str] = Field(default_factory=list[str], description="Its dynamic operands")
+    bindings: list[DynamicBinding] = Field(default_factory=list[DynamicBinding])
+    file: WorktreePath
+    line: int = Field(ge=1)
+    member: str | None = Field(default=None, description="The member it is in, by symbol ID")
+
+
+class DynamicValue(CoreModel):
+    """A value of type dynamic of a port's source, and the solution's types that reach it
+    (D-88)."""
+
+    what: str = Field(
+        description='"parameter item of Ledger.Labels.Line(dynamic)", "field Ledger.Tally.total", '
+        '"the elements of field Ledger.Journal.lines"'
+    )
+    symbol: str | None = Field(default=None, description="Its symbol ID (none for a local)")
+    public: bool = Field(
+        default=False, description="Other assemblies see it: the façade takes or gives these types"
+    )
+    types: list[str] = Field(default_factory=list[str])
+    file: WorktreePath
+    line: int = Field(ge=1)
+
+
 class TypeEntry(CoreModel):
     """A type a port's source declares (D-78): what the planner cuts its type units by, and
     what their notes say."""
@@ -353,6 +408,8 @@ class TypeEntry(CoreModel):
     notices: list[PortNotice] = Field(default_factory=list[PortNotice])
     native_imports: list[NativeImport] = Field(default_factory=list[NativeImport])
     package_uses: list[PackageUse] = Field(default_factory=list[PackageUse])
+    dynamic_sites: list[DynamicSite] = Field(default_factory=list[DynamicSite])
+    dynamic_values: list[DynamicValue] = Field(default_factory=list[DynamicValue])
 
 
 class TestMethod(CoreModel):

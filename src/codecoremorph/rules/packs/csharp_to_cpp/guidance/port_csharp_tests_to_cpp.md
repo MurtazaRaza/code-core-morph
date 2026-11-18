@@ -33,6 +33,14 @@ files are read-only in this unit, the test doubles and helpers it uses with them
   message or parameter, catch it and check them. A project's exception is its C++ class.
 - Test doubles (C# classes implementing an interface of the library) are C++ classes
   implementing its abstract class, in the test file.
+- A C# test class that derives from a ported class (a director until now, D-87) is a C++ class
+  in the test file deriving from the ported one, overriding what the C# did (a base call is
+  `Base::member()`), held by `std::make_shared` where the C# passed it to the library.
+- A dynamic value the test reads (D-88; the note names its sites and types) is the
+  `std::variant` the C++ returns: a check of its type (`Assert.IsInstanceOf<int>(total)`) is
+  `ASSERT_TRUE(std::holds_alternative<int32_t>(total))`, a cast (`(int)tally.Total`) is
+  `std::get<int32_t>` where the note says it is an `int`, and the conversion the note names
+  where it isn't. A dynamic argument is the alternative of the value's type.
 - Keep every check: I-4 compares how many assertions each C# test and its GoogleTest tests make
   together, and a translation that checks less is refused.
 

@@ -128,6 +128,12 @@ impl Exception {
         Exception::new("System.DivideByZeroException", "Attempted to divide by zero.")
     }
 
+    /// `Microsoft.CSharp.RuntimeBinder.RuntimeBinderException`: what C#'s runtime binder threw
+    /// where a dynamic site bound nothing for the value's type, with its message (D-88).
+    pub fn runtime_binder(message: impl Into<String>) -> Self {
+        Exception::new("Microsoft.CSharp.RuntimeBinder.RuntimeBinderException", message)
+    }
+
     /// A call into C# (a callback, an interface a C# class implements) threw: the C# façade
     /// rethrows that exception itself. Code between passes it on unchanged.
     pub fn managed() -> Self {

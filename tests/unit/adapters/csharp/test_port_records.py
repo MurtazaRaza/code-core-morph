@@ -223,3 +223,57 @@ def test_each_project_is_a_build_target(tmp_path: Path) -> None:
     }
     assert targets["src/App/App.csproj"].dependencies == ["src/Zoo/Zoo.csproj"]
     assert targets["src/Zoo/Zoo.csproj"].files == ["src/Zoo/Animal.cs"]
+
+
+DYNAMIC_ROWS = Path(__file__).with_name("data") / "dynamic_rows.jsonl"
+LEDGER = {
+    "src/Ledger/Entries.cs",
+    "src/Ledger/Journal.cs",
+    "src/Ledger/Labels.cs",
+    "src/Ledger/Tally.cs",
+    "src/Ledger/Totals.cs",
+}
+
+
+def test_a_types_dynamic_sites_with_what_the_binder_binds_for_each_type() -> None:
+    # The helper's rows for the dynamic spike's library (D-88).
+    rows = [json.loads(line) for line in DYNAMIC_ROWS.read_text(encoding="utf-8").splitlines()]
+    types = {t.id: t for t in port_records(rows, LEDGER).types}
+    totals = types["csharp:Ledger.Totals"]
+    [dispatch] = [s for s in totals.dynamic_sites if s.kind == "invoke"]
+    assert dispatch.text == "Signed((dynamic)entry)"
+    assert dispatch.operands == ["(dynamic)entry"]
+    assert dispatch.member == "csharp:Ledger.Totals.Net(Ledger.Entry)"
+    assert {b.types[0]: b.member for b in dispatch.bindings} == {
+        "Ledger.Note": "Ledger.Totals.Signed(Ledger.Entry)",
+        "Ledger.PartialRefund": "Ledger.Totals.Signed(Ledger.PartialRefund)",
+        "Ledger.Refund": "Ledger.Totals.Signed(Ledger.Refund)",
+        "Ledger.Sale": "Ledger.Totals.Signed(Ledger.Sale)",
+    }
+    assert all(b.result == ["decimal"] for b in dispatch.bindings)
+    # A binder error is the port's to throw.
+    labels = types["csharp:Ledger.Labels"]
+    amount = next(s for s in labels.dynamic_sites if s.text == "item.Amount")
+    assert {b.types[0]: b.error for b in amount.bindings if b.error} == {
+        "Ledger.Note": "'Ledger.Note' does not contain a definition for 'Amount'"
+    }
+    # The dynamic values and the types that reach them; a public one is the façade's to take.
+    [item] = labels.dynamic_values
+    assert item.public
+    assert item.types == [
+        "Ledger.Invoice",
+        "Ledger.Note",
+        "Ledger.PartialRefund",
+        "Ledger.Refund",
+        "Ledger.Sale",
+    ]
+    tally = types["csharp:Ledger.Tally"]
+    assert {v.what: v.types for v in tally.dynamic_values} == {
+        "field Ledger.Tally.total": ["decimal", "int"],
+        "property Ledger.Tally.Total": ["decimal", "int"],
+    }
+    journal = types["csharp:Ledger.Journal"]
+    assert {v.what for v in journal.dynamic_values} >= {
+        "the elements of field Ledger.Journal.lines"
+    }
+    assert not any(t.refusals for t in types.values())
