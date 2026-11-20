@@ -52,6 +52,8 @@ c_to_rust = "codecoremorph.rules.packs.c_to_rust:PACK_DIR"
 rust_to_c = "codecoremorph.rules.packs.rust_to_c:PACK_DIR"
 csharp_to_cpp = "codecoremorph.rules.packs.csharp_to_cpp:PACK_DIR"
 csharp_to_rust = "codecoremorph.rules.packs.csharp_to_rust:PACK_DIR"
+java_to_cpp = "codecoremorph.rules.packs.java_to_cpp:PACK_DIR"
+java_to_rust = "codecoremorph.rules.packs.java_to_rust:PACK_DIR"
 java = "codecoremorph.rules.packs.java:PACK_DIR"
 csharp = "codecoremorph.rules.packs.csharp:PACK_DIR"
 
@@ -148,6 +150,8 @@ ignore = [
 # Runs inside the sandbox with only the standard library and clang.cindex: untyped by design,
 # and it reports per-cursor libclang failures instead of crashing.
 "src/codecoremorph/adapters/cpp/helpers/*" = ["BLE001", "S603", "PTH", "SLF001", "T20"]
+# Runs inside the sandbox with the standard library alone, as a language server's client.
+"src/codecoremorph/adapters/rust/helpers/*" = ["S101", "S603", "T20"]
 
 [tool.ruff.format]
 line-ending = "auto"

@@ -122,6 +122,13 @@ class PortUnit(CoreModel):
         default_factory=list[str],
         description="The test IDs the unit translates: each needs an entry in the test map (D-60)",
     )
+    data_driven: list[str] = Field(
+        default_factory=list[str],
+        description="A test file's methods whose cases come from data (a JUnit Parameterized "
+        "method, a TestCaseSource), by the stem of their test IDs (`junit:shop.CartTest#prices`): "
+        "each case the baseline ran (`#prices[0]`, `#prices(1)`) needs an entry in the test map "
+        "too (D-92)",
+    )
     wrappers: list[str] = Field(
         default_factory=list[str],
         description="Test IDs that only run the unit's test binary: the scaffold maps them "

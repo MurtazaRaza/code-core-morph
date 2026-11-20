@@ -8,6 +8,7 @@ import pytest
 
 from codecoremorph.adapters.java.surefire import (
     ReportError,
+    crashed_fork,
     parse_report,
     read_reports,
     selection_argument,
@@ -98,3 +99,51 @@ def test_ids_and_selection() -> None:
     )
     assert chosen == "a.B#one+two,a.C$Inner#x"
     assert selection_argument(["ctest:x"]) is None
+
+
+ASAN_CRASH = """[INFO] Running shop.MoneyTest
+=================================================================
+==156==ERROR: AddressSanitizer: global-buffer-overflow on address 0x7a47d22e9b18 at pc 0x7a47
+READ of size 4 at 0x7a47d22e9b18 thread T1
+    #0 0x7a47d22b70e0  (/tmp/build/lib/libshop_native.so+0x880e0)
+0x7a47d22e9b18 is located 8 bytes after global variable 'CONTENTS' of size 48
+SUMMARY: AddressSanitizer: global-buffer-overflow (/tmp/build/lib/libshop_native.so+0x880e0)
+Shadow bytes around the buggy address:
+  0x7a47d22e9880: f9 f9 f9 f9 00 00 00 00 00 00 00 f9 f9 f9 f9 f9
+==156==ABORTING
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.4:test
+[ERROR] The forked VM terminated without properly saying goodbye. VM crash or System.exit called?
+"""
+
+
+def test_a_sanitizer_that_aborted_the_forked_jvm_is_the_failure() -> None:
+    """In a port to C++ the forked JVM runs native code under the sanitizers (D-92): its report
+    up to the SUMMARY line says why the run failed, not Maven's generic message."""
+    message = crashed_fork(ASAN_CRASH)
+    assert message is not None
+    assert "aborted the forked test JVM" in message
+    assert "==156==ERROR: AddressSanitizer: global-buffer-overflow" in message
+    assert message.rstrip().endswith("(/tmp/build/lib/libshop_native.so+0x880e0)")
+    assert "Shadow bytes" not in message
+
+
+def test_an_undefined_behavior_report_is_found_too() -> None:
+    output = "\n".join(
+        [
+            "/spike/port/cpp/src/money.cpp:48:20: runtime error: signed integer overflow: "
+            "9223372036854775807 + 1 cannot be represented in type 'int64_t'",
+            "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior cpp/src/money.cpp:48:20",
+            "[ERROR] The forked VM terminated without properly saying goodbye. VM crash?",
+        ]
+    )
+    message = crashed_fork(output)
+    assert message is not None
+    assert "signed integer overflow" in message
+    assert "SUMMARY: UndefinedBehaviorSanitizer" in message
+
+
+def test_a_fork_that_died_otherwise_or_not_at_all() -> None:
+    crashed = crashed_fork("[ERROR] The forked VM terminated without properly saying goodbye.")
+    assert crashed is not None
+    assert "no sanitizer report" in crashed
+    assert crashed_fork("[ERROR] There are test failures.") is None

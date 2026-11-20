@@ -168,12 +168,14 @@ def unit_message(
     c_port: bool = False,
     rust_port: bool = False,
     csharp_target: str | None = None,
+    java_target: str | None = None,
 ) -> str:
     """The unit's first message: its files in full, signatures, codemods, sites, build.
 
     A ``port`` unit (D-56) also shows the files its codemods created (the new code's
     scaffold), and its reference files are the headers it keeps as they are. A port from C#
-    names its target language in ``csharp_target`` (D-78)."""
+    names its target language in ``csharp_target`` (D-78), and one from Java in
+    ``java_target`` (D-92)."""
     blocks: list[str] = []
     created = [
         f for f in (codemods.changed_files if codemods and port else []) if f not in unit.files
@@ -195,6 +197,8 @@ def unit_message(
         note += rust_port_note(unit, port_units)
     elif csharp_target is not None:
         note += csharp_port_note(unit, port_units, csharp_target)
+    elif java_target is not None:
+        note += java_port_note(unit, port_units, java_target)
     elif port_units is PortUnits.RETIREMENT:
         note += c_retirement_note(unit) if c_port else retirement_note(unit)
     elif unit.port is not None and port_units is PortUnits.EXECUTABLE and c_port:
@@ -634,6 +638,64 @@ def csharp_port_note(unit: WorkUnit, port_units: PortUnits | None, target: str) 
     )
 
 
+def java_port_note(unit: WorkUnit, port_units: PortUnits | None, target: str) -> str:
+    """A port from Java's unit (D-92): which Java becomes a façade or goes, which Java keeps
+    using it, and what to map, by ID; the same for every target but for its name and the
+    directory of its maps."""
+    name = _TARGET_NAMES.get(target, target)
+    symbols, tests = f"{target}/symbol-map.toml", f"{target}/test-map.toml"
+    port = unit.port
+    if port_units is PortUnits.RETIREMENT or port is None:
+        return (
+            f"The codemod retired the Java: it deleted {len(unit.files)} Java files and POMs, "
+            f"the façades' support and the bridge with its JNI glue, so the {name} builds and "
+            "tests alone. Make it build, pass and lint clean on its own (the checks now cover "
+            "all of it), and fix what still refers to the Java or the bridge. Give every "
+            f"baseline test that no longer runs an entry in {tests}: the earlier units mapped "
+            "theirs, so add the ones still missing (a parameterized Java test's cases by the IDs "
+            "Surefire reported), each mapped test passing.\n\n"
+        )
+    sources = [f for f in unit.files if f.endswith(".java")]
+    if port_units is PortUnits.TESTS:
+        listed = [
+            *port.tests,
+            *(
+                f"{s}[…], each case Surefire reports (the method takes them from data)"
+                for s in port.data_driven
+            ),
+        ]
+        cases = "\n".join(f"- {t}" for t in listed) or "- (none but the note's)"
+        return (
+            "The Java test files are read-only and keep running until the retirement: "
+            f"{', '.join(unit.reference_files or sources)}. Map each of these cases in {tests} "
+            f'(`java = "junit:..."`, `{target} = ...`) to the {name} tests that translate '
+            f"it, each passing:\n{cases}\n\n"
+        )
+    members = "\n".join(f"- {e}" for e in port.exports) or "- (none)"
+    callers = ", ".join(port.callers) or "none"
+    return (
+        f"The façades: {', '.join(sources)}. Each Java type keeps every public and protected "
+        "member with its signature, modifiers, Javadoc, annotations and `throws`, its body "
+        "calling the bridge through `codecoremorph.interop.CcmNative` (generated from the "
+        "bridge's headers at each configure, with its JNI glue: never edit either) and passing "
+        "each status to `CcmInterop.check`. These files keep using the types through the "
+        f"façades and don't change: {callers}. Map each of these members in {symbols} by its "
+        f"ID (read it first: it also says where earlier units went):\n{members}\n\n"
+    )
+
+
+def _java_target(rules: Sequence[LoadedRule]) -> str | None:
+    """The target language when the unit ports Java (D-92)."""
+    return next(
+        (
+            r.rule.target_language
+            for r in rules
+            if r.rule.kind is RuleKind.PORT and r.rule.language == "java"
+        ),
+        None,
+    )
+
+
 def _rust_port(rules: Sequence[LoadedRule]) -> bool:
     """Whether the unit ports Rust (to C, D-75)."""
     return any(r.rule.kind is RuleKind.PORT and r.rule.language == "rust" for r in rules)
@@ -691,6 +753,7 @@ def build_context(
         c_port=_c_port(rules),
         rust_port=_rust_port(rules),
         csharp_target=_csharp_target(rules),
+        java_target=_java_target(rules),
     )
     tool_chars = sum(len(t.model_dump_json()) for t in tools)
     tokens = estimate_tokens(sum(len(b.text) for b in system) + len(message) + tool_chars)
@@ -744,6 +807,7 @@ def host_document(
         c_port=_c_port(rules),
         rust_port=_rust_port(rules),
         csharp_target=_csharp_target(rules),
+        java_target=_java_target(rules),
     )
     if uncompiled and any(r.rule.kind is RuleKind.PROJECT for r in rules):
         shown = [f"- {f}" for f in uncompiled[:MAX_UNCOMPILED]]

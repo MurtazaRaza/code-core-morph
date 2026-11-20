@@ -1,0 +1,72 @@
+{
+  "date": "2026-11-18T23:11:02+00:00",
+  "project": "java-string-similarity v2.0.0 (1372d0b4549f)",
+  "migration": "java8 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 322.375,
+    "index_s": 9.031,
+    "graph_s": 0.016,
+    "plan_s": 0.172
+  },
+  "baseline": {
+    "passing": 24,
+    "failing": [],
+    "flaky": [],
+    "build_s": 21.016,
+    "test_s": 21.188
+  },
+  "graph": {
+    "files": 43,
+    "edges": 110,
+    "clusters": 43,
+    "cyclic_clusters": 0,
+    "largest_cluster": 1
+  },
+  "rules": [
+    {
+      "id": "port_java_type_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 27,
+      "files": 27,
+      "skipped_files": 0,
+      "units": 27
+    },
+    {
+      "id": "port_java_tests_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 24,
+      "files": 15,
+      "skipped_files": 0,
+      "units": 15
+    },
+    {
+      "id": "retire_java_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 43,
+      "files": 43,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 43
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 2370949,
+    "cost_usd": 11.47
+  },
+  "duration_estimate_s": 8613.5,
+  "warnings": []
+}

@@ -1,0 +1,25 @@
+{
+  "project": "java-string-similarity",
+  "url": "https://github.com/tdebatty/java-string-similarity.git",
+  "tag": "v2.0.0",
+  "commit": "1372d0b4549f79b9a3d80f5c678cf8e3a787a856",
+  "license": "MIT",
+  "milestone": "m14",
+  "migration": {
+    "source": {"language": "java", "standard": "java8", "build_system": "maven"},
+    "target": {
+      "language": "cpp",
+      "standard": "cpp17",
+      "rules": [
+        "port_java_type_to_cpp",
+        "port_java_tests_to_cpp",
+        "retire_java_to_cpp"
+      ]
+    }
+  },
+  "build": {},
+  "exclude": [],
+  "test_dirs": ["src/test"],
+  "public_api": [],
+  "build_note": "The M14 port benchmark (chosen 2026-11-19): java-string-similarity 2.0.0 (info.debatty), a Java 8 library of string distances and similarities, one Maven module (27 files, 2.8k lines: 22 library types and 4 example programs with main), with 24 JUnit 4.12 tests in 16 files (1.0k lines) and a shared test helper. Its only dependency is jcip-annotations (@Immutable, which nothing reads). It has an interface with fifteen implementations (StringDistance and its refinements), an abstract base with four subclasses (ShingleBased), a regex, maps in the public API (a shingle profile), and interfaces the tests implement in Java (a weighted Levenshtein's costs), so calls back into Java."
+}

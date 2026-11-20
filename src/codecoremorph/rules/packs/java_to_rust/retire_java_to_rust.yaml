@@ -1,0 +1,23 @@
+id: retire_java_to_rust
+language: java
+target_language: rust
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-92)
+description: >-
+  Retire the Java once the types and tests are Rust: delete the Java sources, the POMs, the
+  façades' support and generated declarations, and each crate's bridge with its JNI glue, its
+  header and its cdylib, so the Cargo workspace builds and tests the Rust alone, with no unsafe
+  code. With migration.target.keep_source_api the Java API stays as a Java library over the
+  Rust, and nothing is retired.
+detector:
+  type: files                     # each Java file, until it is deleted
+codemods:
+  - tool: rust-java-retire        # deletes the Java and its build, and the bridge
+extra_scope: ['rust/**', '**/codecoremorph/interop/*.java']
+llm:
+  guidance: guidance/retire_java_to_rust.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no Java file left
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: unsafe_in_bridge, severity: error}   # no unsafe code left
+  - {type: lint_clean, severity: error}         # clippy is quiet about all of the Rust

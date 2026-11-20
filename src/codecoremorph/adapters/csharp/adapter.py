@@ -48,6 +48,7 @@ from codecoremorph.adapters.csharp.msbuild import (
 )
 from codecoremorph.adapters.csharp.testcode import assertions, disabled_markers, find_cases
 from codecoremorph.adapters.csharp.trx import read_reports, run_errors, selection_filter
+from codecoremorph.adapters.portindex import type_sites
 from codecoremorph.adapters.rust import RustAdapter
 from codecoremorph.adapters.rust import csharpports as rustports
 from codecoremorph.core.errors import ConfigError
@@ -60,7 +61,6 @@ from codecoremorph.core.models import (
     CodemodSpec,
     Diagnostic,
     DiagnosticOrigin,
-    FileRole,
     LanguageConfig,
     ProjectDetection,
     ReferenceKind,
@@ -879,27 +879,9 @@ def record_candidates(index_path: Path, files: list[str]) -> list[RuleSite]:
 
 
 def port_type_sites(index_path: Path, files: list[str]) -> list[RuleSite]:
-    """A port's types (``csharp_types``, D-79): each type a library project declares in
-    ``files`` and isn't nested in another, at its declaration in each of its files (a partial
-    type has several). The planner cuts the units."""
-    wanted = set(files)
-    with IndexStore.open(index_path) as store:
-        libraries = {t.name for t in store.build_targets() if t.kind is TargetKind.LIBRARY}
-        sources = {f.path for f in store.files(FileRole.SOURCE)}
-        sites: list[RuleSite] = []
-        for entry in store.port_types():
-            if entry.outer is not None or entry.project not in libraries:
-                continue
-            if any(f not in sources for f in entry.files):
-                continue
-            lines = {s.file: s.range.start_line for s in store.symbols(symbol_id=entry.id)}
-            text = f"{entry.name}: port it, keeping its C# API as a façade"
-            sites += [
-                RuleSite(file=f, line=lines.get(f, 1), text=text)
-                for f in entry.files
-                if f in wanted
-            ]
-    return sorted(sites, key=lambda s: (s.file, s.line, s.text))
+    """A port's types (``csharp_types``, D-79), as
+    :func:`codecoremorph.adapters.portindex.type_sites` finds them."""
+    return type_sites(index_path, files, "C#")
 
 
 def program_sites(index_path: Path, files: list[str]) -> list[RuleSite]:

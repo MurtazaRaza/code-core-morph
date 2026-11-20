@@ -180,8 +180,9 @@ def test_programs_tests_and_the_retirement_finish_the_port(fake_project: FakePro
                                                   "type:keeper")}  # fmt: skip
     assert keeper.note is not None
     assert keeper.note.startswith(
-        "translates tests/Zoo.Tests/KeeperTests.cs (3 test cases) to C++: "
-        "cpp/tests/keeper_tests.cpp, a GoogleTest program, each case mapped in the test map"
+        "translates tests/Zoo.Tests/KeeperTests.cs (3 test cases and 1 method whose cases come "
+        "from data) to C++: cpp/tests/keeper_tests.cpp, a GoogleTest program, each case mapped "
+        "in the test map; the C# tests stay until the retirement"
     )
     assert "Zoo.Tests.KeeperTests.FromData takes its cases from data" in keeper.note
     assert "with the test doubles and helpers of tests/Zoo.Tests/FakeFeeder.cs" in keeper.note
@@ -268,9 +269,15 @@ def test_keep_source_api_retires_the_programs_only(fake_project: FakeProject) ->
     CMake programs, so they go, and so do the tests that need them."""
     lib = _solution(fake_project).project(APP_TESTS, "test", references=[APP])
     lib.type("App.Tests.RunTests", "tests/App.Tests/RunTests.cs", project=APP_TESTS)
+    _tests(lib, "tests/App.Tests/RunTests.cs", "App.Tests.RunTests", "Runs", project=APP_TESTS)
     fake_project.file("Zoo.sln", "Microsoft Visual Studio Solution File\n", role="build",
                       language="msbuild")  # fmt: skip
     units = _units(_plan(lib.load(), keep=True))
+    # The library's tests stay with it; the program's go with the program.
+    assert "the C# tests stay with the kept API (keep_source_api)" in (
+        units["tests:keeper_tests"].note or ""
+    )
+    assert "the C# tests stay until the retirement" in (units["tests:run_tests"].note or "")
     retire = units["retire"]
     assert retire.files == [
         "Zoo.sln",  # takes the deleted projects out

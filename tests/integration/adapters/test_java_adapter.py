@@ -33,6 +33,7 @@ from codecoremorph.store.index import IndexStore
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "fixtures" / "java"
+DATA = ROOT / "tests" / "data" / "java"
 BUMP = [
     CodemodSpec(
         tool="openrewrite",
@@ -63,8 +64,10 @@ def make_context(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Mak
     executors: list[Executor] = []
 
     def make(fixture: str) -> AdapterContext:
-        work = tmp_path / fixture
-        shutil.copytree(FIXTURES / fixture, work)
+        # A fixture, or with "data:" a test-data project (indexed, not necessarily built).
+        source = DATA / fixture.removeprefix("data:") if fixture.startswith("data:") else None
+        work = tmp_path / fixture.removeprefix("data:")
+        shutil.copytree(source or FIXTURES / fixture, work)
         for name in ("build", "cache", "logs"):
             (tmp_path / name).mkdir(exist_ok=True)
         executor: Executor
@@ -204,3 +207,89 @@ def test_a_new_build_extension_is_refused_before_the_network(make_context: MakeC
     assert not refused.success
     assert "build extensions" in refused.diagnostics[0].message
     assert "spy" in refused.diagnostics[0].message
+
+
+@pytest.mark.parametrize("fixture", ["legacy-ledger", "task-planner"])
+def test_a_port_index_names_the_cases_surefire_runs(
+    make_context: MakeContext, fixture: str
+) -> None:
+    """In a port from Java (D-92) the index records the library's types, each module's build
+    targets and the JUnit test methods: every exact case it names is one Surefire runs, and
+    every case Surefire runs belongs to a method it recorded."""
+    ctx = make_context(fixture)
+    ctx = replace(ctx, lang=ctx.lang.model_copy(update={"port_target": "cpp"}))
+    adapter = JavaAdapter()
+    assert adapter.configure(ctx).success
+    assert adapter.build(ctx).success
+    ran = {c.test_id for c in adapter.run_tests(ctx).cases}
+    index = adapter.index(ctx)
+    with IndexStore.open(index.path) as store:
+        types = store.port_types()
+        methods = store.test_methods()
+        targets = store.build_targets()
+        public = {s.id for s in store.symbols() if s.boundary == "public_api"}
+    sources = {t.name for t in targets if t.kind.value == "library"}
+    assert types
+    assert all(t.project in sources for t in types if "/src/main/" in f"/{t.files[0]}")
+    exact = {case for m in methods if m.exact for case in m.cases}
+    assert exact
+    assert exact <= ran
+    recorded = {f"junit:{m.class_name}#{m.method}" for m in methods}
+    assert all(any(r.startswith(m) for m in recorded) for r in ran)
+    # The library's public members are on the API boundary, which I-6 holds the façades to.
+    assert any(m in public for t in types for m in t.members)
+    if fixture == "legacy-ledger":
+        names = {t.name for t in types}
+        assert {"org.example.ledger.Ledger", "org.example.ledger.Money"} <= names
+        assert all(m.framework == "junit4" for m in methods)
+    else:
+        assert any(not m.exact for m in methods)  # describesEstimates is parameterized
+        assert {m.framework for m in methods} == {"junit5"}
+        assert len([t for t in targets if t.kind.value == "test"]) >= 2
+
+
+def test_a_port_index_names_what_the_first_version_refuses(make_context: MakeContext) -> None:
+    """What a port from Java refuses (D-92), by site and kind, with the generic uses and the
+    static state the planner names."""
+    ctx = make_context("data:port-refusals")
+    ctx = replace(ctx, lang=ctx.lang.model_copy(update={"port_target": "rust"}))
+    index = JavaAdapter().index(ctx)
+    with IndexStore.open(index.path) as store:
+        types = {t.id: t for t in store.port_types()}
+        uses = store.generic_uses()
+    mixed = types["java:r.Mixed"]
+    assert {(r.what.value, r.detail) for r in mixed.refusals} >= {
+        ("concurrency", "java.util.concurrent.ExecutorService"),
+        ("concurrency", "new Thread"),
+        ("big_numbers", "java.math.BigDecimal"),
+        ("reflection", "Class.getMethod"),
+        ("jni", "the native method fast: the library's own JNI code"),
+    }
+    # A container of java.util.concurrent is no refusal: it is a map behind a lock.
+    assert not any("ConcurrentHashMap" in r.detail for r in mixed.refusals)
+    assert mixed.type_parameters == ["T extends java.lang.Number"]
+    # A final int or Pattern is a constant; a mutable static, or a final list, is state.
+    assert mixed.static_state == ["java:r.Mixed#counter", "java:r.Mixed#NAMES"]
+    assert mixed.instance_fields == ["seen"]
+    assert types["java:r.Mixed$Box"].outer == "java:r.Mixed"
+    assert ("java:r.Mixed$Box", ["java.lang.String"]) in [(u.symbol, u.arguments) for u in uses]
+    # An anonymous subclass in the tests is a type of its own, which the planner checks for
+    # overrides (a port from Java has no directors yet, D-92).
+    anonymous = types["java:r.MixedTest$1"]
+    assert anonymous.base == "java:r.Mixed$Box"
+    assert "java:r.MixedTest$1#get()" in anonymous.members
+    # So is a Mockito mock of a library class (a class literal's, a @Mock field's, a spied
+    # object's), overriding every member it can; a mock of a JDK type is no subclass of ours.
+    mocks = {t.id: t for t in types.values() if "$mock$" in t.id}
+    assert sorted(mocks) == [
+        "java:r.MockedTest$mock$r.Mixed",
+        "java:r.MockedTest$mock$r.Mixed$Box",
+        "java:r.SpiedTest$mock$r.Mixed$Box",
+    ]
+    mixed_mock = mocks["java:r.MockedTest$mock$r.Mixed"]
+    assert mixed_mock.base == "java:r.Mixed"
+    assert mixed_mock.outer == "java:r.MockedTest"
+    assert "java:r.MockedTest$mock$r.Mixed#total()" in mixed_mock.members
+    assert mocks["java:r.SpiedTest$mock$r.Mixed$Box"].members == [
+        "java:r.SpiedTest$mock$r.Mixed$Box#get()"
+    ]

@@ -1,0 +1,1509 @@
+{
+  "date": "2026-11-19T01:37:30+00:00",
+  "project": "java-string-similarity v2.0.0 (1372d0b4549f)",
+  "migration": "java8 -> rust2021",
+  "agent": "claude-code/claude-opus-5-5",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "1372d0b4549f79b9a3d80f5c678cf8e3a787a856",
+  "seconds": 8770.8,
+  "runs_started": 1,
+  "run_id": "20261118-231144-d2f6",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 43
+    },
+    "success_rate": 1.0,
+    "agent_units": 42,
+    "attempts_per_agent_unit": 1.07,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "3e273b22fa40603e49a67d6a5ef61febeefa82f3",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 27,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 7.4
+    },
+    "port": {
+      "symbols": 56,
+      "tests_mapped": 24,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "java:info.debatty.java.stringsimilarity.CharacterInsDelInterface#deletionCost(char): Java's char is a UTF-16 unit (u16); the cost is a Result, since a Java implementation may throw. A Java implementation reaches the Rust through the bridge's proxy (CharacterInsDelInterfaces.handleOf).",
+        "java:info.debatty.java.stringsimilarity.CharacterInsDelInterface#insertionCost(char): Java's char is a UTF-16 unit (u16); the cost is a Result, since a Java implementation may throw. A Java implementation reaches the Rust through the bridge's proxy (CharacterInsDelInterfaces.handleOf).",
+        "java:info.debatty.java.stringsimilarity.CharacterSubstitutionInterface#cost(char,char): Java's char is a UTF-16 unit (u16); the cost is a Result, since a Java implementation may throw. A Java implementation reaches the Rust through the bridge's proxy (CharacterSubstitutionInterfaces.handleOf).",
+        "java:info.debatty.java.stringsimilarity.ShingleBased#<init>(int): Returns IllegalArgumentException for a k <= 0. ShingleBased() (package-private, k = 3) is Default. The fa\u00e7ade keeps k, which crosses with each call: ShingleBased is immutable and holds only k.",
+        "java:info.debatty.java.stringsimilarity.ShingleBased#getK(): The fa\u00e7ade answers it from its own field k.",
+        "java:info.debatty.java.stringsimilarity.ShingleBased#getProfile(java.lang.String): Java indexes strings by UTF-16 units: shingles_utf16 (the fa\u00e7ade's) and get_profile_utf16 keep Java's keys exactly; get_profile's String keys have U+FFFD where a shingle splits a surrogate pair. shingles_utf16 lists the shingles in the order of their first occurrence, so the fa\u00e7ade's HashMap iterates in the Java's order.",
+        "java:info.debatty.java.stringsimilarity.interfaces.StringDistance#distance(java.lang.String,java.lang.String): A Result, since an implementation may fail (WeightedLevenshtein's costs, which Java code may compute). Rust strings can't be null: the fa\u00e7ades check for null, with the Java's messages. The Java interface stays as it is (Serializable has no Rust counterpart).",
+        "java:info.debatty.java.stringsimilarity.LongestCommonSubsequence#distance(java.lang.String,java.lang.String): Lengths count UTF-16 units, as Java's. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.LongestCommonSubsequence#length(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.OptimalStringAlignment#distance(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.QGram#<init>(): QGram::default() (derived Default): k = 3. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.QGram#<init>(int): Returns IllegalArgumentException for a k <= 0. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.QGram#distance(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars, with the profiles keyed as Java's. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.QGram#distance(java.util.Map,java.util.Map): Generic over the key: String (get_profile) or UTF-16 units (get_profile_utf16, how the fa\u00e7ade passes a Java Map). A null count in a Java profile is a NullPointerException in the fa\u00e7ade, where the Java counted it as 0.",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#<init>(info.debatty.java.stringsimilarity.CharacterSubstitutionInterface): charsub is an Option (Java's null). The fa\u00e7ade passes the proxy of a Java weight (CharacterSubstitutionInterfaces.handleOf) and holds the handle of the Rust object.",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#<init>(info.debatty.java.stringsimilarity.CharacterSubstitutionInterface,info.debatty.java.stringsimilarity.CharacterInsDelInterface): charsub and charchange are Options (Java's null). The fa\u00e7ade passes the proxies of Java weights (handleOf) and holds the handle of the Rust object.",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#distance(java.lang.String,java.lang.String): A Result: a weight may fail (a Java weight's exception is rethrown as itself), and a missing charsub is NullPointerException where a substitution is costed. The fa\u00e7ade calls distance(s1, s2, Double.MAX_VALUE), as the Java did.",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#distance(java.lang.String,java.lang.String,double): Over UTF-16 units, as Java's chars, with Java's Math.min (NaN and -0.0). A Result: a weight may fail. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.experimental.Sift4#distance(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars. The Java took null strings (a null or empty one is at the other's length): distance_opt takes Options, and the fa\u00e7ade calls it.",
+        "java:info.debatty.java.stringsimilarity.experimental.Sift4#setMaxOffset(int): Takes &self: the maximum offset is an AtomicI32, since the Java changed a shared object. The fa\u00e7ade holds the handle of the Rust object (its implicit constructor is Sift4::new).",
+        "java:info.debatty.java.stringsimilarity.interfaces.MetricStringDistance#distance(java.lang.String,java.lang.String): MetricStringDistance is a marker trait over StringDistance (metric_string_distance::MetricStringDistance): the Java interface only redeclared distance. The Java interface stays as it is.",
+        "java:info.debatty.java.stringsimilarity.Damerau#distance(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars (the character indices a HashMap<u16, usize>). A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.Levenshtein#distance(java.lang.String,java.lang.String): The fa\u00e7ade calls distance(s1, s2, Integer.MAX_VALUE), as the Java did.",
+        "java:info.debatty.java.stringsimilarity.Levenshtein#distance(java.lang.String,java.lang.String,int): Over UTF-16 units, as Java's chars. The limit is an i32 (Java's int). A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.MetricLCS#distance(java.lang.String,java.lang.String): Lengths count UTF-16 units, as Java's. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.NGram#<init>(): NGram::default(): n = 2. The fa\u00e7ade keeps n, which crosses with each call: NGram is immutable and holds only n.",
+        "java:info.debatty.java.stringsimilarity.NGram#<init>(int): Takes any n, as the Java did. The fa\u00e7ade keeps n, which crosses with each call.",
+        "java:info.debatty.java.stringsimilarity.NGram#distance(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars, in Java's float arithmetic (f32, with Math.min's NaN). A Result: NegativeArraySizeException for a negative n, as the Java's arrays threw. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.examples.MetricLCS#main(java.lang.String[]): The example program prints from the Rust, the doubles in Java's Double.toString form (java_format::double_to_string). The arguments are ignored, as in the Java.",
+        "java:info.debatty.java.stringsimilarity.interfaces.StringSimilarity#similarity(java.lang.String,java.lang.String): A Result, as StringDistance::distance, since an implementation may fail. Rust strings can't be null: the fa\u00e7ades check for null, with the Java's messages. The Java interface stays as it is (Serializable has no Rust counterpart).",
+        "java:info.debatty.java.stringsimilarity.Cosine#<init>(): Cosine::default() (derived Default): k = 3. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.Cosine#<init>(int): Returns IllegalArgumentException for a k <= 0. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.Cosine#distance(java.lang.String,java.lang.String): 1.0 - similarity. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.Cosine#similarity(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars, with the profiles keyed as Java's. The sums are of integers, exact in any order, so the HashMap's order doesn't matter. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.Cosine#similarity(java.util.Map,java.util.Map): Generic over the key: String (get_profile) or UTF-16 units (get_profile_utf16, how the fa\u00e7ade passes a Java Map).",
+        "java:info.debatty.java.stringsimilarity.Jaccard#<init>(): Jaccard::default() (derived Default): k = 3. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.Jaccard#<init>(int): Returns IllegalArgumentException for a k <= 0. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.Jaccard#distance(java.lang.String,java.lang.String): 1.0 - similarity. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.Jaccard#similarity(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars, with the profiles keyed as Java's; NaN where neither string has a shingle, as the Java's 0 / 0. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#<init>(): JaroWinkler::default(): threshold 0.7. The fa\u00e7ade keeps the threshold, which crosses with each call: JaroWinkler is immutable and holds only it.",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#<init>(double): The fa\u00e7ade keeps the threshold, which crosses with each call (as its IEEE 754 bits).",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#distance(java.lang.String,java.lang.String): 1 - similarity. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#getThreshold(): The fa\u00e7ade answers it from its own field.",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#similarity(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars; the Jaro part in Java's float arithmetic (f32), the Winkler bonus in double, as the Java computed them. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.NormalizedLevenshtein#distance(java.lang.String,java.lang.String): Lengths count UTF-16 units, as Java's. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.NormalizedLevenshtein#similarity(java.lang.String,java.lang.String): 1 - distance. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.RatcliffObershelp#distance(java.lang.String,java.lang.String): 1 - similarity. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.RatcliffObershelp#similarity(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars: the matches are slices of the first string, found with the Java's substring search. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.SorensenDice#<init>(): SorensenDice::default() (derived Default): k = 3. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.SorensenDice#<init>(int): Returns IllegalArgumentException for a k <= 0. The fa\u00e7ade's constructors call ShingleBased's, which keep k and check it in the Rust.",
+        "java:info.debatty.java.stringsimilarity.SorensenDice#distance(java.lang.String,java.lang.String): 1 - similarity. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.SorensenDice#similarity(java.lang.String,java.lang.String): Over UTF-16 units, as Java's chars, with the profiles keyed as Java's; NaN where neither string has a shingle, as the Java's 0 / 0. A null string is the bridge's NullPointerException, with the Java's message.",
+        "java:info.debatty.java.stringsimilarity.examples.Examples#main(java.lang.String[]): The example program prints from the Rust: doubles in Java's Double.toString form (java_format::double_to_string), and the profiles in Java's HashMap order, emulated from String.hashCode and the table's size (without the tree bins a HashMap makes of 8 colliding keys, which these profiles don't have). The arguments are ignored, as in the Java.",
+        "java:info.debatty.java.stringsimilarity.examples.Examples$1#cost(char,char): The anonymous CharacterSubstitutionInterface became KeyboardWeights, whose cost (0.5 for 't' to 'r', else 1.0) implements the trait.",
+        "java:info.debatty.java.stringsimilarity.examples.PrecomputedCosine#main(java.lang.String[]): The example program prints from the Rust, the double in Java's Double.toString form (java_format::double_to_string). The arguments are ignored, as in the Java.",
+        "java:info.debatty.java.stringsimilarity.examples.nischay21#main(java.lang.String[]): The example program prints from the Rust, each distance in Java's Double.toString form (java_format::double_to_string) after the simple name of its Java class (which the Rust names, where the Java asked getClass().getSimpleName()). toLowerCase of these ASCII strings is Rust's to_lowercase. The arguments are ignored, as in the Java.",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testLargeString: Reads the Java test's resource files from src/test/resources, as readResourceFile did.",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.DamerauTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.JaccardTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.JaccardTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.JaroWinklerTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.JaroWinklerTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.LevenshteinTest#testDistance: distance(s1, s2, limit) is distance_with_limit. NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.LongestCommonSubsequenceTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.MetricLCSTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.NGramTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.NormalizedLevenshteinTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.NormalizedLevenshteinTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.OptimalStringAlignmentTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.QGramTest#testDistance: NullEmptyTests.assertNullPointerExceptions has no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.RatcliffObershelpTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.RatcliffObershelpTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.SorensenDiceTest#testDistance: NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.SorensenDiceTest#testSimilarity: NullEmptyTests.testSimilarity's checks of empty strings are null_empty_similarity's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.WeightedLevenshteinTest#testDistance: The anonymous CharacterSubstitutionInterface is the test file's Substitution; distance(s1, s2, limit) is distance_with_limit. NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null.",
+        "junit:info.debatty.java.stringsimilarity.WeightedLevenshteinTest#testDistanceCharacterInsDelInterface: The anonymous weights are the test file's Substitution and InsDel; distance(s1, s2, limit) is distance_with_limit. NullEmptyTests.testDistance's checks of empty strings are null_empty_distance's; its null checks have no Rust counterpart: a Rust string can't be null."
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_java_type_to_rust",
+        "units": 27,
+        "committed": 27,
+        "planned_sites": 27,
+        "converted_sites": 27
+      },
+      {
+        "id": "port_java_tests_to_rust",
+        "units": 15,
+        "committed": 15,
+        "planned_sites": 24,
+        "converted_sites": 24
+      },
+      {
+        "id": "retire_java_to_rust",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 43,
+        "converted_sites": 43
+      }
+    ],
+    "review_items": 20,
+    "duration_s": 8675.9,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 548.8,
+        "changed_files": 23,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 144.5,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 286.0,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 131.2,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 232.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 177.9,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 273.7,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 271.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 239.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 126.1,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 172.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 206.9,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 130.8,
+        "changed_files": 4,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 152.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 229.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 237.1,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 136.2,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 132.5,
+        "changed_files": 4,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 203.2,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 163.7,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 225.4,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 168.7,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 183.9,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 168.1,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 378.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0026",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 151.4,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0027",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 232.0,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0028",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 232.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0029",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 141.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0030",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 180.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0031",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 138.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0032",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 143.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0033",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 138.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0034",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 148.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0035",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 146.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0036",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 139.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0037",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 145.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0038",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 141.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0039",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 162.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0040",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 146.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0041",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 171.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0042",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 143.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0043",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 24.9,
+        "changed_files": 84,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\java-string-similarity\\.codecoremorph\\runs\\20261118-231144-d2f6\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 43,
+      "project_lines": 3794,
+      "units": 43,
+      "rule_sites": {
+        "port_java_type_to_rust": 27,
+        "port_java_tests_to_rust": 24,
+        "retire_java_to_rust": 43
+      },
+      "sites": 94,
+      "files": 44,
+      "lines": 3794,
+      "expected_agent_attempts": 38.7,
+      "verify_s": 42.3,
+      "estimated_s": 8623.6,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 43
+      },
+      "agent_units": 42,
+      "agent_attempts": 45,
+      "changed_files": 97,
+      "lines_added": 3591,
+      "lines_deleted": 3997
+    },
+    "time": {
+      "run_s": 8675.9,
+      "phases_s": {
+        "baselining": 300.9,
+        "indexing": 6.5,
+        "planning": 0.1,
+        "awaiting_plan_approval": 18.6,
+        "migrating": 8342.2,
+        "verifying": 7.5
+      },
+      "migrating_s": 8342.2,
+      "agent_s": 3236.3,
+      "unit_gates_s": 0.0,
+      "tools_s": 5105.9,
+      "unit_s": {
+        "mean": 193.9,
+        "median": 170.7,
+        "max": 562.1
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 0.97,
+      "agent_attempts_over_expected": 1.16,
+      "agent_s_per_attempt": 71.9,
+      "migrating_s_per_unit": 194.0,
+      "migrating_s_per_site": 88.7,
+      "migrating_s_per_changed_line": 1.1,
+      "run_min_per_1k_project_lines": 38.11
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 23,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 191.7,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 562.1,
+        "agent_s": 434.9,
+        "gate_s": 0.0,
+        "tools_s": 127.2,
+        "lines_changed": 3129
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 198.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 151.4,
+        "agent_s": 44.5,
+        "gate_s": 0.0,
+        "tools_s": 106.9,
+        "lines_changed": 250
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 120,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 223.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 292.6,
+        "agent_s": 183.1,
+        "gate_s": 0.0,
+        "tools_s": 109.5,
+        "lines_changed": 313
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 42,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 197.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 137.4,
+        "agent_s": 30.2,
+        "gate_s": 0.0,
+        "tools_s": 107.2,
+        "lines_changed": 27
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 110,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 219.9,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 238.7,
+        "agent_s": 117.3,
+        "gate_s": 0.0,
+        "tools_s": 121.4,
+        "lines_changed": 245
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 122,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 223.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 184.2,
+        "agent_s": 72.9,
+        "gate_s": 0.0,
+        "tools_s": 111.3,
+        "lines_changed": 206
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 113,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 220.8,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 279.8,
+        "agent_s": 119.6,
+        "gate_s": 0.0,
+        "tools_s": 160.2,
+        "lines_changed": 326
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 177,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 241.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 279.0,
+        "agent_s": 162.4,
+        "gate_s": 0.0,
+        "tools_s": 116.6,
+        "lines_changed": 486
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 190,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 245.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 245.3,
+        "agent_s": 129.0,
+        "gate_s": 0.0,
+        "tools_s": 116.4,
+        "lines_changed": 495
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 198.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 133.1,
+        "agent_s": 22.7,
+        "gate_s": 0.0,
+        "tools_s": 110.4,
+        "lines_changed": 22
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 135,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 228.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 178.0,
+        "agent_s": 68.3,
+        "gate_s": 0.0,
+        "tools_s": 109.7,
+        "lines_changed": 234
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 126,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 225.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 213.2,
+        "agent_s": 99.2,
+        "gate_s": 0.0,
+        "tools_s": 113.9,
+        "lines_changed": 245
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 33,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 194.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 137.0,
+        "agent_s": 24.0,
+        "gate_s": 0.0,
+        "tools_s": 113.0,
+        "lines_changed": 11
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 73,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 207.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 158.7,
+        "agent_s": 43.1,
+        "gate_s": 0.0,
+        "tools_s": 115.6,
+        "lines_changed": 129
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 143,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 230.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 237.3,
+        "agent_s": 115.6,
+        "gate_s": 0.0,
+        "tools_s": 121.7,
+        "lines_changed": 321
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 50,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 200.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 243.2,
+        "agent_s": 123.5,
+        "gate_s": 0.0,
+        "tools_s": 119.7,
+        "lines_changed": 167
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 17,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 189.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 143.7,
+        "agent_s": 21.8,
+        "gate_s": 0.0,
+        "tools_s": 121.9,
+        "lines_changed": 27
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 32,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 194.6,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 138.5,
+        "agent_s": 19.3,
+        "gate_s": 0.0,
+        "tools_s": 119.2,
+        "lines_changed": 11
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 166,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 237.9,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 210.7,
+        "agent_s": 85.3,
+        "gate_s": 0.0,
+        "tools_s": 125.5,
+        "lines_changed": 410
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 116,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 221.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 170.7,
+        "agent_s": 46.6,
+        "gate_s": 0.0,
+        "tools_s": 124.1,
+        "lines_changed": 247
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 162,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 236.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 231.8,
+        "agent_s": 109.9,
+        "gate_s": 0.0,
+        "tools_s": 121.9,
+        "lines_changed": 336
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 85,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 211.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 174.6,
+        "agent_s": 53.7,
+        "gate_s": 0.0,
+        "tools_s": 120.9,
+        "lines_changed": 196
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 132,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 227.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 190.5,
+        "agent_s": 65.4,
+        "gate_s": 0.0,
+        "tools_s": 125.1,
+        "lines_changed": 281
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 122,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 223.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 174.4,
+        "agent_s": 48.7,
+        "gate_s": 0.0,
+        "tools_s": 125.6,
+        "lines_changed": 248
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 224,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 256.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 2,
+        "actual_s": 385.2,
+        "agent_s": 258.4,
+        "gate_s": 0.0,
+        "tools_s": 126.8,
+        "lines_changed": 503
+      },
+      {
+        "id": "U-0026",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 55,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 202.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 158.9,
+        "agent_s": 35.1,
+        "gate_s": 0.0,
+        "tools_s": 123.8,
+        "lines_changed": 108
+      },
+      {
+        "id": "U-0027",
+        "rules": [
+          "port_java_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 93,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 214.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 238.2,
+        "agent_s": 110.6,
+        "gate_s": 0.0,
+        "tools_s": 127.5,
+        "lines_changed": 185
+      },
+      {
+        "id": "U-0028",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 239.1,
+        "agent_s": 123.7,
+        "gate_s": 0.0,
+        "tools_s": 115.3,
+        "lines_changed": 101
+      },
+      {
+        "id": "U-0029",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 147.7,
+        "agent_s": 26.0,
+        "gate_s": 0.0,
+        "tools_s": 121.7,
+        "lines_changed": 30
+      },
+      {
+        "id": "U-0030",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 187.2,
+        "agent_s": 65.3,
+        "gate_s": 0.0,
+        "tools_s": 121.9,
+        "lines_changed": 59
+      },
+      {
+        "id": "U-0031",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 146.0,
+        "agent_s": 28.5,
+        "gate_s": 0.0,
+        "tools_s": 117.5,
+        "lines_changed": 54
+      },
+      {
+        "id": "U-0032",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 149.0,
+        "agent_s": 27.1,
+        "gate_s": 0.0,
+        "tools_s": 121.9,
+        "lines_changed": 36
+      },
+      {
+        "id": "U-0033",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 144.6,
+        "agent_s": 23.7,
+        "gate_s": 0.0,
+        "tools_s": 120.9,
+        "lines_changed": 33
+      },
+      {
+        "id": "U-0034",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 154.9,
+        "agent_s": 37.7,
+        "gate_s": 0.0,
+        "tools_s": 117.2,
+        "lines_changed": 28
+      },
+      {
+        "id": "U-0035",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 154.2,
+        "agent_s": 28.5,
+        "gate_s": 0.0,
+        "tools_s": 125.7,
+        "lines_changed": 39
+      },
+      {
+        "id": "U-0036",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 147.2,
+        "agent_s": 25.2,
+        "gate_s": 0.0,
+        "tools_s": 122.0,
+        "lines_changed": 50
+      },
+      {
+        "id": "U-0037",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 152.4,
+        "agent_s": 27.3,
+        "gate_s": 0.0,
+        "tools_s": 125.0,
+        "lines_changed": 44
+      },
+      {
+        "id": "U-0038",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 147.6,
+        "agent_s": 22.7,
+        "gate_s": 0.0,
+        "tools_s": 124.9,
+        "lines_changed": 33
+      },
+      {
+        "id": "U-0039",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 168.0,
+        "agent_s": 51.9,
+        "gate_s": 0.0,
+        "tools_s": 116.2,
+        "lines_changed": 101
+      },
+      {
+        "id": "U-0040",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 153.7,
+        "agent_s": 28.7,
+        "gate_s": 0.0,
+        "tools_s": 125.0,
+        "lines_changed": 53
+      },
+      {
+        "id": "U-0041",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 178.8,
+        "agent_s": 52.3,
+        "gate_s": 0.0,
+        "tools_s": 126.5,
+        "lines_changed": 128
+      },
+      {
+        "id": "U-0042",
+        "rules": [
+          "port_java_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 152.0,
+        "agent_s": 22.6,
+        "gate_s": 0.0,
+        "tools_s": 129.4,
+        "lines_changed": 31
+      },
+      {
+        "id": "U-0043",
+        "rules": [
+          "retire_java_to_rust"
+        ],
+        "files": 44,
+        "lines": 3794,
+        "sites": 43,
+        "expected_attempts": 0.9,
+        "estimated_s": 172.4,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 25.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 25.0,
+        "lines_changed": 7928
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 280,
+    "duration_ms": 8769828,
+    "total_cost_usd_equivalent": 28.91528290000001,
+    "usage": {
+      "input_tokens": 452,
+      "cache_creation_input_tokens": 616541,
+      "cache_read_input_tokens": 85157695,
+      "output_tokens": 347473,
+      "output_tokens_details": {
+        "thinking_tokens": 148621
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 616541,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 2064,
+          "cache_read_input_tokens": 635377,
+          "cache_creation_input_tokens": 298,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 298
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The run finished with status **completed: every unit committed**. All 43 units are on branch `codecoremorph/20261118-231144-d2f6` (last commit `3e273b22fa40`), and the run took 144.6 minutes. The final check, a clean build of the last commit plus all 27 Rust tests, **passed**. The baseline had 24 Java tests passing with none failing, flaky or skipped, so no test was excused. No units were skipped, excluded, failed or given up.\n\n**The result.** The Java and Maven build are gone. What remains is a Cargo workspace under `rust/` with the library crate `java_string_similarity_rs` and CodeCoreMorph's `codecoremorph_java` support crate. It has no unsafe code. Strings are handled in UTF-16 units like Java's `char`, and the algorithms keep Java's arithmetic, including NGram's and JaroWinkler's `float` math and Java's `Math.min`.\n\n| Units | What | Attempts | Commits |\n|---|---|---|---|\n| U-0001, U-0002 | The two cost interfaces as traits, with proxies so Java test doubles could call into Rust | 2, 1 | `1cc9b11`, `bc4527d` |\n| U-0003 to U-0024 (minus U-0016, U-0017, U-0018) | `ShingleBased`, all 17 algorithm types and the distance interfaces (marker interfaces as marker traits) | 1 each, except U-0005 and U-0007: 2 | `04532aa` \u2026 `b5d69b6` |\n| U-0016, U-0025 to U-0027 | The four example `main` programs, printing doubles in Java's format | 1 each | `807561a`, `cced7d7`, `c4db7e4`, `a27354a` |\n| U-0017, U-0018 | `StringSimilarity` and `NormalizedStringSimilarity` | 1 each | `b944d39`, `5af0192` |\n| U-0028 to U-0042 | 15 JUnit files translated into 24 Rust tests, all listed in `rust/test-map.toml` | 1 each | `b068d48` \u2026 `535b6f6` |\n| U-0043 | Retirement: Java, POMs and bridge deleted (84 files) | 0 (CodeCoreMorph did it alone) | `3e273b2` |\n\nType units changed 4 to 10 files each (U-0001 changed 23, because it also created the workspace), and test units changed 2 files each.\n\n**The retried attempts came from CodeCoreMorph bugs, not port logic.** Its generated JNI glue can't compile 16-bit or `double` parameters, or a `double` result. I worked around this by passing characters as `i32` and doubles as their exact bit patterns. That code lived only in the bridge, which the retirement deleted. U-0007's retry was a symbol-map rule: a derived `Default` doesn't count as a mapping target. I saved these pitfalls to memory for future runs.\n\n**What the verification didn't cover:**\n- **One warning (U-0038, `QGramTest`):** the checker counts the Java test's null check as a 7th assertion, and the Rust test has 6. Rust strings can't be null, so that check has no counterpart, and I didn't pad the test with a meaningless assert.\n- **Null handling in general:** the Java tests' null-string checks have no Rust equivalent, and the test map notes this for each case.\n- **The example programs:** no test covers their output. Doubles print in the format JDK 19+ uses (older JDKs sometimes print more digits). Printed profiles follow Java's `HashMap` order by emulating it, which ignores an edge case these inputs can't reach. The examples are now library functions such as `examples::main`, not executables.\n- **Characterization tests:** these didn't run, because CodeCoreMorph's Java adapter can't add them.\n\nOne cosmetic issue: the report's first note for U-0001 mentions \"(short, double[])\" from the failed attempt; the committed code uses `int`.\n\nTo review, run `git diff 1372d0b codecoremorph/20261118-231144-d2f6` or `git log` on the branch. Nothing was merged or pushed, and your working tree is unchanged."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 280,
+      "duration_ms": 8769828,
+      "total_cost_usd_equivalent": 28.91528290000001,
+      "usage": {
+        "input_tokens": 452,
+        "cache_creation_input_tokens": 616541,
+        "cache_read_input_tokens": 85157695,
+        "output_tokens": 347473,
+        "output_tokens_details": {
+          "thinking_tokens": 148621
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 616541,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2064,
+            "cache_read_input_tokens": 635377,
+            "cache_creation_input_tokens": 298,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 298
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The run finished with status **completed: every unit committed**. All 43 units are on branch `codecoremorph/20261118-231144-d2f6` (last commit `3e273b22fa40`), and the run took 144.6 minutes. The final check, a clean build of the last commit plus all 27 Rust tests, **passed**. The baseline had 24 Java tests passing with none failing, flaky or skipped, so no test was excused. No units were skipped, excluded, failed or given up.\n\n**The result.** The Java and Maven build are gone. What remains is a Cargo workspace under `rust/` with the library crate `java_string_similarity_rs` and CodeCoreMorph's `codecoremorph_java` support crate. It has no unsafe code. Strings are handled in UTF-16 units like Java's `char`, and the algorithms keep Java's arithmetic, including NGram's and JaroWinkler's `float` math and Java's `Math.min`.\n\n| Units | What | Attempts | Commits |\n|---|---|---|---|\n| U-0001, U-0002 | The two cost interfaces as traits, with proxies so Java test doubles could call into Rust | 2, 1 | `1cc9b11`, `bc4527d` |\n| U-0003 to U-0024 (minus U-0016, U-0017, U-0018) | `ShingleBased`, all 17 algorithm types and the distance interfaces (marker interfaces as marker traits) | 1 each, except U-0005 and U-0007: 2 | `04532aa` \u2026 `b5d69b6` |\n| U-0016, U-0025 to U-0027 | The four example `main` programs, printing doubles in Java's format | 1 each | `807561a`, `cced7d7`, `c4db7e4`, `a27354a` |\n| U-0017, U-0018 | `StringSimilarity` and `NormalizedStringSimilarity` | 1 each | `b944d39`, `5af0192` |\n| U-0028 to U-0042 | 15 JUnit files translated into 24 Rust tests, all listed in `rust/test-map.toml` | 1 each | `b068d48` \u2026 `535b6f6` |\n| U-0043 | Retirement: Java, POMs and bridge deleted (84 files) | 0 (CodeCoreMorph did it alone) | `3e273b2` |\n\nType units changed 4 to 10 files each (U-0001 changed 23, because it also created the workspace), and test units changed 2 files each.\n\n**The retried attempts came from CodeCoreMorph bugs, not port logic.** Its generated JNI glue can't compile 16-bit or `double` parameters, or a `double` result. I worked around this by passing characters as `i32` and doubles as their exact bit patterns. That code lived only in the bridge, which the retirement deleted. U-0007's retry was a symbol-map rule: a derived `Default` doesn't count as a mapping target. I saved these pitfalls to memory for future runs.\n\n**What the verification didn't cover:**\n- **One warning (U-0038, `QGramTest`):** the checker counts the Java test's null check as a 7th assertion, and the Rust test has 6. Rust strings can't be null, so that check has no counterpart, and I didn't pad the test with a meaningless assert.\n- **Null handling in general:** the Java tests' null-string checks have no Rust equivalent, and the test map notes this for each case.\n- **The example programs:** no test covers their output. Doubles print in the format JDK 19+ uses (older JDKs sometimes print more digits). Printed profiles follow Java's `HashMap` order by emulating it, which ignores an edge case these inputs can't reach. The examples are now library functions such as `examples::main`, not executables.\n- **Characterization tests:** these didn't run, because CodeCoreMorph's Java adapter can't add them.\n\nOne cosmetic issue: the report's first note for U-0001 mentions \"(short, double[])\" from the failed attempt; the committed code uses `int`.\n\nTo review, run `git diff 1372d0b codecoremorph/20261118-231144-d2f6` or `git log` on the branch. Nothing was merged or pushed, and your working tree is unchanged."
+    }
+  ]
+}

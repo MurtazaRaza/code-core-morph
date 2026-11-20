@@ -184,7 +184,7 @@ class TestEntry(CoreModel):
 
 
 class PortRefusal(StrEnum):
-    """What the first version of a port from C# refuses in a type (D-78)."""
+    """What the first version of a port from C# (D-78) or Java (D-92) refuses in a type."""
 
     ASYNC = "async"
     DYNAMIC = "dynamic"
@@ -193,6 +193,12 @@ class PortRefusal(StrEnum):
     SERIALIZATION = "serialization"
     UNSAFE = "unsafe"
     EXPRESSION_TREE = "expression_tree"
+    # Java (D-92): java.math's BigDecimal and BigInteger, which need a runtime type; executors,
+    # futures and locks (java.util.concurrent beyond its containers) and new threads; and the
+    # source's own native methods.
+    BIG_NUMBERS = "big_numbers"
+    CONCURRENCY = "concurrency"
+    JNI = "jni"
 
 
 class RefusalSite(CoreModel):
@@ -413,19 +419,25 @@ class TypeEntry(CoreModel):
 
 
 class TestMethod(CoreModel):
-    """A test method of a C# test project and the IDs of its cases (D-78). A case's ID is the
-    one the TRX report gives; ``exact`` is false when the source can't tell them all (a data
-    source, a combinatorial attribute, an argument the framework formats its own way): the
-    baseline's report has them."""
+    """A test method of a C# test project (D-78) or a Java module's tests (D-92) and the IDs of
+    its cases. A case's ID is the one the TRX or Surefire report gives; ``exact`` is false when
+    the source can't tell them all (a data source, a combinatorial attribute, an argument the
+    framework formats its own way, a parameterized JUnit test): the baseline's report has
+    them."""
 
     __test__: ClassVar[bool] = False  # not a pytest test class
 
     file: WorktreePath
-    class_name: str = Field(min_length=1, description='As the TRX spells it: "Ns.Outer+Inner"')
+    class_name: str = Field(
+        min_length=1,
+        description='As the report spells it: "Ns.Outer+Inner" (TRX), "pkg.Outer$Inner" (Surefire)',
+    )
     method: str = Field(min_length=1)
-    framework: str = Field(pattern=r"^(nunit|xunit|mstest)$")
+    framework: str = Field(pattern=r"^(nunit|xunit|mstest|junit3|junit4|junit5)$")
     project: WorktreePath | None = None
-    cases: list[str] = Field(default_factory=list[str], description='"dotnet:Ns.C#M(1,\\"x\\")"')
+    cases: list[str] = Field(
+        default_factory=list[str], description='"dotnet:Ns.C#M(1,\\"x\\")", "junit:pkg.C#m"'
+    )
     exact: bool = True
 
 

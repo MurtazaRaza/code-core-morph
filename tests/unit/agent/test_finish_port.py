@@ -241,3 +241,25 @@ def test_the_retirement_leaves_the_target_alone(world: World, git: GitRunner) ->
     assert "build" not in source.calls
     assert "test" not in source.calls
     assert target.calls == ["configure", "build", "tests"]
+
+
+def test_a_data_driven_methods_cases_are_mapped_from_the_baseline(world: World) -> None:
+    """A test file whose method takes its cases from data (JUnit's Parameterized runner) has no
+    cases the index can list: its unit's map must have each case of the method the baseline ran
+    (D-92). Without that, the unit had nothing to map and committed with nothing translated."""
+    passing = "// test nextest:geo_rs::geo_test::area PASS"
+    mapped = {"op": "replace", "path": "rust/test-map.toml", "search": MAP_HEADER,
+              "replace": MAP_HEADER + ENTRY}  # fmt: skip
+    runner, _ = _runner(
+        world, [reply(submit("s1", _test_file(passing))), reply(submit("s2", mapped))]
+    )
+    unit = _tests_unit().model_copy(
+        update={
+            "port": PortUnit(build_target="geo", crate="geo_rs", module="geo_test",
+                             data_driven=["gtest:Geo.Area"]),
+        }
+    )  # fmt: skip
+    outcome = runner.run(unit, [TESTS])
+    assert outcome.succeeded, outcome.reason
+    feedback = runner.artifacts.attempt("U-0001", 1).feedback_md.read_text(encoding="utf-8")
+    assert "gtest:Geo.Area has no entry" in feedback

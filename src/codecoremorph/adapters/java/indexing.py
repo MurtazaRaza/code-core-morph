@@ -1,5 +1,8 @@
 """Host side of Java indexing (SPEC §7.2, §11.2, D-63): the Spoon helper runs in the sandbox on
 the files Maven compiles, and its JSON lines become the SQLite index. The POMs are build files.
+In a port from Java (``port_target`` set, D-92) the helper also records what the port needs
+(:mod:`codecoremorph.adapters.java.ports`), and the index has the modules' build targets and
+the JUnit test methods.
 
 The helper is compiled from its source into the adapter's cache with the toolchain's newest
 ``javac``, once per helper version.
@@ -18,8 +21,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from codecoremorph.adapters.base import AdapterContext
+from codecoremorph.adapters.java import ports
 from codecoremorph.adapters.java.maven import JavaToolchain
-from codecoremorph.adapters.java.pom import POM, source_roots, standard_number
+from codecoremorph.adapters.java.pom import POM, artifact_id, source_roots, standard_number
+from codecoremorph.adapters.java.surefire import test_id
+from codecoremorph.adapters.portindex import port_records
 from codecoremorph.core.errors import SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import FileRole, IndexMeta, LineEnding, SymbolIndex
@@ -170,6 +176,7 @@ def run_index(ctx: AdapterContext, tools: JavaToolchain, *, adapter_version: str
     exclude = PathMatcher(ctx.lang.exclude)
     tests = PathMatcher(ctx.lang.test_dirs)
     public_api = PathMatcher(ctx.lang.public_api)
+    port = ctx.lang.port_target is not None
     poms, compiled, uncompiled = project_layout(ctx.worktree, exclude)
     work = ctx.cache_dir / "index-run"
     work.mkdir(parents=True, exist_ok=True)
@@ -184,6 +191,7 @@ def run_index(ctx: AdapterContext, tools: JavaToolchain, *, adapter_version: str
             f"root={ctx.sandbox(ctx.worktree)}",
             f"output={ctx.sandbox(output)}",
             f"compliance={standard_number(ctx.lang.standard)}",
+            *(["port=1"] if port else []),
             *[f"source={ctx.sandbox(ctx.worktree / f)}" for f in compiled],
         ]
         request.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -228,7 +236,10 @@ def run_index(ctx: AdapterContext, tools: JavaToolchain, *, adapter_version: str
             problems.append(str(row.get("message")))
         elif kind == "sym" and row["file"] in known:
             boundary = str(row["b"])
-            if boundary == "none" and row["vis"] in _PUBLIC and public_api.matches(row["file"]):
+            # A port's façades keep the library's API: its public and protected members are on
+            # the API boundary, so I-6 compares their signatures (as D-81 for C#).
+            exposed = public_api.matches(row["file"]) or (port and not tests.matches(row["file"]))
+            if boundary == "none" and row["vis"] in _PUBLIC and exposed:
                 boundary = "public_api"
             symbols.append(
                 (
@@ -275,6 +286,26 @@ def run_index(ctx: AdapterContext, tools: JavaToolchain, *, adapter_version: str
     path = ctx.cache_dir / INDEX_FILE_NAME
     with IndexStore.open(path, reset=True) as store:
         store.write(files=files, symbols=symbols, references=references, dependencies=dependencies)
+        if port:
+            records = port_records(rows, known, test_id)
+            test_files = [f for f in compiled if tests.matches(f)]
+            methods = ports.junit_methods(ctx.worktree, test_files)
+            store.set_port_source(
+                types=ports.with_modules(records.types, poms),
+                generic_uses=records.uses,
+                test_methods=methods,
+                packages=[],
+            )
+            store.set_test_entries(ports.junit_entries(methods))
+            sources = [f for f in compiled if not tests.matches(f)]
+            artifacts = {
+                pom: name
+                for pom in poms
+                if (name := artifact_id(_text(ctx.worktree / pom) or "")) is not None
+            }
+            store.set_build_targets(ports.build_targets(poms, sources, test_files, artifacts))
+            meta.stats["types"] = len(records.types)
+            meta.stats["test_methods"] = len(methods)
         store.set_meta(meta)
     if problems:
         log.warning("the Java index helper reported %d problem(s): %s", len(problems), problems[0])

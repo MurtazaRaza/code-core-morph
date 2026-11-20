@@ -1,0 +1,21 @@
+id: retire_java_to_cpp
+language: java
+target_language: cpp
+kind: port
+port_units: retirement            # one unit, last, after every other port unit (D-92)
+description: >-
+  Retire the Java once the types and tests are C++: delete the Java sources, the POMs, the
+  façades' support, the generated declarations and the bridge with its JNI glue, so the CMake
+  build builds and tests the C++ alone. With migration.target.keep_source_api the Java API
+  stays as a Java library over the native one, and nothing is retired.
+detector:
+  type: files                     # each Java file, until it is deleted
+codemods:
+  - tool: cpp-java-retire         # deletes the Java and its build, and the bridge
+extra_scope: ['cpp/**', 'CMakeLists.txt', '**/codecoremorph/interop/*.java']
+llm:
+  guidance: guidance/retire_java_to_cpp.md
+postconditions:
+  - {type: detector_empty, severity: error}     # no Java file left
+  - {type: test_map, severity: error}           # every baseline test mapped
+  - {type: lint_clean, severity: error}         # all of the C++: no warning, checks quiet

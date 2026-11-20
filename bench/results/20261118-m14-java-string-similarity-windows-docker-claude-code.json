@@ -1,0 +1,1512 @@
+{
+  "date": "2026-11-18T23:04:01+00:00",
+  "project": "java-string-similarity v2.0.0 (1372d0b4549f)",
+  "migration": "java8 -> cpp17",
+  "agent": "claude-code/claude-opus-5-5",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "1372d0b4549f79b9a3d80f5c678cf8e3a787a856",
+  "seconds": 9133.5,
+  "runs_started": 1,
+  "run_id": "20261118-203102-0767",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 43
+    },
+    "success_rate": 1.0,
+    "agent_units": 42,
+    "attempts_per_agent_unit": 1.05,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "704097d75cba70f879804bb857e768795c8c0215",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 39,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 10.5
+    },
+    "port": {
+      "symbols": 56,
+      "tests_mapped": 24,
+      "tests_without_counterpart": [],
+      "deviations": [
+        "java:info.debatty.java.stringsimilarity.ShingleBased#<init>(int): protected in C++: the class is abstract in Java, so only a subclass constructs one",
+        "java:info.debatty.java.stringsimilarity.ShingleBased#getProfile(java.lang.String): returns a Profile: the HashMap<String, Integer> as counts by shingle, the shingles in the order the Java's HashMap was filled in, which the Java facade fills its HashMap in so it iterates as the Java's did",
+        "java:info.debatty.java.stringsimilarity.LongestCommonSubsequence#length(java.lang.String,java.lang.String): counts UTF-16 units, as Java's String did",
+        "java:info.debatty.java.stringsimilarity.QGram#distance(java.util.Map,java.util.Map): the overload over two Profiles; a null count in a Java map is 0, as the Java took it",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#<init>(info.debatty.java.stringsimilarity.CharacterSubstitutionInterface,info.debatty.java.stringsimilarity.CharacterInsDelInterface): the strategies are shared_ptrs, empty for Java's null",
+        "java:info.debatty.java.stringsimilarity.WeightedLevenshtein#distance(java.lang.String,java.lang.String,double): the overload with a limit",
+        "java:info.debatty.java.stringsimilarity.experimental.Sift4#distance(java.lang.String,java.lang.String): the Java took a null string as an empty one (the same distance in every case): the bridge passes an empty string for null",
+        "java:info.debatty.java.stringsimilarity.Levenshtein#distance(java.lang.String,java.lang.String,int): the overload with a limit",
+        "java:info.debatty.java.stringsimilarity.NGram#distance(java.lang.String,java.lang.String): computes in float, as the Java did",
+        "java:info.debatty.java.stringsimilarity.examples.MetricLCS#main(java.lang.String[]): prints to std::cout with Double.toString's format (cpp/src/java_format.hpp)",
+        "java:info.debatty.java.stringsimilarity.Cosine#similarity(java.util.Map,java.util.Map): the overload over two Profiles",
+        "java:info.debatty.java.stringsimilarity.JaroWinkler#similarity(java.lang.String,java.lang.String): the Jaro similarity is computed in float, as the Java did, and the Winkler bonus in double",
+        "java:info.debatty.java.stringsimilarity.examples.Examples#main(java.lang.String[]): prints to std::cout with Double.toString's format and HashMap.toString's order (cpp/src/java_format.hpp)",
+        "java:info.debatty.java.stringsimilarity.examples.Examples$1#cost(char,char): the anonymous CharacterSubstitutionInterface of main, a named nested class in C++",
+        "java:info.debatty.java.stringsimilarity.examples.PrecomputedCosine#main(java.lang.String[]): prints to std::cout with Double.toString's format (cpp/src/java_format.hpp)",
+        "java:info.debatty.java.stringsimilarity.examples.nischay21#main(java.lang.String[]): prints to std::cout with Double.toString's format (cpp/src/java_format.hpp); each measure's getSimpleName() is written out beside it, and toLowerCase() lowers the example's ASCII strings",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testLargeString: reads the resources from src/test/resources, found from the test file's path, as the Java's readResourceFile joined their lines",
+        "junit:info.debatty.java.stringsimilarity.CosineTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.DamerauTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.JaccardTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.JaccardTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.JaroWinklerTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.JaroWinklerTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.LevenshteinTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.LongestCommonSubsequenceTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.MetricLCSTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.NGramTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.NormalizedLevenshteinTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.NormalizedLevenshteinTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.OptimalStringAlignmentTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.QGramTest#testDistance: NullEmptyTests.assertNullPointerExceptions (distance(null, ...) throwing NullPointerException) has no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of it stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.RatcliffObershelpTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.RatcliffObershelpTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.SorensenDiceTest#testDistance: NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.SorensenDiceTest#testSimilarity: NullEmptyTests' null cases (similarity(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.WeightedLevenshteinTest#testDistance: the anonymous CharacterSubstitutionInterface is a C++ class of the test file; NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test",
+        "junit:info.debatty.java.stringsimilarity.WeightedLevenshteinTest#testDistanceCharacterInsDelInterface: the anonymous CharacterSubstitutionInterface and CharacterInsDelInterface are C++ classes of the test file; NullEmptyTests' null cases (distance(null, ...) throwing NullPointerException) have no C++ counterpart: the C++ takes std::string; the fa\u00e7ade's check of them stays in the Java test"
+      ],
+      "unsafe": [],
+      "shared_cells": [],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_java_type_to_cpp",
+        "units": 27,
+        "committed": 27,
+        "planned_sites": 27,
+        "converted_sites": 27
+      },
+      {
+        "id": "port_java_tests_to_cpp",
+        "units": 15,
+        "committed": 15,
+        "planned_sites": 24,
+        "converted_sites": 24
+      },
+      {
+        "id": "retire_java_to_cpp",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 43,
+        "converted_sites": 43
+      }
+    ],
+    "review_items": 42,
+    "duration_s": 9150.7,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 378.3,
+        "changed_files": 19,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 172.4,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 462.3,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 168.5,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 2,
+        "agent_skipped": false,
+        "duration_s": 316.0,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 178.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 328.7,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 266.3,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 257.8,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 160.4,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 208.5,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 210.9,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 164.9,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 192.1,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 268.3,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 278.3,
+        "changed_files": 11,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 154.9,
+        "changed_files": 7,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 150.5,
+        "changed_files": 6,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 216.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 177.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 197.3,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 154.4,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0023",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 156.4,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0024",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 153.1,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0025",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 268.8,
+        "changed_files": 10,
+        "reason": null
+      },
+      {
+        "id": "U-0026",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 138.0,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0027",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 470.5,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0028",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 235.7,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0029",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 124.3,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0030",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 122.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0031",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 124.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0032",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 124.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0033",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 127.5,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0034",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 132.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0035",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 126.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0036",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 124.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0037",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 128.4,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0038",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 125.0,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0039",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 150.1,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0040",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 124.6,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0041",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 153.2,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0042",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 138.9,
+        "changed_files": 3,
+        "reason": null
+      },
+      {
+        "id": "U-0043",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 95.8,
+        "changed_files": 110,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\java-string-similarity\\.codecoremorph\\runs\\20261118-203102-0767\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 43,
+      "project_lines": 3794,
+      "units": 43,
+      "rule_sites": {
+        "port_java_type_to_cpp": 27,
+        "port_java_tests_to_cpp": 24,
+        "retire_java_to_cpp": 43
+      },
+      "sites": 94,
+      "files": 44,
+      "lines": 3794,
+      "expected_agent_attempts": 38.7,
+      "verify_s": 44.7,
+      "estimated_s": 8813.9,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 43
+      },
+      "agent_units": 42,
+      "agent_attempts": 44,
+      "changed_files": 123,
+      "lines_added": 4100,
+      "lines_deleted": 3997
+    },
+    "time": {
+      "run_s": 9150.7,
+      "phases_s": {
+        "baselining": 316.6,
+        "indexing": 9.8,
+        "planning": 0.1,
+        "awaiting_plan_approval": 25.0,
+        "migrating": 8788.7,
+        "verifying": 10.5
+      },
+      "migrating_s": 8788.7,
+      "agent_s": 2909.7,
+      "unit_gates_s": 0.0,
+      "tools_s": 5879.0,
+      "unit_s": {
+        "mean": 204.2,
+        "median": 169.6,
+        "max": 478.0
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 1.0,
+      "agent_attempts_over_expected": 1.14,
+      "agent_s_per_attempt": 66.1,
+      "migrating_s_per_unit": 204.4,
+      "migrating_s_per_site": 93.5,
+      "migrating_s_per_changed_line": 1.09,
+      "run_min_per_1k_project_lines": 40.2
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 23,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 196.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 395.1,
+        "agent_s": 245.7,
+        "gate_s": 0.0,
+        "tools_s": 149.3,
+        "lines_changed": 1397
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 203.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 198.2,
+        "agent_s": 42.4,
+        "gate_s": 0.0,
+        "tools_s": 155.8,
+        "lines_changed": 232
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 120,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 227.5,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 473.9,
+        "agent_s": 278.4,
+        "gate_s": 0.0,
+        "tools_s": 195.5,
+        "lines_changed": 604
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 42,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 202.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 178.3,
+        "agent_s": 36.2,
+        "gate_s": 0.0,
+        "tools_s": 142.0,
+        "lines_changed": 63
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 110,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 224.3,
+        "status": "committed",
+        "attempts": 2,
+        "agent_waits": 2,
+        "actual_s": 327.1,
+        "agent_s": 104.3,
+        "gate_s": 0.0,
+        "tools_s": 222.8,
+        "lines_changed": 289
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 122,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 228.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 188.9,
+        "agent_s": 43.2,
+        "gate_s": 0.0,
+        "tools_s": 145.7,
+        "lines_changed": 250
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 113,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 225.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 338.9,
+        "agent_s": 168.9,
+        "gate_s": 0.0,
+        "tools_s": 170.0,
+        "lines_changed": 411
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 177,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 246.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 276.9,
+        "agent_s": 110.4,
+        "gate_s": 0.0,
+        "tools_s": 166.5,
+        "lines_changed": 510
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 190,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 250.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 268.7,
+        "agent_s": 106.5,
+        "gate_s": 0.0,
+        "tools_s": 162.2,
+        "lines_changed": 467
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 45,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 203.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 169.6,
+        "agent_s": 21.2,
+        "gate_s": 0.0,
+        "tools_s": 148.4,
+        "lines_changed": 61
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 135,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 232.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 219.8,
+        "agent_s": 51.1,
+        "gate_s": 0.0,
+        "tools_s": 168.7,
+        "lines_changed": 279
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 126,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 229.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 226.3,
+        "agent_s": 45.4,
+        "gate_s": 0.0,
+        "tools_s": 180.9,
+        "lines_changed": 314
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 33,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 199.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 175.3,
+        "agent_s": 17.5,
+        "gate_s": 0.0,
+        "tools_s": 157.7,
+        "lines_changed": 47
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 73,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 212.3,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 202.4,
+        "agent_s": 33.4,
+        "gate_s": 0.0,
+        "tools_s": 169.0,
+        "lines_changed": 150
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 143,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 235.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 276.8,
+        "agent_s": 110.0,
+        "gate_s": 0.0,
+        "tools_s": 166.8,
+        "lines_changed": 441
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 50,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 204.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 289.8,
+        "agent_s": 131.4,
+        "gate_s": 0.0,
+        "tools_s": 158.4,
+        "lines_changed": 231
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 17,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 194.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 164.8,
+        "agent_s": 22.8,
+        "gate_s": 0.0,
+        "tools_s": 142.0,
+        "lines_changed": 65
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 32,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 199.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 158.5,
+        "agent_s": 12.2,
+        "gate_s": 0.0,
+        "tools_s": 146.3,
+        "lines_changed": 45
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 166,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 242.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 224.7,
+        "agent_s": 83.1,
+        "gate_s": 0.0,
+        "tools_s": 141.6,
+        "lines_changed": 465
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 116,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 226.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 186.5,
+        "agent_s": 48.7,
+        "gate_s": 0.0,
+        "tools_s": 137.9,
+        "lines_changed": 311
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 162,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 241.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 203.4,
+        "agent_s": 85.2,
+        "gate_s": 0.0,
+        "tools_s": 118.3,
+        "lines_changed": 503
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 85,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 216.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 161.4,
+        "agent_s": 31.9,
+        "gate_s": 0.0,
+        "tools_s": 129.5,
+        "lines_changed": 208
+      },
+      {
+        "id": "U-0023",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 132,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 231.4,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 162.1,
+        "agent_s": 47.9,
+        "gate_s": 0.0,
+        "tools_s": 114.2,
+        "lines_changed": 296
+      },
+      {
+        "id": "U-0024",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 122,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 228.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 160.1,
+        "agent_s": 41.9,
+        "gate_s": 0.0,
+        "tools_s": 118.3,
+        "lines_changed": 314
+      },
+      {
+        "id": "U-0025",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 224,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 261.2,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 276.3,
+        "agent_s": 156.5,
+        "gate_s": 0.0,
+        "tools_s": 119.8,
+        "lines_changed": 534
+      },
+      {
+        "id": "U-0026",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 55,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 206.5,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 144.0,
+        "agent_s": 27.3,
+        "gate_s": 0.0,
+        "tools_s": 116.7,
+        "lines_changed": 130
+      },
+      {
+        "id": "U-0027",
+        "rules": [
+          "port_java_type_to_cpp"
+        ],
+        "files": 2,
+        "lines": 93,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 218.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 478.0,
+        "agent_s": 360.8,
+        "gate_s": 0.0,
+        "tools_s": 117.2,
+        "lines_changed": 219
+      },
+      {
+        "id": "U-0028",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 242.3,
+        "agent_s": 123.5,
+        "gate_s": 0.0,
+        "tools_s": 118.8,
+        "lines_changed": 154
+      },
+      {
+        "id": "U-0029",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 130.9,
+        "agent_s": 21.4,
+        "gate_s": 0.0,
+        "tools_s": 109.5,
+        "lines_changed": 27
+      },
+      {
+        "id": "U-0030",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 128.9,
+        "agent_s": 20.6,
+        "gate_s": 0.0,
+        "tools_s": 108.4,
+        "lines_changed": 50
+      },
+      {
+        "id": "U-0031",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.0,
+        "agent_s": 20.6,
+        "gate_s": 0.0,
+        "tools_s": 110.4,
+        "lines_changed": 44
+      },
+      {
+        "id": "U-0032",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.0,
+        "agent_s": 16.4,
+        "gate_s": 0.0,
+        "tools_s": 114.6,
+        "lines_changed": 32
+      },
+      {
+        "id": "U-0033",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 134.5,
+        "agent_s": 15.9,
+        "gate_s": 0.0,
+        "tools_s": 118.6,
+        "lines_changed": 28
+      },
+      {
+        "id": "U-0034",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 138.7,
+        "agent_s": 22.4,
+        "gate_s": 0.0,
+        "tools_s": 116.3,
+        "lines_changed": 25
+      },
+      {
+        "id": "U-0035",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 132.5,
+        "agent_s": 16.5,
+        "gate_s": 0.0,
+        "tools_s": 116.1,
+        "lines_changed": 33
+      },
+      {
+        "id": "U-0036",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.2,
+        "agent_s": 17.6,
+        "gate_s": 0.0,
+        "tools_s": 113.6,
+        "lines_changed": 42
+      },
+      {
+        "id": "U-0037",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 135.9,
+        "agent_s": 17.9,
+        "gate_s": 0.0,
+        "tools_s": 118.0,
+        "lines_changed": 39
+      },
+      {
+        "id": "U-0038",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 131.0,
+        "agent_s": 16.7,
+        "gate_s": 0.0,
+        "tools_s": 114.3,
+        "lines_changed": 36
+      },
+      {
+        "id": "U-0039",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 155.9,
+        "agent_s": 45.6,
+        "gate_s": 0.0,
+        "tools_s": 110.4,
+        "lines_changed": 89
+      },
+      {
+        "id": "U-0040",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 130.8,
+        "agent_s": 18.4,
+        "gate_s": 0.0,
+        "tools_s": 112.4,
+        "lines_changed": 45
+      },
+      {
+        "id": "U-0041",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 2,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 159.2,
+        "agent_s": 42.1,
+        "gate_s": 0.0,
+        "tools_s": 117.1,
+        "lines_changed": 140
+      },
+      {
+        "id": "U-0042",
+        "rules": [
+          "port_java_tests_to_cpp"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 145.7,
+        "agent_s": 29.8,
+        "gate_s": 0.0,
+        "tools_s": 115.9,
+        "lines_changed": 30
+      },
+      {
+        "id": "U-0043",
+        "rules": [
+          "retire_java_to_cpp"
+        ],
+        "files": 44,
+        "lines": 3794,
+        "sites": 43,
+        "expected_attempts": 0.9,
+        "estimated_s": 176.8,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 96.0,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 96.0,
+        "lines_changed": 7045
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 85,
+    "duration_ms": 2594948,
+    "total_cost_usd_equivalent": 4.746946100000001,
+    "usage": {
+      "input_tokens": 134,
+      "cache_creation_input_tokens": 209376,
+      "cache_read_input_tokens": 8488009,
+      "output_tokens": 68682,
+      "output_tokens_details": {
+        "thinking_tokens": 17990
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 209376,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 2102,
+          "cache_read_input_tokens": 213289,
+          "cache_creation_input_tokens": 15221,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 15221
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The port is done. Run `20261118-203102-0767` ended with **status completed: all 43 units committed**, exit code 0. The final clean build of `704097d75cba` passed all 39 tests.\n\n**What this session did**\n- **U-0027**: ported the `examples.nischay21` example program to C++. Its Java `main` now just calls the C++ version, which prints the same output. One attempt, commit `2747ad3b424b`.\n- **U-0028 to U-0042**: translated the 15 JUnit test files into GoogleTest files under `cpp/tests/`, one C++ test per Java test, and mapped all 24 Java tests to them in `cpp/test-map.toml`. Each unit took one attempt; commits run from `a4ebf125b0e3` to `7ff4ee78ccc0`.\n- **U-0043**: the final step that removes the Java code. CodeCoreMorph's automatic edits did it all (110 files, commit `704097d75cba`). It deleted the Java sources and tests, the POMs and the JNI bridge.\n\nThe earlier session had already done U-0001 to U-0026, porting each class to C++. Two of those, U-0003 (ShingleBased) and U-0005 (LongestCommonSubsequence), needed a second attempt; every other unit passed first time.\n\n**What the checks did not cover**\n- **Null-input checks were dropped.** The shared Java test helper also checked that passing `null` throws `NullPointerException`. The C++ functions take `std::string`, which can't be null, so those checks have no C++ version. The Java tests kept running them until U-0043 deleted the Java code, so the final C++ suite no longer tests null inputs.\n- **One warning:** U-0038's `QGramTest.testDistance` has 6 checks in C++ against 7 in Java. The missing one is the helper's null-input check described above.\n- **The examples' printed output is not tested.** No test runs `nischay21` (or the other example programs), so their output was checked only by reading the code. Two small differences:\n  - `toLowerCase()` was ported as plain ASCII lowercasing. That's correct for the example's fixed strings except under a Turkish or Azeri locale.\n  - Numbers print in the format newer Java versions use (JDK 19+); older JDKs printed an extra digit for a few values.\n- **The C++ Cosine test depends on the Java folder layout.** `testLargeString` finds its two text files in `src/test/resources` using a path relative to its own source file. It passed in the final build, but moving that folder will break it.\n- **No characterization tests.** The planned step that adds tests for code no existing test reaches did not run; this tool can't add them for Java.\n- **Nothing was left out.** No units were skipped, excluded or failed, and no tests were excused (the original 24 tests all passed before the port).\n\n**Review:** `git diff 1372d0b codecoremorph/20261118-203102-0767`, or `git log` on that branch, which has one commit per unit. Nothing has been merged; that's your call. The full report is at `.codecoremorph/runs/20261118-203102-0767/report.md`."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 1,
+      "is_error": true,
+      "subtype": "success",
+      "num_turns": 158,
+      "duration_ms": 6534518,
+      "total_cost_usd_equivalent": 15.047506400000001,
+      "usage": {
+        "input_tokens": 258,
+        "cache_creation_input_tokens": 455454,
+        "cache_read_input_tokens": 31702068,
+        "output_tokens": 253114,
+        "output_tokens_details": {
+          "thinking_tokens": 102708
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 455454,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 6136,
+            "cache_read_input_tokens": 470382,
+            "cache_creation_input_tokens": 2266,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 2266
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "You've hit your 5-hour limit \u00b7 resets 2:20am (Asia/Dubai)"
+    },
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 85,
+      "duration_ms": 2594948,
+      "total_cost_usd_equivalent": 4.746946100000001,
+      "usage": {
+        "input_tokens": 134,
+        "cache_creation_input_tokens": 209376,
+        "cache_read_input_tokens": 8488009,
+        "output_tokens": 68682,
+        "output_tokens_details": {
+          "thinking_tokens": 17990
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 209376,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 2102,
+            "cache_read_input_tokens": 213289,
+            "cache_creation_input_tokens": 15221,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 15221
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The port is done. Run `20261118-203102-0767` ended with **status completed: all 43 units committed**, exit code 0. The final clean build of `704097d75cba` passed all 39 tests.\n\n**What this session did**\n- **U-0027**: ported the `examples.nischay21` example program to C++. Its Java `main` now just calls the C++ version, which prints the same output. One attempt, commit `2747ad3b424b`.\n- **U-0028 to U-0042**: translated the 15 JUnit test files into GoogleTest files under `cpp/tests/`, one C++ test per Java test, and mapped all 24 Java tests to them in `cpp/test-map.toml`. Each unit took one attempt; commits run from `a4ebf125b0e3` to `7ff4ee78ccc0`.\n- **U-0043**: the final step that removes the Java code. CodeCoreMorph's automatic edits did it all (110 files, commit `704097d75cba`). It deleted the Java sources and tests, the POMs and the JNI bridge.\n\nThe earlier session had already done U-0001 to U-0026, porting each class to C++. Two of those, U-0003 (ShingleBased) and U-0005 (LongestCommonSubsequence), needed a second attempt; every other unit passed first time.\n\n**What the checks did not cover**\n- **Null-input checks were dropped.** The shared Java test helper also checked that passing `null` throws `NullPointerException`. The C++ functions take `std::string`, which can't be null, so those checks have no C++ version. The Java tests kept running them until U-0043 deleted the Java code, so the final C++ suite no longer tests null inputs.\n- **One warning:** U-0038's `QGramTest.testDistance` has 6 checks in C++ against 7 in Java. The missing one is the helper's null-input check described above.\n- **The examples' printed output is not tested.** No test runs `nischay21` (or the other example programs), so their output was checked only by reading the code. Two small differences:\n  - `toLowerCase()` was ported as plain ASCII lowercasing. That's correct for the example's fixed strings except under a Turkish or Azeri locale.\n  - Numbers print in the format newer Java versions use (JDK 19+); older JDKs printed an extra digit for a few values.\n- **The C++ Cosine test depends on the Java folder layout.** `testLargeString` finds its two text files in `src/test/resources` using a path relative to its own source file. It passed in the final build, but moving that folder will break it.\n- **No characterization tests.** The planned step that adds tests for code no existing test reaches did not run; this tool can't add them for Java.\n- **Nothing was left out.** No units were skipped, excluded or failed, and no tests were excused (the original 24 tests all passed before the port).\n\n**Review:** `git diff 1372d0b codecoremorph/20261118-203102-0767`, or `git log` on that branch, which has one commit per unit. Nothing has been merged; that's your call. The full report is at `.codecoremorph/runs/20261118-203102-0767/report.md`."
+    }
+  ]
+}

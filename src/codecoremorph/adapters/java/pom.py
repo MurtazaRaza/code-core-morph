@@ -224,6 +224,19 @@ def source_roots(text: str) -> list[str]:
     return found
 
 
+_OWN_BLOCKS = re.compile(
+    r"(?s)<(parent|dependencies|dependencyManagement|build|reporting|profiles|"
+    r"pluginRepositories|repositories|distributionManagement|extensions)\b.*?</\1>"
+)
+
+
+def artifact_id(text: str) -> str | None:
+    """The POM's own ``artifactId``, not its parent's or a dependency's."""
+    clean = _OWN_BLOCKS.sub("", uncommented(text))
+    match = re.search(r"<artifactId>\s*([^<\s]+)\s*</artifactId>", clean)
+    return match.group(1) if match else None
+
+
 def modules(text: str) -> list[str]:
     """The ``<module>`` directories the POM lists, relative to it."""
     return _MODULE.findall(uncommented(text))

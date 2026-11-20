@@ -6,7 +6,10 @@
 // file), compliance (the Java level to parse at) and one source= line per file.
 //
 // Rows ("t"): "sym" a declaration, "ref" a reference to a project declaration, "dep" a file that
-// uses a type another file declares, "problem" an element it couldn't read. IDs look like
+// uses a type another file declares, "problem" an element it couldn't read. With port=1 (a port
+// from Java, D-92) also "type" each named type with what a port needs of it, "refuse" what the
+// first version of a port refuses, "throw" an exception a member throws, and "inst" a use of a
+// project's generic type with its type arguments. IDs look like
 // java:org.example.Codec, java:org.example.Codec#hex(byte[]), java:org.example.Codec#<init>(int)
 // and java:org.example.Codec#counts.
 
@@ -19,17 +22,21 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import spoon.reflect.code.CtConstructorCall;
 import spoon.reflect.code.CtExecutableReferenceExpression;
+import spoon.reflect.code.CtExpression;
 import spoon.reflect.code.CtFieldAccess;
 import spoon.reflect.code.CtInvocation;
+import spoon.reflect.code.CtThrow;
+import spoon.reflect.code.CtTypeAccess;
 import spoon.reflect.cu.SourcePosition;
 import spoon.reflect.cu.position.DeclarationSourcePosition;
+import spoon.reflect.declaration.CtAnnotation;
 import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
@@ -45,9 +52,11 @@ import spoon.reflect.declaration.CtRecord;
 import spoon.reflect.declaration.CtShadowable;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.declaration.CtTypeMember;
+import spoon.reflect.declaration.CtTypeParameter;
 import spoon.reflect.declaration.ModifierKind;
 import spoon.reflect.reference.CtExecutableReference;
 import spoon.reflect.reference.CtFieldReference;
+import spoon.reflect.reference.CtTypeParameterReference;
 import spoon.reflect.reference.CtTypeReference;
 import spoon.reflect.visitor.filter.TypeFilter;
 
@@ -56,6 +65,8 @@ public final class JavaIndexHelper {
     private BufferedWriter out;
     private final Set<String> deps = new HashSet<>();
     private int problems;
+    private boolean port;
+    private final Set<String> portRows = new HashSet<>();
 
     public static void main(String[] args) throws IOException {
         new JavaIndexHelper().run(Paths.get(args[0]));
@@ -77,6 +88,7 @@ public final class JavaIndexHelper {
                 case "output" -> output = value;
                 case "compliance" -> compliance = Integer.parseInt(value.trim());
                 case "source" -> sources.add(value);
+                case "port" -> port = value.trim().equals("1");
                 default -> { }
             }
         }
@@ -104,6 +116,10 @@ public final class JavaIndexHelper {
             for (CtType<?> type : model.getAllTypes()) {
                 declare(type);
                 references(type);
+                if (port) {
+                    portType(type);
+                    portScan(type);
+                }
             }
             for (String dep : deps) {
                 out.write(dep);
@@ -320,6 +336,358 @@ public final class JavaIndexHelper {
         return file(element.getPosition()) != null;
     }
 
+    // ------------------------------------------------------------------ ports (D-92)
+
+    // Annotation packages of frameworks that drive a class by reflection: serializers,
+    // persistence, dependency injection. A port refuses the classes they annotate.
+    private static final List<String> FRAMEWORKS = List.of(
+            "javax.xml.bind.", "jakarta.xml.bind.", "com.fasterxml.jackson.", "org.codehaus.jackson.",
+            "com.google.gson.annotations.", "javax.persistence.", "jakarta.persistence.",
+            "org.hibernate.", "org.springframework.", "javax.inject.", "jakarta.inject.",
+            "com.google.inject.", "javax.ejb.", "jakarta.ejb.");
+    // java.util.concurrent's data structures map to a container behind a lock; the rest (executors,
+    // futures, locks, latches) is refused.
+    private static final Set<String> CONCURRENT_CONTAINERS = Set.of(
+            "java.util.concurrent.ConcurrentHashMap", "java.util.concurrent.ConcurrentMap",
+            "java.util.concurrent.CopyOnWriteArrayList", "java.util.concurrent.CopyOnWriteArraySet",
+            "java.util.concurrent.ConcurrentLinkedQueue", "java.util.concurrent.ConcurrentSkipListMap");
+    private static final Set<String> REFLECTIVE = Set.of(
+            "forName", "getMethod", "getMethods", "getDeclaredMethod", "getDeclaredMethods", "getField",
+            "getFields", "getDeclaredField", "getDeclaredFields", "getConstructor", "getConstructors",
+            "getDeclaredConstructor", "getDeclaredConstructors", "newInstance", "getAnnotation",
+            "getAnnotations", "isAnnotationPresent");
+    // Mockito's mock and spy make a Java subclass of the class at run time that overrides every
+    // member, with no native object behind it: the index records each mocked project class as
+    // a subclass in the test that mocks it, which a port refuses as it does any Java subclass
+    // that overrides (D-92), until Java has directors.
+    private static final Set<String> MOCKING = Set.of("mock", "spy");
+    private final Set<String> mocks = new HashSet<>();
+    private static final Set<String> IMMUTABLE = Set.of(
+            "boolean", "byte", "char", "short", "int", "long", "float", "double", "java.lang.String",
+            "java.lang.Boolean", "java.lang.Byte", "java.lang.Character", "java.lang.Short",
+            "java.lang.Integer", "java.lang.Long", "java.lang.Float", "java.lang.Double",
+            // The JDK's immutable values a legacy library keeps as constants.
+            "java.nio.charset.Charset", "java.util.regex.Pattern", "java.util.Locale");
+
+    private void portType(CtType<?> type) throws IOException {
+        // An anonymous class counts when it extends or implements a project type: a test's
+        // subclass overrides what the port takes over, and a test double implements it.
+        if (type.isLocalType() || (type.isAnonymous() && !extendsProject(type))) {
+            return;
+        }
+        String file = file(type.getPosition());
+        if (file == null) {
+            return;
+        }
+        try {
+            String base = null;
+            List<String> interfaces = new ArrayList<>();
+            List<String> external = new ArrayList<>();
+            CtTypeReference<?> superclass = type.getSuperclass();
+            if (superclass != null) {
+                CtType<?> declared = superclass.getTypeDeclaration();
+                if (declared != null && inModel(declared)) {
+                    base = typeId(declared);
+                } else {
+                    external.add(superclass.toString());
+                }
+            }
+            for (CtTypeReference<?> implemented : type.getSuperInterfaces()) {
+                CtType<?> declared = implemented.getTypeDeclaration();
+                if (declared != null && inModel(declared)) {
+                    interfaces.add(typeId(declared));
+                } else {
+                    external.add(implemented.toString());
+                }
+            }
+            List<String> parameters = new ArrayList<>();
+            for (CtTypeParameter parameter : type.getFormalCtTypeParameters()) {
+                parameters.add(parameter.toString());
+            }
+            boolean closed = type.hasModifier(ModifierKind.FINAL) || type instanceof CtEnum<?>
+                    || type instanceof CtRecord;
+            List<String> members = new ArrayList<>();
+            List<String> overridable = new ArrayList<>();
+            List<String> fields = new ArrayList<>();
+            List<String> statics = new ArrayList<>();
+            for (CtTypeMember member : type.getTypeMembers()) {
+                if (member instanceof CtType<?> || member.isImplicit()) {
+                    continue;
+                }
+                String id = memberId(type, member);
+                if (id == null) {
+                    continue;
+                }
+                String vis = visibility(member);
+                boolean isStatic = member.hasModifier(ModifierKind.STATIC);
+                if (vis.equals("public") || vis.equals("protected")) {
+                    members.add(id);
+                }
+                if (member instanceof CtMethod<?> method) {
+                    if (!isStatic && !closed && !method.hasModifier(ModifierKind.FINAL)
+                            && !method.hasModifier(ModifierKind.PRIVATE)) {
+                        overridable.add(id);
+                    }
+                } else if (member instanceof CtField<?> field && !(field instanceof CtEnumValue<?>)) {
+                    if (isStatic) {
+                        boolean constant = field.hasModifier(ModifierKind.FINAL)
+                                && field.getType() != null && immutable(field.getType());
+                        if (!constant) {
+                            statics.add(id);
+                        }
+                    } else if (!field.hasModifier(ModifierKind.PRIVATE)) {
+                        fields.add(field.getSimpleName());
+                    }
+                }
+            }
+            CtType<?> outer = type.getDeclaringType();
+            out.write("{\"t\":\"type\",\"id\":" + json(typeId(type)) + ",\"name\":"
+                    + json(dotted(type.getQualifiedName())) + ",\"kind\":\"" + typeKind(type)
+                    + "\",\"files\":" + jsonList(List.of(file)) + ",\"outer\":"
+                    + (outer == null ? "null" : json(typeId(outer))) + ",\"base\":"
+                    + (base == null ? "null" : json(base)) + ",\"interfaces\":" + jsonList(interfaces)
+                    + ",\"external\":" + jsonList(external) + ",\"abstract\":"
+                    + (type.hasModifier(ModifierKind.ABSTRACT) || type instanceof CtInterface<?>)
+                    + ",\"sealed\":" + closed + ",\"static\":" + type.hasModifier(ModifierKind.STATIC)
+                    + ",\"tparams\":" + jsonList(parameters) + ",\"members\":" + jsonList(members)
+                    + ",\"virtual\":" + jsonList(overridable) + ",\"fields\":" + jsonList(fields)
+                    + ",\"statics\":" + jsonList(statics) + "}");
+            out.newLine();
+            for (CtTypeMember member : type.getTypeMembers()) {
+                if (member instanceof CtType<?> nested) {
+                    portType(nested);
+                }
+            }
+        } catch (RuntimeException e) {
+            problem("couldn't read " + type.getQualifiedName() + " for a port: " + e);
+        }
+    }
+
+    private boolean extendsProject(CtType<?> type) {
+        CtTypeReference<?> superclass = type.getSuperclass();
+        if (superclass != null && superclass.getTypeDeclaration() != null
+                && inModel(superclass.getTypeDeclaration())) {
+            return true;
+        }
+        for (CtTypeReference<?> implemented : type.getSuperInterfaces()) {
+            if (implemented.getTypeDeclaration() != null && inModel(implemented.getTypeDeclaration())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String memberId(CtType<?> type, CtTypeMember member) {
+        if (member instanceof CtMethod<?> method) {
+            return methodId(type, method.getSignature());
+        }
+        if (member instanceof CtConstructor<?> ctor) {
+            return constructorId(type, ctor);
+        }
+        if (member instanceof CtField<?> field) {
+            return fieldId(type, field.getSimpleName());
+        }
+        return null;
+    }
+
+    private static boolean immutable(CtTypeReference<?> type) {
+        if (IMMUTABLE.contains(type.getQualifiedName())) {
+            return true;
+        }
+        CtType<?> declared = type.getTypeDeclaration();
+        return declared instanceof CtEnum<?>;
+    }
+
+    private void portScan(CtType<?> top) throws IOException {
+        for (CtElement element : top.getElements(new TypeFilter<>(CtElement.class))) {
+            try {
+                portElement(element);
+            } catch (RuntimeException e) {
+                if (problems < 50) {
+                    problem("couldn't read a port site in " + top.getQualifiedName() + ": " + e);
+                }
+            }
+        }
+    }
+
+    private void portElement(CtElement element) throws IOException {
+        if (element instanceof CtType<?> anonymous && anonymous.isAnonymous()) {
+            portType(anonymous);
+            return;
+        }
+        if (element instanceof CtThrow thrown) {
+            CtTypeReference<?> type = thrown.getThrownExpression() == null ? null
+                    : thrown.getThrownExpression().getType();
+            String name = type == null ? "java.lang.Throwable" : type.getQualifiedName();
+            site(element, "throw", Map.of("exception", name));
+        } else if (element instanceof CtMethod<?> method && method.hasModifier(ModifierKind.NATIVE)) {
+            refuse(element, "jni", "the native method " + method.getSimpleName()
+                    + ": the library's own JNI code");
+        } else if (element instanceof CtAnnotation<?> annotation) {
+            String name = annotation.getAnnotationType() == null ? ""
+                    : annotation.getAnnotationType().getQualifiedName();
+            for (String prefix : FRAMEWORKS) {
+                if (name.startsWith(prefix)) {
+                    refuse(element, "serialization", "@" + name);
+                    break;
+                }
+            }
+            if ((name.equals("org.mockito.Mock") || name.equals("org.mockito.Spy"))
+                    && annotation.getAnnotatedElement() instanceof CtField<?> field) {
+                mocked(field, field.getType());
+            }
+        } else if (element instanceof CtConstructorCall<?> created && created.getType() != null
+                && created.getType().getQualifiedName().equals("java.lang.Thread")) {
+            refuse(element, "concurrency", "new Thread");
+        } else if (element instanceof CtInvocation<?> call) {
+            CtExecutableReference<?> executable = call.getExecutable();
+            CtTypeReference<?> declaring = executable == null ? null : executable.getDeclaringType();
+            if (declaring != null && declaring.getQualifiedName().equals("java.lang.Class")
+                    && REFLECTIVE.contains(executable.getSimpleName())) {
+                refuse(element, "reflection", "Class." + executable.getSimpleName());
+            } else if (declaring != null && declaring.getQualifiedName().startsWith("org.mockito.")
+                    && MOCKING.contains(executable.getSimpleName()) && !call.getArguments().isEmpty()) {
+                mocked(call, mockedType(call.getArguments().get(0)));
+            }
+        } else if (element instanceof CtTypeReference<?> ref && !ref.isImplicit()
+                && !(ref instanceof CtTypeParameterReference)) {
+            String name = ref.getQualifiedName();
+            if (name.startsWith("java.lang.reflect.")) {
+                refuse(element, "reflection", name);
+            } else if (name.equals("java.io.ObjectOutputStream") || name.equals("java.io.ObjectInputStream")) {
+                refuse(element, "serialization", name + " (a round trip in memory is a deep copy)");
+            } else if (name.equals("java.math.BigDecimal") || name.equals("java.math.BigInteger")) {
+                refuse(element, "big_numbers", name);
+            } else if (name.startsWith("java.util.concurrent.") && !CONCURRENT_CONTAINERS.contains(name)
+                    && !name.startsWith("java.util.concurrent.atomic.")) {
+                refuse(element, "concurrency", name);
+            }
+            if (!ref.getActualTypeArguments().isEmpty()) {
+                CtType<?> declared = ref.getTypeDeclaration();
+                if (declared != null && inModel(declared) && !declared.getFormalCtTypeParameters().isEmpty()) {
+                    List<String> arguments = new ArrayList<>();
+                    boolean open = false;
+                    for (CtTypeReference<?> argument : ref.getActualTypeArguments()) {
+                        arguments.add(argument.toString());
+                        open |= argument instanceof CtTypeParameterReference;
+                    }
+                    site(element, "inst", Map.of("of", typeId(declared), "args", jsonList(arguments),
+                            "open", String.valueOf(open)));
+                }
+            }
+        }
+    }
+
+    // What mock(X.class) or spy(x) mocks: the class literal's type, or the spied object's.
+    private static CtTypeReference<?> mockedType(CtExpression<?> argument) {
+        if (argument instanceof CtFieldAccess<?> access && access.getVariable() != null
+                && access.getVariable().getSimpleName().equals("class")
+                && access.getTarget() instanceof CtTypeAccess<?> literal) {
+            return literal.getAccessedType();
+        }
+        CtTypeReference<?> given = argument.getType();
+        if (given != null && given.getQualifiedName().equals("java.lang.Class")) {
+            return given.getActualTypeArguments().isEmpty() ? null : given.getActualTypeArguments().get(0);
+        }
+        return given;
+    }
+
+    // A mock of a project class, as a subclass in the test's top-level type that overrides
+    // each member it can (an interface's mock is an implementation, which its proxy serves).
+    private void mocked(CtElement element, CtTypeReference<?> reference) throws IOException {
+        CtType<?> declared = reference == null ? null : reference.getTypeDeclaration();
+        if (declared == null || !inModel(declared) || declared instanceof CtInterface<?>
+                || declared.hasModifier(ModifierKind.FINAL)) {
+            return;
+        }
+        CtType<?> enclosing = element.getParent(CtType.class);
+        if (enclosing == null) {
+            return;
+        }
+        CtType<?> top = enclosing.getTopLevelType();
+        String file = file(top.getPosition());
+        if (file == null) {
+            return;
+        }
+        String id = typeId(top) + "$mock$" + declared.getQualifiedName();
+        if (!mocks.add(id)) {
+            return;
+        }
+        List<String> members = new ArrayList<>();
+        for (CtType<?> type = declared; type != null && inModel(type); ) {
+            for (CtTypeMember member : type.getTypeMembers()) {
+                if (member instanceof CtMethod<?> method && !member.isImplicit()
+                        && !method.hasModifier(ModifierKind.STATIC)
+                        && !method.hasModifier(ModifierKind.FINAL)
+                        && !method.hasModifier(ModifierKind.PRIVATE)) {
+                    members.add(id + "#" + method.getSignature());
+                }
+            }
+            CtTypeReference<?> superclass = type.getSuperclass();
+            type = superclass == null ? null : superclass.getTypeDeclaration();
+        }
+        out.write("{\"t\":\"type\",\"id\":" + json(id) + ",\"name\":"
+                + json(dotted(top.getQualifiedName()) + ".mock") + ",\"kind\":\"class\",\"files\":"
+                + jsonList(List.of(file)) + ",\"outer\":" + json(typeId(top)) + ",\"base\":"
+                + json(typeId(declared)) + ",\"interfaces\":[],\"external\":[],\"abstract\":false,"
+                + "\"sealed\":true,\"static\":false,\"tparams\":[],\"members\":" + jsonList(members)
+                + ",\"virtual\":[],\"fields\":[],\"statics\":[]}");
+        out.newLine();
+    }
+
+    private void refuse(CtElement element, String what, String detail) throws IOException {
+        site(element, "refuse", Map.of("what", what, "detail", detail));
+    }
+
+    /** A row of a port site: its type (the innermost named type around it), file, line, member. */
+    private void site(CtElement element, String kind, Map<String, String> fields) throws IOException {
+        SourcePosition pos = element.getPosition();
+        if (pos == null || !pos.isValidPosition()) {
+            return;
+        }
+        String file = file(pos);
+        CtType<?> owner = namedOwner(element);
+        if (file == null || owner == null) {
+            return;
+        }
+        String member = enclosing(element);
+        StringBuilder row = new StringBuilder("{\"t\":\"" + kind + "\",\"type\":" + json(typeId(owner))
+                + ",\"file\":" + json(file) + ",\"line\":" + Math.max(pos.getLine(), 1) + ",\"member\":"
+                + (member == null ? "null" : json(member)));
+        for (Map.Entry<String, String> field : new java.util.TreeMap<>(fields).entrySet()) {
+            String value = field.getValue();
+            boolean raw = field.getKey().equals("args") || field.getKey().equals("open");
+            row.append(",\"").append(field.getKey()).append("\":").append(raw ? value : json(value));
+        }
+        String text = row.append('}').toString();
+        if (portRows.add(text)) {
+            out.write(text);
+            out.newLine();
+        }
+    }
+
+    private static CtType<?> namedOwner(CtElement element) {
+        CtElement current = element;
+        while (current != null) {
+            if (current instanceof CtType<?> type && !type.isAnonymous() && !type.isLocalType()) {
+                return type;
+            }
+            if (!current.isParentInitialized()) {
+                return null;
+            }
+            current = current.getParent();
+        }
+        return null;
+    }
+
+    private static String jsonList(List<String> values) {
+        List<String> quoted = new ArrayList<>();
+        for (String value : values) {
+            quoted.add(json(value));
+        }
+        return "[" + String.join(",", quoted) + "]";
+    }
+
     // ------------------------------------------------------------------ names and text
 
     private static String typeId(CtType<?> type) {
@@ -344,10 +712,26 @@ public final class JavaIndexHelper {
         return qualified.replace('$', '.');
     }
 
+    // The modifiers in the JLS's order: Spoon's set iterates them in no fixed order, and a
+    // signature has to read the same on every index (I-6 compares two).
+    private static final List<ModifierKind> MODIFIER_ORDER = List.of(
+            ModifierKind.PUBLIC, ModifierKind.PROTECTED, ModifierKind.PRIVATE, ModifierKind.ABSTRACT,
+            ModifierKind.STATIC, ModifierKind.FINAL, ModifierKind.SEALED, ModifierKind.NON_SEALED,
+            ModifierKind.TRANSIENT, ModifierKind.VOLATILE, ModifierKind.SYNCHRONIZED,
+            ModifierKind.NATIVE, ModifierKind.STRICTFP);
+
     private static String modifiers(CtModifiable element) {
         StringBuilder text = new StringBuilder();
-        for (ModifierKind kind : new LinkedHashSet<>(element.getModifiers())) {
-            text.append(kind.toString()).append(' ');
+        Set<ModifierKind> present = element.getModifiers();
+        for (ModifierKind kind : MODIFIER_ORDER) {
+            if (present.contains(kind)) {
+                text.append(kind.toString()).append(' ');
+            }
+        }
+        for (ModifierKind kind : present) {
+            if (!MODIFIER_ORDER.contains(kind)) {
+                text.append(kind.toString()).append(' ');
+            }
         }
         return text.toString();
     }

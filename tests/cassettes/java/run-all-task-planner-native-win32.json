@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "19691dc16f11ae86278983d86d6610c8c12f86e860382b02104e74b327963ac3",
+      "key": "af077450b1905642e5c893cc2c2e4e1c137b38075cbba1e79f0ef7571632df25",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: use_lambdas\\n\\n## Files in the unit\\n\\n### core/src/main/java/org/example/tasks/TaskQueue.java\\n\\n```java\\np",
@@ -47,7 +47,7 @@
       }
     },
     {
-      "key": "647751be26e08a6c21d2f996c0052bc4903bd4f8e681e356e0b616fcad53a4bf",
+      "key": "51586f1306859a9b0b45c3c2b126e3316a321e0dca4c786842a3a0ec236b4542",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: use_switch_expressions\\n\\n## Files in the unit\\n\\n### app/src/main/java/org/example/app/Planner.java\\n\\n```j",

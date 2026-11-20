@@ -68,7 +68,10 @@ def sandbox(request: pytest.FixtureRequest, isolated_home: Path) -> str:
 
 
 def _edits_files() -> list[str]:
-    return sorted(p.stem for p in EDITS.glob("*.json")) if EDITS.is_dir() else []
+    """The upgrades' edits files: those named as a fixture (a port's add its target, D-92)."""
+    if not EDITS.is_dir():
+        return []
+    return sorted(p.stem for p in EDITS.glob("*.json") if (FIXTURES / p.stem).is_dir())
 
 
 @pytest.mark.slow

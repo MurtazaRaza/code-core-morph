@@ -1,0 +1,27 @@
+id: port_java_type_to_cpp
+language: java
+target_language: cpp
+kind: port
+port_units: java_type             # one unit per type, leaves first by references (D-92)
+description: >-
+  Port one type of a Java library to C++, with the types it can't be split from (a reference
+  cycle, or a class with overridable members and the library's classes that extend it), leaves
+  first. The type keeps its Java API as a façade that calls the C++ through JNI, so the rest of
+  the library and the project's own Java tests keep using it unchanged, and they decide whether
+  the port is right; the C++ runs under AddressSanitizer and UndefinedBehaviorSanitizer in
+  every test.
+detector:
+  type: adapter_query
+  query: java_types               # each type a library module declares
+codemods:
+  - tool: cpp-java-type           # the CMake build, the runtime, the unit's C++ and bridge files
+extra_scope: ['cpp/**', 'CMakeLists.txt', '**/codecoremorph/interop/*.java']
+llm:
+  guidance: guidance/port_java_type_to_cpp.md
+postconditions:
+  - {type: symbol_map, severity: error}         # every public member mapped to the C++
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's checks quiet,
+                                                # no owning raw pointer or pointer cast
+                                                # outside the bridge, sanitizers kept
+skip:
+  - test                          # the Java tests stay Java: they judge the port

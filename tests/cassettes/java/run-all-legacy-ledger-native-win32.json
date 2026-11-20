@@ -55,7 +55,7 @@
       }
     },
     {
-      "key": "9d245a5b7a366d4d32abfe0faef156a5c368002902977a4fd429d38b84cd1857",
+      "key": "aeffdca752b486de9fc2f2a1ed7073c0779c812bc2ade8634f835e8e79f50996",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: use_lambdas\\n\\n## Files in the unit\\n\\n### src/main/java/org/example/ledger/Ledger.java\\n\\n```java\\npackage ",
@@ -112,7 +112,7 @@
       }
     },
     {
-      "key": "eb5f72264794bf648ebaa2c2034cf439b50922b8295225a02799e7d3fd708686",
+      "key": "c4e98e00918d2a161ad8eb053637f9cf766e0f03124974e1b95d33903b5366b3",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: use_records\\n\\n## Files in the unit\\n\\n### src/main/java/org/example/ledger/Entry.java\\n\\n```java\\npackage o",

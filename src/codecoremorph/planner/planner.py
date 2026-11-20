@@ -54,6 +54,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.llm.catalog import ModelInfo
 from codecoremorph.planner.csharp import (
+    SOURCES,
     cut_programs,
     cut_retirement,
     cut_tests,
@@ -1316,6 +1317,54 @@ class _Former:
             return self._csharp_retirement(scan, files, target)
         return [self._skipped(scan, files, f"skipped: a port from C# doesn't cut {cut} units")]
 
+    def java_units(
+        self, scan: RuleScan, files: list[str], cut: PortUnits | None, target: str
+    ) -> list[_Draft]:
+        """A port of a Java library (D-91, D-92): its types, leaves first, each keeping its Java
+        API as a façade over JNI; then its test files and the retirement of the Java. As a C#
+        library's, but for Java's names and generics (:func:`cut_types`)."""
+        if cut is PortUnits.JAVA_TYPE:
+            return self._csharp_types(scan, files, target, source="java")
+        if cut is PortUnits.TESTS:
+            return self._csharp_tests(scan, files, target, source="java")
+        if cut is PortUnits.RETIREMENT:
+            return self._java_retirement(scan, files, target)
+        return [self._skipped(scan, files, f"skipped: a port from Java doesn't cut {cut} units")]
+
+    def _naming(self, library: str) -> str:
+        """What names a library's port: its project file (C#), or a Java module's jar, which
+        its artifactId names (the POM's path doesn't, for the root module)."""
+        for build in self.project.targets:
+            if build.name == library:
+                jars = [a for a in build.artifacts if a.endswith(".jar")]
+                if jars:
+                    return jars[0]
+        return library
+
+    def _java_retirement(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+        target = _LANGUAGE_NAMES.get(language, language)
+        if self.keep_source_api:
+            return []  # the Java library stays over the port; a Java port has no programs yet
+        result = cut_retirement(self.project, files, False)
+        if not result.deleted:
+            return []
+        code = [f for f in result.deleted if f in self.project.files and f in files]
+        poms = [f for f in result.deleted if f.endswith("pom.xml")]
+        return [
+            _Draft(
+                rule=scan.rule_id,
+                files=sorted(result.deleted),
+                sites=self.site_counts(scan, code),
+                note=f"retires the Java: deletes {len(code)} files, the POMs "
+                f"({', '.join(poms) or 'none'}), the façades' support and the bridge; the "
+                f"{'Cargo workspace' if target == 'Rust' else 'CMake build'} then builds and "
+                f"tests the {target} alone",
+                sized=False,
+                needs=[d for d in self.port_drafts if d.blocking],
+                counted=[],
+            )
+        ]
+
     @staticmethod
     def _type_unit_files(language: str, module: str) -> str:
         """Where a type unit's code goes in the target (its scaffold writes them)."""
@@ -1354,28 +1403,35 @@ class _Former:
     def _refused_uses(self, who: str, type_ids: Iterable[str]) -> str | None:
         """Why code that uses ``type_ids`` can't be ported: some of them stay C#."""
         names = {t.id: t.name for t in self.project.types}
-        refused = sorted(
-            {
-                names.get(t, t)
-                for t in type_ids
-                if (d := self.type_drafts.get(t)) is not None and d.status is UnitStatus.SKIPPED
-            }
-        )
+        units = {
+            names.get(t, t): id(d)
+            for t in type_ids
+            if (d := self.type_drafts.get(t)) is not None and d.status is UnitStatus.SKIPPED
+        }
+        refused = sorted(units)
         if not refused:
             return None
         more = f" and {len(refused) - 3} more" if len(refused) > 3 else ""
         shown = ", ".join(refused[:3]) + more
-        where = "its unit" if len(refused) == 1 else "their units"
+        where = "its unit" if len(set(units.values())) == 1 else "their units"
         return f"{who} uses {shown}, which this port refuses (see {where})"
 
-    def _csharp_types(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+    def _csharp_types(
+        self, scan: RuleScan, files: list[str], language: str, source: str = "csharp"
+    ) -> list[_Draft]:
         target = _LANGUAGE_NAMES.get(language, language)
-        result = cut_types(self.project, files, self.is_new_code, language)
+        source_name = SOURCES[source].name
+        result = cut_types(self.project, files, self.is_new_code, language, source)
         self.dependencies = result.dependencies
         if result.refused is not None or result.project is None:
             if not result.files:
                 return []
-            return [self._skipped(scan, result.files, f"skipped: {result.refused}")]
+            refused = self._skipped(scan, result.files, f"skipped: {result.refused}")
+            # Every type stays in the source: so do the tests that use them, and the retirement
+            # waits on it as on any refused unit.
+            self.port_drafts.append(refused)
+            self.type_drafts.update(dict.fromkeys(result.types, refused))
+            return [refused]
         library = result.project
         build = [library] if library in self.project.build_files else []
         drafts: list[_Draft] = []
@@ -1384,7 +1440,7 @@ class _Former:
             if unit.refused is not None:
                 draft = self._skipped(scan, unit_files, f"skipped: {unit.refused}")
             else:
-                crate, module = self.names(library, unit.lead.name, self.port_modules)
+                crate, module = self.names(self._naming(library), unit.lead.name, self.port_modules)
                 self.port_modules.add(module)
                 inside = {t.id for t in unit.types}
                 shown = ", ".join(
@@ -1394,8 +1450,8 @@ class _Former:
                 )
                 note = (
                     f"ports {shown} ({', '.join(unit.files)}) to {target}: "
-                    f"{self._type_unit_files(language, module)}, the C# types keeping their API "
-                    f"as façades over them; {'; '.join(unit.details)}"
+                    f"{self._type_unit_files(language, module)}, the {source_name} types keeping "
+                    f"their API as façades over them; {'; '.join(unit.details)}"
                 )
                 # Tests that reach what the types keep internal (InternalsVisibleTo, D-89).
                 testing, internals = self.project.internals_tests_use(unit.files)
@@ -1467,34 +1523,49 @@ class _Former:
             self.port_drafts.append(draft)
         return drafts
 
-    def _csharp_tests(self, scan: RuleScan, files: list[str], language: str) -> list[_Draft]:
+    def _csharp_tests(
+        self, scan: RuleScan, files: list[str], language: str, source: str = "csharp"
+    ) -> list[_Draft]:
         target = _LANGUAGE_NAMES.get(language, language)
+        source_name = SOURCES[source].name
         library = self._csharp_library()
         taken: set[str] = set()
         drafts: list[_Draft] = []
-        for unit in cut_tests(self.project, files, self.mapped_tests):
+        # With keep_source_api, the tests stay with the API they test, but for the projects
+        # the retirement deletes (the programs' tests).
+        retired = (
+            set(cut_retirement(self.project, (), True).projects) if self.keep_source_api else None
+        )
+        for unit in cut_tests(self.project, files, self.mapped_tests, source):
             references = sorted({unit.file, *unit.helpers})
             why = self._refused_uses(unit.file, unit.uses)
             if why is not None:
                 drafts.append(self._skipped(scan, references, f"skipped: {why}"))
                 continue
-            stem = re.sub(r"\.cs$", "", unit.file.rsplit("/", 1)[-1], flags=re.IGNORECASE)
+            suffix = re.escape(SOURCES[source].suffix)
+            stem = re.sub(rf"{suffix}$", "", unit.file.rsplit("/", 1)[-1], flags=re.IGNORECASE)
             if not re.search(r"(?i)(^tests?|tests?$)", stem.rsplit(".", 1)[-1]):
                 stem += "Tests"  # its GoogleTest program's name says what it is
             owner = library or unit.project or unit.file
-            crate, module = self.names(owner, stem, taken)
+            crate, module = self.names(self._naming(owner), stem, taken)
             taken.add(module)
-            n = len(unit.cases)
+            n, m = len(unit.cases), len(unit.data_driven)
+            counted = [f"{n} test case{'' if n == 1 else 's'}"] if n or not m else []
+            if m:
+                counted.append(f"{m} method{'' if m == 1 else 's'} whose cases come from data")
+            stays = "until the retirement"
+            if retired is not None and unit.project not in retired:
+                stays = "with the kept API (keep_source_api)"
             note = (
-                f"translates {unit.file} ({n} test case{'' if n == 1 else 's'}) to {target}: "
+                f"translates {unit.file} ({' and '.join(counted)}) to {target}: "
                 f"{self._tests_file(language, module)}, each case mapped in the test map; the "
-                "C# tests stay until the retirement"
+                f"{source_name} tests stay {stays}"
             )
             if unit.data_driven:
                 takes = "takes its" if len(unit.data_driven) == 1 else "take their"
                 note += (
                     f"; {', '.join(unit.data_driven)} {takes} cases from data: map each case "
-                    "the C# test report names"
+                    f"the {source_name} test report names"
                 )
             if unit.helpers:
                 note += f"; with the test doubles and helpers of {', '.join(unit.helpers)}"
@@ -1513,6 +1584,7 @@ class _Former:
                         crate=crate,
                         module=module,
                         tests=unit.cases,
+                        data_driven=unit.data_driven_ids,
                     ),
                     needs=self._type_needs(unit.uses),
                 )
@@ -1586,6 +1658,8 @@ class _Former:
             drafts = self.rust_units(scan, files, rule.port_units, rule.target_language or target)
         elif rule.kind is RuleKind.PORT and self.language == "csharp":
             drafts = self.csharp_units(scan, files, rule.port_units, rule.target_language or target)
+        elif rule.kind is RuleKind.PORT and self.language == "java":
+            drafts = self.java_units(scan, files, rule.port_units, rule.target_language or target)
         elif rule.module_port:
             drafts = self.module_units(scan, files, rule.target_language or target)
         elif rule.kind is RuleKind.PORT and rule.port_units is PortUnits.EXECUTABLE:

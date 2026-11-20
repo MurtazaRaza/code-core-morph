@@ -1,5 +1,8 @@
-"""The C# side of a port's plan (SPEC §11.9, D-77, D-78): a C# library's type units, then its
-programs, its test files and the retirement, the same whatever the port's target.
+"""The source side of a port's plan (SPEC §11.9, §11.12, D-77, D-78, D-92): a C# or a Java
+library's type units, then its programs, its test files and the retirement, the same
+whatever the port's target. What follows says C#; a Java source is cut the same way
+(:class:`Source`), but for its generics (a Java façade can't dispatch on an erased type
+parameter, so one ports to its bound, or to the one argument every use gives it).
 
 One unit per type, leaves first by the references between the types. A reference cycle is one
 unit. So is a class with virtual members together with the project's classes that derive from
@@ -28,7 +31,7 @@ from __future__ import annotations
 
 import posixpath
 import re
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from codecoremorph.core.models import (
@@ -52,6 +55,30 @@ from codecoremorph.planner.graph import condense
 from codecoremorph.planner.project import ProjectModel
 
 _VISIBLE = frozenset({Visibility.PUBLIC, Visibility.PROTECTED})
+
+
+@dataclass(frozen=True)
+class Source:
+    """The language a port's façades stay in, as its IDs spell symbols and tests and its
+    notes name it."""
+
+    language: str
+    name: str  # C#, Java
+    prefix: str  # its symbol IDs'
+    test_prefix: str  # its test IDs'
+    constructor: str  # what follows a type's ID in a constructor's
+    suffix: str  # its source files'
+
+
+SOURCES = {
+    "csharp": Source("csharp", "C#", "csharp:", "dotnet:", ".#ctor", ".cs"),
+    "java": Source("java", "Java", "java:", "junit:", "#<init>", ".java"),
+}
+# What a Java member takes when it takes a callback: a functional interface of the JDK.
+_JAVA_CALLBACKS = re.compile(
+    r"\bjava\.util\.function\.\w+|\bjava\.lang\.Runnable\b|\bjava\.util\.Comparator\b"
+    r"|\bjava\.util\.concurrent\.Callable\b"
+)
 _DELEGATES = re.compile(r"\bSystem\.(?:Func|Action|Predicate|Comparison|Converter|EventHandler)\b")
 _SHOWN = 3  # sites, uses and implementations a note names before "and N more"
 
@@ -145,6 +172,7 @@ class TypeCut:
     units: list[TypeUnit] = field(default_factory=list[TypeUnit])
     files: list[str] = field(default_factory=list[str])  # every type's files
     refused: str | None = None
+    types: list[str] = field(default_factory=list[str])  # with ``refused``: what stays, by ID
     # What the library depends on outside its own code (D-82), and the native declarations it
     # needs no unit for.
     dependencies: list[PortDependency] = field(default_factory=list[PortDependency])
@@ -158,8 +186,59 @@ def display(entry: TypeEntry) -> str:
     return entry.name
 
 
+_ANONYMOUS = re.compile(r"^(?P<outer>.+)\.\d+$")
+
+
+def _who(entry: TypeEntry) -> str:
+    """A type by name for notes; a Java anonymous class (``shop.CartTest$1``), or a Mockito mock
+    the index records as a subclass (``shop.CartTest$mock$shop.Book``), by where it is."""
+    if entry.id.startswith("java:") and "$mock$" in entry.id and entry.outer is not None:
+        return f"a Mockito mock in {entry.outer.removeprefix('java:').replace('$', '.')}"
+    if entry.id.startswith("java:") and (match := _ANONYMOUS.match(entry.name)):
+        return f"an anonymous class in {match['outer']}"
+    return entry.name
+
+
+def _implementations(entries: Iterable[TypeEntry]) -> list[str]:
+    """Implementations by name and file, a file's anonymous classes counted together."""
+    shown: list[str] = []
+    anonymous: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        files = _listed(entry.files, 1)
+        if entry.id.startswith("java:") and (match := _ANONYMOUS.match(entry.name)):
+            key = (match["outer"], files)
+            anonymous[key] = anonymous.get(key, 0) + 1
+        else:
+            shown.append(f"{entry.name} ({files})")
+    for (outer, files), count in sorted(anonymous.items()):
+        what = "an anonymous class" if count == 1 else f"{count} anonymous classes"
+        shown.append(f"{what} in {outer} ({files})")
+    return shown
+
+
+def _erased(parameters: Sequence[str], uses: int) -> str:
+    """What a Java generic's note says of its parameters (D-92): Java erases them, so each
+    ports to its bound, or to the one argument the project gives it."""
+    parts: list[str] = []
+    for parameter in parameters:
+        name, _, bound = parameter.partition(" extends ")
+        if bound:
+            parts.append(f"{name} ports to its bound, {bound}")
+        elif uses == 1:
+            parts.append(f"{name} ports to the one argument the project gives it")
+    ported = _listed(parts) if parts else "its parameters port as the uses give them"
+    return (
+        f"Java erases the type parameters, so {ported}: one set of exports, and the façade "
+        "keeps its type parameters"
+    )
+
+
 def member_name(member_id: str) -> str:
-    """A member by name, for notes: ``csharp:Zoo.Pen`1.Fold``1(``0,…)`` is ``Zoo.Pen.Fold``."""
+    """A member by name, for notes: ``csharp:Zoo.Pen`1.Fold``1(``0,…)`` is ``Zoo.Pen.Fold``,
+    ``java:shop.Cart$Item#add(int)`` is ``shop.Cart.Item.add``."""
+    if member_id.startswith("java:"):
+        head = member_id.removeprefix("java:").split("(", 1)[0]
+        return head.replace("#<init>", "").replace("#", ".").replace("$", ".")
     head = member_id.removeprefix("csharp:").split("(", 1)[0]
     return re.sub(r"`+\d+", "", head)
 
@@ -256,7 +335,8 @@ def owner_of(types: Mapping[str, TypeEntry], symbol: str | None) -> str | None:
     while head:
         if head in types:
             return head
-        cut = head.rfind(".")
+        # C# members follow a dot (Zoo.Pen.Fold), Java's a hash (java:shop.Cart#add).
+        cut = max(head.rfind("."), head.rfind("#"))
         if cut < 0:
             return None
         head = head[:cut]
@@ -283,10 +363,11 @@ def cut_types(
     files: Collection[str],
     skip: Callable[[str], bool],
     target: str = "cpp",
+    source: str = "csharp",
 ) -> TypeCut:
     """The type units of the library types declared in ``files`` (``skip`` leaves out a port's
-    new code), for a port to ``target`` (a language ID)."""
-    return _Cut(project, files, skip, target).cut()
+    new code), for a port from ``source`` to ``target`` (language IDs)."""
+    return _Cut(project, files, skip, target, source).cut()
 
 
 class _Cut:
@@ -296,8 +377,10 @@ class _Cut:
         files: Collection[str],
         skip: Callable[[str], bool],
         target: str = "cpp",
+        source: str = "csharp",
     ) -> None:
         self.project = project
+        self.source = SOURCES[source]
         self.target_name, self.guide = _TARGETS.get(target, (target, "the porting guide"))
         self.types = {t.id: t for t in project.types}
         # What each symbol calls (the index's references by enclosing symbol), read when a
@@ -391,8 +474,10 @@ class _Cut:
                 project=None,
                 files=every_file,
                 refused=f"the types to port are in {len(projects)} library projects "
-                f"({_listed(p or '(unknown)' for p in projects)}): a port from C# takes one for "
-                "now, since each would need handle types of its own (D-78)",
+                f"({_listed(p or '(unknown)' for p in projects)}): a port from "
+                f"{self.source.name} takes one for now, since each would need handle types "
+                "of its own (D-78)",
+                types=sorted(ported),
             )
         if not projects[0]:
             return TypeCut(
@@ -400,6 +485,7 @@ class _Cut:
                 files=every_file,
                 refused="the index doesn't say which project compiles the types to port; "
                 "index the project again",
+                types=sorted(ported),
             )
         roots = sorted({self.root(i) for i in ported})
         edges: dict[str, set[str]] = {r: set() for r in roots}
@@ -455,7 +541,11 @@ class _Cut:
         definitions = self.project.definitions(
             {i for t in self.types.values() for i in (t.id, *t.members)}
         )
-        refused_generics = self.unused_generics(definitions)
+        refused_generics = (
+            self.erased_generics(definitions)
+            if self.source.language == "java"
+            else self.unused_generics(definitions)
+        )
         units: list[TypeUnit] = []
         for position, cluster in enumerate(graph.clusters):
             members = set(cluster)
@@ -524,16 +614,27 @@ class _Cut:
                 f"{display(unit.lead)} calls {platform}'s own API ({shown}): the port builds and "
                 "tests on Linux, where the new code can't call it"
             )
+        # Java has no directors yet (D-92): a Java class staying Java that overrides a ported
+        # class's member would no longer run its override from the ported code.
+        if self.source.language == "java":
+            for other, overrides in self.subclasses(unit):
+                names = _listed(member_name(m).rsplit(".", 1)[-1] for m in overrides)
+                reasons.append(
+                    f"{_who(other)} ({_listed(other.files)}) stays Java and extends "
+                    f"{self.ported[other.base or ''].name}, overriding {names}: the ported code "
+                    "would no longer call the override, and a port from Java has no directors "
+                    "yet (D-92)"
+                )
         # A C# subclass that overrides gets a director (D-87), unless a ported constructor calls
         # what it overrides: C# runs the override before the subclass's constructor, and a
         # ported constructor runs its own class's.
-        for other, overrides in self.subclasses(unit):
+        for other, overrides in self.subclasses(unit) if self.source.language != "java" else []:
             suffixes = {m[len(other.id) :] for m in overrides}
             for ctor, called in self.constructor_calls(other.base or "", suffixes):
                 reasons.append(
                     f"{member_name(ctor)} calls {member_name(called)}, which {other.name} "
-                    f"({_listed(other.files)}) overrides: C# runs the override before "
-                    f"{other.name}'s constructor, and the ported constructor can't (D-87)"
+                    f"({_listed(other.files)}) overrides: {self.source.name} runs the override "
+                    f"before {other.name}'s constructor, and the ported constructor can't (D-87)"
                 )
         if not reasons:
             return None
@@ -574,7 +675,7 @@ class _Cut:
         found: list[tuple[str, str]] = []
         for entry in chain:
             for ctor in entry.members:
-                if ctor.startswith(f"{entry.id}.#ctor"):
+                if ctor.startswith(f"{entry.id}{self.source.constructor}"):
                     found += [(ctor, m) for m in sorted(self.calls.get(ctor, set()) & virtual)]
         return found
 
@@ -629,6 +730,38 @@ class _Cut:
                     )
         return refused
 
+    def erased_generics(self, definitions: dict[str, Symbol]) -> dict[str, str]:
+        """A Java source's generics (D-92): Java erases a type parameter, so a façade can't
+        dispatch on it as a C# one does on ``typeof(T)``. A parameter bounded by a type ports to
+        its bound; an unbounded one of a public type ports where every closed use gives it the
+        same argument (the port is of that instantiation), and is refused otherwise."""
+        arguments: dict[str, set[tuple[str, ...]]] = {}
+        for use in self.project.generic_uses:
+            if not use.open:
+                arguments.setdefault(use.symbol, set()).add(tuple(use.arguments))
+        refused: dict[str, str] = {}
+        for entry in self.ported.values():
+            if not entry.type_parameters or not self.visible(entry.id, definitions):
+                continue
+            free = [p for p in entry.type_parameters if " extends " not in p]
+            if not free:
+                continue
+            seen = sorted(arguments.get(entry.id, set()))
+            if len(seen) == 1:
+                continue
+            uses = (
+                "nothing in the project instantiates it"
+                if not seen
+                else f"the project gives it {len(seen)} different arguments "
+                f"({_listed('<' + ', '.join(a) + '>' for a in seen)})"
+            )
+            refused[entry.id] = (
+                f"{display(entry)} is public and generic, with no bound on {', '.join(free)}, and "
+                f"{uses}: Java erases the parameter, so its façade can't tell which "
+                "instantiation an object is (D-92)"
+            )
+        return refused
+
     def enclosing(self, type_id: str | None) -> list[str]:
         """``type_id`` and the types it is nested in."""
         found: list[str] = []
@@ -647,7 +780,8 @@ class _Cut:
         return all(definitions[s].visibility in _VISIBLE for s in chain if s in definitions)
 
     def inherited(self, units: list[TypeUnit], unit: TypeUnit) -> str | None:
-        """A unit that uses a refused unit is refused too: the ported code can't use C#."""
+        """A unit that uses a refused unit is refused too: the ported code can't use the
+        source's."""
         refused = [units[i] for i in unit.needs if units[i].refused is not None]
         if not refused:
             return None
@@ -675,7 +809,16 @@ class _Cut:
         out = [_plural(len(unit.exports), "public member")]
         nested = [t for t in unit.types if t.outer is not None and t.outer in ported]
         if nested:
-            out.append(f"with its nested types {_listed(t.name for t in nested)}")
+            # A Java anonymous class (``Report.1``) is counted, not named by its number.
+            java = [t for t in nested if t.id.startswith("java:")]
+            named = [t.name for t in nested if t not in java or not _ANONYMOUS.match(t.name)]
+            anonymous = len(nested) - len(named)
+            some = "an anonymous class" if anonymous == 1 else f"{anonymous} anonymous classes"
+            if not named:
+                out.append(f"with {some} of its own")
+            else:
+                more = f" and {some}" if anonymous else ""
+                out.append(f"with its nested types {_listed(named)}{more}")
         derived = [t for t in unit.types if t.base in {u.id for u in unit.types}]
         if derived:
             bases = sorted({ported[t.base or ""].name for t in derived})
@@ -700,18 +843,19 @@ class _Cut:
         if thrown:
             out.append(
                 f"throws {_listed(thrown, 6)}: the ported code throws their mirrors, and the "
-                "façade throws them again in C#"
+                f"façade throws them again in {self.source.name}"
             )
         callbacks = self.callbacks(unit, definitions)
         if callbacks:
-            out.append(f"calls into C#: {'; '.join(callbacks)}")
-        for other, overrides in self.subclasses(unit):
+            out.append(f"calls into {self.source.name}: {'; '.join(callbacks)}")
+        for other, overrides in self.subclasses(unit) if self.source.language != "java" else []:
             names = _listed(member_name(m).rsplit(".", 1)[-1] for m in overrides)
             out.append(
-                f"{other.name} ({_listed(other.files)}) stays C# and derives from "
-                f"{ported[other.base or ''].name}, overriding {names}: its objects run on a "
-                f"director of {ported[other.base or ''].name}, whose virtual members call the C# "
-                "object's, with a base export per virtual member (D-87)"
+                f"{other.name} ({_listed(other.files)}) stays {self.source.name} and "
+                f"derives from {ported[other.base or ''].name}, overriding {names}: its objects "
+                f"run on a director of {ported[other.base or ''].name}, whose virtual members "
+                f"call the {self.source.name} object's, with a base export per virtual member "
+                "(D-87)"
             )
         out += dynamic_notes(unit.types)
         out += self.takeovers(unit)
@@ -978,6 +1122,11 @@ class _Cut:
             if not arguments:
                 continue
             name = display(self.types[symbol]) if symbol in self.types else member_name(symbol)
+            if self.source.language == "java" and symbol in self.types:
+                out.append(f"{name} is generic, used with {_listed(arguments, 6)}: " + _erased(
+                    self.types[symbol].type_parameters, len(arguments)
+                ))  # fmt: skip
+                continue
             out.append(
                 f"{name} is generic, used with {_listed(arguments, 6)}: one set of exports per "
                 "type argument"
@@ -987,8 +1136,13 @@ class _Cut:
     def callbacks(self, unit: TypeUnit, definitions: dict[str, Symbol]) -> list[str]:
         """What reaches C# from the unit's code: delegates, events, and the C# implementations
         of its interfaces."""
+        # A Java member that takes one of the project's interfaces may be given a lambda or a
+        # Java implementation: either is a call back into Java.
+        callable_kind = SymbolKind.INTERFACE if self.source.language == "java" else None
         delegates = [
-            re.escape(t.name) for t in self.types.values() if t.kind is SymbolKind.DELEGATE
+            re.escape(t.name.rsplit(".", 1)[-1] if callable_kind else t.name)
+            for t in self.types.values()
+            if t.kind is (callable_kind or SymbolKind.DELEGATE)
         ]
         own = re.compile(rf"\b(?:{'|'.join(delegates)})\b") if delegates else None
         taking: list[str] = []
@@ -999,13 +1153,19 @@ class _Cut:
                 continue
             if symbol.kind is SymbolKind.EVENT:
                 events.append(member_name(member))
+            elif callable_kind and own and own.search(member.partition("(")[2]):
+                taking.append(member_name(member))  # a Java ID spells its parameters' types
             elif symbol.signature and (
-                _DELEGATES.search(symbol.signature) or (own and own.search(symbol.signature))
+                _DELEGATES.search(symbol.signature)
+                or _JAVA_CALLBACKS.search(symbol.signature)
+                or (own and own.search(symbol.signature))
             ):
                 taking.append(member_name(member))
         out: list[str] = []
+        taking = list(dict.fromkeys(taking))  # overloads, a constructor's included, named once
         if taking:
-            out.append(f"{_listed(taking)} {'takes' if len(taking) == 1 else 'take'} a delegate")
+            what = "a callback" if self.source.language == "java" else "a delegate"
+            out.append(f"{_listed(taking)} {'takes' if len(taking) == 1 else 'take'} {what}")
         if events:
             out.append(f"{'the event' if len(events) == 1 else 'the events'} {_listed(events)}")
         inside = {t.id for t in unit.types}
@@ -1017,10 +1177,10 @@ class _Cut:
                 key=lambda t: t.name,
             )
             if implementations:
-                shown = _listed(f"{t.name} ({_listed(t.files, 1)})" for t in implementations)
+                shown = _listed(_implementations(implementations))
                 out.append(
-                    f"{entry.name} is implemented in C# by {shown}, which reach the ported code "
-                    "through a proxy while they are C#"
+                    f"{entry.name} is implemented in {self.source.name} by {shown}, which "
+                    f"reach the ported code through a proxy while they are {self.source.name}"
                 )
         return out
 
@@ -1052,6 +1212,7 @@ class TestFileUnit:
     data_driven: list[str]  # "Class.Method" of methods whose cases only the test report names
     helpers: list[str]  # test files without tests that it uses: test doubles, fixtures
     uses: list[str]  # the library types it uses, by ID
+    data_driven_ids: list[str] = field(default_factory=list[str])  # their test ID stems
 
 
 @dataclass
@@ -1139,17 +1300,22 @@ def cut_programs(
     return units
 
 
-def _mapped_method(method: TestMethod, mapped: Collection[str]) -> bool:
-    """Whether the test map has a case of a data-driven method (one earlier run mapped)."""
-    stem = f"dotnet:{method.class_name}#{method.method}"
-    return any(m == stem or m.startswith(stem + "(") for m in mapped)
+def _mapped_method(method: TestMethod, mapped: Collection[str], prefix: str = "dotnet:") -> bool:
+    """Whether the test map has a case of a data-driven method (one earlier run mapped):
+    ``M(1)`` in a TRX report, ``m[1]`` or ``m(int)[1]`` in a Surefire one."""
+    stem = f"{prefix}{method.class_name}#{method.method}"
+    return any(m == stem or m.startswith((stem + "(", stem + "[")) for m in mapped)
 
 
 def cut_tests(
-    project: ProjectModel, files: Collection[str], mapped: Collection[str]
+    project: ProjectModel,
+    files: Collection[str],
+    mapped: Collection[str],
+    source: str = "csharp",
 ) -> list[TestFileUnit]:
     """The test files in ``files`` that have test methods, by path, each with its cases the
     test map (``mapped``) lacks; a file whose cases it has them all for has no unit."""
+    prefix = SOURCES[source].test_prefix
     wanted = set(files)
     by_file: dict[str, list[TestMethod]] = {}
     for method in project.test_methods:
@@ -1170,11 +1336,8 @@ def cut_tests(
     for path in sorted(by_file):
         methods = sorted(by_file[path], key=lambda m: (m.class_name, m.method))
         cases = sorted({c for m in methods if m.exact for c in m.cases} - known)
-        data_driven = sorted(
-            f"{m.class_name}.{m.method}"
-            for m in methods
-            if not m.exact and not _mapped_method(m, known)
-        )
+        open_methods = [m for m in methods if not m.exact and not _mapped_method(m, known, prefix)]
+        data_driven = sorted(f"{m.class_name}.{m.method}" for m in open_methods)
         if not cases and not data_driven:
             continue  # an earlier run translated it: the test map has every case
         helpers: list[str] = []
@@ -1199,6 +1362,9 @@ def cut_tests(
                 data_driven=data_driven,
                 helpers=sorted(helpers),
                 uses=sorted(uses),
+                data_driven_ids=sorted(
+                    {f"{prefix}{m.class_name}#{m.method}" for m in open_methods}
+                ),
             )
         )
     return units

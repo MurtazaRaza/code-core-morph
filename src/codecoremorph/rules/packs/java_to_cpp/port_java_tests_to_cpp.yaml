@@ -1,0 +1,20 @@
+id: port_java_tests_to_cpp
+language: java
+target_language: cpp
+kind: port
+port_units: tests                 # one unit per test file, after what it tests (D-92)
+description: >-
+  Translate the tests of one Java test file (JUnit 3, 4 or 5) into a GoogleTest file, one test
+  per Java test case, each mapped in the project's test map from its junit: ID to its gtest:
+  ID. Both suites run while the Java lasts.
+detector:
+  type: adapter_query
+  query: test_cases               # the file's tests, by their junit: IDs
+codemods:
+  - tool: cpp-java-tests          # the GoogleTest file and its CMake test program
+extra_scope: ['cpp/**', 'CMakeLists.txt', '**/codecoremorph/interop/*.java']
+llm:
+  guidance: guidance/port_java_tests_to_cpp.md
+postconditions:
+  - {type: test_map, severity: error}           # every test mapped to a passing GoogleTest test
+  - {type: lint_clean, severity: error}         # no warning, clang-tidy's checks quiet

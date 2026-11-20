@@ -205,6 +205,9 @@ def test_build_image_dry_run_and_usage(flavor: Flavor) -> None:
     port = _script(flavor, "build-image", ["--dry-run", "csharp-port"])  # ports from C# (D-78)
     assert port.returncode == 0, port.stderr
     assert "-t codecoremorph-csharp-port:local" in port.stdout
+    java = _script(flavor, "build-image", ["--dry-run", "java-port"])  # ports from Java (D-92)
+    assert java.returncode == 0, java.stderr
+    assert "-t codecoremorph-java-port:local" in java.stdout
     missing = _script(flavor, "build-image", ["cobol"])
     assert missing.returncode == 2
     assert "there is no image definition for 'cobol'" in missing.stderr

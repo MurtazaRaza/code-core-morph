@@ -102,6 +102,7 @@ from codecoremorph.invariants.symbol_map import (
 from codecoremorph.invariants.test_map import (
     TestPair,
     by_source,
+    data_driven_case,
     new_failures,
     parity,
     read_test_map,
@@ -980,6 +981,9 @@ class UnitRunner:
             required = [t for t in self.baseline.tests.passing if t not in statuses]
         else:
             required = list(unit.port.tests) if unit.port is not None else []
+            # A data-driven method's cases are the ones the baseline ran (D-92).
+            stems = unit.port.data_driven if unit.port is not None else []
+            required += [t for t in self.baseline.tests.passing if data_driven_case(t, stems)]
         text = read_text(self.worktree.path, relative)
         if text is None:
             if not required:

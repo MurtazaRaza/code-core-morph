@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
-from codecoremorph.adapters.cpp import csharpports, pinvoke
+from codecoremorph.adapters.cpp import csharpports, javaports, pinvoke
 from codecoremorph.adapters.cpp.cmake import (
     STANDARD_ALIASES,
     SUPPORTED_STANDARDS,
@@ -78,6 +78,8 @@ from codecoremorph.adapters.cpp.testing import (
 )
 from codecoremorph.adapters.cpp.tidy import lint_scope
 from codecoremorph.adapters.csharp import ports as csharp_ports
+from codecoremorph.adapters.java import facades as java_facades
+from codecoremorph.adapters.java import jni as java_jni
 from codecoremorph.core.errors import ConfigError, SandboxError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -140,6 +142,10 @@ CSHARP_PORT_INSTALL_HINT = (
     "A C# → C++ port runs in Docker for now (D-78): set sandbox.mode to docker, and build the "
     "image with scripts/build-image csharp-port (.bat on Windows)."
 )
+JAVA_PORT_INSTALL_HINT = (
+    "A Java port builds the C++ and the Java in one image (D-92): build the java-port image "
+    "with scripts/build-image java-port (.bat on Windows)."
+)
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
@@ -166,7 +172,12 @@ class CppAdapter(LanguageAdapter):
             detect_disabled_tests=True,
             c_declarations=True,
             # The scaffolds of a C# → C++ port, whose target C++ is (D-78).
-            codemod_tools=["clang-tidy", "cmake-standard", *sorted(csharpports.SCAFFOLDS)],
+            codemod_tools=[
+                "clang-tidy",
+                "cmake-standard",
+                *sorted(csharpports.SCAFFOLDS),
+                *sorted(javaports.SCAFFOLDS),
+            ],
             queries=[
                 "typedef_declarations",
                 "c_abi_definitions",
@@ -202,6 +213,15 @@ class CppAdapter(LanguageAdapter):
                 image="codecoremorph-csharp-port",
                 tools=tools,
                 install_hint=CSHARP_PORT_INSTALL_HINT,
+            )
+        if self.language == "cpp" and lang.port_source == "java":
+            # A Java port builds the Java too, the Java tests loading the C++ (D-92).
+            tools.append(ToolRequirement(name="mvn", purpose="the Java façades and their tests"))
+            return ToolchainSpec(
+                language="java-port",
+                image="codecoremorph-java-port",
+                tools=tools,
+                install_hint=JAVA_PORT_INSTALL_HINT,
             )
         return ToolchainSpec(
             language="cpp",
@@ -282,6 +302,8 @@ class CppAdapter(LanguageAdapter):
     def configure(self, ctx: AdapterContext) -> BuildResult:
         if self._csharp_port(ctx):
             return self._configure_csharp_port(ctx)
+        if self._java_port(ctx):
+            return self._configure_java_port(ctx)
         return self._configure(ctx)
 
     def _configure(self, ctx: AdapterContext) -> BuildResult:
@@ -506,6 +528,8 @@ class CppAdapter(LanguageAdapter):
     ) -> CodemodResult:
         if any(s.tool in csharpports.SCAFFOLDS for s in codemods):
             return self._csharp_scaffolds(ctx, codemods, files)
+        if any(s.tool in javaports.SCAFFOLDS for s in codemods):
+            return self._java_scaffolds(ctx, codemods, files)
         started = time.monotonic()
         totals: dict[str, int] = {}
         skipped: list[SkippedReplacement] = []
@@ -526,7 +550,7 @@ class CppAdapter(LanguageAdapter):
                 raise ConfigError(
                     f"the C++ adapter has no codemod tool {spec.tool!r}",
                     hint="Available: clang-tidy, cmake-standard, "
-                    + ", ".join(sorted(csharpports.SCAFFOLDS))
+                    + ", ".join(sorted([*csharpports.SCAFFOLDS, *javaports.SCAFFOLDS]))
                     + ".",
                 )
             for path, count in changes.items():
@@ -943,6 +967,9 @@ class CppAdapter(LanguageAdapter):
     def _csharp_port(self, ctx: AdapterContext) -> bool:
         return self.language == "cpp" and ctx.lang.port_source == "csharp"
 
+    def _java_port(self, ctx: AdapterContext) -> bool:
+        return self.language == "cpp" and ctx.lang.port_source == "java"
+
     def symbol_map_path(self) -> str:
         return csharpports.SYMBOL_MAP
 
@@ -955,6 +982,9 @@ class CppAdapter(LanguageAdapter):
         C++ is the target of no other port."""
         if self.language != "cpp":
             return super().port_names(build_target, stem, taken)
+        if build_target.endswith((".jar", "pom.xml")):
+            # A Java port's (D-92): its module's jar names the libraries.
+            return java_facades.library_name(build_target), java_facades.unit_name(stem, taken)
         return csharpports.library_name(build_target), csharpports.unit_name(stem, taken)
 
     def _configure_csharp_port(self, ctx: AdapterContext) -> BuildResult:
@@ -987,8 +1017,10 @@ class CppAdapter(LanguageAdapter):
         the bridge; and the build must keep its sanitizer option, or the tests would run the C++
         without them. The runtime CodeCoreMorph ships isn't the port's: nothing in it counts.
         C++ alone has no linter here."""
-        if not self._csharp_port(ctx):
+        if not (self._csharp_port(ctx) or self._java_port(ctx)):
             return super().lint(ctx, files)
+        # A Java port's C++ has a C# port's layout and checks (D-92); only its runtime differs.
+        ports = javaports if self._java_port(ctx) else csharpports
         found: list[Diagnostic] = []
         top = _read_text(ctx.worktree / csharpports.TOP_CMAKE)
         if top and csharpports.SANITIZE not in masked_comments(top):
@@ -1002,7 +1034,7 @@ class CppAdapter(LanguageAdapter):
                     origin=DiagnosticOrigin.ANALYZER,
                 )
             )
-        sources = csharpports.port_sources(ctx.worktree)
+        sources = ports.port_sources(ctx.worktree)
         for rel in sources:
             if csharpports.in_bridge(rel):
                 continue
@@ -1044,7 +1076,7 @@ class CppAdapter(LanguageAdapter):
             rel = d.file_path
             if rel is None or not rel.startswith(f"{csharpports.CPP_DIR}/"):
                 continue
-            if csharpports.is_runtime(rel):
+            if ports.is_runtime(rel):
                 continue
             if d.code in csharpports.BRIDGE_ONLY_CHECKS:
                 if csharpports.in_bridge(rel):
@@ -1053,6 +1085,61 @@ class CppAdapter(LanguageAdapter):
                 d = d.model_copy(update={"message": f"{d.message} ({why})"})
             found.append(d)
         return found
+
+    def _configure_java_port(self, ctx: AdapterContext) -> BuildResult:
+        """A Java port's C++ configures with the sanitizers on, then the Java declarations of
+        the bridge and its JNI glue are written from its headers (D-92); before the first unit
+        there is nothing to configure."""
+        if not javaports.is_port(ctx.worktree):
+            ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            note = ctx.log_dir / "configure.log"
+            note.write_text("no C++ yet: the port's first unit writes it\n", encoding="utf-8")
+            return BuildResult(success=True, duration_s=0.0, log_path=note)
+        args = [*ctx.lang.configure_args, f"-D{javaports.SANITIZE}=ON"]
+        configured = self._configure(
+            replace(ctx, lang=ctx.lang.model_copy(update={"configure_args": args}))
+        )
+        if not configured.success:
+            return configured
+        problems = self.write_java_declarations(ctx)
+        if not problems:
+            return configured
+        return configured.model_copy(
+            update={"success": False, "diagnostics": [*configured.diagnostics, *problems]}
+        )
+
+    def write_java_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """Write the Java declarations of the bridge's exports (``CcmNative.java``) into each
+        façade module and their JNI functions (``cpp/bridge/codecoremorph_jni.g.c``), from the
+        bridge headers (:mod:`codecoremorph.adapters.java.jni`,
+        :mod:`codecoremorph.adapters.cpp.jniglue`); what the headers declare that a bridge
+        can't take comes back as errors at their lines."""
+        cmake = _read_text(ctx.worktree / javaports.CPP_CMAKE) or ""
+        library = javaports.native_name(cmake)
+        directories = java_facades.facade_dirs(ctx.worktree)
+        if library is None or not directories:
+            return []
+        headers = javaports.bridge_headers(ctx.worktree)
+        declared, problems = (
+            self._bridge_declarations(ctx, headers, [javaports.BRIDGE_DIR]) if headers else ({}, [])
+        )
+        bridge = java_jni.read_bridge(declared)
+        data = java_jni.java_declarations(bridge, library).encode("utf-8")
+        for directory in directories:
+            target = ctx.worktree / directory / java_facades.GENERATED_FILE
+            if not target.is_file() or target.read_bytes() != data:
+                target.write_bytes(data)
+        javaports.written_glue(ctx.worktree, javaports.glue_text(bridge))
+        return problems + [
+            Diagnostic(
+                file_path=r.header,
+                line=r.line,
+                severity=Severity.ERROR,
+                message=f"the bridge can't take this declaration (D-92): {r.message}",
+                origin=DiagnosticOrigin.ANALYZER,
+            )
+            for r in bridge.problems
+        ]
 
     def write_bridge_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
         """Write the C# declarations of the bridge's exports into each façade project
@@ -1111,6 +1198,16 @@ class CppAdapter(LanguageAdapter):
             )
             for r in refused
         ]
+
+    def read_bridge_headers(
+        self, ctx: AdapterContext, headers: list[str], include_dirs: list[str]
+    ) -> tuple[dict[str, dict[str, Any]], list[Diagnostic]]:
+        """What libclang reads in a bridge's C headers (worktree paths; ``include_dirs`` hold
+        what they include), by worktree path, and their parse errors: what a Rust target of a
+        Java port reads in cbindgen's header (D-92)."""
+        if not headers:
+            return {}, []
+        return self._bridge_declarations(ctx, headers, include_dirs)
 
     def _bridge_declarations(
         self, ctx: AdapterContext, headers: list[str], include_dirs: list[str]
@@ -1184,6 +1281,36 @@ class CppAdapter(LanguageAdapter):
                         )
                     ]
         rest = [s for s in codemods if s.tool not in csharpports.SCAFFOLDS]
+        result = self.run_codemods(ctx, rest, files) if rest else None
+        changes = [CodemodChange(file=f, replacements=1) for f in sorted(set(changed))]
+        if result is None:
+            return CodemodResult(
+                changes=changes, skipped=left, duration_s=time.monotonic() - started
+            )
+        return result.model_copy(
+            update={"changes": [*changes, *result.changes], "skipped": [*left, *result.skipped]}
+        )
+
+    def _java_scaffolds(
+        self, ctx: AdapterContext, codemods: list[CodemodSpec], files: list[str]
+    ) -> CodemodResult:
+        started = time.monotonic()
+        changed: list[str] = []
+        left: list[SkippedReplacement] = []
+        for spec in codemods:
+            if spec.tool in javaports.SCAFFOLDS:
+                changed += javaports.scaffold(
+                    ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
+                )
+                if spec.tool == "cpp-java-retire":
+                    # What else still builds the Java: for review (D-89).
+                    left += [
+                        SkippedReplacement(file=f, check=spec.tool, reason=reason)
+                        for f, reason in java_facades.retirement_left(
+                            ctx.worktree, "the CMake build"
+                        )
+                    ]
+        rest = [s for s in codemods if s.tool not in javaports.SCAFFOLDS]
         result = self.run_codemods(ctx, rest, files) if rest else None
         changes = [CodemodChange(file=f, replacements=1) for f in sorted(set(changed))]
         if result is None:

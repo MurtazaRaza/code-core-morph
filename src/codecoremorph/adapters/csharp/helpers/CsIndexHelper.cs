@@ -730,7 +730,7 @@ internal static class PortSource
             if ((node is BaseTypeDeclarationSyntax || node is DelegateDeclarationSyntax)
                 && model.GetDeclaredSymbol(node) is INamedTypeSymbol type)
             {
-                Describe(type, project);
+                Describe(type, project, compilation);
                 Tests(type, project);
             }
             Refusals(model, file, node);
@@ -765,7 +765,7 @@ internal static class PortSource
 
     // ------------------------------------------------------------------ types
 
-    private static void Describe(INamedTypeSymbol type, string project)
+    private static void Describe(INamedTypeSymbol type, string project, Compilation compilation)
     {
         string? id = Indexer.Id(type);
         string? kind = Indexer.TypeKindName(type);

@@ -97,6 +97,14 @@ def by_source(entries: Iterable[TestPair]) -> dict[str, TestPair]:
     return found
 
 
+def data_driven_case(test_id: str, stems: Collection[str]) -> bool:
+    """Whether ``test_id`` is a case of one of the data-driven methods ``stems`` names by the
+    stem of their IDs (D-92): ``junit:shop.CartTest#prices`` has the cases ``#prices[0]`` and
+    ``#prices(int)[0]`` in a Surefire report, ``dotnet:Shop.CartTests#Prices`` the case
+    ``#Prices(1)`` in a TRX one."""
+    return any(test_id == s or test_id.startswith((s + "[", s + "(")) for s in stems)
+
+
 def test_map_problems(
     entries: Iterable[TestPair],
     required: Collection[str],

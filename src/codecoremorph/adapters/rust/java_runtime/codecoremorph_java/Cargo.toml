@@ -1,0 +1,9 @@
+[package]
+name = "codecoremorph_java"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Java's exceptions and semantics for Rust ports of Java code (CodeCoreMorph, D-92)."
+
+[lib]
+path = "src/lib.rs"

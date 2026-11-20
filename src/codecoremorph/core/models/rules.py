@@ -169,6 +169,9 @@ class PortUnits(StrEnum):
     # the project's classes that derive from it; nested types go with their outer type. Each
     # type keeps its C# API as a façade over the code that takes it over.
     CSHARP_TYPE = "csharp_type"
+    # Phase 20 (D-92): the same cut of a Java library's types, each keeping its Java API
+    # as a façade over JNI.
+    JAVA_TYPE = "java_type"
 
 
 class Rule(CoreModel):

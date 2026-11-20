@@ -317,11 +317,18 @@ def without_bridge(cpp_cmake_text: str) -> str:
 
 
 def tests_cmake(name: str, test_programs: Iterable[str]) -> str:
-    """``cpp/tests/CMakeLists.txt``: a GoogleTest program per translated C# test file, each a
-    CTest test, its cases named in GoogleTest's report (``gtest:Suite.Name``)."""
+    """``cpp/tests/CMakeLists.txt`` of a C# port: :func:`googletest_cmake` for C#."""
+    return googletest_cmake(name, test_programs, "C#", "D-78")
+
+
+def googletest_cmake(name: str, test_programs: Iterable[str], source: str, decision: str) -> str:
+    """``cpp/tests/CMakeLists.txt``: a GoogleTest program per translated test file of the
+    source (C#, or Java, D-92), each a CTest test, its cases named in GoogleTest's report
+    (``gtest:Suite.Name``)."""
     listed = "".join(f"codecoremorph_gtest({p})\n" for p in sorted(set(test_programs)))
     return (
-        "# The tests translated from C# (CodeCoreMorph, D-78): a GoogleTest program per C# test\n"
+        f"# The tests translated from {source} (CodeCoreMorph, {decision}): a GoogleTest "
+        f"program per {source} test\n"
         "# file, each a CTest test; GoogleTest's report names each case (gtest:Suite.Name).\n"
         "find_package(GTest REQUIRED)\n"
         "if(TARGET GTest::gtest_main)\n"

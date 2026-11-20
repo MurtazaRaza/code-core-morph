@@ -1,0 +1,25 @@
+{
+  "project": "java-string-similarity",
+  "url": "https://github.com/tdebatty/java-string-similarity.git",
+  "tag": "v2.0.0",
+  "commit": "1372d0b4549f79b9a3d80f5c678cf8e3a787a856",
+  "license": "MIT",
+  "milestone": "m14",
+  "migration": {
+    "source": {"language": "java", "standard": "java8", "build_system": "maven"},
+    "target": {
+      "language": "rust",
+      "standard": "rust2021",
+      "rules": [
+        "port_java_type_to_rust",
+        "port_java_tests_to_rust",
+        "retire_java_to_rust"
+      ]
+    }
+  },
+  "build": {},
+  "exclude": [],
+  "test_dirs": ["src/test"],
+  "public_api": [],
+  "build_note": "The M14 port benchmark to Rust (chosen 2026-11-19): the C++ benchmark's library, java-string-similarity 2.0.0 at the same commit (bench/java-port-pin.json), ported to Rust 2021 so the two targets compare."
+}

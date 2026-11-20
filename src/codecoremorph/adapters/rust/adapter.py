@@ -14,8 +14,10 @@ import json
 import posixpath
 import re
 import shutil
+import sys
 import time
 from collections.abc import Callable, Collection
+from importlib import resources
 from pathlib import Path, PurePath, PurePosixPath
 from typing import cast
 
@@ -24,7 +26,9 @@ from codecoremorph.adapters.base import AdapterContext, LanguageAdapter
 from codecoremorph.adapters.c import rustports
 from codecoremorph.adapters.cpp import CppAdapter
 from codecoremorph.adapters.csharp import ports as csharp_ports
-from codecoremorph.adapters.rust import cports, csharpports, ports, source
+from codecoremorph.adapters.java import facades as java_facades
+from codecoremorph.adapters.java import jni as java_jni
+from codecoremorph.adapters.rust import cports, csharpports, javaports, ports, source
 from codecoremorph.adapters.rust.cargo import (
     EDITIONS,
     NEXTEST_PROFILE,
@@ -71,6 +75,7 @@ from codecoremorph.core.models import (
     ToolchainSpec,
     ToolRequirement,
 )
+from codecoremorph.invariants.abi import cbindgen_tip
 from codecoremorph.patching.textfile import BinaryFileError, TextFile
 from codecoremorph.sandbox.executor import full_output
 from codecoremorph.store.index import INDEX_FILE_NAME, FileRow, IndexStore, SymbolRow
@@ -79,6 +84,10 @@ MIN_RUST = "1.80"
 CSHARP_PORT_INSTALL_HINT = (
     "A C# → Rust port runs in Docker for now (D-84): set sandbox.mode to docker, and build the "
     "image with scripts/build-image csharp-port (.bat on Windows)."
+)
+JAVA_PORT_INSTALL_HINT = (
+    "A Java port builds the Rust and the Java in one image (D-92): build the java-port image "
+    "with scripts/build-image java-port (.bat on Windows)."
 )
 # Every build is a verification of a new tree, so incremental caches only cost time and disk
 # (and their directory names overflow Windows' path limit in deep cache directories).
@@ -106,12 +115,32 @@ class RustAdapter(LanguageAdapter):
                 "rust-tests",
                 "rust-retire",
                 *sorted(csharpports.SCAFFOLDS),
+                *sorted(javaports.SCAFFOLDS),
                 "rustfmt",
             ],
             standards=list(EDITIONS),
         )
 
     def toolchain_requirements(self, lang: LanguageConfig) -> ToolchainSpec:
+        if lang.port_source == "java":
+            # A Java port builds the Java too, the Java tests loading the cdylib (D-92): the image
+            # of ports from Java holds both toolchains, and the C++ one whose libclang reads the
+            # bridge's header.
+            return ToolchainSpec(
+                language="java-port",
+                image="codecoremorph-java-port",
+                tools=[
+                    ToolRequirement(name="cargo", min_version=MIN_RUST, purpose="Rust builds"),
+                    ToolRequirement(name="rustc", min_version=MIN_RUST, purpose="Rust compiler"),
+                    ToolRequirement(
+                        name="cargo-nextest", version_args=["--version"], purpose="Rust tests"
+                    ),
+                    ToolRequirement(name="cbindgen", purpose="the C header of the bridge"),
+                    ToolRequirement(name="bindgen", purpose="the JNI types of the glue (D-92)"),
+                    ToolRequirement(name="mvn", purpose="the Java façades and their tests"),
+                ],
+                install_hint=JAVA_PORT_INSTALL_HINT,
+            )
         if lang.port_source == "csharp":
             # A C# port builds the C# too, the C# tests loading the cdylib (D-84): the image of
             # ports from C# holds both toolchains, and the C++ one whose libclang reads the
@@ -349,6 +378,9 @@ class RustAdapter(LanguageAdapter):
         # A C# port's crate (D-84): the C# declarations of its bridge, from the header cbindgen
         # just wrote, in each façade project.
         diagnostics += self._csharp_declarations(ctx)
+        # A Java port's crate (D-92): bindgen's JNI types, then the Java declarations and the
+        # JNI glue, from the header cbindgen just wrote.
+        diagnostics += self._java_declarations(ctx)
         # ... and the declarations of the native libraries its Rust calls itself (D-84 (9)).
         diagnostics += self._native_modules(ctx)[1]
         # A crate being ported to C (D-75): CMake configures its C, bindgen writes the façades'
@@ -489,6 +521,7 @@ class RustAdapter(LanguageAdapter):
             manifest = _text(ctx.worktree / package / "Cargo.toml") or ""
             names[package] = _package_name(manifest) or posixpath.basename(package)
         known: dict[str, str] = {}
+        scips: dict[str, list[Document]] = {}
         if port_source:
             # A workspace's own manifest and lock are the build too (the packages' come below).
             for root in find_crates(ctx.worktree, ctx.lang.exclude):
@@ -573,6 +606,7 @@ class RustAdapter(LanguageAdapter):
             for package in packages:
                 documents = self._scip(ctx, package, problems)
                 if documents is not None:
+                    scips[package] = documents
                     source.add_references(
                         extra,
                         documents,
@@ -665,6 +699,16 @@ class RustAdapter(LanguageAdapter):
                         for f, reason in csharp_ports.retirement_left(
                             ctx.worktree, deleted, "Cargo", keep=keep
                         )
+                    ]
+            elif spec.tool in javaports.SCAFFOLDS:
+                found, problems = self._java_scaffold(ctx, spec, files)
+                changes += found
+                diagnostics += problems
+                if spec.tool == "rust-java-retire":
+                    # What else still builds the Java: for review (D-89).
+                    skipped += [
+                        SkippedReplacement(file=f, check=spec.tool, reason=reason)
+                        for f, reason in java_facades.retirement_left(ctx.worktree, "Cargo")
                     ]
             elif spec.tool == "rustfmt":
                 changes += self._rustfmt(ctx)
@@ -1614,6 +1658,9 @@ class RustAdapter(LanguageAdapter):
         if build_target.lower().endswith(".csproj"):
             name = csharp_ports.library_name(build_target)
             return name, csharpports.unit_name(stem, taken)
+        if build_target.endswith((".jar", "pom.xml")):
+            # A Java port's (D-92): its module's jar names the crate.
+            return java_facades.library_name(build_target), javaports.unit_name(stem, taken)
         return ports.port_names(build_target, stem, taken)
 
     # ------------------------------------------------------------------ a port from C# (D-84)
@@ -1641,6 +1688,120 @@ class RustAdapter(LanguageAdapter):
             problems += native
         once = {c.file: c for c in changes}
         return list(once.values()), problems
+
+    # ------------------------------------------------------------------ a port from Java (D-92)
+
+    def _java_scaffold(
+        self, ctx: AdapterContext, spec: CodemodSpec, files: list[str]
+    ) -> tuple[list[CodemodChange], list[Diagnostic]]:
+        """The Java port's scaffolds (:mod:`codecoremorph.adapters.rust.javaports`), then the
+        workspace's lockfile, when they changed a manifest."""
+        changed = javaports.scaffold(
+            ctx.worktree, spec.tool, spec.options, files, ctx.lang.standard
+        )
+        changes = [CodemodChange(file=rel, replacements=1) for rel in changed]
+        problems: list[Diagnostic] = []
+        if (
+            any(rel.endswith("Cargo.toml") for rel in changed)
+            and (ctx.worktree / javaports.WORKSPACE).is_file()
+        ):
+            problems = self._lock_workspace(ctx, javaports.WORKSPACE_DIR, changes)
+        once = {c.file: c for c in changes}
+        return list(once.values()), problems
+
+    def _java_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
+        """A Java port's crate (D-92): bindgen writes the bridge's JNI types (``jni_sys.rs``)
+        from the JDK's ``jni.h``; then the Java declarations (``CcmNative.java``, in each façade
+        module) and the JNI glue (``jni_g.rs``) are written from the bridge's cbindgen header,
+        read by the C++ adapter's libclang. Before the first unit, nothing."""
+        if not javaports.is_port(ctx.worktree):
+            return []
+        found = javaports.facade_library(ctx.worktree)
+        directories = java_facades.facade_dirs(ctx.worktree)
+        if found is None or not directories:
+            return []
+        crate, library = found
+        problems = self._jni_types(ctx, crate)
+        header = javaports.bridge_header(crate, library)
+        headers = [header] if (ctx.worktree / header).is_file() else []
+        declared, parsed = CppAdapter().read_bridge_headers(
+            ctx, headers, [f"{crate}/include/{library}"]
+        )
+        problems += [
+            p.model_copy(update={"message": p.message + cbindgen_tip(p.message)}) for p in parsed
+        ]
+        bridge = java_jni.read_bridge(declared)
+        data = java_jni.java_declarations(bridge, library, "the bridge's cbindgen header")
+        for directory in directories:
+            target = ctx.worktree / directory / java_facades.GENERATED_FILE
+            encoded = data.encode("utf-8")
+            if not target.is_file() or target.read_bytes() != encoded:
+                target.write_bytes(encoded)
+        glue = ctx.worktree / javaports.glue_path(crate)
+        text = javaports.glue_text(bridge).encode("utf-8")
+        if not glue.is_file() or glue.read_bytes() != text:
+            glue.write_bytes(text)
+        return problems + [
+            Diagnostic(
+                file_path=r.header,
+                line=r.line,
+                severity=Severity.ERROR,
+                message=f"the bridge can't take this declaration (D-92): {r.message}"
+                + cbindgen_tip(r.message),
+                origin=DiagnosticOrigin.ANALYZER,
+            )
+            for r in bridge.problems
+        ]
+
+    def _jni_types(self, ctx: AdapterContext, crate: str) -> list[Diagnostic]:
+        """bindgen over the JDK's ``jni.h`` (the toolchain's ``JAVA_HOME``) into the crate's
+        ``src/bridge/jni_sys.rs``, once per JDK: JNI's types don't change with the project."""
+        home = ctx.executor.toolchain_env.get("JAVA_HOME")
+        rel = javaports.sys_path(crate)
+        out = ctx.worktree / rel
+        if not home:
+            return [
+                Diagnostic(
+                    file_path=rel,
+                    severity=Severity.ERROR,
+                    message="the toolchain has no JAVA_HOME, whose jni.h bindgen reads for the "
+                    "JNI glue (D-92): use the java-port image or install the Java toolchain",
+                    origin=DiagnosticOrigin.BUILD_SYSTEM,
+                )
+            ]
+        stamp = ctx.cache_dir / "jni-sys.stamp"
+        current = out.read_bytes().decode("utf-8", errors="replace") if out.is_file() else ""
+        if stamp.is_file() and stamp.read_text(encoding="utf-8") == home and len(current) > 1000:
+            return []
+        platform = {"win32": "win32", "darwin": "darwin"}.get(
+            sys.platform if ctx.executor.kind == "native" else "linux", "linux"
+        )
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        result = ctx.executor.run(
+            javaports.jni_bindgen_argv(
+                f"{home}/include/jni.h",
+                f"{home}/include",
+                f"{home}/include/{platform}",
+                ctx.sandbox(out),
+            ),
+            cwd=ctx.sandbox(ctx.worktree / crate),
+            timeout_s=600,
+            log_path=ctx.log_dir / "bindgen-jni.log",
+        )
+        if not result.ok:
+            stdout, stderr = full_output(result)
+            tail = "\n".join((stdout + stderr).strip().splitlines()[-10:])
+            return [
+                Diagnostic(
+                    file_path=rel,
+                    severity=Severity.ERROR,
+                    message=f"bindgen couldn't read the JDK's jni.h:\n{tail}",
+                    origin=DiagnosticOrigin.BUILD_SYSTEM,
+                )
+            ]
+        ctx.cache_dir.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(home, encoding="utf-8")
+        return []
 
     def _csharp_declarations(self, ctx: AdapterContext) -> list[Diagnostic]:
         """The C# declarations of the façades (``CodeCoreMorph.Native.g.cs``), written from the
@@ -1994,6 +2155,19 @@ class RustAdapter(LanguageAdapter):
         if not path.exists():
             path.write_text("", encoding="utf-8")
         return path
+
+
+def _install_helper(cache_dir: Path, name: str) -> Path:
+    """Copy one of the helpers CodeCoreMorph ships into the cache directory, which the sandbox
+    sees."""
+    data = resources.files("codecoremorph.adapters.rust.helpers").joinpath(name).read_bytes()
+    target = cache_dir / "helpers" / name
+    if not target.is_file() or target.read_bytes() != data:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(target)
+    return target
 
 
 def _slug(crate: str) -> str:

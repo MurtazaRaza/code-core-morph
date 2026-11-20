@@ -36,6 +36,39 @@ def read_reports(directories: Iterable[Path]) -> tuple[list[TestCaseResult], lis
     )
 
 
+_FORK_CRASHED = "The forked VM terminated without properly saying goodbye"
+# Where a sanitizer's report starts: ASan's (and LSan's, TSan's) banner, or UBSan's runtime error.
+_SANITIZER = re.compile(r"==\d+==ERROR: \w*Sanitizer|:\d+:\d+: runtime error: ")
+_MAX_REPORT = 6000
+
+
+def crashed_fork(output: str) -> str | None:
+    """Why Surefire's forked test JVM died, from Maven's output, or None when it didn't. In a
+    port to C++ the JVM runs native code under the sanitizers (D-92): a sanitizer's abort ends
+    the fork with no report for the test that was running, and Maven's output has the
+    sanitizer's report, which this returns up to its SUMMARY line."""
+    if _FORK_CRASHED not in output:
+        return None
+    lines = output.splitlines()
+    for at, line in enumerate(lines):
+        if not _SANITIZER.search(line):
+            continue
+        report: list[str] = []
+        for text in lines[at:]:
+            report.append(text)
+            if text.startswith("SUMMARY: "):
+                break
+        return (
+            "the native code under the sanitizers aborted the forked test JVM:\n"
+            + "\n".join(report)[:_MAX_REPORT]
+        )
+    return (
+        "Surefire's forked test JVM terminated without reporting (a crash, or System.exit): "
+        "no sanitizer report in Maven's output; see the test run's log and the "
+        "*.dumpstream files beside its Surefire reports"
+    )
+
+
 def selection_argument(test_ids: Iterable[str]) -> str | None:
     """Surefire's ``-Dtest`` value for ``test_ids`` (other kinds of IDs are left out), or
     None when none is a ``junit:`` ID."""

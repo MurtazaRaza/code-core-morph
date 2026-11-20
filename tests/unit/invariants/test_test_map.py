@@ -275,3 +275,13 @@ def _ctx(root: Path) -> AdapterContext:
         executor=NativeExecutor(log_dir=root / "exec"),
         lang=LanguageConfig(language="cpp", standard="cpp17"),
     )
+
+
+def test_a_data_driven_methods_cases_by_their_stem() -> None:
+    stems = ["junit:shop.CartTest#counts", "dotnet:Shop.CartTests#Prices"]
+    assert tm.data_driven_case("junit:shop.CartTest#counts[pc]", stems)
+    assert tm.data_driven_case("junit:shop.CartTest#counts(int)[0]", stems)
+    assert tm.data_driven_case("dotnet:Shop.CartTests#Prices(1)", stems)
+    assert not tm.data_driven_case("junit:shop.CartTest#countsAll", stems)
+    assert not tm.data_driven_case("junit:shop.CartTest#totals", stems)
+    assert not tm.data_driven_case("junit:shop.CartTest#counts[pc]", [])

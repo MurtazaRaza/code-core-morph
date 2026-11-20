@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. It does C++ standard upgrades (C++98/03 to C++23), C++ → Rust, C → Rust and Rust → C ports, and Java and C# version upgrades. The focus is legacy code to modern languages (D-67): C → Rust (Phase 15) and Rust → C (Phase 16) are done. C# → C++ (Phase 17) and C# → Rust (Phase 18) are done too (D-77). Next is Phase 19, which lifts six of the first versions' refusals (D-86); after it, the next legacy language (Fortran or batch COBOL, D-67) is the user's call. Java → C# is in the Backlog.
+CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents make the changes inside a compile → test → fix loop, and real toolchains decide what's correct. It does C++ standard upgrades (C++98/03 to C++23), C++ → Rust, C → Rust and Rust → C ports, and Java and C# version upgrades. The focus is legacy code to modern languages (D-67): C → Rust (Phase 15) and Rust → C (Phase 16) are done. C# → C++ (Phase 17) and C# → Rust (Phase 18) are done too (D-77). Phase 19 lifts six of the first versions' refusals (D-86; four built, one of them in Docker only). Phase 20, legacy Java → Rust and → C++ (D-91), which interrupted Phase 19, is done in Docker; next are Phase 19's last two lifts, then the next legacy language (Fortran or batch COBOL, D-67), which is the user's call. Java → C# is in the Backlog.
 
 ## Read first
 
@@ -11,7 +11,7 @@ CodeCoreMorph is an open-source Python tool that migrates codebases. LLM agents 
 
 ## Current status
 
-Phases 0–7, 9, 10 and 12–18 are done (Windows, native and Docker; Phases 15–18 in Docker). Their details are in the plan and the decision log (D-xx), not here. Where the code lives:
+Phases 0–7, 9, 10, 12–18 and 20 are done (Windows, native and Docker; Phases 15–18 and 20 in Docker). Their details are in the plan and the decision log (D-xx), not here. Where the code lives:
 
 - **Run graph:** `orchestrator/run.py`; all LangGraph calls are in `orchestrator/graph.py`.
 - **Adapters:** `adapters/{cpp,rust,java,csharp,c}/`. Rule packs are registered by entry point (`cpp_to_rust`, `java`, `csharp`, `c_to_rust`, …). Rule IDs are global across packs.

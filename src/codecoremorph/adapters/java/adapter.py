@@ -15,6 +15,7 @@ import logging
 import shutil
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -41,7 +42,8 @@ from codecoremorph.adapters.java.pom import (
     extensions,
     lowest_standard,
 )
-from codecoremorph.adapters.java.surefire import read_reports, selection_argument
+from codecoremorph.adapters.java.surefire import crashed_fork, read_reports, selection_argument
+from codecoremorph.adapters.portindex import type_sites
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.core.globs import PathMatcher
 from codecoremorph.core.models import (
@@ -98,7 +100,7 @@ class JavaAdapter(LanguageAdapter):
             extract_assertions=True,
             detect_disabled_tests=True,
             codemod_tools=["openrewrite", "maven-java-version"],
-            queries=["test_cases", "record_candidates"],
+            queries=["test_cases", "record_candidates", "java_types"],
             standards=list(STANDARDS),
         )
 
@@ -146,6 +148,7 @@ class JavaAdapter(LanguageAdapter):
         timeout_s: float | None = None,
         project: Path | None = None,
         pom: bool = True,
+        extra_env: dict[str, str] | None = None,
     ) -> tuple[Any, str]:
         tools = self._tools(ctx)
         directory = project or self._mirror(ctx)
@@ -163,7 +166,7 @@ class JavaAdapter(LanguageAdapter):
         result = ctx.executor.run(
             argv,
             cwd=ctx.sandbox(directory),
-            env=env,
+            env={**env, **(extra_env or {})},
             timeout_s=timeout_s or ctx.lang.build_timeout_s,
             log_path=ctx.log_dir / log_name,
         )
@@ -281,7 +284,11 @@ class JavaAdapter(LanguageAdapter):
 
     def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
         """``mvn -o test-compile`` from nothing (the outputs are removed first, so a class
-        whose source went can't linger)."""
+        whose source went can't linger); in a port to C++, after the bridge library the façades
+        load (D-92)."""
+        native = self._native_build(ctx)
+        if native is not None and not native.success:
+            return native
         self._sync(ctx)
         mirror.clean(self._mirror(ctx))
         result, output = self._maven(ctx, ["--offline", "test-compile"], "maven-build.log")
@@ -338,7 +345,11 @@ class JavaAdapter(LanguageAdapter):
             args.append("-DfailIfNoTests=false")
         timeout = ctx.lang.test_timeout_s
         result, output = self._maven(
-            ctx, args, "maven-test.log", timeout_s=timeout + ctx.lang.build_timeout_s
+            ctx,
+            args,
+            "maven-test.log",
+            timeout_s=timeout + ctx.lang.build_timeout_s,
+            extra_env=self._native_test_env(ctx),
         )
         reports = [d / "surefire-reports" for d in mirror.output_dirs(project)]
         cases, problems = read_reports(reports)
@@ -359,10 +370,116 @@ class JavaAdapter(LanguageAdapter):
             message = failure.message
             if errors:
                 message += "\n" + "\n".join(f"{d.file_path}:{d.line}: {d.message}" for d in errors)
+            # A forked JVM that died (a sanitizer's abort in a port to C++, D-92) says why
+            # ahead of everything else; the tests it ran before keep their results.
+            crashed = crashed_fork(output)
+            if crashed is not None:
+                message = crashed
             extra.append(_error_case("junit:(run)", message))
         return TestReport(
             cases=[*cases, *extra], duration_s=result.duration_s, log_path=result.log_path
         )
+
+    # ------------------------------------------------------------------ a port to C++ or Rust
+
+    # The target's modules are imported where a port uses them: they import this adapter's
+    # package (the façades' side), which imports this module.
+
+    def _cpp_port(self, ctx: AdapterContext) -> bool:
+        from codecoremorph.adapters.cpp import javaports
+
+        return ctx.lang.port_target == "cpp" and javaports.is_port(ctx.worktree)
+
+    def _rust_port(self, ctx: AdapterContext) -> bool:
+        from codecoremorph.adapters.rust import javaports as rustports
+
+        return ctx.lang.port_target == "rust" and rustports.is_port(ctx.worktree)
+
+    @staticmethod
+    def _rust_ctx(ctx: AdapterContext) -> AdapterContext:
+        """The Rust adapter's view of the port: its cache, so Cargo's target directory is the
+        one its own builds use (the session gives the target adapter ``cache_dir / rust``)."""
+        return replace(ctx, cache_dir=ctx.cache_dir / "rust", log_dir=ctx.log_dir / "rust")
+
+    def _native_build(self, ctx: AdapterContext) -> BuildResult | None:
+        """In a port to C++ (D-92): CMake builds the bridge library the façades load, in the
+        build directory the C++ adapter configured (it configures first), so the Java tests run
+        the C++ just built. In a port to Rust: Cargo builds the crates' libraries, the
+        ``cdylib`` the façades load among them. None when there is no new code yet."""
+        if self._rust_port(ctx):
+            from codecoremorph.adapters.rust import RustAdapter
+
+            return RustAdapter().build_libraries(self._rust_ctx(ctx))
+        if not self._cpp_port(ctx):
+            return None
+        from codecoremorph.adapters.cpp import javaports
+        from codecoremorph.adapters.cpp.diagnostics import parse_compiler_output
+        from codecoremorph.adapters.cpp.paths import PathMapper
+
+        library = javaports.native_name(_read_text(ctx.worktree / javaports.CPP_CMAKE) or "")
+        if library is None:
+            return None
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        result = ctx.executor.run(
+            ["cmake", "--build", ctx.sandbox(ctx.build_dir), "--target", library],
+            cwd=ctx.sandbox(ctx.worktree),
+            timeout_s=ctx.lang.build_timeout_s,
+            log_path=ctx.log_dir / "native-build.log",
+        )
+        stdout, stderr = full_output(result)
+        folds = ctx.executor.kind == "native" and sys.platform in ("win32", "darwin")
+        mapper = PathMapper(
+            ctx.sandbox(ctx.worktree), ctx.sandbox(ctx.build_dir), case_insensitive=folds
+        )
+        diagnostics = parse_compiler_output(stdout + "\n" + stderr, mapper)
+        if not result.ok and not any(d.severity is Severity.ERROR for d in diagnostics):
+            diagnostics.append(
+                build_failure(stdout + "\n" + stderr, f"build of {library}", str(result.log_path))
+            )
+        return BuildResult(
+            success=result.ok,
+            diagnostics=diagnostics,
+            duration_s=result.duration_s,
+            log_path=result.log_path,
+        )
+
+    def _native_test_env(self, ctx: AdapterContext) -> dict[str, str]:
+        """What Surefire's forked JVM needs in a port to C++: the bridge library's directory on
+        the loader's path (HotSpot's java.library.path on Linux), and the shared ASan runtime
+        preloaded, the C++ being built with the sanitizers; the fork inherits Maven's
+        environment (D-92)."""
+        from codecoremorph.adapters.cpp import javaports
+        from codecoremorph.adapters.rust import javaports as rustports
+
+        if self._rust_port(ctx):
+            target = rustports.cargo_target_dir(ctx.cache_dir)
+            return rustports.test_environment(f"{ctx.sandbox(target)}/debug")
+        if not self._cpp_port(ctx):
+            return {}
+        return javaports.test_environment(
+            f"{ctx.sandbox(ctx.build_dir)}/lib", self._asan_runtime(ctx)
+        )
+
+    def _asan_runtime(self, ctx: AdapterContext) -> str | None:
+        """The shared AddressSanitizer runtime of the toolchain's clang, asked once per run."""
+        record = self._root(ctx) / "asan-runtime"
+        if record.is_file():
+            return record.read_text(encoding="utf-8").strip() or None
+        found: str | None = None
+        for name in ("libclang_rt.asan.so", "libclang_rt.asan-x86_64.so"):
+            result = ctx.executor.run(
+                ["clang", f"-print-file-name={name}"],
+                cwd=ctx.sandbox(ctx.worktree),
+                timeout_s=60,
+                log_path=ctx.log_dir / "asan-runtime.log",
+            )
+            path = full_output(result)[0].strip()
+            if result.ok and path != name and PurePosixPath(path).is_absolute():
+                found = path
+                break
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(found or "", encoding="utf-8")
+        return found
 
     # ------------------------------------------------------------------ index
 
@@ -542,6 +659,11 @@ class JavaAdapter(LanguageAdapter):
             if not index_path.is_file():
                 raise ConfigError("the record_candidates query needs an index", hint="Index first.")
             return record_candidates(index_path, files)
+        if name == "java_types":
+            index_path = ctx.cache_dir / INDEX_FILE_NAME
+            if not index_path.is_file():
+                raise ConfigError("the java_types query needs an index", hint="Index first.")
+            return type_sites(index_path, files, "Java")
         return super().query(ctx, name, files)
 
 
