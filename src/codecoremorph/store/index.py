@@ -31,6 +31,7 @@ from codecoremorph.core.models import (
     GenericUse,
     IndexMeta,
     LineEnding,
+    MacroSite,
     NativeLibraryProbe,
     PackageEntry,
     Reference,
@@ -298,6 +299,16 @@ class IndexStore:
     def set_native_probes(self, probes: Sequence[NativeLibraryProbe]) -> None:
         """What the toolchain has of each native library a port's source calls (D-82)."""
         self.set_value("native_probes", "[" + ",".join(p.model_dump_json() for p in probes) + "]")
+
+    def set_macro_sites(self, sites: Sequence[MacroSite]) -> None:
+        """The uses of the crate's own procedural macros and their expansions (D-93)."""
+        self.set_value("macro_sites", "[" + ",".join(s.model_dump_json() for s in sites) + "]")
+
+    def macro_sites(self) -> list[MacroSite]:
+        """The uses of the crate's own procedural macros a Rust source recorded (D-93), or
+        none."""
+        text = self.value("macro_sites")
+        return [MacroSite.model_validate(s) for s in json.loads(text)] if text else []
 
     def native_probes(self) -> list[NativeLibraryProbe]:
         """What the toolchain has of each native library a port's source calls (D-82), or

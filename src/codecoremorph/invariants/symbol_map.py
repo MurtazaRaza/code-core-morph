@@ -121,13 +121,27 @@ def symbol_map_problems(
         seen.add(entry.source)
         for target in entry.targets:
             if target not in known:
-                problems.append(f"{entry.source}: {target} is no item of the new code")
+                problems.append(
+                    f"{entry.source}: {target} is no item of the new code{_hint(target, known)}"
+                )
         if not entry.targets and entry.note is None:
             problems.append(f"{entry.source}: name the items that took it over, or say why not")
     for name, header in required.items():
         if name not in seen:
             problems.append(f"{name} (declared in {header}) has no entry")
     return problems
+
+
+def _hint(target: str, known: Collection[str]) -> str:
+    """Why a member of a known item isn't one: the compiler wrote it (a derive's ``default``,
+    an implicit constructor), so no source declares it."""
+    owner = target.rpartition("::")[0]
+    if owner not in known:
+        return ""
+    return (
+        f" (a member the compiler writes, such as a derived trait's, has no item: name {owner}, "
+        "or give a note)"
+    )
 
 
 def symbol_map_feedback(rule_id: str, path: str, problems: list[str]) -> str:

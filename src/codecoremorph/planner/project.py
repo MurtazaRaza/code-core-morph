@@ -30,6 +30,7 @@ from codecoremorph.core.models import (
     FileRole,
     GenericUse,
     GraphFile,
+    MacroSite,
     NativeLibraryProbe,
     PackageEntry,
     RuleSite,
@@ -125,6 +126,8 @@ class ProjectModel:
     # has of the native libraries it calls.
     packages: list[PackageEntry] = field(default_factory=list[PackageEntry])
     native_probes: list[NativeLibraryProbe] = field(default_factory=list[NativeLibraryProbe])
+    # A Rust source's uses of its own procedural macros, with their expansions (D-93).
+    macro_sites: list[MacroSite] = field(default_factory=list[MacroSite])
     _chars: dict[str, int] = field(default_factory=dict[str, int], repr=False)
 
     @classmethod
@@ -161,6 +164,7 @@ class ProjectModel:
             test_methods = store.test_methods()
             packages = store.packages()
             native_probes = store.native_probes()
+            macro_sites = store.macro_sites()
         includes = {path: set(targets) for path, targets in edges.items()}
         partners = pair_headers(files, edges)
         for path, others in partners.items():
@@ -191,6 +195,7 @@ class ProjectModel:
             test_methods=test_methods,
             packages=packages,
             native_probes=native_probes,
+            macro_sites=macro_sites,
         )
 
     @property

@@ -1,0 +1,52 @@
+{
+ "src/crc.rs:5:27": {
+  "name": "crc_table!",
+  "expansion": "[\n    0x0000u16, 0xC0C1u16, 0xC181u16, 0x0140u16, 0xC301u16, 0x03C0u16, 0x0280u16, 0xC241u16,\n    0xC601u16, 0x06C0u16, 0x0780u16, 0xC741u16, 0x0500u16, 0xC5C1u16, 0xC481u16, 0x0440u16,\n    0xCC01u16, 0x0CC0u16, 0x0D80u16, 0xCD41u16, 0x0F00u16, 0xCFC1u16, 0xCE81u16, 0x0E40u16,\n    0x0A00u16, 0xCAC1u16, 0xCB81u16, 0x0B40u16, 0xC901u16, 0x09C0u16, 0x0880u16, 0xC841u16,\n    0xD801u16, 0x18C0u16, 0x1980u16, 0xD941u16, 0x1B00u16, 0xDBC1u16, 0xDA81u16, 0x1A40u16,\n    0x1E00u16, 0xDEC1u16, 0xDF81u16, 0x1F40u16, 0xDD01u16, 0x1DC0u16, 0x1C80u16, 0xDC41u16,\n    0x1400u16, 0xD4C1u16, 0xD581u16, 0x1540u16, 0xD701u16, 0x17C0u16, 0x1680u16, 0xD641u16,\n    0xD201u16, 0x12C0u16, 0x1380u16, 0xD341u16, 0x1100u16, 0xD1C1u16, 0xD081u16, 0x1040u16,\n    0xF001u16, 0x30C0u16, 0x3180u16, 0xF141u16, 0x3300u16, 0xF3C1u16, 0xF281u16, 0x3240u16,\n    0x3600u16, 0xF6C1u16, 0xF781u16, 0x3740u16, 0xF501u16, 0x35C0u16, 0x3480u16, 0xF441u16,\n    0x3C00u16, 0xFCC1u16, 0xFD81u16, 0x3D40u16, 0xFF01u16, 0x3FC0u16, 0x3E80u16, 0xFE41u16,\n    0xFA01u16, 0x3AC0u16, 0x3B80u16, 0xFB41u16, 0x3900u16, 0xF9C1u16, 0xF881u16, 0x3840u16,\n    0x2800u16, 0xE8C1u16, 0xE981u16, 0x2940u16, 0xEB01u16, 0x2BC0u16, 0x2A80u16, 0xEA41u16,\n    0xEE01u16, 0x2EC0u16, 0x2F80u16, 0xEF41u16, 0x2D00u16, 0xEDC1u16, 0xEC81u16, 0x2C40u16,\n    0xE401u16, 0x24C0u16, 0x2580u16, 0xE541u16, 0x2700u16, 0xE7C1u16, 0xE681u16, 0x2640u16,\n    0x2200u16, 0xE2C1u16, 0xE381u16, 0x2340u16, 0xE101u16, 0x21C0u16, 0x2080u16, 0xE041u16,\n    0xA001u16, 0x60C0u16, 0x6180u16, 0xA141u16, 0x6300u16, 0xA3C1u16, 0xA281u16, 0x6240u16,\n    0x6600u16, 0xA6C1u16, 0xA781u16, 0x6740u16, 0xA501u16, 0x65C0u16, 0x6480u16, 0xA441u16,\n    0x6C00u16, 0xACC1u16, 0xAD81u16, 0x6D40u16, 0xAF01u16, 0x6FC0u16, 0x6E80u16, 0xAE41u16,\n    0xAA01u16, 0x6AC0u16, 0x6B80u16, 0xAB41u16, 0x6900u16, 0xA9C1u16, 0xA881u16, 0x6840u16,\n    0x7800u16, 0xB8C1u16, 0xB981u16, 0x7940u16, 0xBB01u16, 0x7BC0u16, 0x7A80u16, 0xBA41u16,\n    0xBE01u16, 0x7EC0u16, 0x7F80u16, 0xBF41u16, 0x7D00u16, 0xBDC1u16, 0xBC81u16, 0x7C40u16,\n    0xB401u16, 0x74C0u16, 0x7580u16, 0xB541u16, 0x7700u16, 0xB7C1u16, 0xB681u16, 0x7640u16,\n    0x7200u16, 0xB2C1u16, 0xB381u16, 0x7340u16, 0xB101u16, 0x71C0u16, 0x7080u16, 0xB041u16,\n    0x5000u16, 0x90C1u16, 0x9181u16, 0x5140u16, 0x9301u16, 0x53C0u16, 0x5280u16, 0x9241u16,\n    0x9601u16, 0x56C0u16, 0x5780u16, 0x9741u16, 0x5500u16, 0x95C1u16, 0x9481u16, 0x5440u16,\n    0x9C01u16, 0x5CC0u16, 0x5D80u16, 0x9D41u16, 0x5F00u16, 0x9FC1u16, 0x9E81u16, 0x5E40u16,\n    0x5A00u16, 0x9AC1u16, 0x9B81u16, 0x5B40u16, 0x9901u16, 0x59C0u16, 0x5880u16, 0x9841u16,\n    0x8801u16, 0x48C0u16, 0x4980u16, 0x8941u16, 0x4B00u16, 0x8BC1u16, 0x8A81u16, 0x4A40u16,\n    0x4E00u16, 0x8EC1u16, 0x8F81u16, 0x4F40u16, 0x8D01u16, 0x4DC0u16, 0x4C80u16, 0x8C41u16,\n    0x4400u16, 0x84C1u16, 0x8581u16, 0x4540u16, 0x8701u16, 0x47C0u16, 0x4680u16, 0x8641u16,\n    0x8201u16, 0x42C0u16, 0x4380u16, 0x8341u16, 0x4100u16, 0x81C1u16, 0x8081u16, 0x4040u16,\n]\n"
+ },
+ "src/msg.rs:7:45": {
+  "name": "Encode",
+  "expansion": "impl ::wire::codec::Encode for Header {\n    fn encode(&self, out: &mut ::std::vec::Vec<u8>) {\n        ::wire::codec::Encode::encode(&self.kind, out);\n        ::wire::codec::Encode::encode(&self.len, out);\n    }\n    fn encoded_len(&self) -> usize {\n        0usize\n            + ::wire::codec::Encode::encoded_len(&self.kind)\n            + ::wire::codec::Encode::encoded_len(&self.len)\n    }\n}"
+ },
+ "src/msg.rs:7:53": {
+  "name": "Decode",
+  "expansion": "impl ::wire::codec::Decode for Header {\n    fn decode(input: &mut &[u8]) -> ::core::result::Result<Self, ::wire::codec::DecodeError> {\n        ::core::result::Result::Ok(Header {\n            kind: ::wire::codec::Decode::decode(input)?,\n            len: ::wire::codec::Decode::decode(input)?,\n        })\n    }\n}"
+ },
+ "src/msg.rs:13:39": {
+  "name": "Encode",
+  "expansion": "impl ::wire::codec::Encode for Reading {\n    fn encode(&self, out: &mut ::std::vec::Vec<u8>) {\n        ::wire::codec::Encode::encode(&self.sensor, out);\n        ::wire::codec::Encode::encode(&self.value, out);\n        ::wire::codec::Encode::encode(&self.valid, out);\n    }\n    fn encoded_len(&self) -> usize {\n        0usize\n            + ::wire::codec::Encode::encoded_len(&self.sensor)\n            + ::wire::codec::Encode::encoded_len(&self.value)\n            + ::wire::codec::Encode::encoded_len(&self.valid)\n    }\n}"
+ },
+ "src/msg.rs:13:47": {
+  "name": "Decode",
+  "expansion": "impl ::wire::codec::Decode for Reading {\n    fn decode(input: &mut &[u8]) -> ::core::result::Result<Self, ::wire::codec::DecodeError> {\n        ::core::result::Result::Ok(Reading {\n            sensor: ::wire::codec::Decode::decode(input)?,\n            value: ::wire::codec::Decode::decode(input)?,\n            valid: ::wire::codec::Decode::decode(input)?,\n            seen: ::core::default::Default::default(),\n        })\n    }\n}"
+ },
+ "src/msg.rs:23:39": {
+  "name": "Encode",
+  "expansion": "impl ::wire::codec::Encode for Command {\n    fn encode(&self, out: &mut ::std::vec::Vec<u8>) {\n        match self {\n            Command::Ping => {\n                out.push(0u8);\n            }\n            Command::Set { key, value } => {\n                out.push(1u8);\n                ::wire::codec::Encode::encode(key, out);\n                ::wire::codec::Encode::encode(value, out);\n            }\n            Command::Reset(f0) => {\n                out.push(2u8);\n                ::wire::codec::Encode::encode(f0, out);\n            }\n            Command::Report(f0, f1) => {\n                out.push(3u8);\n                ::wire::codec::Encode::encode(f0, out);\n                ::wire::codec::Encode::encode(f1, out);\n            }\n        }\n    }\n    fn encoded_len(&self) -> usize {\n        match self {\n            Command::Ping => 1usize,\n            Command::Set { key, value } => {\n                1usize\n                    + ::wire::codec::Encode::encoded_len(key)\n                    + ::wire::codec::Encode::encoded_len(value)\n            }\n            Command::Reset(f0) => 1usize + ::wire::codec::Encode::encoded_len(f0),\n            Command::Report(f0, f1) => {\n                1usize\n                    + ::wire::codec::Encode::encoded_len(f0)\n                    + ::wire::codec::Encode::encoded_len(f1)\n            }\n        }\n    }\n}"
+ },
+ "src/msg.rs:23:47": {
+  "name": "Decode",
+  "expansion": "impl ::wire::codec::Decode for Command {\n    fn decode(input: &mut &[u8]) -> ::core::result::Result<Self, ::wire::codec::DecodeError> {\n        let tag: u8 = ::wire::codec::Decode::decode(input)?;\n        ::core::result::Result::Ok(match tag {\n            0u8 => Command::Ping,\n            1u8 => Command::Set {\n                key: ::wire::codec::Decode::decode(input)?,\n                value: ::wire::codec::Decode::decode(input)?,\n            },\n            2u8 => Command::Reset(::wire::codec::Decode::decode(input)?),\n            3u8 => Command::Report(\n                ::wire::codec::Decode::decode(input)?,\n                ::wire::codec::Decode::decode(input)?,\n            ),\n            other => return ::core::result::Result::Err(::wire::codec::DecodeError::BadTag(other)),\n        })\n    }\n}"
+ },
+ "src/msg.rs:42:3": {
+  "name": "throws",
+  "expansion": "#[doc = \" The header and payload of the frame at the start of `bytes`, and the bytes after it.\"]\npub fn read_frame(bytes: &[u8]) -> ::core::result::Result<(Header, Vec<u8>, usize), DecodeError> {\n    ::core::result::Result::Ok({\n        let mut input = bytes;\n        let header = Header::decode(&mut input)?;\n        let len = header.len as usize;\n        if input.len() < len + 2 {\n            return Err(DecodeError::Short);\n        };\n        let payload = &input[..len];\n        let found = u16::decode(&mut &input[len..])?;\n        let expected = crc16(payload);\n        if found != expected {\n            return Err(DecodeError::BadCrc { expected, found });\n        };\n        (\n            header,\n            payload.to_vec(),\n            bytes.len() - input.len() + len + 2,\n        )\n    })\n}"
+ },
+ "src/msg.rs:67:3": {
+  "name": "throws",
+  "expansion": "#[doc = \" The command in a frame of kind 1.\"]\npub fn read_command(bytes: &[u8]) -> ::core::result::Result<Command, DecodeError> {\n    ::core::result::Result::Ok({\n        let (header, payload, _) = read_frame(bytes)?;\n        if header.kind != 1 {\n            return Err(DecodeError::BadTag(header.kind));\n        };\n        let mut input = &payload[..];\n        Command::decode(&mut input)?\n    })\n}"
+ },
+ "tests/frames.rs:6:28": {
+  "name": "Encode",
+  "expansion": "impl ::wire::codec::Encode for Probe {\n    fn encode(&self, out: &mut ::std::vec::Vec<u8>) {\n        ::wire::codec::Encode::encode(&self.id, out);\n        ::wire::codec::Encode::encode(&self.echo, out);\n    }\n    fn encoded_len(&self) -> usize {\n        0usize\n            + ::wire::codec::Encode::encoded_len(&self.id)\n            + ::wire::codec::Encode::encoded_len(&self.echo)\n    }\n}"
+ },
+ "tests/frames.rs:6:36": {
+  "name": "Decode",
+  "expansion": "impl ::wire::codec::Decode for Probe {\n    fn decode(input: &mut &[u8]) -> ::core::result::Result<Self, ::wire::codec::DecodeError> {\n        ::core::result::Result::Ok(Probe {\n            id: ::wire::codec::Decode::decode(input)?,\n            note: ::core::default::Default::default(),\n            echo: ::wire::codec::Decode::decode(input)?,\n        })\n    }\n}"
+ },
+ "_server": {
+  "loaded_s": 0.9,
+  "expanded_s": 3.0,
+  "health": "ok",
+  "message": null
+ }
+}

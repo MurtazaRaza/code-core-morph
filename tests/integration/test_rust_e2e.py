@@ -128,9 +128,11 @@ def test_every_unit_of_a_rust_fixture(
     ]
     assert units == sorted(u.unit_id for u in report.units if u.commit is not None)
     tracked = git(root, "ls-tree", "-r", "--name-only", result.branch).split()
-    # The branch is C: no Rust, no Cargo manifest or build script; the CMake build, the C and
-    # the maps of where each Rust item and test went.
-    assert not [f for f in tracked if f.endswith(".rs") or f.startswith("Cargo.")]
+    # The branch is C: no Rust, no Cargo manifest or build script (a procedural macro package's
+    # neither, D-93); the CMake build, the C and the maps of where each Rust item and test went.
+    assert not [
+        f for f in tracked if f.endswith(".rs") or f.rsplit("/", 1)[-1].startswith("Cargo.")
+    ]
     assert "build.rs" not in tracked
     assert {"CMakeLists.txt", "c/CMakeLists.txt", "c/symbol-map.toml", "c/test-map.toml"} <= set(
         tracked

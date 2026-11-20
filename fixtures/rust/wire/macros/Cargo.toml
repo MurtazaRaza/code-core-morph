@@ -1,0 +1,11 @@
+[package]
+name = "wire_macros"
+version = "0.3.0"
+authors = ["CodeCoreMorph spike"]
+edition = "2018"
+description = "The wire crate's own derives and attributes"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+proc-macro = true

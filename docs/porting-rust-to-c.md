@@ -136,6 +136,41 @@ The mapping, in short:
   again with each feature the defaults don't turn on, alone, their IDs ending in `[<feature>]`.
   The C keeps what each feature turns on, and the test map maps those IDs as well.
 
+## The crate's own procedural macros
+
+A crate may have a package of procedural macros of its own: a workspace member with
+`proc-macro = true` whose derives, attributes and function-like macros the library uses
+(`#[derive(Encode)]`, `#[throws(DecodeError)]`, `crc_table!(0xA001)`). They are code the
+compiler runs on each site, and what they write the C has to provide (D-93):
+
+- **The index records each site and what it expands to.** rust-analyzer's SCIP output names
+  every site (a reference to a macro of the macro package, outside a `use`), and its language
+  server expands each, offline, on the pinned stable toolchain, with rust-analyzer's own
+  proc-macro server: the code the compiler sees there. CodeCoreMorph ships the small client that
+  asks it (`rust-analyzer/expandMacro`, what an editor's "Expand macro recursively" runs). A
+  crate without a macro package of its own runs none of this.
+- **The macro package is no library to port.** Its files go with the retirement, which deletes
+  it with the rest of the Rust; its own tests, which checked the macros, map to notes.
+- **The agent ports from the expansions,** which a unit's message shows for each site in its
+  files: what a derive writes becomes C functions of the type (`wire_header_encode`), an
+  attribute's item keeps the signature the attribute gave it (`read_frame`'s `Result` a status
+  and out-parameters, as any), and a function-like macro's value is the C's (a lookup table
+  computed while the crate compiled becomes a static array, written out). Not from the macro's
+  code: the expansion is exactly what compiles at that site.
+- **A derive's methods are the module's to map:** they join the unit's exports, so the symbol
+  map covers `wire::msg::Header::encode` with the module's own items.
+- **The façade uses none of the crate's own macros.** It implements a derived trait by hand,
+  over the C, and writes an attribute's item with its expanded signature; otherwise the macro's
+  Rust, not the C, would do what it writes. A post-condition of each module's unit checks it.
+  The standard derives (`Debug`, `Clone`) stay, and so do a module's `#[cfg(test)]` tests,
+  whose test-only types may derive the crate's macros until their own unit translates them.
+- **A test file's own sites** (a test-only type's derives) go into its C test program, from
+  their expansions: a struct, and static functions for what the derives write.
+- **Still refused, by site:** a macro the library re-exports (`pub use wire_macros::Encode`),
+  which code outside the crate applies to its own types and C can't offer, and a site
+  rust-analyzer gave no expansion for. A registry package's procedural macros (`serde_derive`)
+  aren't the crate's own and aren't lifted.
+
 ## Reviewing the result
 
 The report lists every unit, the symbol map's notes (behavior the C keeps differently, such as
@@ -143,7 +178,7 @@ a reducer looked up by name returning a static struct instead of a `Box<dyn Redu
 test map. The final verification is a clean CMake build whose tests, every one a translated
 Rust test, pass under the sanitizers.
 
-## The fixture: rpn
+## The fixtures
 
 `fixtures/rust/rpn` is a reverse Polish notation calculator, edition 2018: a lexer with an enum
 with data and `Result` errors, a generic stack, an evaluator, a reducer trait with three
@@ -151,6 +186,15 @@ implementations and a closure-taking filter, the `rpn` program, nine unit tests 
 that run the program. Ported whole through `codecoremorph run --host-agent` (11 of 11 units,
 the first ten on their first attempt, the retirement by its codemod alone, in 7.8 minutes), it
 replays from the recorded edits in `tests/integration/test_rust_e2e.py`.
+
+`fixtures/rust/wire` is a framed binary message format with a macro package of its own
+(`macros/`): `derive(Encode)` and `derive(Decode)` with a helper attribute `#[wire(skip)]`,
+on two structs and an enum with data; `#[throws(DecodeError)]`, which turns a function's
+`T` into a `Result`; `crc_table!(0xA001)`, which computes a CRC-16 table while the crate
+compiles; and a test-only type in `tests/frames.rs` that derives both. Ported whole through
+`codecoremorph run --host-agent` (8 of 8 units, each agent unit on its first attempt, the
+retirement by its codemod alone, in 14 minutes), it ends as C with no macro package left,
+and replays from the recorded edits like `rpn`.
 
 ## The benchmark: shlex
 
@@ -183,9 +227,11 @@ pointer or freeing, which the first leg mapped to notes.
 
 - One library crate: the root package, or a workspace's member beside packages of programs and
   tests that use it. A workspace of several libraries is refused.
-- Refused: a procedural macro crate, `async` code, and a public generic item that nothing in the
-  crate uses (it has no instantiation to port), unless its type parameters are all iterations
-  over a given item, conversions or closures.
+- Refused: a crate that is only a procedural macro package, a macro the crate re-exports,
+  `async` code, and a public generic item that nothing in the crate uses (it has no
+  instantiation to port), unless its type parameters are all iterations over a given item,
+  conversions or closures. A registry package's procedural macros aren't lifted, nor refused
+  yet.
 - A changed signature of a public item shows in the build and the tests, not in I-6: the Rust
   index records items, not their signatures.
 - The index sees the default features only: code behind another feature isn't in the plan,

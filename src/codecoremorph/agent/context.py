@@ -24,7 +24,10 @@ from codecoremorph.core.errors import ContextOverflowError
 from codecoremorph.core.models import (
     Boundary,
     CodemodResult,
+    FileRole,
     LoadedRule,
+    MacroKind,
+    MacroSite,
     Message,
     PortUnit,
     PortUnits,
@@ -195,6 +198,14 @@ def unit_message(
     note = f"{unit.note}\n\n" if unit.note else ""
     if rust_port:
         note += rust_port_note(unit, port_units)
+        # The crate's own procedural macros (D-93): what they write where the unit uses them,
+        # and at the retirement the tests of their package.
+        if port_units is PortUnits.RETIREMENT or unit.port is None:
+            note += macro_tests_note(rust_macro_tests(index_path))
+        else:
+            tests = port_units is PortUnits.TESTS
+            sites = rust_macro_sites(index_path, unit.files, tests=tests)
+            note += macro_sites_note(sites, port_units)
     elif csharp_target is not None:
         note += csharp_port_note(unit, port_units, csharp_target)
     elif java_target is not None:
@@ -520,6 +531,122 @@ def retirement_note(unit: WorkUnit) -> str:
         "crates' C bridges, so the Cargo workspace now builds and tests alone. Make it build, "
         "pass and lint clean on its own (code only the bridge used, docs that describe the "
         "C++), and give every baseline test an entry in rust/test-map.toml.\n\n"
+    )
+
+
+MAX_EXPANSION_LINES = 400
+
+
+def rust_macro_sites(
+    index_path: Path | None, files: Sequence[str], *, tests: bool = False
+) -> list[MacroSite]:
+    """The sites of the crate's own procedural macros in ``files`` that a port ports from their
+    expansions (D-93): a module unit's outside its ``#[cfg(test)]`` items, a test unit's in
+    them, or anywhere in a test file."""
+    if index_path is None or not index_path.is_file():
+        return []
+    wanted = set(files)
+    with IndexStore.open(index_path) as store:
+        test_files = {f.path for f in store.files(FileRole.TEST)}
+        return [
+            s
+            for s in store.macro_sites()
+            if s.file in wanted
+            and not s.reexport
+            and s.expansion is not None
+            and (s.test_only or s.file in test_files) == tests
+        ]
+
+
+def rust_macro_tests(index_path: Path | None) -> list[str]:
+    """The tests of the workspace's procedural macro packages (D-93), by ID."""
+    if index_path is None or not index_path.is_file():
+        return []
+    with IndexStore.open(index_path) as store:
+        dirs = {
+            path.partition("src/")[0]
+            for build in store.build_targets()
+            if build.proc_macro
+            for path in build.files
+            if "src/" in path
+        }
+        dirs.discard("")
+        return sorted(
+            e.test_id
+            for e in store.test_entries()
+            if e.file is not None and any(e.file.startswith(d) for d in dirs)
+        )
+
+
+_MACRO_KINDS = {
+    MacroKind.DERIVE: "the derive",
+    MacroKind.ATTRIBUTE: "the attribute",
+    MacroKind.FUNCTION: "the macro",
+}
+
+
+def macro_sites_note(sites: Sequence[MacroSite], port_units: PortUnits | None) -> str:
+    """A unit's sites of the crate's own procedural macros (D-93): what each expands to, as the
+    compiler sees it, and what the port does with that. Empty for a unit without sites."""
+    if not sites:
+        return ""
+    blocks: list[str] = []
+    for site in sites:
+        lines = (site.expansion or "").rstrip().splitlines()
+        if len(lines) > MAX_EXPANSION_LINES:
+            more = len(lines) - MAX_EXPANSION_LINES
+            lines = [*lines[:MAX_EXPANSION_LINES], f"// [{more} more lines]"]
+        name = f"{site.macro}!" if site.kind is MacroKind.FUNCTION else site.macro
+        blocks.append(
+            f"{site.file}:{site.line}, {_MACRO_KINDS[site.kind]} `{name}` of {site.package}:\n\n"
+            "```rust\n" + "\n".join(lines) + "\n```"
+        )
+    if port_units is PortUnits.TESTS:
+        how = (
+            "Port what they write into the C test program, from these expansions: a test-only "
+            "type becomes a C struct and what its derives write static functions of the "
+            "program."
+        )
+    else:
+        items = sorted({i for s in sites for i in s.items})
+        mapped = (
+            f" Map what they define in c/symbol-map.toml with the module's items: "
+            f"{', '.join(items)}."
+            if items
+            else ""
+        )
+        how = (
+            "Port what they write to the C from these expansions, not from the macros' code, "
+            "which goes with its package at the retirement: what a derive writes becomes C "
+            "functions, which the façade's own implementation of the trait calls; an "
+            "attribute's item keeps its expanded signature in the façade (a `Result` it makes "
+            "is a status and out-parameters in the C, as any); a function-like macro's value "
+            "(a table) is the C's, written out. The façade uses none of the crate's own macros "
+            "(no derive, attribute or call of them, no `use` of their package): otherwise "
+            "their Rust, not the C, would run. The standard derives (`Debug`, `Clone`) stay."
+            f"{mapped}"
+        )
+    count = len(sites)
+    return (
+        f"The unit has {count} site{'' if count == 1 else 's'} of the crate's own procedural "
+        f"macros. As the compiler sees {'it' if count == 1 else 'them'}, "
+        f"{'it expands' if count == 1 else 'they expand'} to:\n\n"
+        + "\n\n".join(blocks)
+        + f"\n\n{how}\n\n"
+    )
+
+
+def macro_tests_note(tests: Sequence[str]) -> str:
+    """At a port from Rust's retirement (D-93): the macro packages' tests, which go with
+    them."""
+    if not tests:
+        return ""
+    listed = "\n".join(f"- {t}" for t in tests)
+    return (
+        "The codemod also deleted the crate's procedural macro packages, and their tests "
+        "with them, which checked the macros; the C holds what they wrote at each site. "
+        "Those of these the baseline ran need an entry in c/test-map.toml with a note and "
+        f"no C test:\n{listed}\n\n"
     )
 
 

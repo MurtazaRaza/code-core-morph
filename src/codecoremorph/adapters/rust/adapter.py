@@ -64,6 +64,7 @@ from codecoremorph.core.models import (
     ExecResult,
     IndexMeta,
     LanguageConfig,
+    MacroSite,
     RuleSite,
     Severity,
     SkippedReplacement,
@@ -92,6 +93,8 @@ JAVA_PORT_INSTALL_HINT = (
 # Every build is a verification of a new tree, so incremental caches only cost time and disk
 # (and their directory names overflow Windows' path limit in deep cache directories).
 CARGO_ENV = {"CARGO_INCREMENTAL": "0"}
+# rust-analyzer's language-server client that expands each procedural macro site (D-93).
+MACRO_HELPER = "expand_macros.py"
 
 
 class RustAdapter(LanguageAdapter):
@@ -534,6 +537,8 @@ class RustAdapter(LanguageAdapter):
                         digest = hashlib.sha256(path_.read_bytes()).hexdigest()
                         rows.append((rel, "toml", digest, "build", 0, 0, "utf-8", "lf"))
         excluded = PathMatcher(ctx.lang.exclude)
+        texts_of: dict[str, dict[str, str]] = {}
+        macro_packages: set[str] = set()
         for package in packages:
             base = ctx.worktree / package
             sources: dict[str, tuple[str, str]] = {}
@@ -556,6 +561,9 @@ class RustAdapter(LanguageAdapter):
                     sources[inner] = (rel, text)
             manifest = _text(base / "Cargo.toml") or ""
             name = names[package]
+            texts_of[package] = {inner: text for inner, (_, text) in sources.items()}
+            if source.proc_macro_package(manifest):
+                macro_packages.add(package)
             if port_source:
                 # The manifest and its lock are the build: a port's units may change them, and
                 # its retirement deletes them.
@@ -590,13 +598,12 @@ class RustAdapter(LanguageAdapter):
                     )
                 )
             if port_source:
-                texts = {inner: text for inner, (_, text) in sources.items()}
                 source.add_targets_and_tests(
                     extra,
                     package=package,
                     name=name,
                     manifest=manifest,
-                    files=texts,
+                    files=texts_of[package],
                     local=set(names.values()),
                 )
         if port_source:
@@ -615,6 +622,11 @@ class RustAdapter(LanguageAdapter):
                         crates=crates,
                         known=known,
                     )
+        macro_sites: list[MacroSite] = []
+        if port_source and macro_packages:
+            macro_sites = self._macro_sites(
+                ctx, packages, names, macro_packages, texts_of, scips, problems
+            )
         symbols += extra.symbols
         meta = IndexMeta(
             adapter="rust",
@@ -630,8 +642,144 @@ class RustAdapter(LanguageAdapter):
             if port_source:
                 store.set_build_targets(extra.targets)
                 store.set_test_entries(extra.tests)
+            if port_source and macro_packages:
+                store.set_macro_sites(macro_sites)
             store.set_meta(meta)
         return SymbolIndex(path=path, meta=meta, problems=problems)
+
+    def _macro_sites(
+        self,
+        ctx: AdapterContext,
+        packages: list[str],
+        names: dict[str, str],
+        macro_packages: set[str],
+        texts_of: dict[str, dict[str, str]],
+        scips: dict[str, list[Document]],
+        problems: list[str],
+    ) -> list[MacroSite]:
+        """The uses of the crate's own procedural macros (D-93): SCIP's references to what the
+        workspace's macro packages define, in its other packages, each with rust-analyzer's
+        expansion of it and the items that defines."""
+        macros = {names[p]: source.macro_definitions(texts_of[p]) for p in sorted(macro_packages)}
+        found: list[MacroSite] = []
+        for package in packages:
+            if package in macro_packages or package not in scips:
+                continue
+            prefix = source.package_prefix(package)
+            sites = source.macro_sites(
+                scips[package], macros, prefix=prefix, files=texts_of[package]
+            )
+            uses = [s for s in sites if not s.reexport]
+            # The expansions depend on the macro packages, the files with sites and the locks:
+            # the agent loop indexes before every query, so a key keeps one server run per
+            # change.
+            key = hashlib.sha256()
+            for part in sorted(macro_packages):
+                for inner, text in sorted(texts_of[part].items()):
+                    key.update(f"{part}/{inner}\0{text}\0".encode())
+                key.update((_text(ctx.worktree / part / "Cargo.toml") or "").encode())
+            for lock in ("Cargo.lock", f"{prefix}Cargo.lock"):
+                key.update((_text(ctx.worktree / lock) or "").encode())
+            for site in uses:
+                key.update(f"{site.file}:{site.line}:{site.column}\0".encode())
+            for inner in sorted({s.file.removeprefix(prefix) for s in uses}):
+                key.update(texts_of[package].get(inner, "").encode())
+            expansions = (
+                self._expand_macros(ctx, package, uses, problems, key.hexdigest()) if uses else {}
+            )
+            crate = names[package].replace("-", "_")
+            for site in sites:
+                expansion = expansions.get((site.file, site.line, site.column))
+                module = module_path(crate, site.file.removeprefix(prefix))
+                # A test-only type's derive defines nothing the port maps.
+                items = (
+                    source.expansion_items(module, expansion)
+                    if expansion and not site.test_only
+                    else []
+                )
+                found.append(site.model_copy(update={"expansion": expansion, "items": items}))
+        return found
+
+    def _expand_macros(
+        self,
+        ctx: AdapterContext,
+        package: str,
+        sites: list[MacroSite],
+        problems: list[str],
+        key: str,
+    ) -> dict[tuple[str, int, int], str]:
+        """rust-analyzer's expansion of each site, by its language server (D-93): the helper
+        CodeCoreMorph ships, run in the sandbox, offline; rust-analyzer builds the macro
+        packages in the cache's target directory. The last run's expansions serve while
+        ``key`` (what they depend on) is the same."""
+        helper = _install_helper(ctx.cache_dir, MACRO_HELPER)
+        work = ctx.cache_dir / "macros"
+        work.mkdir(parents=True, exist_ok=True)
+        prefix = source.package_prefix(package)
+        sites_file = work / f"{_slug(package)}-sites.json"
+        out = work / f"{_slug(package)}-expansions.json"
+        keyed = work / f"{_slug(package)}-expansions.key"
+        key = hashlib.sha256((key + helper.read_text(encoding="utf-8")).encode()).hexdigest()
+        if _text(keyed) == key and (cached := _text(out)) is not None:
+            return self._read_expansions(cached, sites, prefix) or {}
+        keyed.unlink(missing_ok=True)
+        out.unlink(missing_ok=True)
+        listed = [
+            {"file": s.file.removeprefix(prefix), "line": s.line, "column": s.column} for s in sites
+        ]
+        sites_file.write_text(json.dumps(listed, indent=1), encoding="utf-8")
+        ctx.log_dir.mkdir(parents=True, exist_ok=True)
+        server_log = work / f"{_slug(package)}-rust-analyzer.log"  # the sandbox sees the cache
+        timeout = ctx.lang.build_timeout_s
+        python = sys.executable if ctx.executor.kind == "native" else "python3"
+        result = ctx.executor.run(
+            [
+                python,
+                ctx.sandbox(helper),
+                ctx.sandbox(ctx.worktree / package),
+                ctx.sandbox(sites_file),
+                ctx.sandbox(out),
+                ctx.sandbox(server_log),
+                str(timeout),
+            ],
+            cwd=ctx.sandbox(ctx.worktree / package),
+            env={**CARGO_ENV, "CARGO_TARGET_DIR": ctx.sandbox(ctx.cache_dir / TARGET_DIR)},
+            timeout_s=timeout + 60,
+            log_path=ctx.log_dir / f"expand-macros-{_slug(package)}.log",
+        )
+        text = _text(out) if out.is_file() else None
+        if not result.ok or text is None:
+            stdout, stderr = full_output(result)
+            tail = "\n".join((stdout + stderr).strip().splitlines()[-5:])
+            problems.append(
+                f"rust-analyzer couldn't expand the macro sites of {package or '.'}: "
+                f"{tail or 'no output'}"
+            )
+            return {}
+        found = self._read_expansions(text, sites, prefix)
+        if found is None:
+            problems.append(f"the macro expansions of {package or '.'} are unreadable")
+            return {}
+        keyed.write_text(key, encoding="utf-8")
+        return found
+
+    @staticmethod
+    def _read_expansions(
+        text: str, sites: list[MacroSite], prefix: str
+    ) -> dict[tuple[str, int, int], str] | None:
+        """The helper's output, by site; None when it isn't JSON."""
+        try:
+            data = cast(dict[str, object], json.loads(text))
+        except json.JSONDecodeError:
+            return None
+        found: dict[tuple[str, int, int], str] = {}
+        for site in sites:
+            entry = data.get(f"{site.file.removeprefix(prefix)}:{site.line}:{site.column}")
+            if isinstance(entry, dict):
+                expansion = cast(dict[str, object], entry).get("expansion")
+                if isinstance(expansion, str) and expansion.strip():
+                    found[(site.file, site.line, site.column)] = expansion
+        return found
 
     def _scip(
         self, ctx: AdapterContext, package: str, problems: list[str]

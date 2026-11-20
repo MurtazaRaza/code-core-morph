@@ -262,6 +262,20 @@ def rust_path(symbol: str, crates: Mapping[str, str]) -> str | None:
     return "::".join(path) if len(path) > 1 else crate
 
 
+def macro_symbol(symbol: str) -> tuple[str, str] | None:
+    """``(package name, macro name)`` of a symbol at a crate's root with a macro's descriptor:
+    ``Name:`` (a derive or an attribute macro, and a derive's helper attribute) or ``name!`` (a
+    function-like macro), as rust-analyzer names procedural macros (D-93). None otherwise."""
+    split = _split_symbol(symbol)
+    if split is None:
+        return None
+    package, text = split
+    parsed = _descriptors(text)
+    if not parsed or len(parsed) != 1 or parsed[0][1] not in (":", "!"):
+        return None
+    return package, parsed[0][0]
+
+
 @dataclass(frozen=True)
 class Reference:
     file: str

@@ -168,6 +168,11 @@ class BuildTarget(CoreModel):
         default_factory=list[str],
         description="What it builds, relative to the build directory (D-60)",
     )
+    proc_macro: bool = Field(
+        default=False,
+        description="A Rust package of procedural macros: code the compiler runs on its sites. "
+        "A port to C ports what each site expands to, and retires the package (D-93)",
+    )
 
 
 class TestEntry(CoreModel):
@@ -361,6 +366,42 @@ class DynamicValue(CoreModel):
     types: list[str] = Field(default_factory=list[str])
     file: WorktreePath
     line: int = Field(ge=1)
+
+
+class MacroKind(StrEnum):
+    DERIVE = "derive"  # #[proc_macro_derive]: #[derive(Name)] on a type
+    ATTRIBUTE = "attribute"  # #[proc_macro_attribute]: #[name(...)] on an item
+    FUNCTION = "function"  # #[proc_macro]: name!(...)
+
+
+class MacroSite(CoreModel):
+    """A use of a procedural macro of the crate's own (D-93), and what it expands to there,
+    which the port's C provides."""
+
+    file: WorktreePath
+    line: int = Field(ge=1)
+    column: int = Field(ge=1)
+    macro: str = Field(min_length=1, description='The macro\'s name: "Encode", "crc_table"')
+    kind: MacroKind
+    package: str = Field(min_length=1, description="The macro package, by name")
+    expansion: str | None = Field(
+        default=None,
+        description="rust-analyzer's expansion of the site, or none when it gave none",
+    )
+    items: list[str] = Field(
+        default_factory=list[str],
+        description="The items the expansion defines that the port maps: a derive's trait "
+        "methods (`wire::msg::Header::encode`), an attribute's or a macro's new public items",
+    )
+    reexport: bool = Field(
+        default=False,
+        description="Not a use but a re-export (`pub use`): code outside the crate applies it",
+    )
+    test_only: bool = Field(
+        default=False,
+        description="In a `#[cfg(test)]` item: the tests' (a test-only type's derive), which "
+        "stay Rust with them until their test unit",
+    )
 
 
 class TypeEntry(CoreModel):

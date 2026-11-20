@@ -65,6 +65,9 @@ def test_what_the_steward_refuses() -> None:
     text = MAP + (
         '\n[[symbol]]\ncpp = "calc::Rational"\nrust = "calc_rs::rational::Ghost"\n'
         '\n[[symbol]]\ncpp = "calc::Lexer"\n'
+        # A derived Default's method: M14's QGram() lost an attempt to the bare message.
+        '\n[[symbol]]\ncpp = "calc::Rational::Rational"\n'
+        'rust = "calc_rs::rational::Rational::default"\n'
     )
     entries, problems = read_symbol_map(text, "cpp", "rust")
     assert problems == []
@@ -74,6 +77,9 @@ def test_what_the_steward_refuses() -> None:
         "calc::Rational is mapped twice; keep one entry",
         "calc::Rational: calc_rs::rational::Ghost is no item of the new code",
         "calc::Lexer: name the items that took it over, or say why not",
+        "calc::Rational::Rational: calc_rs::rational::Rational::default is no item of the new "
+        "code (a member the compiler writes, such as a derived trait's, has no item: name "
+        "calc_rs::rational::Rational, or give a note)",
         "calc::parse (declared in include/calc/p.h) has no entry",
     ]
     feedback = symbol_map_feedback("port_module", "rust/symbol-map.toml", found)

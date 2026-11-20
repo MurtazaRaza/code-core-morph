@@ -1,0 +1,14 @@
+[package]
+name = "wire"
+version = "0.3.0"
+authors = ["CodeCoreMorph spike"]
+edition = "2018"
+description = "A small framed binary message format"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+wire_macros = { path = "macros", version = "0.3.0" }
+
+[workspace]
+members = ["macros"]

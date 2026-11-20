@@ -19,6 +19,8 @@ llm:
 postconditions:
   - {type: symbol_map, severity: error}         # every public item mapped to the C
   - {type: lint_clean, severity: error}         # no warning, clang-tidy's bug checks quiet
+  # The façade uses none of the crate's own procedural macros: the C does what they write (D-93).
+  - {type: hook, hook: "codecoremorph.rules.packs.rust_to_c.hooks:macro_sites_left", severity: error}
 skip:
   - test                          # the integration tests stay Rust: they judge the port
 allow_suppressions: ['**/src/**/*.rs']             # the façade's attributes on bindgen's sys

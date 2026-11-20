@@ -36,6 +36,7 @@ from codecoremorph.core.models import (
     BuildTarget,
     FileEntry,
     FileRole,
+    MacroSite,
     Plan,
     PlanEstimate,
     PlanGraph,
@@ -1025,16 +1026,20 @@ class _Former:
         files, and the retirement. The crate is the worktree's one library package: the root
         package, or a workspace's member beside program-only packages that use it."""
         target = _LANGUAGE_NAMES.get(target, target)  # for the notes: "to C"
-        libraries = [t for t in self.project.targets if t.kind is TargetKind.LIBRARY]
+        built = [t for t in self.project.targets if t.kind is TargetKind.LIBRARY]
+        # A package of procedural macros is code the compiler runs on the library's sites: the
+        # port ports what each site expands to, and retires the package (D-93).
+        libraries = [t for t in built if not t.proc_macro]
+        if not libraries and built:
+            return [self._skipped(scan, files, "skipped: the crate is a procedural macro "
+                                  "crate, which a port from Rust doesn't take: its macros are "
+                                  "code for the compiler of the crates that use them "
+                                  "(D-93)")]  # fmt: skip
         if len(libraries) != 1:
             why = "has no library" if not libraries else "has several libraries"
             return [self._skipped(scan, files, f"skipped: the project {why}; a port from Rust "
                                   "takes one library crate for now (D-75)")]  # fmt: skip
         library = libraries[0]
-        manifests = [self.project.text(f) or "" for f in self.project.build_files]
-        if any(re.search(r"(?m)^\s*proc-macro\s*=\s*true\b", text) for text in manifests):
-            return [self._skipped(scan, files, "skipped: the crate is a procedural macro "
-                                  "crate, which a port from Rust doesn't take (D-75)")]  # fmt: skip
         if cut is PortUnits.RUST_MODULE:
             return self._rust_modules(scan, files, library, target)
         if cut is PortUnits.EXECUTABLE:
@@ -1135,6 +1140,11 @@ class _Former:
                 note = f"skipped: {path} has async code, which a port to {target} doesn't take"
                 drafts.append(self._skipped(scan, [path], note + " yet (D-75)"))
                 continue
+            macros = [s for s in self._macro_sites_in([path]) if not s.test_only]
+            refusal = self._macro_refusal(macros, target)
+            if refusal is not None:
+                drafts.append(self._skipped(scan, [path], f"skipped: {path} {refusal}"))
+                continue
             items = project.public_items(path)
             generics = self._generic_items(text)
             generic = sorted(n for n, ps in generics.items() if any(map(self._data_param, ps)))
@@ -1162,7 +1172,10 @@ class _Former:
                 crate=crate,
                 module=stem,
                 callers=callers,
-                exports=sorted({s.qualified_name for s in items}),
+                # What the crate's own macros write at its sites is the module's too (D-93).
+                exports=sorted(
+                    {s.qualified_name for s in items} | {i for m in macros for i in m.items}
+                ),
             )
             note = (
                 f"ports {path} ({module}) to {target}: c/src/{stem}.c and "
@@ -1185,6 +1198,7 @@ class _Former:
             if callers:
                 keep = "file keeps" if len(callers) == 1 else "files keep"
                 note += f"; {len(callers)} {keep} using it through the façade"
+            note += self._macro_note(macros)
             draft = _Draft(
                 rule=scan.rule_id,
                 files=sorted({path, *roots, *project.build_files}),
@@ -1244,8 +1258,11 @@ class _Former:
         crate = library.name.replace("-", "_")
         wanted = set(files)
         by_file: dict[str, list[str]] = {}
+        macro_dirs = self._macro_package_dirs()
         for entry in project.tests:
             if entry.file in wanted and entry.test_id not in self.mapped_tests:
+                if any(entry.file.startswith(d) for d in macro_dirs):
+                    continue  # a test of a macro package: a note at the retirement (D-93)
                 by_file.setdefault(entry.file, []).append(entry.test_id)
         drafts: list[_Draft] = []
         taken: set[str] = set()
@@ -1266,6 +1283,16 @@ class _Former:
                 package = re.sub(r"\W", "_", cases[0].removeprefix("nextest:").split("::")[0])
                 program = f"test_{package}_{program.removeprefix('test_')}"
             taken.add(program)
+            # A module's file: only its tests' sites (the module's unit ported the others).
+            macros = [
+                s
+                for s in self._macro_sites_in([path])
+                if s.test_only or project.files[path].role is FileRole.TEST
+            ]
+            refusal = self._macro_refusal(macros, target)
+            if refusal is not None:
+                drafts.append(self._skipped(scan, [path], f"skipped: {path} {refusal}"))
+                continue
             port = PortUnit(build_target=library.name, crate=crate, module=program, tests=cases)
             draft = _Draft(
                 rule=scan.rule_id,
@@ -1273,7 +1300,7 @@ class _Former:
                 sites=self.site_counts(scan, [path]),
                 note=f"translates the {len(cases)} test{'' if len(cases) == 1 else 's'} of "
                 f"{path} to {target}: c/tests/{program}.c, each case a CTest test named as "
-                "its Rust test",
+                f"its Rust test{self._macro_note(macros)}",
                 port=port,
                 needs=self._rust_needs([path]),
             )
@@ -1286,18 +1313,88 @@ class _Former:
         code = sorted(f for f in files if f in project.files)
         if not code:
             return []
+        # A macro the crate re-exports is API only Rust can use (D-93).
+        reexported = [s for s in self._macro_sites_in(code) if s.reexport]
+        if reexported:
+            return [self._skipped(scan, code, f"skipped: the Rust stays: the crate "
+                                  f"{self._macro_refusal(reexported, target)}")]  # fmt: skip
+        note = (
+            f"retires the Rust: deletes {len(code)} files, the Cargo manifests and the "
+            f"build script; the CMake build then builds and tests the {target} alone"
+        )
+        dirs = self._macro_package_dirs()
+        if dirs:
+            names = ", ".join(d.rstrip("/") for d in dirs)
+            several = len(dirs) > 1
+            note += (
+                f"; the procedural macro package{'s' if several else ''} ({names}) "
+                f"go{'' if several else 'es'} with it, and {'their' if several else 'its'} tests"
+            )
         return [
             _Draft(
                 rule=scan.rule_id,
                 files=sorted({*code, *project.build_files}),
                 sites=self.site_counts(scan, code),
-                note=f"retires the Rust: deletes {len(code)} files, the Cargo manifests and the "
-                f"build script; the CMake build then builds and tests the {target} alone",
+                note=note,
                 sized=False,
                 needs=[d for d in self.port_drafts if d.blocking],
                 counted=[],
             )
         ]
+
+    # ------------------------------------------------------------------ procedural macros (D-93)
+
+    def _macro_sites_in(self, paths: Iterable[str]) -> list[MacroSite]:
+        """The sites of the crate's own procedural macros in ``paths``."""
+        wanted = set(paths)
+        return [s for s in self.project.macro_sites if s.file in wanted]
+
+    def _macro_package_dirs(self) -> list[str]:
+        """The directories of the workspace's procedural macro packages (``macros/``)."""
+        dirs: set[str] = set()
+        for build in self.project.targets:
+            if build.proc_macro:
+                for path in build.files:
+                    head, found, _ = path.partition("src/")
+                    if found and head:
+                        dirs.add(head)
+        return sorted(dirs)
+
+    @staticmethod
+    def _macro_refusal(sites: Sequence[MacroSite], target: str) -> str | None:
+        """Why a unit's macro sites keep it from a port, or None (D-93): a macro the crate
+        re-exports, which code outside the crate applies, or a site without an expansion."""
+        reexported = [s for s in sites if s.reexport]
+        if reexported:
+            where = ", ".join(f"{s.macro} ({s.file}:{s.line})" for s in reexported[:4])
+            return (
+                f"re-exports procedural macros of the crate's own, {where}, which code outside "
+                f"the crate applies to its own items: {target} has no macro to give it (D-93)"
+            )
+        missing = [s for s in sites if s.expansion is None]
+        if missing:
+            where = ", ".join(f"{s.macro} at line {s.line}" for s in missing[:4])
+            more = f" and {len(missing) - 4} more" if len(missing) > 4 else ""
+            return (
+                f"has sites of the crate's own procedural macros that rust-analyzer gave no "
+                f"expansion for ({where}{more}), and a port of a site starts from its "
+                "expansion (D-93)"
+            )
+        return None
+
+    @staticmethod
+    def _macro_note(sites: Sequence[MacroSite]) -> str:
+        """What a unit's note says of its macro sites (D-93)."""
+        if not sites:
+            return ""
+        shown = ", ".join(f"{s.macro} at line {s.line}" for s in sites[:6])
+        more = f" and {len(sites) - 6} more" if len(sites) > 6 else ""
+        count = len(sites)
+        return (
+            f"; {count} site{'' if count == 1 else 's'} of the crate's own procedural macros "
+            f"({shown}{more}), ported from {'its' if count == 1 else 'their'} expansion"
+            f"{'' if count == 1 else 's'}, which the unit's message shows"
+        )
 
     # ------------------------------------------------------------------ a C# source (D-78)
 
