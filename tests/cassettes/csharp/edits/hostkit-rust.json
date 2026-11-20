@@ -1,0 +1,137 @@
+{
+  "fixture": "hostkit",
+  "source": "csharp7.3",
+  "target": "rust2021",
+  "target_language": "rust",
+  "rules": [
+    "port_csharp_type_to_rust",
+    "port_csharp_program_to_rust",
+    "port_csharp_tests_to_rust",
+    "retire_csharp_to_rust"
+  ],
+  "status": "completed",
+  "unit_counts": {
+    "committed": 5
+  },
+  "submissions": {
+    "U-0001": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/bridge/clock.rs",
+            "search": "//! The bridge of Hostkit.Clock: the exports its C# façade calls (CodeCoreMorph, D-84).\n",
+            "replace": "//! The bridge of Hostkit.Clock: the exports its C# façade calls (CodeCoreMorph, D-84).\nuse super::ccm::{self, ccm_status};\nuse crate::clock::Clock;\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Clock_nanoseconds(result: *mut i64) -> ccm_status {\n    ccm::guard(|| {\n        ccm::put(result, Clock::nanoseconds());\n        Ok(())\n    })\n}\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Clock_milliseconds_since(start: i64, result: *mut f64) -> ccm_status {\n    ccm::guard(|| {\n        ccm::put(result, Clock::milliseconds_since(start));\n        Ok(())\n    })\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/clock.rs",
+            "search": "//! The Rust of Hostkit.Clock, ported from C# (CodeCoreMorph, D-84).\n",
+            "replace": "//! The Rust of Hostkit.Clock, ported from C# (CodeCoreMorph, D-84).\nuse std::sync::OnceLock;\nuse std::time::Instant;\n\n/// A monotonic clock in nanoseconds, from the operating system's own.\npub struct Clock;\n\n/// The fixed point the clock counts from: its first reading.\nfn origin() -> Instant {\n    static ORIGIN: OnceLock<Instant> = OnceLock::new();\n    *ORIGIN.get_or_init(Instant::now)\n}\n\nimpl Clock {\n    /// Nanoseconds since some fixed point; never goes back.\n    pub fn nanoseconds() -> i64 {\n        // What the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), is std's Instant there;\n        // its branch for Windows (QueryPerformanceCounter) isn't this port's, which is built for\n        // Linux (D-94). std keeps the clock's reading to itself, so the fixed point is the\n        // first call's.\n        i64::try_from(origin().elapsed().as_nanos()).unwrap_or(i64::MAX)\n    }\n\n    /// Milliseconds from `start` (a `nanoseconds` value) to now.\n    pub fn milliseconds_since(start: i64) -> f64 {\n        Self::nanoseconds().wrapping_sub(start) as f64 / 1_000_000.0\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/Hostkit/Clock.cs",
+            "search": "namespace Hostkit\n{\n    /// <summary>A monotonic clock in nanoseconds, from the operating system's own.</summary>\n    public static class Clock\n    {\n        private const int Monotonic = 1; // CLOCK_MONOTONIC\n\n        /// <summary>Nanoseconds since some fixed point; never goes back.</summary>\n        public static long Nanoseconds()\n        {\n            if (Native.Windows)\n            {\n                Native.QueryPerformanceCounter(out long count);\n                Native.QueryPerformanceFrequency(out long frequency);\n                return (long)(count * (1_000_000_000.0 / frequency));\n            }\n            Native.ClockGetTime(Monotonic, out Native.Timespec now);\n            return now.Seconds * 1_000_000_000 + now.Nanoseconds;\n        }\n\n        /// <summary>Milliseconds from <paramref name=\"start\"/> (a Nanoseconds value) to now.</summary>\n        public static double MillisecondsSince(long start)\n        {\n            return (Nanoseconds() - start) / 1_000_000.0;\n        }\n    }\n}\n",
+            "replace": "using CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>A monotonic clock in nanoseconds, from the operating system's own.</summary>\n    public static class Clock\n    {\n        /// <summary>Nanoseconds since some fixed point; never goes back.</summary>\n        public static long Nanoseconds()\n        {\n            long result;\n            CcmInterop.Check(CcmNative.hostkit_Clock_nanoseconds(out result));\n            return result;\n        }\n\n        /// <summary>Milliseconds from <paramref name=\"start\"/> (a Nanoseconds value) to now.</summary>\n        public static double MillisecondsSince(long start)\n        {\n            double result;\n            CcmInterop.Check(CcmNative.hostkit_Clock_milliseconds_since(start, out result));\n            return result;\n        }\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n",
+            "replace": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\nrust = \"hostkit_rs::clock::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), through std::time::Instant (the same clock): the fixed point is the first call's, not the boot; its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\nrust = \"hostkit_rs::clock::Clock::milliseconds_since\"\n"
+          }
+        ],
+        "summary": "Ported Clock to Rust: what the C# does on Linux, clock_gettime's monotonic clock; the branch for Windows (QueryPerformanceCounter) goes, as the port is built for Linux (D-94).",
+        "review_notes": []
+      }
+    ],
+    "U-0002": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/bridge/host.rs",
+            "search": "//! The bridge of Hostkit.Host: the exports its C# façade calls (CodeCoreMorph, D-84).\n",
+            "replace": "//! The bridge of Hostkit.Host: the exports its C# façade calls (CodeCoreMorph, D-84).\nuse std::ffi::c_char;\n\nuse super::ccm::{self, ccm_status};\nuse crate::host::Host;\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Host_process_id(result: *mut i32) -> ccm_status {\n    ccm::guard(|| {\n        ccm::put(result, Host::process_id());\n        Ok(())\n    })\n}\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Host_error_message(code: i32, result: *mut *mut c_char) -> ccm_status {\n    ccm::guard(|| {\n        ccm::out_str(result, &Host::error_message(code));\n        Ok(())\n    })\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/host.rs",
+            "search": "//! The Rust of Hostkit.Host, ported from C# (CodeCoreMorph, D-84).\n",
+            "replace": "//! The Rust of Hostkit.Host, ported from C# (CodeCoreMorph, D-84).\n//!\n//! What the C# does on Linux: getpid and strerror from the C library, which std calls too. Its\n//! branches for Windows (GetCurrentProcessId, FormatMessageW) aren't this port's, which is built\n//! for Linux (D-94).\n\n/// What the process can ask its operating system.\npub struct Host;\n\nimpl Host {\n    /// The process's ID.\n    pub fn process_id() -> i32 {\n        // getpid's pid_t, which std hands back as a u32.\n        std::process::id() as i32\n    }\n\n    /// The system's message for an error code (an errno), without a trailing newline or period.\n    pub fn error_message(code: i32) -> String {\n        // strerror's text, which std reads with strerror_r, without the \" (os error N)\" std adds.\n        let full = std::io::Error::from_raw_os_error(code).to_string();\n        let suffix = format!(\" (os error {code})\");\n        let text = full.strip_suffix(&suffix).unwrap_or(&full);\n        // C#'s TrimEnd('\\r', '\\n', ' ', '.').\n        text.trim_end_matches(['\\r', '\\n', ' ', '.']).to_owned()\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/Hostkit/Host.cs",
+            "search": "using System;\nusing System.Runtime.InteropServices;\nusing System.Text;\n\nnamespace Hostkit\n{\n    /// <summary>What the process can ask its operating system.</summary>\n    public static class Host\n    {\n        private const uint FromSystem = 0x00001000; // FORMAT_MESSAGE_FROM_SYSTEM\n        private const uint IgnoreInserts = 0x00000200; // FORMAT_MESSAGE_IGNORE_INSERTS\n\n        /// <summary>The process's ID.</summary>\n        public static int ProcessId()\n        {\n            return Native.Windows ? (int)Native.GetCurrentProcessId() : Native.GetPid();\n        }\n\n        /// <summary>The system's message for an error code (a Win32 error on Windows, an errno\n        /// elsewhere), without a trailing newline or period.</summary>\n        public static string ErrorMessage(int code)\n        {\n            string text;\n            if (Native.Windows)\n            {\n                var buffer = new StringBuilder(512);\n                int n = Native.FormatMessageW(\n                    FromSystem | IgnoreInserts, IntPtr.Zero, (uint)code, 0, buffer,\n                    buffer.Capacity, IntPtr.Zero);\n                text = n > 0 ? buffer.ToString(0, n) : \"Unknown error \" + code;\n            }\n            else\n            {\n                text = Marshal.PtrToStringAnsi(Native.StrError(code)) ?? \"Unknown error \" + code;\n            }\n            return text.TrimEnd('\\r', '\\n', ' ', '.');\n        }\n    }\n}\n",
+            "replace": "using System;\nusing CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>What the process can ask its operating system.</summary>\n    public static class Host\n    {\n        /// <summary>The process's ID.</summary>\n        public static int ProcessId()\n        {\n            int result;\n            CcmInterop.Check(CcmNative.hostkit_Host_process_id(out result));\n            return result;\n        }\n\n        /// <summary>The system's message for an error code (a Win32 error on Windows, an errno\n        /// elsewhere), without a trailing newline or period.</summary>\n        public static string ErrorMessage(int code)\n        {\n            IntPtr result;\n            CcmInterop.Check(CcmNative.hostkit_Host_error_message(code, out result));\n            return CcmInterop.TakeString(result);\n        }\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\nrust = \"hostkit_rs::clock::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), through std::time::Instant (the same clock): the fixed point is the first call's, not the boot; its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\nrust = \"hostkit_rs::clock::Clock::milliseconds_since\"\n",
+            "replace": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\nrust = \"hostkit_rs::clock::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), through std::time::Instant (the same clock): the fixed point is the first call's, not the boot; its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\nrust = \"hostkit_rs::clock::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\nrust = \"hostkit_rs::host::Host::process_id\"\nnote = \"std::process::id (getpid), as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\nrust = \"hostkit_rs::host::Host::error_message\"\nnote = \"std::io::Error::from_raw_os_error's text (strerror_r), without the \\\" (os error N)\\\" std adds, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n"
+          }
+        ],
+        "summary": "Ported Host to Rust: the process ID and an error's text as the C# gets them on Linux (getpid, strerror); the branches for Windows (kernel32) go (D-94).",
+        "review_notes": []
+      }
+    ],
+    "U-0003": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/bridge/terminal.rs",
+            "search": "//! The bridge of Hostkit.Terminal: the exports its C# façade calls (CodeCoreMorph, D-84).\n",
+            "replace": "//! The bridge of Hostkit.Terminal: the exports its C# façade calls (CodeCoreMorph, D-84).\nuse std::ffi::c_char;\n\nuse super::ccm::{self, ccm_status};\nuse crate::terminal::Terminal;\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Terminal_enable_colors(result: *mut bool) -> ccm_status {\n    ccm::guard(|| {\n        ccm::put(result, Terminal::enable_colors());\n        Ok(())\n    })\n}\n\n#[unsafe(no_mangle)]\npub extern \"C\" fn hostkit_Terminal_paint(text: *const c_char, color: i32, result: *mut *mut c_char) -> ccm_status {\n    ccm::guard(|| {\n        // C# concatenates a null string as an empty one.\n        ccm::out_str(result, &Terminal::paint(&ccm::opt_str(text).unwrap_or_default(), color));\n        Ok(())\n    })\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/src/terminal.rs",
+            "search": "//! The Rust of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-84).\n",
+            "replace": "//! The Rust of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-84).\n\n/// ANSI colors on a terminal.\npub struct Terminal;\n\nimpl Terminal {\n    /// Lets the console show ANSI colors: a terminal on Linux shows them as they are, so there is\n    /// nothing to ask.\n    pub fn enable_colors() -> bool {\n        // What the C# does on Linux. Its branch for Windows asks the console for virtual\n        // terminal processing (GetStdHandle, GetConsoleMode, SetConsoleMode), which isn't this\n        // port's, built for Linux (D-94).\n        true\n    }\n\n    /// `text` in one of the eight ANSI colors (0 to 7).\n    pub fn paint(text: &str, color: i32) -> String {\n        format!(\"\\x1b[3{}m{text}\\x1b[0m\", color & 7)\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "src/Hostkit/Terminal.cs",
+            "search": "namespace Hostkit\n{\n    /// <summary>ANSI colors on a terminal.</summary>\n    public static class Terminal\n    {\n        private const int StdOutput = -11; // STD_OUTPUT_HANDLE\n        private const uint VirtualTerminal = 0x0004; // ENABLE_VIRTUAL_TERMINAL_PROCESSING\n\n        /// <summary>Lets the console show ANSI colors: Windows' console needs to be asked, other\n        /// terminals show them as they are. False when the output is no console.</summary>\n        public static bool EnableColors()\n        {\n            if (!Native.Windows)\n            {\n                return true;\n            }\n            var handle = Native.GetStdHandle(StdOutput);\n            if (!Native.GetConsoleMode(handle, out uint mode))\n            {\n                return false;\n            }\n            return (mode & VirtualTerminal) != 0 || Native.SetConsoleMode(handle, mode | VirtualTerminal);\n        }\n\n        /// <summary><paramref name=\"text\"/> in one of the eight ANSI colors (0 to 7).</summary>\n        public static string Paint(string text, int color)\n        {\n            return \"\\u001b[3\" + (color & 7) + \"m\" + text + \"\\u001b[0m\";\n        }\n    }\n}\n",
+            "replace": "using System;\nusing CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>ANSI colors on a terminal.</summary>\n    public static class Terminal\n    {\n        /// <summary>Lets the console show ANSI colors: Windows' console needs to be asked, other\n        /// terminals show them as they are. False when the output is no console.</summary>\n        public static bool EnableColors()\n        {\n            bool result;\n            CcmInterop.Check(CcmNative.hostkit_Terminal_enable_colors(out result));\n            return result;\n        }\n\n        /// <summary><paramref name=\"text\"/> in one of the eight ANSI colors (0 to 7).</summary>\n        public static string Paint(string text, int color)\n        {\n            IntPtr result;\n            CcmInterop.Check(CcmNative.hostkit_Terminal_paint(text, color, out result));\n            return CcmInterop.TakeString(result);\n        }\n    }\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/symbol-map.toml",
+            "search": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\nrust = \"hostkit_rs::clock::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), through std::time::Instant (the same clock): the fixed point is the first call's, not the boot; its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\nrust = \"hostkit_rs::clock::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\nrust = \"hostkit_rs::host::Host::process_id\"\nnote = \"std::process::id (getpid), as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\nrust = \"hostkit_rs::host::Host::error_message\"\nnote = \"std::io::Error::from_raw_os_error's text (strerror_r), without the \\\" (os error N)\\\" std adds, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n",
+            "replace": "# The C# symbols this port moved to Rust, and the Rust that took them over (CodeCoreMorph, D-84).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   rust = \"shop_rs::cart::Cart::add\"      # or a list of paths\n#   note = \"...\"                           # optional: what Rust couldn't keep, or why rust is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\nrust = \"hostkit_rs::clock::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC), through std::time::Instant (the same clock): the fixed point is the first call's, not the boot; its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\nrust = \"hostkit_rs::clock::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\nrust = \"hostkit_rs::host::Host::process_id\"\nnote = \"std::process::id (getpid), as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\nrust = \"hostkit_rs::host::Host::error_message\"\nnote = \"std::io::Error::from_raw_os_error's text (strerror_r), without the \\\" (os error N)\\\" std adds, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Terminal.EnableColors\"\nrust = \"hostkit_rs::terminal::Terminal::enable_colors\"\nnote = \"true, as the C# on Linux: a terminal there shows ANSI colors as they are; the Windows console's mode (GetStdHandle, GetConsoleMode, SetConsoleMode) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Terminal.Paint(System.String,System.Int32)\"\nrust = \"hostkit_rs::terminal::Terminal::paint\"\n"
+          }
+        ],
+        "summary": "Ported Terminal to Rust: EnableColors is true as on Linux, where a terminal shows ANSI colors as they are; the Windows console's mode goes (D-94). Paint as the C#.",
+        "review_notes": []
+      }
+    ],
+    "U-0004": [
+      {
+        "edits": [
+          {
+            "op": "replace",
+            "path": "rust/hostkit_rs/tests/hostkit_tests.rs",
+            "search": "//! The tests of a C# test file (the unit's note names it), translated from C# (CodeCoreMorph, D-84): a `#[test]` per C#\n//! test case, each mapped in rust/test-map.toml.\n",
+            "replace": "//! The tests of tests/Hostkit.Tests/HostkitTests.cs, translated from C# (CodeCoreMorph, D-84): a\n//! Rust test per C# test case, each mapped in rust/test-map.toml.\nuse std::thread;\nuse std::time::Duration;\n\nuse hostkit_rs::clock::Clock;\nuse hostkit_rs::host::Host;\nuse hostkit_rs::terminal::Terminal;\n\n// ClockTests\n\n#[test]\nfn never_goes_back() {\n    let a = Clock::nanoseconds();\n    let b = Clock::nanoseconds();\n    assert!(b >= a);\n}\n\n#[test]\nfn measures_a_sleep() {\n    let start = Clock::nanoseconds();\n    thread::sleep(Duration::from_millis(30));\n    assert!((25.0..=2000.0).contains(&Clock::milliseconds_since(start)));\n}\n\n// HostTests\n\n#[test]\nfn the_process_id() {\n    assert_eq!(std::process::id() as i32, Host::process_id());\n}\n\n#[test]\nfn an_error_message() {\n    // ENOENT is 2. The C# expects Windows' text on Windows; the port runs on Linux (D-94).\n    assert_eq!(\"No such file or directory\", Host::error_message(2));\n}\n\n// TerminalTests\n\n#[test]\nfn paints_in_ansi_colors() {\n    assert_eq!(\"\\x1b[32mok\\x1b[0m\", Terminal::paint(\"ok\", 2));\n    assert_eq!(\"\\x1b[31mx\\x1b[0m\", Terminal::paint(\"x\", 9));\n}\n\n#[test]\nfn enabling_colors_does_not_throw() {\n    assert!(std::panic::catch_unwind(Terminal::enable_colors).is_ok());\n}\n"
+          },
+          {
+            "op": "replace",
+            "path": "rust/test-map.toml",
+            "search": "# The C# tests this port translated to Rust, and the Rust tests that took them over\n# (CodeCoreMorph, D-84). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   rust = \"nextest:shop_rs::cart_tests::add_takes_from_stock\"\n#   note = \"...\"                           # optional\n",
+            "replace": "# The C# tests this port translated to Rust, and the Rust tests that took them over\n# (CodeCoreMorph, D-84). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   rust = \"nextest:shop_rs::cart_tests::add_takes_from_stock\"\n#   note = \"...\"                           # optional\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.ClockTests#NeverGoesBack\"\nrust = \"nextest:hostkit_rs::hostkit_tests::never_goes_back\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.ClockTests#MeasuresASleep\"\nrust = \"nextest:hostkit_rs::hostkit_tests::measures_a_sleep\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.HostTests#TheProcessId\"\nrust = \"nextest:hostkit_rs::hostkit_tests::the_process_id\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.HostTests#AnErrorMessage\"\nrust = \"nextest:hostkit_rs::hostkit_tests::an_error_message\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.TerminalTests#PaintsInAnsiColors\"\nrust = \"nextest:hostkit_rs::hostkit_tests::paints_in_ansi_colors\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.TerminalTests#EnablingColorsDoesNotThrow\"\nrust = \"nextest:hostkit_rs::hostkit_tests::enabling_colors_does_not_throw\"\n"
+          }
+        ],
+        "summary": "Translated HostkitTests.cs to Rust: each case mapped in the test map; AnErrorMessage keeps its Linux text, the branch the port runs.",
+        "review_notes": []
+      }
+    ]
+  },
+  "tests": 6,
+  "without_counterpart": [],
+  "recorded_from": "host-agent run 20261119-141002-9040"
+}

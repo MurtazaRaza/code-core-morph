@@ -218,6 +218,9 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     assert types["csharp:Zoo.NativeMethods"].native_only
     assert types["csharp:Zoo.Win32"].native_only
     assert not types["csharp:Zoo.Clock"].native_only
+    # A static bool set from a platform check counts with the declarations (Win32's two); a
+    # setting doesn't (D-94).
+    assert not types["csharp:Zoo.Settings"].native_only
     (getpid,) = types["csharp:Zoo.NativeMethods"].native_imports
     assert (getpid.library, getpid.entry_point) == ("libc", "getpid")
     (ticks,) = types["csharp:Zoo.Win32"].native_imports
@@ -250,6 +253,7 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
         "i_feeder": ["csharp:Zoo.IFeeder"],
         "pen": ["csharp:Zoo.Pen`1"],
         "pointer": ["csharp:Zoo.Pointer"],
+        "settings": ["csharp:Zoo.Settings"],
         "ticket": ["csharp:Zoo.Ticket", "csharp:Zoo.Ticket.Kind", "csharp:Zoo.Ticket.Stub"],
         "zoo_exception": ["csharp:Zoo.ZooException"],
     }

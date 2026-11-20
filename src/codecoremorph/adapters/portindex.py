@@ -17,6 +17,7 @@ from codecoremorph.core.models import (
     DynamicValue,
     FileRole,
     GenericUse,
+    NativeCall,
     NativeImport,
     PackageEntry,
     PackageUse,
@@ -76,6 +77,7 @@ def port_records(
     throws: list[tuple[str, ThrowSite]] = []
     notices: list[tuple[str, PortNotice]] = []
     imports: list[tuple[str, NativeImport]] = []
+    calls: list[tuple[str, NativeCall]] = []
     package_uses: list[tuple[str, PackageUse]] = []
     dynamic_sites: list[tuple[str, DynamicSite]] = []
     dynamic_values: list[tuple[str, DynamicValue]] = []
@@ -134,6 +136,15 @@ def port_records(
                 line=max(int(row["line"]), 1),
             )
             imports.append((str(row["type"]), native))
+        elif kind == "ncall" and row.get("file") in known:
+            call = NativeCall(
+                member=str(row["member"]),
+                caller=_optional(row.get("caller")),
+                platforms=_strings(row.get("platforms")),
+                file=str(row["file"]),
+                line=max(int(row["line"]), 1),
+            )
+            calls.append((str(row["type"]), call))
         elif kind == "pkguse" and row.get("file") in known:
             used = PackageUse(
                 package=str(row["package"]),
@@ -223,6 +234,9 @@ def port_records(
     for owner, native in imports:
         if owner in types:
             types[owner].native_imports.append(native)
+    for owner, call in calls:
+        if owner in types:
+            types[owner].native_calls.append(call)
     for owner, used in package_uses:
         if owner in types:
             types[owner].package_uses.append(used)

@@ -38,6 +38,7 @@ from codecoremorph.core.models import (
     DynamicSite,
     FileRole,
     GenericUse,
+    NativeCall,
     NativeImport,
     PackageEntry,
     PackageUse,
@@ -107,6 +108,12 @@ _FRAMEWORK_PACKAGE = re.compile(
 )
 
 
+# The platform a port from C# is built and tested for: Linux, in Docker (D-78). A call into
+# another platform's own library in a branch for that platform isn't the port's (D-94).
+RUN_PLATFORM = "linux"
+_PLATFORM_IDS = {"Windows": "windows", "macOS": "osx"}
+
+
 def library_name(name: str) -> str:
     """A native library's name as its file stem, lowercase: ``kernel32.dll`` is
     ``kernel32``, ``/usr/lib/libSystem.dylib`` ``libsystem``, ``libsodium.so.23``
@@ -154,12 +161,16 @@ class TypeUnit:
 
     def native(self, imports: Mapping[str, NativeImport]) -> list[str]:
         """The native libraries its types call that the new code links, by the name the
-        P/Invokes give (not the C library, which every program links)."""
+        P/Invokes give: not the C library, which every program links, nor another operating
+        system's own, whose calls are in the branches for it that the port drops (a call the
+        port's platform reaches refuses the unit, D-94)."""
         return sorted(
             {
                 imports[m].library
                 for m in self.native_calls
-                if m in imports and not c_runtime(imports[m].library)
+                if m in imports
+                and not c_runtime(imports[m].library)
+                and platform_of(imports[m].library) is None
             }
         )
 
@@ -427,6 +438,11 @@ class _Cut:
         self.native = {i: t for i, t in ported.items() if outermost(t).native_only}
         self.ported = {i: t for i, t in ported.items() if i not in self.native}
         self.imports = {n.member: n for t in project.types for n in t.native_imports}
+        # Where each P/Invoke is called, with the platforms each site runs on (D-94).
+        self.native_sites: dict[str, list[NativeCall]] = {}
+        for entry in project.types:
+            for call in entry.native_calls:
+                self.native_sites.setdefault(call.member, []).append(call)
         self.checked = {t.name for t in project.targets if t.checked_arithmetic}
 
     def _source(self, path: str) -> bool:
@@ -603,11 +619,7 @@ class _Cut:
                     f"{entry.name} uses the package {self.package_label(entry, package)} "
                     f"({sites}): the new code has no counterpart of a .NET package"
                 )
-        platform_calls: dict[str, list[NativeImport]] = {}
-        for member in unit.native_calls:
-            native = self.imports.get(member)
-            if native is not None and (platform := platform_of(native.library)) is not None:
-                platform_calls.setdefault(platform, []).append(native)
+        platform_calls, _ = self.platform_calls(unit)
         for platform, calls in sorted(platform_calls.items()):
             shown = _listed(f"{c.library}!{c.entry_point} ({c.file}:{c.line})" for c in calls)
             reasons.append(
@@ -885,6 +897,34 @@ class _Cut:
         version = self.package_version(entry.project, package)
         return f"{package} {version}" if version else package
 
+    def platform_calls(
+        self, unit: TypeUnit
+    ) -> tuple[dict[str, list[NativeImport]], dict[str, list[NativeCall]]]:
+        """A unit's calls into an operating system's own library, by platform (D-94): those the
+        port's platform reaches, which keep it from a port, and the sites in branches for
+        their own platform, which a port built for Linux doesn't keep. A unit answers for the
+        calls in its own types: a declaration others call is theirs, one nothing calls nobody's.
+        Without the index's call sites (an older index) every call counts."""
+        reached: dict[str, list[NativeImport]] = {}
+        branches: dict[str, list[NativeCall]] = {}
+        unit_types = {t.id for t in unit.types}
+        for member in sorted(unit.native_calls):
+            native = self.imports.get(member)
+            if native is None or (platform := platform_of(native.library)) is None:
+                continue
+            if not self.native_sites:
+                reached.setdefault(platform, []).append(native)
+                continue
+            sites = self.native_sites.get(member, [])
+            own = [c for c in sites if c.caller is not None and self.owner(c.caller) in unit_types]
+            if not own:
+                continue  # declared here, called by other units (or nothing): theirs to answer
+            if any(c.runs_on(RUN_PLATFORM) for c in own):
+                reached.setdefault(platform, []).append(native)
+            else:
+                branches.setdefault(platform, []).extend(own)
+        return reached, branches
+
     def takeovers(self, unit: TypeUnit) -> list[str]:
         """What the unit's note says of what the port takes over that the C# runtime did: deep
         copies through a serializer, unsafe code, platform checks, native calls, and checked
@@ -913,6 +953,15 @@ class _Cut:
                 f"asks which platform it runs on or loads native code itself ({sites}): the new "
                 "code is built for its platform and links its libraries, so it has nothing to "
                 "ask or load"
+            )
+        for platform, sites in sorted(self.platform_calls(unit)[1].items()):
+            shown = _listed(
+                f"{self.imports[c.member].entry_point} ({c.file}:{c.line})" for c in sites
+            )
+            out.append(
+                f"calls {platform}'s own API only where it runs on {platform} ({shown}): the "
+                "port is built for Linux, so it keeps what the C# does there, and the branches "
+                f"for {platform} go (D-94)"
             )
         by_library: dict[str, list[str]] = {}
         for member in unit.native_calls:
@@ -962,6 +1011,34 @@ class _Cut:
             platform = platform_of(library)
             functions = _plural(len(imports), "function")
             if platform is not None:
+                ours = _PLATFORM_IDS.get(platform, platform.lower())
+                reached = [
+                    n
+                    for n in called
+                    if not self.native_sites
+                    or not self.native_sites.get(n.member)
+                    or any(c.runs_on(RUN_PLATFORM) for c in self.native_sites[n.member])
+                ]
+                if called and not reached:
+                    summary = (
+                        f"{library} ({platform}'s own library): {functions} declared in "
+                        f"{_listed(declared)}, called by {_listed(users)} only where it runs on "
+                        f"{platform} (a check for {ours} holds each call): the port is built for "
+                        "Linux and keeps what the C# does there, so the declarations go with the "
+                        "retirement (D-94)"
+                    )
+                    out.append(
+                        PortDependency(
+                            kind=PortDependencyKind.PLATFORM_API,
+                            name=library,
+                            ported=True,
+                            summary=summary,
+                            used_by=users,
+                        )
+                    )
+                    continue
+                called = reached
+                users = sorted({u for n in called for u in callers[n.member]})
                 if not called:
                     summary = (
                         f"{library} ({platform}'s own library): {functions} declared in "

@@ -87,7 +87,7 @@ table `codecoremorph plan` prints and in `plan.json` (`dependencies`):
 | Dependency | What the port does |
 |---|---|
 | A native library its P/Invokes call (`libsodium`) | The C++ calls it itself, with its C header, and links it. The C# types that only declare its functions get no unit; they go with the retirement. The plan says which package the C# loads it from and whether the toolchain image has its header and library. |
-| An operating system's own library (`kernel32`, `libSystem`) | Nothing calls it: it goes with the retirement. Something calls it: that type stays C#, since the port builds and tests on Linux. |
+| An operating system's own library (`kernel32`, `libSystem`) | The port is built for Linux, as it builds and tests there (D-94). Called only in branches for another platform (behind `RuntimeInformation.IsOSPlatform`, `OperatingSystem.IsWindows()`, a flag set from one, `[SupportedOSPlatform]`): those branches are that platform's code, so they go, the unit's note names them, and the library goes with the retirement. Called where Linux reaches it: that type stays C#. Nothing calls it: it goes with the retirement. |
 | A .NET package's API (`Newtonsoft.Json`) | The types that use it stay C#: the C++ has no counterpart of a .NET package. The framework's own packages (`System.Memory`) don't count. |
 
 What has to happen first (a native library the image lacks) is also a plan warning.
@@ -231,6 +231,10 @@ retirement. Headless Claude Code ported it whole in 19 minutes. 29 of its 30 tes
 GoogleTest tests now, and the other passes a null currency. It replays from the recorded
 edits beside parking's.
 
+## The third fixture: hostkit
+
+`fixtures/csharp/hostkit` is a `netstandard2.0` library that asks its operating system for a monotonic clock, the process ID and an error's text, and turns on the console's ANSI colors: kernel32 on Windows, the C library elsewhere, each call behind a check of the platform (an `if` on a flag set from `IsOSPlatform`, a `?:`, an early return), as real libraries do (D-94). Its 6 NUnit tests run on Linux. The plan is 5 units: `Native`, which declares the functions beside the flag, gets none, and each type's note names the Windows branches that go. Ported whole through `codecoremorph run --host-agent` (5 of 5 units, each on its first attempt), the C++ calls `clock_gettime`, `getpid` and `strerror`, `EnableColors` is `true` as on Linux, and the symbol map says what went. It replays from the recorded edits beside parking's.
+
 ## The benchmark: libsodium-core
 
 libsodium-core 1.3.1 (`bench/csharp-port-pin.json`) is 8.8k lines of C# 9 over libsodium,
@@ -255,7 +259,8 @@ two minutes from the first unit to the last.
   copy, which ports), expression trees, a public generic type or method nothing in the project
   instantiates, a class with non-private instance fields (a façade can't forward a field), a
   ported constructor that calls a virtual member a C# class overrides, a type that uses a .NET
-  package's API or calls an operating system's own library, and a type that uses a refused one.
+  package's API or calls an operating system's own library where Linux reaches the call, and a type
+  that uses a refused one.
 - Ported, with a note: `unsafe` code is plain C++ (`fixed` pins nothing, a pointer cast that
   reads one type as another becomes `std::memcpy`).
 - A C# class outside the port (the tests, a program) that derives from a ported class and
@@ -281,4 +286,4 @@ two minutes from the first unit to the last.
   more.
 - A parameterized method whose cases come from data (`[TestCaseSource]`, `[MemberData]`) is
   compared by the method, not case by case.
-- Docker only, for now: a native Windows run hasn't been tried.
+- Docker only, for now: a native Windows run hasn't been tried. A call into Windows' own API that Linux reaches needs one; ASan doesn't run there yet with the pinned llvm-mingw.

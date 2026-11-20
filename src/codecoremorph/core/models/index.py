@@ -250,6 +250,27 @@ class NativeImport(CoreModel):
     line: int = Field(ge=1)
 
 
+class NativeCall(CoreModel):
+    """A call of a P/Invoke declaration in a port's source (D-94), with the platforms its site
+    runs on by the checks around it: ``["windows"]`` in a branch for Windows, ``["!windows"]``
+    in one for any other, empty when no check holds it."""
+
+    member: str = Field(min_length=1, description="The extern method it calls, by symbol ID")
+    caller: str | None = Field(default=None, description="The member it is in, by symbol ID")
+    platforms: list[str] = Field(default_factory=list[str])
+    file: WorktreePath
+    line: int = Field(ge=1)
+
+    def runs_on(self, platform: str) -> bool:
+        """Whether the site can run on ``platform`` ("linux", "windows", "osx")."""
+        for guard in self.platforms:
+            if guard == f"!{platform}":
+                return False
+            if not guard.startswith("!") and guard != platform:
+                return False
+        return True
+
+
 class NativeLibraryProbe(CoreModel):
     """What the toolchain has of a native library a port's source calls through P/Invoke
     (D-82): the new code includes its C header and links it, so both must be there."""
@@ -454,6 +475,7 @@ class TypeEntry(CoreModel):
     )
     notices: list[PortNotice] = Field(default_factory=list[PortNotice])
     native_imports: list[NativeImport] = Field(default_factory=list[NativeImport])
+    native_calls: list[NativeCall] = Field(default_factory=list[NativeCall])
     package_uses: list[PackageUse] = Field(default_factory=list[PackageUse])
     dynamic_sites: list[DynamicSite] = Field(default_factory=list[DynamicSite])
     dynamic_values: list[DynamicValue] = Field(default_factory=list[DynamicValue])

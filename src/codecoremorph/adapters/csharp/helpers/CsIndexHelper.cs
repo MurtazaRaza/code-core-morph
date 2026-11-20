@@ -737,6 +737,7 @@ internal static class PortSource
             Throws(model, file, node);
             Uses(model, file, node);
             Native(model, file, node);
+            NativeCall(model, file, node);
             PackageUses(model, file, node);
             Platform(model, file, node);
         }
@@ -868,22 +869,59 @@ internal static class PortSource
             ["virtual"] = virtuals,
             ["fields"] = fields,
             ["statics"] = statics,
-            ["native_only"] = NativeOnly(type),
+            ["native_only"] = NativeOnly(type, compilation),
         });
     }
 
     // A type that only declares native functions (P/Invoke externs), with the constants and the
     // plain structs they take: the new code calls the native library itself, so it needs no
-    // port (D-82).
-    private static bool NativeOnly(INamedTypeSymbol type) =>
+    // port (D-82). A static bool set from a platform check (`static readonly bool Windows =
+    // RuntimeInformation.IsOSPlatform(...)`) counts with them: the port is built for its
+    // platform, so the check goes from it (D-94).
+    private static bool NativeOnly(INamedTypeSymbol type, Compilation compilation) =>
         HasExtern(type) && type.GetMembers().All(m => m switch
         {
-            INamedTypeSymbol nested => NativeOnly(nested) || NativeStruct(nested) || ConstantsOnly(nested),
+            INamedTypeSymbol nested => NativeOnly(nested, compilation) || NativeStruct(nested) || ConstantsOnly(nested),
             IMethodSymbol { IsExtern: true } => true,
-            IMethodSymbol { IsImplicitlyDeclared: true, MethodKind: MethodKind.Constructor } => true,
+            IMethodSymbol { IsImplicitlyDeclared: true, MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor } => true,
+            IMethodSymbol { MethodKind: MethodKind.PropertyGet, AssociatedSymbol: IPropertySymbol property } => PlatformCheck(property, compilation),
             IFieldSymbol { IsConst: true } => true,
+            IFieldSymbol { IsImplicitlyDeclared: true, AssociatedSymbol: IPropertySymbol property } => PlatformCheck(property, compilation),
+            IFieldSymbol { IsStatic: true, IsReadOnly: true } field => PlatformCheck(field, compilation),
+            IPropertySymbol property => PlatformCheck(property, compilation),
             _ => false,
         });
+
+    // A static bool member whose value is a platform check: a readonly field's initializer, a
+    // get-only property's initializer or expression body.
+    private static bool PlatformCheck(ISymbol member, Compilation compilation)
+    {
+        var (isStatic, type) = member switch
+        {
+            IFieldSymbol field => (field.IsStatic, field.Type),
+            IPropertySymbol property when property.SetMethod == null => (property.IsStatic, property.Type),
+            _ => (false, null),
+        };
+        if (!isStatic || type?.SpecialType != SpecialType.System_Boolean)
+        {
+            return false;
+        }
+        foreach (var reference in member.DeclaringSyntaxReferences)
+        {
+            ExpressionSyntax? value = reference.GetSyntax() switch
+            {
+                VariableDeclaratorSyntax field => field.Initializer?.Value,
+                PropertyDeclarationSyntax property => property.ExpressionBody?.Expression ?? property.Initializer?.Value,
+                _ => null,
+            };
+            if (value != null
+                && Check(compilation.GetSemanticModel(value.SyntaxTree, ignoreAccessibility: true), value, true, 1) != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static bool HasExtern(INamedTypeSymbol type) =>
         type.GetMembers().Any(m => m is IMethodSymbol { IsExtern: true } || (m is INamedTypeSymbol nested && HasExtern(nested)));
@@ -1207,6 +1245,193 @@ internal static class PortSource
             ["file"] = file,
             ["line"] = Line(node),
         });
+    }
+
+    // A call of a P/Invoke declaration, with the platforms it runs on by the checks around it
+    // (D-94): "windows" in a branch for Windows, "!windows" in one for any other, none when no
+    // check holds it. A port is built for one platform, so a branch for another isn't ported.
+    private static void NativeCall(SemanticModel model, string file, SyntaxNode node)
+    {
+        if (node is not InvocationExpressionSyntax invocation
+            || model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol method || !method.IsExtern
+            || !method.GetAttributes().Any(a => a.AttributeClass?.Name is "DllImportAttribute" or "LibraryImportAttribute"))
+        {
+            return;
+        }
+        string? type = EnclosingType(model, node);
+        string? id = Indexer.Id(method.OriginalDefinition);
+        if (type == null || id == null)
+        {
+            return;
+        }
+        Indexer.Write(new Dictionary<string, object?>
+        {
+            ["t"] = "ncall",
+            ["member"] = id,
+            ["type"] = type,
+            ["caller"] = Indexer.Enclosing(model, node),
+            ["platforms"] = Guards(model, invocation).Distinct(StringComparer.Ordinal).ToList(),
+            ["file"] = file,
+            ["line"] = Line(node),
+        });
+    }
+
+    // The platform checks that hold a node: the branch of an `if` or `?:` it is in, the left of
+    // an `&&` it is the right of, an earlier `if (...) return;` of its block, and the
+    // [SupportedOSPlatform] or [UnsupportedOSPlatform] of its member and types.
+    private static IEnumerable<string> Guards(SemanticModel model, SyntaxNode node)
+    {
+        SyntaxNode child = node;
+        for (var parent = node.Parent; parent != null; child = parent, parent = parent.Parent)
+        {
+            string? found = parent switch
+            {
+                IfStatementSyntax branch when child == branch.Statement => Check(model, branch.Condition, true, 0),
+                ElseClauseSyntax other when other.Parent is IfStatementSyntax owner => Check(model, owner.Condition, false, 0),
+                ConditionalExpressionSyntax pick when child == pick.WhenTrue => Check(model, pick.Condition, true, 0),
+                ConditionalExpressionSyntax pick when child == pick.WhenFalse => Check(model, pick.Condition, false, 0),
+                BinaryExpressionSyntax both when both.IsKind(SyntaxKind.LogicalAndExpression) && child == both.Right
+                    => Check(model, both.Left, true, 0),
+                BinaryExpressionSyntax either when either.IsKind(SyntaxKind.LogicalOrExpression) && child == either.Right
+                    => Check(model, either.Left, false, 0),
+                _ => null,
+            };
+            if (found != null)
+            {
+                yield return found;
+            }
+            if (parent is BlockSyntax block && child is StatementSyntax statement)
+            {
+                foreach (var earlier in block.Statements.TakeWhile(s => s != statement))
+                {
+                    if (earlier is IfStatementSyntax exit && exit.Else == null && Exits(exit.Statement)
+                        && Check(model, exit.Condition, false, 0) is string after)
+                    {
+                        yield return after;
+                    }
+                }
+            }
+            if (parent is MemberDeclarationSyntax member && model.GetDeclaredSymbol(member) is ISymbol symbol)
+            {
+                foreach (var attribute in symbol.GetAttributes())
+                {
+                    string? name = attribute.ConstructorArguments.Length > 0 ? attribute.ConstructorArguments[0].Value as string : null;
+                    string? platform = name == null ? null : PlatformName(name);
+                    if (platform == null)
+                    {
+                        continue;
+                    }
+                    if (attribute.AttributeClass?.Name == "SupportedOSPlatformAttribute")
+                    {
+                        yield return platform;
+                    }
+                    else if (attribute.AttributeClass?.Name == "UnsupportedOSPlatformAttribute")
+                    {
+                        yield return "!" + platform;
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool Exits(StatementSyntax statement) => statement switch
+    {
+        ReturnStatementSyntax or ThrowStatementSyntax => true,
+        BlockSyntax block => block.Statements.Count > 0 && Exits(block.Statements.Last()),
+        _ => false,
+    };
+
+    // "windows", "linux", "osx" or "freebsd" for a platform's name as .NET spells it.
+    private static string? PlatformName(string name)
+    {
+        string lower = name.ToLowerInvariant();
+        foreach (var known in new[] { "windows", "linux", "osx", "macos", "freebsd" })
+        {
+            if (lower.StartsWith(known, StringComparison.Ordinal))
+            {
+                return known == "macos" ? "osx" : known;
+            }
+        }
+        return null;
+    }
+
+    // The platform a condition asks about, as "name" when it holds or "!name" when it doesn't,
+    // with `truth` the branch's: an IsOSPlatform or OperatingSystem.Is... call, a comparison of
+    // Environment.OSVersion.Platform, a `!`, or a field or property set from one.
+    private static string? Check(SemanticModel model, ExpressionSyntax condition, bool truth, int depth)
+    {
+        if (depth > 3)
+        {
+            return null;
+        }
+        switch (condition)
+        {
+            case ParenthesizedExpressionSyntax inner:
+                return Check(model, inner.Expression, truth, depth);
+            case PrefixUnaryExpressionSyntax negation when negation.IsKind(SyntaxKind.LogicalNotExpression):
+                return Check(model, negation.Operand, !truth, depth);
+            case InvocationExpressionSyntax call when model.GetSymbolInfo(call).Symbol is IMethodSymbol method:
+            {
+                string owner = method.ContainingType?.ToDisplayString() ?? "";
+                string? platform = null;
+                if (owner == "System.Runtime.InteropServices.RuntimeInformation" && method.Name == "IsOSPlatform"
+                    && call.ArgumentList.Arguments.Count == 1
+                    && model.GetSymbolInfo(call.ArgumentList.Arguments[0].Expression).Symbol is IPropertySymbol os)
+                {
+                    platform = PlatformName(os.Name);
+                }
+                else if (owner == "System.OperatingSystem" && method.Name.StartsWith("Is", StringComparison.Ordinal))
+                {
+                    platform = method.Name == "IsOSPlatform" && call.ArgumentList.Arguments.Count == 1
+                        && model.GetConstantValue(call.ArgumentList.Arguments[0].Expression).Value is string named
+                        ? PlatformName(named)
+                        : PlatformName(method.Name.Substring(2));
+                }
+                return platform == null ? null : (truth ? platform : "!" + platform);
+            }
+            case BinaryExpressionSyntax compare when compare.IsKind(SyntaxKind.EqualsExpression) || compare.IsKind(SyntaxKind.NotEqualsExpression):
+            {
+                bool equal = compare.IsKind(SyntaxKind.EqualsExpression) == truth;
+                foreach (var (left, right) in new[] { (compare.Left, compare.Right), (compare.Right, compare.Left) })
+                {
+                    if (model.GetSymbolInfo(left).Symbol is IPropertySymbol { Name: "Platform" } property
+                        && property.ContainingType?.ToDisplayString() == "System.OperatingSystem"
+                        && model.GetSymbolInfo(right).Symbol is IFieldSymbol id)
+                    {
+                        string? platform = id.Name switch
+                        {
+                            "Win32NT" or "Win32Windows" or "Win32S" or "WinCE" => "windows",
+                            "MacOSX" => "osx",
+                            _ => null,
+                        };
+                        return platform == null ? null : (equal ? platform : "!" + platform);
+                    }
+                }
+                return null;
+            }
+            case IdentifierNameSyntax or MemberAccessExpressionSyntax:
+            {
+                var symbol = model.GetSymbolInfo(condition).Symbol;
+                foreach (var reference in symbol?.DeclaringSyntaxReferences ?? Enumerable.Empty<SyntaxReference>())
+                {
+                    var declared = reference.GetSyntax();
+                    ExpressionSyntax? value = declared switch
+                    {
+                        VariableDeclaratorSyntax field => field.Initializer?.Value,
+                        PropertyDeclarationSyntax property => property.ExpressionBody?.Expression ?? property.Initializer?.Value,
+                        _ => null,
+                    };
+                    if (value != null)
+                    {
+                        var defined = model.Compilation.GetSemanticModel(value.SyntaxTree);
+                        return Check(defined, value, truth, depth + 1);
+                    }
+                }
+                return null;
+            }
+            default:
+                return null;
+        }
     }
 
     // A package's API that a type uses, once per symbol and type: what the new code needs a

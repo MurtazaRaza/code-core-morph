@@ -79,7 +79,7 @@ with virtual members together with the classes that derive from it); one unit pe
 per test file; the retirement. Each unit's note names the public members to map, the generics'
 type arguments in use, the static state, the exceptions thrown, what calls back into C#, and
 what the C# runtime did that the Rust does itself. The plan's table of what the library depends
-on (native libraries, an operating system's own, .NET packages) is the same too.
+on (native libraries, an operating system's own, .NET packages) is the same too: the port is built for Linux, so a call into Windows' or macOS's own library only in branches for that platform goes with them (D-94).
 
 ## Type units
 
@@ -202,6 +202,10 @@ null currency where the Rust takes a `&str`. No unsafe code is left, and the rep
 shared cells (the book's orders, an order's state). It replays from the recorded edits beside
 parking's.
 
+## The third fixture: hostkit
+
+`fixtures/csharp/hostkit` is the port to C++'s ([hostkit](porting-csharp-to-cpp.md#the-third-fixture-hostkit)): a library that calls kernel32 on Windows and the C library elsewhere, each call behind a check of the platform (D-94). Its plan is the same 5 units. Ported whole through `codecoremorph run --host-agent` (5 of 5 units, each on its first attempt), the Rust uses std's counterparts of the C library's calls: `Instant` for the monotonic clock (counting from its first reading, since std keeps the clock's value to itself), `std::process::id`, and `io::Error::from_raw_os_error` for `strerror`'s text. No unsafe code is left. It replays from the recorded edits beside parking's.
+
 ## The benchmark: libsodium-core
 
 The M12 benchmark is the port to C++'s ([libsodium-core](porting-csharp-to-cpp.md#the-benchmark-libsodium-core))
@@ -221,8 +225,8 @@ same, and Cargo's checks cost each unit less than CMake's sanitizer build and cl
 
 The first version refuses what a port to C++ refuses ([Limits](porting-csharp-to-cpp.md#limits)):
 `async`, `dynamic` the index can't settle, reflection and attribute-driven behavior, expression trees, a type that
-uses a .NET package's API or an operating system's own library, public generic types nothing
-instantiates, a ported constructor that calls a virtual member a C# class overrides, a class
+uses a .NET package's API or an operating system's own library where Linux reaches the call,
+public generic types nothing instantiates, a ported constructor that calls a virtual member a C# class overrides, a class
 with non-private instance fields, and types in more than one library project. A C# class
 outside the port that derives from a ported class runs on a director, as for C++ (D-87): here
 the hierarchy is a trait over the base's state whose virtual members return `Result` (a C#
@@ -236,4 +240,5 @@ and a binder error is `Exception::runtime_binder`. Also:
 - No registry dependency: a port adds no crate, so it builds offline.
 - Strings are UTF-8: C#'s lengths and indices count UTF-16 units, the same for ASCII; the symbol
   map's notes say where a port depends on the difference.
+- A call into the C library (`libc` through P/Invoke) has no header in Rust: the guidance doesn't say yet what to call instead, and std has no counterpart for some (a clock's raw value).
 - Runs in Docker only for now.

@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": "91d31fa26a7928e4aba44c85385ae80bca91f01644f3e6b9270e293a361951f7",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Clock.cs. Each C# type keeps every public and protected ",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0001_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/clock.cpp",
+                  "search": "// The bridge of Hostkit.Clock (CodeCoreMorph, D-78).\n#include \"clock.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"clock.hpp\"\n",
+                  "replace": "// The bridge of Hostkit.Clock (CodeCoreMorph, D-78).\n#include \"clock.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"clock.hpp\"\n\nnamespace bridge = ccm::bridge;\n\nCCM_EXPORT ccm_status hostkit_Clock_nanoseconds(int64_t* result) {\n    return bridge::guard([&] { *result = hostkit::Clock::nanoseconds(); });\n}\n\nCCM_EXPORT ccm_status hostkit_Clock_milliseconds_since(int64_t start, double* result) {\n    return bridge::guard([&] { *result = hostkit::Clock::milliseconds_since(start); });\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/clock.h",
+                  "search": "/* The bridge of Hostkit.Clock: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_CLOCK_H\n#define HOSTKIT_BRIDGE_CLOCK_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Hostkit.Clock: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_CLOCK_H\n#define HOSTKIT_BRIDGE_CLOCK_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nCCM_EXPORT ccm_status hostkit_Clock_nanoseconds(int64_t *result);\nCCM_EXPORT ccm_status hostkit_Clock_milliseconds_since(int64_t start, double *result);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/clock.cpp",
+                  "search": "// The C++ of Hostkit.Clock, ported from C# (CodeCoreMorph, D-78).\n#include \"clock.hpp\"\n",
+                  "replace": "// The C++ of Hostkit.Clock, ported from C# (CodeCoreMorph, D-78).\n#include \"clock.hpp\"\n\n#include <time.h>\n\nnamespace hostkit {\n\nstd::int64_t Clock::nanoseconds() {\n    // What the C# does on Linux: clock_gettime(CLOCK_MONOTONIC). Its branch for Windows\n    // (QueryPerformanceCounter) isn't this port's, which is built for Linux (D-94).\n    timespec now{};\n    clock_gettime(CLOCK_MONOTONIC, &now);\n    return static_cast<std::int64_t>(now.tv_sec) * 1'000'000'000 + now.tv_nsec;\n}\n\ndouble Clock::milliseconds_since(std::int64_t start) {\n    return static_cast<double>(nanoseconds() - start) / 1'000'000.0;\n}\n\n}  // namespace hostkit\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/clock.hpp",
+                  "search": "// The C++ of Hostkit.Clock, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_CLOCK_HPP\n#define HOSTKIT_CLOCK_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Hostkit.Clock, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_CLOCK_HPP\n#define HOSTKIT_CLOCK_HPP\n\n#include <cstdint>\n\nnamespace hostkit {\n\n// A monotonic clock in nanoseconds, from the operating system's own.\nclass Clock final {\npublic:\n    Clock() = delete;\n\n    // Nanoseconds since some fixed point; never goes back.\n    static std::int64_t nanoseconds();\n\n    // Milliseconds from start (a nanoseconds() value) to now.\n    static double milliseconds_since(std::int64_t start);\n};\n\n}  // namespace hostkit\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/Hostkit/Clock.cs",
+                  "search": "namespace Hostkit\n{\n    /// <summary>A monotonic clock in nanoseconds, from the operating system's own.</summary>\n    public static class Clock\n    {\n        private const int Monotonic = 1; // CLOCK_MONOTONIC\n\n        /// <summary>Nanoseconds since some fixed point; never goes back.</summary>\n        public static long Nanoseconds()\n        {\n            if (Native.Windows)\n            {\n                Native.QueryPerformanceCounter(out long count);\n                Native.QueryPerformanceFrequency(out long frequency);\n                return (long)(count * (1_000_000_000.0 / frequency));\n            }\n            Native.ClockGetTime(Monotonic, out Native.Timespec now);\n            return now.Seconds * 1_000_000_000 + now.Nanoseconds;\n        }\n\n        /// <summary>Milliseconds from <paramref name=\"start\"/> (a Nanoseconds value) to now.</summary>\n        public static double MillisecondsSince(long start)\n        {\n            return (Nanoseconds() - start) / 1_000_000.0;\n        }\n    }\n}\n",
+                  "replace": "using CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>A monotonic clock in nanoseconds, from the operating system's own.</summary>\n    public static class Clock\n    {\n        /// <summary>Nanoseconds since some fixed point; never goes back.</summary>\n        public static long Nanoseconds()\n        {\n            long result;\n            CcmInterop.Check(CcmNative.hostkit_Clock_nanoseconds(out result));\n            return result;\n        }\n\n        /// <summary>Milliseconds from <paramref name=\"start\"/> (a Nanoseconds value) to now.</summary>\n        public static double MillisecondsSince(long start)\n        {\n            double result;\n            CcmInterop.Check(CcmNative.hostkit_Clock_milliseconds_since(start, out result));\n            return result;\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\ncpp = \"hostkit::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC); its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\ncpp = \"hostkit::Clock::milliseconds_since\"\n"
+                }
+              ],
+              "summary": "Ported Clock to C++: what the C# does on Linux, clock_gettime's monotonic clock; the branch for Windows (QueryPerformanceCounter) goes, as the port is built for Linux (D-94).",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "b1fda09a3cec6ddf817091ad300644159994fe1babfff65d938c9ee05adff07a",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Host.cs. Each C# type keeps every public and protected m",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0002_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/host.cpp",
+                  "search": "// The bridge of Hostkit.Host (CodeCoreMorph, D-78).\n#include \"host.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"host.hpp\"\n",
+                  "replace": "// The bridge of Hostkit.Host (CodeCoreMorph, D-78).\n#include \"host.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"host.hpp\"\n\nnamespace bridge = ccm::bridge;\n\nCCM_EXPORT ccm_status hostkit_Host_process_id(int32_t* result) {\n    return bridge::guard([&] { *result = hostkit::Host::process_id(); });\n}\n\nCCM_EXPORT ccm_status hostkit_Host_error_message(int32_t code, char** result) {\n    return bridge::guard([&] { bridge::out_str(result, hostkit::Host::error_message(code)); });\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/host.h",
+                  "search": "/* The bridge of Hostkit.Host: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_HOST_H\n#define HOSTKIT_BRIDGE_HOST_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Hostkit.Host: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_HOST_H\n#define HOSTKIT_BRIDGE_HOST_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nCCM_EXPORT ccm_status hostkit_Host_process_id(int32_t *result);\nCCM_EXPORT ccm_status hostkit_Host_error_message(int32_t code, char **result);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/host.cpp",
+                  "search": "// The C++ of Hostkit.Host, ported from C# (CodeCoreMorph, D-78).\n#include \"host.hpp\"\n",
+                  "replace": "// The C++ of Hostkit.Host, ported from C# (CodeCoreMorph, D-78).\n#include \"host.hpp\"\n\n#include <unistd.h>\n\n#include <cstring>\n\n// What the C# does on Linux: getpid and strerror from the C library. Its branches for Windows\n// (GetCurrentProcessId, FormatMessageW) aren't this port's, which is built for Linux (D-94).\nnamespace hostkit {\n\nstd::int32_t Host::process_id() { return static_cast<std::int32_t>(getpid()); }\n\nstd::string Host::error_message(std::int32_t code) {\n    const char* message = std::strerror(code);\n    std::string text = message != nullptr ? message : \"Unknown error \" + std::to_string(code);\n    // C#'s TrimEnd('\\r', '\\n', ' ', '.').\n    const std::size_t last = text.find_last_not_of(\"\\r\\n .\");\n    text.erase(last == std::string::npos ? 0 : last + 1);\n    return text;\n}\n\n}  // namespace hostkit\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/host.hpp",
+                  "search": "// The C++ of Hostkit.Host, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_HOST_HPP\n#define HOSTKIT_HOST_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Hostkit.Host, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_HOST_HPP\n#define HOSTKIT_HOST_HPP\n\n#include <cstdint>\n#include <string>\n\nnamespace hostkit {\n\n// What the process can ask its operating system.\nclass Host final {\npublic:\n    Host() = delete;\n\n    // The process's ID.\n    static std::int32_t process_id();\n\n    // The system's message for an error code (an errno), without a trailing newline or period.\n    static std::string error_message(std::int32_t code);\n};\n\n}  // namespace hostkit\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/Hostkit/Host.cs",
+                  "search": "using System;\nusing System.Runtime.InteropServices;\nusing System.Text;\n\nnamespace Hostkit\n{\n    /// <summary>What the process can ask its operating system.</summary>\n    public static class Host\n    {\n        private const uint FromSystem = 0x00001000; // FORMAT_MESSAGE_FROM_SYSTEM\n        private const uint IgnoreInserts = 0x00000200; // FORMAT_MESSAGE_IGNORE_INSERTS\n\n        /// <summary>The process's ID.</summary>\n        public static int ProcessId()\n        {\n            return Native.Windows ? (int)Native.GetCurrentProcessId() : Native.GetPid();\n        }\n\n        /// <summary>The system's message for an error code (a Win32 error on Windows, an errno\n        /// elsewhere), without a trailing newline or period.</summary>\n        public static string ErrorMessage(int code)\n        {\n            string text;\n            if (Native.Windows)\n            {\n                var buffer = new StringBuilder(512);\n                int n = Native.FormatMessageW(\n                    FromSystem | IgnoreInserts, IntPtr.Zero, (uint)code, 0, buffer,\n                    buffer.Capacity, IntPtr.Zero);\n                text = n > 0 ? buffer.ToString(0, n) : \"Unknown error \" + code;\n            }\n            else\n            {\n                text = Marshal.PtrToStringAnsi(Native.StrError(code)) ?? \"Unknown error \" + code;\n            }\n            return text.TrimEnd('\\r', '\\n', ' ', '.');\n        }\n    }\n}\n",
+                  "replace": "using System;\nusing CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>What the process can ask its operating system.</summary>\n    public static class Host\n    {\n        /// <summary>The process's ID.</summary>\n        public static int ProcessId()\n        {\n            int result;\n            CcmInterop.Check(CcmNative.hostkit_Host_process_id(out result));\n            return result;\n        }\n\n        /// <summary>The system's message for an error code (a Win32 error on Windows, an errno\n        /// elsewhere), without a trailing newline or period.</summary>\n        public static string ErrorMessage(int code)\n        {\n            IntPtr result;\n            CcmInterop.Check(CcmNative.hostkit_Host_error_message(code, out result));\n            return CcmInterop.TakeString(result);\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\ncpp = \"hostkit::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC); its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\ncpp = \"hostkit::Clock::milliseconds_since\"\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\ncpp = \"hostkit::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC); its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\ncpp = \"hostkit::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\ncpp = \"hostkit::Host::process_id\"\nnote = \"getpid, as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\ncpp = \"hostkit::Host::error_message\"\nnote = \"strerror, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n"
+                }
+              ],
+              "summary": "Ported Host to C++: the process ID and an error's text as the C# gets them on Linux (getpid, strerror); the branches for Windows (kernel32) go (D-94).",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "22534b74c3d0b6801a046b57542a38c0db8188e361c68f40272490c44e69ae88",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Terminal.cs. Each C# type keeps every public and protect",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0003_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/terminal.cpp",
+                  "search": "// The bridge of Hostkit.Terminal (CodeCoreMorph, D-78).\n#include \"terminal.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"terminal.hpp\"\n",
+                  "replace": "// The bridge of Hostkit.Terminal (CodeCoreMorph, D-78).\n#include \"terminal.h\"\n\n#include <string>\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"terminal.hpp\"\n\nnamespace bridge = ccm::bridge;\n\nCCM_EXPORT ccm_status hostkit_Terminal_enable_colors(bool* result) {\n    return bridge::guard([&] { *result = hostkit::Terminal::enable_colors(); });\n}\n\nCCM_EXPORT ccm_status hostkit_Terminal_paint(const char* text, int32_t color, char** result) {\n    // C# concatenates a null string as an empty one.\n    return bridge::guard([&] {\n        bridge::out_str(result,\n                        hostkit::Terminal::paint(bridge::opt_str(text).value_or(std::string()), color));\n    });\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/terminal.h",
+                  "search": "/* The bridge of Hostkit.Terminal: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_TERMINAL_H\n#define HOSTKIT_BRIDGE_TERMINAL_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Hostkit.Terminal: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef HOSTKIT_BRIDGE_TERMINAL_H\n#define HOSTKIT_BRIDGE_TERMINAL_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nCCM_EXPORT ccm_status hostkit_Terminal_enable_colors(bool *result);\nCCM_EXPORT ccm_status hostkit_Terminal_paint(const char *text, int32_t color, char **result);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/terminal.cpp",
+                  "search": "// The C++ of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-78).\n#include \"terminal.hpp\"\n",
+                  "replace": "// The C++ of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-78).\n#include \"terminal.hpp\"\n\nnamespace hostkit {\n\nbool Terminal::enable_colors() {\n    // What the C# does on Linux. Its branch for Windows asks the console for virtual terminal\n    // processing (GetStdHandle, GetConsoleMode, SetConsoleMode), which isn't this port's, built\n    // for Linux (D-94).\n    return true;\n}\n\nstd::string Terminal::paint(const std::string& text, std::int32_t color) {\n    return \"\\x1b[3\" + std::to_string(color & 7) + \"m\" + text + \"\\x1b[0m\";\n}\n\n}  // namespace hostkit\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/terminal.hpp",
+                  "search": "// The C++ of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_TERMINAL_HPP\n#define HOSTKIT_TERMINAL_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Hostkit.Terminal, ported from C# (CodeCoreMorph, D-78).\n#ifndef HOSTKIT_TERMINAL_HPP\n#define HOSTKIT_TERMINAL_HPP\n\n#include <cstdint>\n#include <string>\n\nnamespace hostkit {\n\n// ANSI colors on a terminal.\nclass Terminal final {\npublic:\n    Terminal() = delete;\n\n    // Lets the console show ANSI colors: a terminal on Linux shows them as they are, so there is\n    // nothing to ask.\n    static bool enable_colors();\n\n    // text in one of the eight ANSI colors (0 to 7).\n    static std::string paint(const std::string& text, std::int32_t color);\n};\n\n}  // namespace hostkit\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/Hostkit/Terminal.cs",
+                  "search": "namespace Hostkit\n{\n    /// <summary>ANSI colors on a terminal.</summary>\n    public static class Terminal\n    {\n        private const int StdOutput = -11; // STD_OUTPUT_HANDLE\n        private const uint VirtualTerminal = 0x0004; // ENABLE_VIRTUAL_TERMINAL_PROCESSING\n\n        /// <summary>Lets the console show ANSI colors: Windows' console needs to be asked, other\n        /// terminals show them as they are. False when the output is no console.</summary>\n        public static bool EnableColors()\n        {\n            if (!Native.Windows)\n            {\n                return true;\n            }\n            var handle = Native.GetStdHandle(StdOutput);\n            if (!Native.GetConsoleMode(handle, out uint mode))\n            {\n                return false;\n            }\n            return (mode & VirtualTerminal) != 0 || Native.SetConsoleMode(handle, mode | VirtualTerminal);\n        }\n\n        /// <summary><paramref name=\"text\"/> in one of the eight ANSI colors (0 to 7).</summary>\n        public static string Paint(string text, int color)\n        {\n            return \"\\u001b[3\" + (color & 7) + \"m\" + text + \"\\u001b[0m\";\n        }\n    }\n}\n",
+                  "replace": "using System;\nusing CodeCoreMorph.Interop;\n\nnamespace Hostkit\n{\n    /// <summary>ANSI colors on a terminal.</summary>\n    public static class Terminal\n    {\n        /// <summary>Lets the console show ANSI colors: Windows' console needs to be asked, other\n        /// terminals show them as they are. False when the output is no console.</summary>\n        public static bool EnableColors()\n        {\n            bool result;\n            CcmInterop.Check(CcmNative.hostkit_Terminal_enable_colors(out result));\n            return result;\n        }\n\n        /// <summary><paramref name=\"text\"/> in one of the eight ANSI colors (0 to 7).</summary>\n        public static string Paint(string text, int color)\n        {\n            IntPtr result;\n            CcmInterop.Check(CcmNative.hostkit_Terminal_paint(text, color, out result));\n            return CcmInterop.TakeString(result);\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\ncpp = \"hostkit::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC); its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\ncpp = \"hostkit::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\ncpp = \"hostkit::Host::process_id\"\nnote = \"getpid, as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\ncpp = \"hostkit::Host::error_message\"\nnote = \"strerror, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.Nanoseconds\"\ncpp = \"hostkit::Clock::nanoseconds\"\nnote = \"what the C# does on Linux, clock_gettime(CLOCK_MONOTONIC); its branch for Windows (QueryPerformanceCounter, QueryPerformanceFrequency) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Clock.MillisecondsSince(System.Int64)\"\ncpp = \"hostkit::Clock::milliseconds_since\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ProcessId\"\ncpp = \"hostkit::Host::process_id\"\nnote = \"getpid, as the C# does on Linux; its branch for Windows (GetCurrentProcessId) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Host.ErrorMessage(System.Int32)\"\ncpp = \"hostkit::Host::error_message\"\nnote = \"strerror, as the C# does on Linux; its branch for Windows (FormatMessageW) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Terminal.EnableColors\"\ncpp = \"hostkit::Terminal::enable_colors\"\nnote = \"true, as the C# on Linux: a terminal there shows ANSI colors as they are; the Windows console's mode (GetStdHandle, GetConsoleMode, SetConsoleMode) went: the port is built for Linux (D-94)\"\n\n[[symbol]]\ncsharp = \"csharp:Hostkit.Terminal.Paint(System.String,System.Int32)\"\ncpp = \"hostkit::Terminal::paint\"\n"
+                }
+              ],
+              "summary": "Ported Terminal to C++: EnableColors is true as on Linux, where a terminal shows ANSI colors as they are; the Windows console's mode goes (D-94). Paint as the C#.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "24993e643812b89afda8d3b0d246e1c9b6aecf3d4efa2bfe75059d51f9bc132c",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Hos",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0004_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/tests/hostkit_tests.cpp",
+                  "search": "// The tests of a C# test file (the unit's note names it), translated from C# (CodeCoreMorph, D-78): a GoogleTest test\n// per C# test case, each mapped in cpp/test-map.toml.\n#include <gtest/gtest.h>\n",
+                  "replace": "// The tests of tests/Hostkit.Tests/HostkitTests.cs, translated from C# (CodeCoreMorph, D-78): a\n// GoogleTest test per C# test case, each mapped in cpp/test-map.toml.\n#include <gtest/gtest.h>\n\n#include <unistd.h>\n\n#include <chrono>\n#include <cstdint>\n#include <thread>\n\n#include \"clock.hpp\"\n#include \"host.hpp\"\n#include \"terminal.hpp\"\n\nusing hostkit::Clock;\nusing hostkit::Host;\nusing hostkit::Terminal;\n\nTEST(ClockTests, NeverGoesBack) {\n    const std::int64_t a = Clock::nanoseconds();\n    const std::int64_t b = Clock::nanoseconds();\n    ASSERT_GE(b, a);\n}\n\nTEST(ClockTests, MeasuresASleep) {\n    const std::int64_t start = Clock::nanoseconds();\n    std::this_thread::sleep_for(std::chrono::milliseconds(30));\n    const double elapsed = Clock::milliseconds_since(start);\n    ASSERT_GE(elapsed, 25.0);\n    ASSERT_LE(elapsed, 2000.0);\n}\n\nTEST(HostTests, TheProcessId) { ASSERT_EQ(Host::process_id(), static_cast<std::int32_t>(getpid())); }\n\nTEST(HostTests, AnErrorMessage) {\n    // ENOENT is 2. The C# expects Windows' text on Windows; the port runs on Linux (D-94).\n    ASSERT_EQ(Host::error_message(2), \"No such file or directory\");\n}\n\nTEST(TerminalTests, PaintsInAnsiColors) {\n    ASSERT_EQ(Terminal::paint(\"ok\", 2), \"\\x1b[32mok\\x1b[0m\");\n    ASSERT_EQ(Terminal::paint(\"x\", 9), \"\\x1b[31mx\\x1b[0m\");\n}\n\nTEST(TerminalTests, EnablingColorsDoesNotThrow) { ASSERT_NO_THROW(Terminal::enable_colors()); }\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/test-map.toml",
+                  "search": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n",
+                  "replace": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.ClockTests#NeverGoesBack\"\ncpp = \"gtest:ClockTests.NeverGoesBack\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.ClockTests#MeasuresASleep\"\ncpp = \"gtest:ClockTests.MeasuresASleep\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.HostTests#TheProcessId\"\ncpp = \"gtest:HostTests.TheProcessId\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.HostTests#AnErrorMessage\"\ncpp = \"gtest:HostTests.AnErrorMessage\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.TerminalTests#PaintsInAnsiColors\"\ncpp = \"gtest:TerminalTests.PaintsInAnsiColors\"\n\n[[test]]\ncsharp = \"dotnet:Hostkit.Tests.TerminalTests#EnablingColorsDoesNotThrow\"\ncpp = \"gtest:TerminalTests.EnablingColorsDoesNotThrow\"\n"
+                }
+              ],
+              "summary": "Translated HostkitTests.cs to C++: each case mapped in the test map; AnErrorMessage keeps its Linux text, the branch the port runs.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    }
+  ]
+}
