@@ -198,6 +198,76 @@ on which Ed25519 public keys convert to Curve25519 keys: of the 24,292 calls M11
 made, these were the only two whose results differ. A C# test that depends on such a key
 passes before its type is ported and fails after.
 
+## Packages
+
+A type that uses a .NET package's API ports when CodeCoreMorph maps the package (D-95): its
+mappings (`src/codecoremorph/adapters/csharp/packages.toml`) say, for each package, the
+versions they were checked on, the API they cover, and the counterpart in each target, chosen
+by a probe that it gives the package's results on the same inputs. The plan's dependency table
+names each package's counterpart, and each unit that uses one gets its notes in its message.
+
+| Package | The C++ | Checked |
+| --- | --- | --- |
+| K4os.Compression.LZ4 (LZ4Codec, LZ4Level) | liblz4 (`lz4.h`, `lz4hc.h`) | 1.3.8 against liblz4 1.9.3: every block at L00_FAST, L09_HC and L12_MAX, byte for byte |
+| K4os.Hash.xxHash (XXH32, XXH64) | libxxhash (`xxhash.h`) | 1.0.8 against libxxhash 0.8.1, every digest |
+| Microsoft.Extensions.Logging.Abstractions (ILogger, ILoggerFactory, LogLevel, EventId, NullLogger, LoggerExtensions' Log methods) | `ccm::logging`, which CodeCoreMorph ships | 8.0.2: the message templates of 20,025 seeded doubles and 1,003 pairs of longs, as .NET formats them |
+
+- **A C library** is linked as a native library is: the port image has liblz4's and libxxhash's
+  development files. For another image, build one with them, as above. Its `char` buffers take
+  a byte vector's data through `reinterpret_cast<const char *>`, a cast to a character type,
+  which the lint allows outside the bridge. Until the retirement the C# not yet ported calls
+  the package itself: a second implementation, which the probe says gives the same results.
+  Where it doesn't, the mapping's note says so (K4os writes no LZ4 block for nothing, where
+  liblz4 writes a byte).
+- **A logger** is the C#'s object: the scaffold places `cpp/include/codecoremorph_logging.hpp`
+  (kept at the retirement), the bridge's glue and the façades' support
+  (`CodeCoreMorph.Logging.cs`), and the C++ calls back into the C# logger the façade passes
+  (`CcmLogging.Pass(logger)`) until the retirement; the translated tests implement
+  `ccm::logging::ILogger`. `log_debug(*logger, template, args...)` and its kin fill the holes
+  as .NET does; a hole with a format (`{Count:X4}`) isn't supported. The C# logger gets each
+  entry's state too, as a structured logger records it (D-97): the template and each hole's
+  name and value, typed as the C++ passed it (a `std::chrono::duration` is a `TimeSpan`, and a
+  project's own type, an enum, gives its `ccm::dotnet_value`); a logged exception that came
+  from C# is the object C# threw.
+- **Still refused**, by site: a package CodeCoreMorph doesn't map, a version outside the one
+  checked, and a use outside the API a mapping covers (`ILogger.BeginScope`, `LZ4Pickler`).
+
+## Async code
+
+A type with `async` members ports (D-96) when the target is C++20 or newer: async code is
+C++20's coroutines, and the plan refuses it under C++17 with that reason
+(`migration.target.standard: cpp20`). The first unit with async code places the tasks runtime:
+`cpp/include/codecoremorph_tasks.hpp` (`ccm::tasks`, kept at the retirement), the bridge's
+`codecoremorph_tasks.{h,cpp}` and the façades' support `CodeCoreMorph.Tasks.cs`.
+
+- An `async Task<T>` member is a coroutine returning `ccm::tasks::Task<T>`. As in C#, it runs
+  on the caller's thread until its first suspension, so its argument checks fault the task
+  rather than throw from the call; `co_await` gives a task's result or throws its exception,
+  and an `OperationCanceledException` cancels the task. `Task.WhenAll` is `when_all` (the
+  results in order), `Task.Delay` `delay`, `TaskCompletionSource` and the token types are
+  .NET's, and `ConfigureAwait(false)` goes: the coroutine resumes on the thread that
+  completed what it awaited. A sleep the token cuts short in synchronous code
+  (`token.WaitHandle.WaitOne(t)`) is the token's `wait_for`.
+- C++ asks more of async code than C#: parameters by value (a coroutine's references dangle
+  once it suspends), no `co_await` in a `catch` handler, `shared_from_this()` first in an async
+  member so the object outlives its task, and no lock held across `co_await`. The guidance
+  says each.
+- Across the bridge, an async export completes the C# task its façade returns, from whatever
+  thread finishes the native one; a C# task (a delegate's, an interface a C# class implements)
+  is awaited as a native one; a cancellation token crosses with its origin, so C# code the
+  port calls sees the caller's own token, and so does an `OperationCanceledException` the C++
+  raises when it reaches C# (D-97). A canceled task ends as an async C# method's does: Canceled,
+  and awaiting it throws the cancellation itself.
+- A C# exception that a call into C# throws reaches the C++ as the mirror of its type, so the
+  C++ catches it by type, a project's own exception once its bridge file registers it
+  (`CCM_REGISTER_EXCEPTION`); when it reaches the façade again, the façade throws the same C#
+  object. This holds in every port, async or not.
+- **Still refused**, by site: `async void`, `ValueTask` and other awaitables, `await foreach`
+  and `await using`, the task API beyond `WhenAll`, `Delay`, `FromResult`, `Yield`,
+  `TaskCompletionSource` and the token types (`Task.Run`, `WhenAny`, `ContinueWith`,
+  `CancelAfter`, a `SynchronizationContext`), and a task that .NET's own API returns (a
+  stream's `ReadAsync`): .NET's I/O waits for a mapping of its own.
+
 ## Reviewing the result
 
 The report lists every unit, the symbol map's notes (what the C++ keeps differently: a hash that
@@ -235,6 +305,33 @@ edits beside parking's.
 
 `fixtures/csharp/hostkit` is a `netstandard2.0` library that asks its operating system for a monotonic clock, the process ID and an error's text, and turns on the console's ANSI colors: kernel32 on Windows, the C library elsewhere, each call behind a check of the platform (an `if` on a flag set from `IsOSPlatform`, a `?:`, an early return), as real libraries do (D-94). Its 6 NUnit tests run on Linux. The plan is 5 units: `Native`, which declares the functions beside the flag, gets none, and each type's note names the Windows branches that go. Ported whole through `codecoremorph run --host-agent` (5 of 5 units, each on its first attempt), the C++ calls `clock_gettime`, `getpid` and `strerror`, `EnableColors` is `true` as on Linux, and the symbol map says what went. It replays from the recorded edits beside parking's.
 
+## The fourth fixture: stash
+
+`fixtures/csharp/stash` is a `netstandard2.0` library over three NuGet packages (D-95): `Codec`
+packs blobs as LZ4 blocks behind their length (K4os.Compression.LZ4, fast and HC) and
+checksums them (K4os.Hash.xxHash); `Store` keeps blobs by key and logs through an
+`ILogger<Store>` or a factory's logger (Microsoft.Extensions.Logging.Abstractions: an
+`EventId`, `IsEnabled`, `LogError(exception, ...)`). Its 25 NUnit tests check packed bytes and
+digests by value, and each message a test logger gets. The plan is 6 units, every package
+ported. Ported whole through `codecoremorph run --host-agent` (6 of 6 units, each on its first
+attempt), the C# tests pass through the façades under both sanitizers, the C# loggers getting
+what the C# logged, and the retired C++ calls liblz4 and libxxhash and logs through
+`ccm::logging`. It replays from the recorded edits beside parking's.
+
+## The fifth fixture: relay
+
+`fixtures/csharp/relay` is a `netstandard2.0` library of async code (D-96): `Cache` over an
+`IStore` the tests implement in C# (answering after `Task.Yield`, gated by a
+`TaskCompletionSource`, or never until canceled), with `GetManyAsync` over `Task.WhenAll`, and
+`Retry.RunAsync`, which retries an action's `TransientException` after a `Task.Delay` and is
+canceled by the caller's token. Its 14 NUnit tests check what C# guarantees: an argument check
+faults the task, a store's exception comes out of the await as the same object, a canceled
+fetch cancels the task, the results keep the keys' order. The plan is 7 units for C++20, the
+store, the cache and the retry placing the tasks runtime; under C++17 it refuses them. Ported
+whole through `codecoremorph run --host-agent` (7 of 7 units, each on its first attempt), the C#
+tests pass through the façades under both sanitizers, and the retired C++ passes its
+GoogleTest tests alone. It replays from the recorded edits beside parking's.
+
 ## The benchmark: libsodium-core
 
 libsodium-core 1.3.1 (`bench/csharp-port-pin.json`) is 8.8k lines of C# 9 over libsodium,
@@ -250,17 +347,47 @@ most of it spent linting all of the port at every unit. A unit now lints its own
 (D-83): a second run took 3 h 35 min, within 2% of its estimate, each unit's tools about
 two minutes from the first unit to the last.
 
+## The second benchmark: EasyRetry
+
+EasyRetry 2.2.0 (`bench/lifts-cpp-pin.json`) is the M13 benchmark, a library the first
+versions refused twice: 657 lines of C# 12 that retry an `Action`, a `Func<Task>` or a
+`Func<Task<T>>` by a policy, async throughout, logging through an `ILogger<T>`, with 148 NUnit
+cases. Its plan was 22 units (6 types, 15 test files, the retirement), with C++20 for its
+async code ([Async code](#async-code)) and the logging package's counterpart
+([Packages](#packages)). Headless Claude Code ported it whole in 90 minutes, the C# tests
+passing through the façades at every commit; the final CMake build passes 163 GoogleTest tests
+under the sanitizers, and all 148 C# tests map to them. It took 1.65 times its estimate: the
+options, the interface and the retry itself, delegates, generics and async code, took two
+thirds of the agent's time, which the planner didn't weigh. Two units took more than one
+attempt: one named a function pointer's delegate `CcmNative.<typedef>`, though the generated
+declarations put it beside `CcmNative`, and one met a false leak report from clang-analyzer for
+a `std::shared_ptr` chosen by `?:` between a move and `std::make_shared`, which an assignment
+and a null check avoid.
+
+Over 10,325 seeded lines (the delays, the argument checks, and 4,000 scripted retries over all
+seven overloads with their hooks, logs, tasks, exceptions and `Data`), the C# façades over the
+C++ did what the C# did but in two ways: a log entry reached the C# logger as its formatted
+text, without the template's named values a structured logger records, and an
+`OperationCanceledException` the C++ raised had no `CancellationToken`. D-97 closed both, and
+what this port and the Rust one had worked around, a logged C# exception rebuilt from its
+type and message: with the runtime that carries them in place of the one it was ported with,
+and the few lines of its code that use it (the `TimeSpan` logged rather than its text, the
+shipped logging glue), the façades match the C# on every seeded line. The guidance has both
+lines that cost attempts, and the planner now weighs a type's delegates, events, tasks and
+tokens: replanned, the estimate is 0.99 of this run's time.
+
 ## Limits
 
 - One library project per port: types to port in several are refused.
-- Refused, with the reason in the plan: `async` code, `dynamic` the index can't settle (below),
+- Refused, with the reason in the plan: async code the tasks runtime doesn't take over, and
+  any under C++17 ([Async code](#async-code)), `dynamic` the index can't settle (below),
   reflection, serializers and
   dependency injection with their attributes (a serializer's round trip in memory is a deep
   copy, which ports), expression trees, a public generic type or method nothing in the project
   instantiates, a class with non-private instance fields (a façade can't forward a field), a
   ported constructor that calls a virtual member a C# class overrides, a type that uses a .NET
-  package's API or calls an operating system's own library where Linux reaches the call, and a type
-  that uses a refused one.
+  package's API CodeCoreMorph doesn't map ([Packages](#packages)) or calls an operating
+  system's own library where Linux reaches the call, and a type that uses a refused one.
 - Ported, with a note: `unsafe` code is plain C++ (`fixed` pins nothing, a pointer cast that
   reads one type as another becomes `std::memcpy`).
 - A C# class outside the port (the tests, a program) that derives from a ported class and

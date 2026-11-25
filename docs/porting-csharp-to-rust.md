@@ -105,6 +105,18 @@ The codemod makes the workspace on the first unit and adds to it on each:
   port makes, each `unsafe` block with a `// SAFETY:` comment; the rest of the crate calls
   those. The run's image needs the library's development files (the M12 benchmark's adds
   Ubuntu's `libsodium-dev`).
+- Where the unit's types use a .NET package CodeCoreMorph maps (D-95, the plan's table names
+  the counterpart): a C library goes in the native module, bindgen reading the headers the
+  mapping names (`lz4.h` and `lz4hc.h` for K4os.Compression.LZ4); a crate is added to the
+  crate's dependencies at the exact version and features the mapping pins, and to
+  `rust/Cargo.lock` with the checksum CodeCoreMorph ships (`xxhash-rust` 0.8.21 for
+  K4os.Hash.xxHash), fetched at configure with the network on for that alone, every build after
+  offline and `--locked`; Microsoft.Extensions.Logging.Abstractions is the runtime crate's
+  `logging` module (kept at the retirement), with the bridge's glue (`src/bridge/ccm_logging.rs`)
+  and the façades' support (`CodeCoreMorph.Logging.cs`): the Rust calls back into the C#
+  logger the façade passes until the retirement, each call returning `Result` since a C#
+  logger may throw. The mappings, what they cover and what they were checked against are the
+  port to C++'s ([Packages](porting-csharp-to-cpp.md#packages)), with these counterparts.
 
 The agent writes the Rust and the bridge, turns each C# type into its façade, and maps every
 public and protected member. Tests that reach what the library keeps `internal`, through its `InternalsVisibleTo`, are named in
@@ -163,6 +175,43 @@ Rust returns an `Exception` of its .NET type with its constructor's arguments as
   under the implementing type, `parking_rs::money::Money::fmt` for `Display`).
 - **`unsafe_in_bridge`** and **`lint_clean`** are the list in *What is lost*.
 
+## Packages
+
+The mappings of .NET packages and what they were checked against are the port to C++'s
+([Packages](porting-csharp-to-cpp.md#packages), D-95); in Rust, K4os.Compression.LZ4 is liblz4
+through the native module (its blocks byte for byte with K4os's, which `lz4_flex`'s aren't),
+K4os.Hash.xxHash the crate `xxhash-rust` 0.8.21, and Microsoft.Extensions.Logging.Abstractions
+the runtime crate's `logging` (Type units, above). A C library's development files must be in
+the run's image: the port image has liblz4's and libxxhash's; for another image, build one
+with them as for a native library.
+
+## Async code
+
+A type with `async` members ports (D-96). The first unit with async code places the tasks
+runtime: the runtime crate's `tasks` module (kept at the retirement), the bridge's
+`src/bridge/ccm_tasks.rs` and the façades' support `CodeCoreMorph.Tasks.cs`. No async crate is
+added: the runtime is a small executor of CodeCoreMorph's own, in safe Rust.
+
+- An `async Task<T>` member returns `codecoremorph_runtime::tasks::Task<T>`, its body in
+  `tasks::spawn(async move { .. })`. As in C#, `spawn` runs the body on the caller's thread
+  until its first `.await` of something not done, so argument checks fault the task; `Task<T>`
+  is a `Future` of `Result<T>` that many may await, and `wait()` blocks for it (a test).
+  `when_all`, `delay`, `TaskCompletionSource` and the token types are .NET's, and a sleep the
+  token cuts short in synchronous code (`token.WaitHandle.WaitOne(t)`) is the token's `wait`.
+- Rust asks more of async code than C#: the body is `'static`, so an async member takes
+  `self: &Arc<Self>` and moves a clone into the body, and it holds no `MutexGuard` across an
+  `.await`. A `catch (TransientException)` is `Err(e) if e.is_a("Relay.TransientException")`,
+  which also matches derived types, as the C# `catch` does.
+- Across the bridge it is the C++ port's C ABI: an async export completes its façade's C#
+  task, a C# task is awaited as a native one, a token crosses with its origin (and back with a
+  cancellation the Rust raises, D-97), and a C# exception reaches the Rust as an `Exception`
+  of its .NET types, the façade throwing the same C# object when it comes back. That last
+  holds in every port. A log entry carries its state as in C++ ([Packages](porting-csharp-to-cpp.md#packages)):
+  an argument's `LogArg::log_value` is its typed value, and the port's own `TimeSpan`
+  implements it (`DotnetValue::time_span(ticks)`).
+- **Still refused**, by site: as for C++ (`async void`, `ValueTask`, `await foreach`, the task
+  API beyond what the runtime covers, .NET's own tasks).
+
 ## Reviewing the result
 
 - The report's port section lists the maps' notes (what the Rust couldn't keep or keeps
@@ -206,6 +255,18 @@ parking's.
 
 `fixtures/csharp/hostkit` is the port to C++'s ([hostkit](porting-csharp-to-cpp.md#the-third-fixture-hostkit)): a library that calls kernel32 on Windows and the C library elsewhere, each call behind a check of the platform (D-94). Its plan is the same 5 units. Ported whole through `codecoremorph run --host-agent` (5 of 5 units, each on its first attempt), the Rust uses std's counterparts of the C library's calls: `Instant` for the monotonic clock (counting from its first reading, since std keeps the clock's value to itself), `std::process::id`, and `io::Error::from_raw_os_error` for `strerror`'s text. No unsafe code is left. It replays from the recorded edits beside parking's.
 
+## The fourth fixture: stash
+
+`fixtures/csharp/stash` is the port to C++'s ([stash](porting-csharp-to-cpp.md#the-fourth-fixture-stash)): a library over K4os.Compression.LZ4, K4os.Hash.xxHash and Microsoft.Extensions.Logging.Abstractions (D-95). Its plan is the same 6 units. Ported whole through `codecoremorph run --host-agent` (6 of 6 units, each on its first attempt), the Rust calls liblz4 through its native module (the only unsafe code left), digests with `xxhash-rust` pinned in `Cargo.lock`, and logs through the runtime crate's `logging`, its translated tests' loggers implementing `Logger`. It replays from the recorded edits beside parking's.
+
+## The fifth fixture: relay
+
+`fixtures/csharp/relay` (D-96; [the C++ guide](porting-csharp-to-cpp.md#the-fifth-fixture-relay)
+describes it) ported whole to Rust through `codecoremorph run --host-agent`, 7 of 7 units, each
+on its first attempt: the C# tests pass through the façades at every commit, and the retired
+crate passes its 14 tests alone, with unsafe code forbidden. It replays from
+the recorded edits beside parking's.
+
 ## The benchmark: libsodium-core
 
 The M12 benchmark is the port to C++'s ([libsodium-core](porting-csharp-to-cpp.md#the-benchmark-libsodium-core))
@@ -221,11 +282,35 @@ exactly what those over the C++ did, so both differ from the C# only where the t
 builds do. The port to C++ took 3 h 33 min with the same model: the agent's time was about the
 same, and Cargo's checks cost each unit less than CMake's sanitizer build and clang-tidy.
 
+## The second benchmark: EasyRetry
+
+The M13 benchmark is the port to C++'s ([EasyRetry](porting-csharp-to-cpp.md#the-second-benchmark-easyretry))
+with Rust as the target (`bench/lifts-rust-pin.json`): 657 lines of async C# 12 that log through
+an `ILogger<T>`, 148 NUnit cases, the same plan of 22 units. Headless Claude Code (Opus 5.5)
+ported it whole in 86 minutes, 1.75 of its estimate, every unit at its first attempt. The C#
+tests passed through the façades at every commit; the final Cargo build passes 147 Rust tests,
+146 of the 148 C# tests map to them, and the other 2 pass a null delegate, which a Rust closure
+can't be. No `unsafe`, and two shared cells: the options' state and their list of exception
+types, which C# lets their owner change while a retry reads them. As for C++, three of the six
+types took two thirds of the agent's time.
+
+Over 10,325 seeded lines, the C# façades over the Rust did what the C# did but in three ways: a
+log entry reached the C# logger as its formatted text, without the template's named values; an
+`OperationCanceledException` the Rust raised had no `CancellationToken`; and an
+`ArgumentOutOfRangeException` had no actual value, so its message lacked the line that shows it,
+since `Exception::argument_out_of_range` took none (the C++ port wrote an exception type of its
+own that carries it). D-97 closed all three (`Exception::argument_out_of_range_value`,
+`task_canceled_by`, a log entry's state), and the exception type of its own this port wrote to
+log a C# exception as the same object: with that runtime and the few lines of the port's code
+that use it, the façades match the C# on every seeded line, and the replanned estimate is 0.96
+of this run's time.
+
 ## Limits
 
 The first version refuses what a port to C++ refuses ([Limits](porting-csharp-to-cpp.md#limits)):
-`async`, `dynamic` the index can't settle, reflection and attribute-driven behavior, expression trees, a type that
-uses a .NET package's API or an operating system's own library where Linux reaches the call,
+async code the tasks runtime doesn't take over ([Async code](#async-code)), `dynamic` the
+index can't settle, reflection and attribute-driven behavior, expression trees, a type that
+uses a .NET package's API CodeCoreMorph doesn't map or an operating system's own library where Linux reaches the call,
 public generic types nothing instantiates, a ported constructor that calls a virtual member a C# class overrides, a class
 with non-private instance fields, and types in more than one library project. A C# class
 outside the port that derives from a ported class runs on a director, as for C++ (D-87): here
@@ -237,7 +322,8 @@ where the index settles it, as for C++ (D-88): a dispatch on a hierarchy's runti
 downcasts the trait object, values of unrelated types are an `enum` matched at each site,
 and a binder error is `Exception::runtime_binder`. Also:
 
-- No registry dependency: a port adds no crate, so it builds offline.
+- A registry dependency only where a package mapping pins one (D-95): the crate's version and
+  checksum are CodeCoreMorph's, fetched at configure; every build is offline.
 - Strings are UTF-8: C#'s lengths and indices count UTF-16 units, the same for ASCII; the symbol
   map's notes say where a port depends on the difference.
 - A call into the C library (`libc` through P/Invoke) has no header in Rust: the guidance doesn't say yet what to call instead, and std has no counterpart for some (a clock's raw value).
