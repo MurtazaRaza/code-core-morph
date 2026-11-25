@@ -38,8 +38,13 @@ MSBUILD_FILES = frozenset(
 )
 PROJECT_SUFFIXES = (".csproj",)
 SOLUTION_SUFFIXES = (".sln", ".slnx")
+# The façades' support of a runtime CodeCoreMorph ships besides the bridge's, by the runtime's
+# name: a .NET package's counterpart (D-95) or .NET's tasks (D-96), written beside a façade
+# project's file by the unit that first uses it.
+TASKS_RUNTIME = "tasks"
+PACKAGE_SUPPORT = {"logging": "CodeCoreMorph.Logging.cs", TASKS_RUNTIME: "CodeCoreMorph.Tasks.cs"}
 # The files a façade project's C# keeps beside the façades while the port lasts.
-FACADE_FILES = (SUPPORT_FILE, GENERATED_FILE, EXCEPTIONS_FILE)
+FACADE_FILES = (SUPPORT_FILE, GENERATED_FILE, EXCEPTIONS_FILE, *PACKAGE_SUPPORT.values())
 
 
 def snake(text: str) -> str:
@@ -203,6 +208,29 @@ def write_facade_support(
     prefix = project_dir_prefix(project)
     out.create(f"{prefix}{SUPPORT_FILE}", runtime_text(SUPPORT_FILE))
     out.create(f"{prefix}{GENERATED_FILE}", initial_declarations(library, headers, target))
+
+
+def write_package_support(out: Writer, project: str, runtime: str) -> None:
+    """The façades' support of a shipped runtime (a package's counterpart, ``logging``, D-95;
+    ``tasks``, D-96) beside a façade project's file, once."""
+    file_name = PACKAGE_SUPPORT.get(runtime)
+    if file_name is None:
+        raise ConfigError(
+            f"no façade support for the shipped runtime {runtime!r}",
+            hint=f"Known: {sorted(PACKAGE_SUPPORT)}; check packages.toml's runtime names.",
+        )
+    out.create(f"{project_dir_prefix(project)}{file_name}", runtime_text(file_name))
+
+
+def package_names(options: Mapping[str, str]) -> list[str]:
+    """A unit's ``packages`` option: the .NET packages whose counterparts its new code uses."""
+    return [p.strip() for p in options.get("packages", "").split(",") if p.strip()]
+
+
+def uses_tasks(options: Mapping[str, str]) -> bool:
+    """A unit's ``tasks`` option: its C# has async code, which the tasks runtime takes over
+    (D-96)."""
+    return options.get("tasks", "").strip().lower() in {"1", "true", "yes"}
 
 
 def facade_projects(worktree: Path) -> list[str]:

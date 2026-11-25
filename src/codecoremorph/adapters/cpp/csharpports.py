@@ -24,8 +24,9 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from importlib import resources
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
+from codecoremorph.adapters.csharp import packages as csharp_packages
 from codecoremorph.adapters.csharp import ports as csharp
 from codecoremorph.core.errors import ConfigError
 from codecoremorph.rules.detectors import mask_c_family
@@ -83,6 +84,31 @@ RUNTIME_FILES = {
     "codecoremorph_bridge.hpp": f"{BRIDGE_DIR}/codecoremorph_bridge.hpp",
     "codecoremorph_bridge.cpp": f"{BRIDGE_DIR}/codecoremorph_bridge.cpp",
 }
+# The runtimes CodeCoreMorph ships besides the bridge's, by name, placed by the first unit that
+# needs one: the counterparts of .NET packages (D-95) and .NET's tasks (D-96, C++20). The C++
+# side goes under cpp/include, which the retirement keeps, and the bridge's glue goes with the
+# bridge.
+PACKAGE_RUNTIMES = {
+    "logging": {
+        "codecoremorph_logging.hpp": f"{INCLUDE_DIR}/codecoremorph_logging.hpp",
+        "codecoremorph_logging.h": f"{BRIDGE_DIR}/codecoremorph_logging.h",
+        "codecoremorph_logging.cpp": f"{BRIDGE_DIR}/codecoremorph_logging.cpp",
+    },
+    csharp.TASKS_RUNTIME: {
+        "codecoremorph_tasks.hpp": f"{INCLUDE_DIR}/codecoremorph_tasks.hpp",
+        "codecoremorph_tasks.h": f"{BRIDGE_DIR}/codecoremorph_tasks.h",
+        "codecoremorph_tasks.cpp": f"{BRIDGE_DIR}/codecoremorph_tasks.cpp",
+    },
+}
+# The C++ standards a port's async code builds under: C++20's coroutines (D-96).
+TASKS_STANDARDS = frozenset({"20", "23"})
+_SHIPPED = frozenset(
+    {*RUNTIME_FILES.values(), *(r for f in PACKAGE_RUNTIMES.values() for r in f.values())}
+)
+# The runtime's bridge headers, which the C# declarations aren't written from.
+_RUNTIME_HEADERS = frozenset(
+    PurePosixPath(r).name for r in _SHIPPED if r.startswith(f"{BRIDGE_DIR}/") and r.endswith(".h")
+)
 
 # The test host runs the C++ under the sanitizers (D-78): the shared ASan runtime preloaded into
 # `dotnet test`, CoreCLR keeping its own SIGSEGV handling, no leak report of the runtime's own.
@@ -373,7 +399,7 @@ def bridge_headers(worktree: Path) -> list[str]:
     return sorted(
         f"{BRIDGE_DIR}/{p.name}"
         for p in directory.glob("*.h")
-        if p.is_file() and p.name != BRIDGE_RUNTIME_HEADER
+        if p.is_file() and p.name not in _RUNTIME_HEADERS
     )
 
 
@@ -412,9 +438,42 @@ CPP_EXTENSIONS = (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".h")
 _LINTED_DIRS = (SOURCE_DIR, BRIDGE_DIR, PROGRAMS_DIR, TESTS_DIR)
 
 
+def source_line(text: str, line: int | None) -> str:
+    """The 1-based ``line`` of ``text``, or nothing."""
+    if line is None or line < 1:
+        return ""
+    lines = text.splitlines()
+    return lines[line - 1] if line <= len(lines) else ""
+
+
+# A cast to a pointer to a character type: C++ lets one alias any object, so passing bytes to a C
+# library's char buffers (liblz4's) is no type pun (D-95).
+_CHARACTER_CAST = re.compile(
+    r"reinterpret_cast\s*<\s*(?:const\s+)?(?:volatile\s+)?"
+    r"(?:char|signed\s+char|unsigned\s+char|std::byte|std::u?int8_t|u?int8_t)\s*"
+    r"(?:const\s*)?\*\s*>"
+)
+
+
+def character_cast(line: str, column: int | None) -> bool:
+    """Whether the ``reinterpret_cast`` clang-tidy flagged at ``column`` (1-based) of ``line``
+    casts to a pointer to a character type: the cast that starts there, or the last before it
+    (without a column, the line's first)."""
+    casts = [m.start() for m in re.finditer(r"\breinterpret_cast\b", line)]
+    if not casts:
+        return False
+    if column is None:
+        at = casts[0]
+    else:
+        before = [c for c in casts if c <= column - 1]
+        at = before[-1] if before else casts[0]
+    return _CHARACTER_CAST.match(line, at) is not None
+
+
 def is_runtime(rel: str) -> bool:
-    """Whether ``rel`` is a file of the runtime CodeCoreMorph ships, which no unit edits."""
-    return rel in RUNTIME_FILES.values()
+    """Whether ``rel`` is a file of the runtime CodeCoreMorph ships, which no unit edits: the
+    port's own, or a package counterpart's (D-95)."""
+    return rel in _SHIPPED
 
 
 def in_bridge(rel: str) -> bool:
@@ -556,8 +615,9 @@ def _type(out: _Writer, options: Mapping[str, str], standard: str) -> None:
     """A unit of types: the CMake files and runtime (the first unit), the unit's C++ and bridge
     files, and its sources in the libraries. The options are the unit's port's: ``crate`` (the
     C++ libraries' stem), ``module`` (the unit's files' stem), ``build_target`` (the façade
-    project's file), ``types`` (the C# types it ports) and ``native`` (the native libraries its
-    types call, which the library links, D-82)."""
+    project's file), ``types`` (the C# types it ports), ``native`` (the native libraries its
+    types call, which the library links, D-82), ``packages`` (D-95) and ``tasks`` (its C# has
+    async code, D-96)."""
     name = _identifier(options, "crate", "the C++ libraries' name")
     unit = _identifier(options, "module", "the unit's name")
     project = _project(out.worktree, options)
@@ -573,7 +633,50 @@ def _type(out: _Writer, options: Mapping[str, str], standard: str) -> None:
     out.create(f"{BRIDGE_DIR}/{unit}.h", bridge_header_stub(name, unit, types))
     out.create(f"{BRIDGE_DIR}/{unit}.cpp", bridge_source_stub(unit, types))
     cmake = _add(out, cmake, f"src/{unit}.cpp", bridge=False)
-    _add(out, cmake, f"bridge/{unit}.cpp", bridge=True)
+    cmake = _add(out, cmake, f"bridge/{unit}.cpp", bridge=True)
+    cmake = _package_runtimes(out, project, csharp.package_names(options), cmake)
+    if csharp.uses_tasks(options):
+        if cxx_standard(standard) not in TASKS_STANDARDS:
+            raise ConfigError(
+                f"the unit's C# has async code, which a port to C++ ports to C++20 coroutines, "
+                f"and the target is {standard}",
+                hint="Set migration.target.standard to cpp20 or cpp23 and re-plan (D-96).",
+            )
+        _shipped_runtime(out, project, csharp.TASKS_RUNTIME, cmake)
+
+
+def _shipped_runtime(out: _Writer, project: str, runtime: str, cmake: str) -> str:
+    """A runtime CodeCoreMorph ships besides the bridge's, once: its C++ side, the bridge's
+    glue in the bridge library, and the façades' support; ``cpp/CMakeLists.txt``'s text."""
+    files = PACKAGE_RUNTIMES.get(runtime)
+    if files is None:
+        raise ConfigError(
+            f"no C++ runtime {runtime!r}",
+            hint=f"Known: {sorted(PACKAGE_RUNTIMES)}; check packages.toml's runtime names.",
+        )
+    for file_name, rel in files.items():
+        out.create(rel, runtime_text(file_name))
+        if rel.startswith(f"{BRIDGE_DIR}/") and rel.endswith(".cpp"):
+            cmake = _add(out, cmake, rel.removeprefix(f"{CPP_DIR}/"), bridge=True)
+    csharp.write_package_support(out, project, runtime)
+    return cmake
+
+
+def _package_runtimes(out: _Writer, project: str, packages: Sequence[str], cmake: str) -> str:
+    """The counterparts CodeCoreMorph ships for the packages a unit's C# uses (D-95), once: the
+    C++ side, the bridge's glue in the bridge library, and the façades' support. A package whose
+    counterpart is a C library needs nothing here: the planner names it among the unit's native
+    libraries, which the library links."""
+    for package in packages:
+        mapping = csharp_packages.target_mapping(package, "cpp")
+        if mapping is None:
+            raise ConfigError(
+                f"the package {package} has no C++ counterpart in CodeCoreMorph's mappings",
+                hint="Re-plan the run: the planner only names packages the target maps (D-95).",
+            )
+        if mapping.runtime is not None:
+            cmake = _shipped_runtime(out, project, mapping.runtime, cmake)
+    return cmake
 
 
 def program_header_stub(name: str, stem: str, program: str) -> str:

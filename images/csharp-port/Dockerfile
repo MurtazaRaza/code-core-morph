@@ -40,6 +40,14 @@ RUN python3 -m venv /opt/codecoremorph/venv \
         -r /opt/codecoremorph/requirements.txt
 
 ENV PATH=/opt/codecoremorph/venv/bin:$PATH
+
+# The C libraries that stand for .NET packages in a port (adapters/csharp/packages.toml, D-95):
+# their headers and link libraries, which the C++ includes and links and Rust's bindgen reads.
+# A layer of its own, so adding one leaves the toolchains' layers as they are.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends liblz4-dev libxxhash-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 LABEL org.codecoremorph.language="csharp-port" \
       org.codecoremorph.toolchain-env="/opt/codecoremorph/toolchains/csharp-port.env"
 USER 1000:1000

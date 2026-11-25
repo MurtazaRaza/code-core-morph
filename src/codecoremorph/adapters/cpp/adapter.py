@@ -1081,6 +1081,11 @@ class CppAdapter(LanguageAdapter):
             if d.code in csharpports.BRIDGE_ONLY_CHECKS:
                 if csharpports.in_bridge(rel):
                     continue  # the bridge's handles and contexts are its casts
+                # A C library's char buffers take bytes through a cast to a character type,
+                # which may alias anything (D-95).
+                line = csharpports.source_line(_read_text(ctx.worktree / rel) or "", d.line)
+                if csharpports.character_cast(line, d.column):
+                    continue
                 why = "outside the bridge, the C++ has no casts between pointer types"
                 d = d.model_copy(update={"message": f"{d.message} ({why})"})
             found.append(d)

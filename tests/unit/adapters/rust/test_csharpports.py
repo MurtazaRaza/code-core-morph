@@ -498,3 +498,138 @@ def test_the_retirement_keeps_the_native_module_and_denies_unsafe_code_elsewhere
     crate = tomllib.loads(_text(root, "rust/shop_rs/Cargo.toml"))
     assert "metadata" not in crate["package"]  # bindgen's last output stays as it is
     assert csharpports.native_crates(root) == []
+
+
+# --------------------------------------------------------------------------- .NET packages
+
+
+def test_a_crate_counterpart_is_pinned_in_the_manifest_and_the_lock(tmp_path: Path) -> None:
+    """K4os.Hash.xxHash is the crate xxhash-rust (D-95): an exact version, the mapping's features
+    and no default ones in the crate's manifest, and the lock entry with the checksum
+    CodeCoreMorph ships, which Cargo checks what it fetches against."""
+    root = _shop(tmp_path)
+    options = {**OPTIONS, "packages": "K4os.Hash.xxHash"}
+    changed = csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021")
+    assert {"rust/shop_rs/Cargo.toml", csharpports.LOCK} <= set(changed)
+    crate = tomllib.loads(_text(root, "rust/shop_rs/Cargo.toml"))
+    assert crate["dependencies"]["xxhash-rust"] == {
+        "version": "=0.8.21",
+        "default-features": False,
+        "features": ["xxh32", "xxh64"],
+    }
+    assert "codecoremorph_runtime" in crate["dependencies"]
+    lock = tomllib.loads(_text(root, csharpports.LOCK))
+    (entry,) = [p for p in lock["package"] if p["name"] == "xxhash-rust"]
+    assert entry == {
+        "name": "xxhash-rust",
+        "version": "0.8.21",
+        "source": csharpports.REGISTRY,
+        "checksum": "40de123dbb523ebcc00d61ec01840ad192578afc378d859f3429caa38308fad5",
+    }
+    # Again: nothing to do; a crate counterpart needs no native module.
+    assert csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021") == []
+    assert not (root / "rust/shop_rs/src/native").exists()
+
+
+def test_a_c_library_counterpart_names_its_headers_for_bindgen(tmp_path: Path) -> None:
+    """K4os.Compression.LZ4 is liblz4 through the native module (D-95): the planner names lz4
+    among the unit's native libraries, and the manifest the two headers bindgen reads."""
+    root = _shop(tmp_path)
+    options = {**OPTIONS, "native": "lz4", "packages": "K4os.Compression.LZ4"}
+    csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021")
+    manifest = _text(root, "rust/shop_rs/Cargo.toml")
+    assert csharpports.native_libraries(manifest) == ["lz4"]
+    assert csharpports.native_headers(manifest) == {"lz4": ["lz4.h", "lz4hc.h"]}
+    assert tomllib.loads(manifest)["package"]["metadata"]["codecoremorph"]["native-headers"] == {
+        "lz4": ["lz4.h", "lz4hc.h"]
+    }
+    wrapper = csharpports.native_wrapper("lz4", ["lz4.h", "lz4hc.h"])
+    assert wrapper == "#include <lz4.h>\n#include <lz4hc.h>\n"
+    argv = csharpports.native_bindgen_argv("w.h", "o.rs", "lz4", "2021", ["lz4.h", "lz4hc.h"])
+    assert argv[argv.index("--allowlist-file") + 1] == r".*/(lz4\.h|lz4hc\.h)"
+    assert csharpports.native_wrapper("sodium") == "#include <sodium.h>\n"
+
+
+def test_a_logging_package_gets_the_runtime_module_and_the_bridge_glue(tmp_path: Path) -> None:
+    root = _shop(tmp_path)
+    csharpports.scaffold(root, "rust-csharp-type", OPTIONS, [], "rust2021")
+    assert not (root / "rust/codecoremorph_runtime/src/logging.rs").exists()
+    options = {
+        **OPTIONS,
+        "module": "store",
+        "types": "csharp:Shop.Store",
+        "packages": "Microsoft.Extensions.Logging.Abstractions",
+    }
+    changed = csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021")
+    assert {
+        "rust/codecoremorph_runtime/src/logging.rs",
+        "rust/codecoremorph_runtime/src/lib.rs",
+        "rust/shop_rs/src/bridge/ccm_logging.rs",
+        "rust/shop_rs/src/bridge/mod.rs",
+        "rust/shop_rs/cbindgen.toml",
+        "src/Shop/CodeCoreMorph.Logging.cs",
+    } <= set(changed)
+    assert "pub mod exceptions;\npub mod logging;\n" in _text(
+        root, "rust/codecoremorph_runtime/src/lib.rs"
+    )
+    assert "pub mod ccm;\npub mod ccm_logging;\n" in _text(root, "rust/shop_rs/src/bridge/mod.rs")
+    excluded = tomllib.loads(_text(root, "rust/shop_rs/cbindgen.toml"))["export"]["exclude"]
+    logging = {"ccm_logging_init", "ccm_log_fn", "ccm_log_enabled_fn", "ccm_log_value"}
+    assert logging <= set(excluded)
+    assert csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021") == []
+    with pytest.raises(ConfigError, match="no Rust counterpart"):
+        csharpports.scaffold(
+            root, "rust-csharp-type", {**OPTIONS, "packages": "Newtonsoft.Json"}, [], "rust2021"
+        )
+
+
+def test_a_unit_with_async_code_gets_the_tasks_module_and_the_bridge_glue(tmp_path: Path) -> None:
+    """.NET's tasks ship with the port (D-96): the runtime crate's tasks module, which stays,
+    the bridge's glue, which cbindgen leaves out of the header, and the façades' support."""
+    root = _shop(tmp_path)
+    csharpports.scaffold(root, "rust-csharp-type", OPTIONS, [], "rust2021")
+    assert not (root / "rust/codecoremorph_runtime/src/tasks.rs").exists()
+    # The bridge's own exports of a C# exception are the shipped header's, in every port: its
+    # cancellation's token too (D-97).
+    excluded = tomllib.loads(_text(root, "rust/shop_rs/cbindgen.toml"))["export"]["exclude"]
+    assert {"ccm_set_managed", "ccm_error_managed", "ccm_error_token"} <= set(excluded)
+    options = {**OPTIONS, "module": "store", "types": "csharp:Shop.Store", "tasks": "true"}
+    changed = csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021")
+    assert {
+        "rust/codecoremorph_runtime/src/tasks.rs",
+        "rust/codecoremorph_runtime/src/lib.rs",
+        "rust/shop_rs/src/bridge/ccm_tasks.rs",
+        "rust/shop_rs/src/bridge/mod.rs",
+        "rust/shop_rs/cbindgen.toml",
+        "src/Shop/CodeCoreMorph.Tasks.cs",
+    } <= set(changed)
+    assert "pub mod tasks;" in _text(root, "rust/codecoremorph_runtime/src/lib.rs")
+    assert "pub mod ccm_tasks;" in _text(root, "rust/shop_rs/src/bridge/mod.rs")
+    excluded = tomllib.loads(_text(root, "rust/shop_rs/cbindgen.toml"))["export"]["exclude"]
+    assert {"ccm_tasks_init", "ccm_token_new", "ccm_source_done_string", "CCM_CANCELED"} <= set(
+        excluded
+    )
+    assert csharpports.scaffold(root, "rust-csharp-type", options, [], "rust2021") == []
+
+
+def test_the_manifest_and_lock_edits() -> None:
+    from codecoremorph.adapters.csharp.packages import Crate
+
+    crate = Crate(name="a-b", version="1.2.3", checksum="0" * 64, features=("x",))
+    manifest = (
+        '[package]\nname = "p"\n\n[dependencies]\nz = "1"\n\n[package.metadata.codecoremorph]\n'
+    )
+    added = csharpports.with_dependency(manifest, crate)
+    assert added == (
+        '[package]\nname = "p"\n\n[dependencies]\nz = "1"\n'
+        'a-b = { version = "=1.2.3", default-features = false, features = ["x"] }\n\n'
+        "[package.metadata.codecoremorph]\n"
+    )
+    assert csharpports.with_dependency(added, crate) == added
+    assert "[dependencies]\na-b = " in csharpports.with_dependency('[package]\nname = "p"\n', crate)
+    lock = csharpports.with_lock_package(None, crate)
+    assert lock.startswith("# This file is automatically @generated by Cargo.\n")
+    assert csharpports.with_lock_package(lock, crate) == lock
+    assert lock.count("[[package]]") == 1
+    config = 'exclude = ["a", "b"]\n'
+    assert csharpports.with_cbindgen_excluded(config, ["b", "c"]) == 'exclude = ["a", "b", "c"]\n'

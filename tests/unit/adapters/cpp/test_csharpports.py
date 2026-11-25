@@ -189,6 +189,117 @@ def test_a_unit_that_calls_a_native_library_links_it(tmp_path: Path) -> None:
     assert csharpports.native_variable("libzstd.so.1") == "CCM_NATIVE_ZSTD"
 
 
+def test_a_unit_that_uses_a_logging_package_gets_its_counterpart(tmp_path: Path) -> None:
+    """Microsoft.Extensions.Logging.Abstractions' counterpart ships with the port (D-95): the
+    C++ side, which stays, the bridge's glue in the bridge library, and the façades' support;
+    once, and never in a port that doesn't use the package."""
+    root = _shop(tmp_path)
+    plain = csharpports.scaffold(root, "cpp-csharp-type", OPTIONS, [], "cpp17")
+    assert not [c for c in plain if "logging" in c.lower()]
+    options = {
+        **OPTIONS,
+        "module": "store",
+        "types": "csharp:Shop.Store",
+        "packages": "Microsoft.Extensions.Logging.Abstractions",
+    }
+    changed = csharpports.scaffold(root, "cpp-csharp-type", options, [], "cpp17")
+    assert {
+        "cpp/include/codecoremorph_logging.hpp",
+        "cpp/bridge/codecoremorph_logging.h",
+        "cpp/bridge/codecoremorph_logging.cpp",
+        "src/Shop/CodeCoreMorph.Logging.cs",
+    } <= set(changed)
+    cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
+    assert "bridge/codecoremorph_logging.cpp" in csharpports.listed(cmake, bridge=True)
+    # The shipped files aren't the port's: no lint, no declarations from the glue's header.
+    assert csharpports.is_runtime("cpp/include/codecoremorph_logging.hpp")
+    assert csharpports.is_runtime("cpp/bridge/codecoremorph_logging.cpp")
+    assert "cpp/bridge/codecoremorph_logging.h" not in csharpports.bridge_headers(root)
+    support = (root / "src/Shop/CodeCoreMorph.Logging.cs").read_text(encoding="utf-8")
+    assert "internal static class CcmLogging" in support
+    later = {**options, "module": "cache", "types": "csharp:Shop.Cache"}
+    again = csharpports.scaffold(root, "cpp-csharp-type", later, [], "cpp17")
+    assert not [c for c in again if "logging" in c.lower()]
+    # A package whose counterpart is a C library needs nothing but its link (the planner names
+    # it among the unit's native libraries); one CodeCoreMorph doesn't map is a planning error.
+    codec = {**OPTIONS, "module": "codec", "packages": "K4os.Compression.LZ4", "native": "lz4"}
+    assert "cpp/CMakeLists.txt" in csharpports.scaffold(root, "cpp-csharp-type", codec, [], "cpp17")
+    with pytest.raises(ConfigError, match="no C\\+\\+ counterpart"):
+        csharpports.scaffold(
+            root, "cpp-csharp-type", {**OPTIONS, "packages": "Newtonsoft.Json"}, [], "cpp17"
+        )
+
+
+def test_a_unit_with_async_code_gets_the_tasks_runtime(tmp_path: Path) -> None:
+    """.NET's tasks ship with the port (D-96): codecoremorph_tasks.hpp (C++20, kept after the
+    retirement), the bridge's glue in the bridge library and the façades' support, placed once
+    by the first unit with async code; C++17 can't take it."""
+    root = _shop(tmp_path)
+    plain = csharpports.scaffold(root, "cpp-csharp-type", OPTIONS, [], "cpp20")
+    assert not [c for c in plain if "tasks" in c.lower()]
+    options = {**OPTIONS, "module": "store", "types": "csharp:Shop.Store", "tasks": "true"}
+    changed = csharpports.scaffold(root, "cpp-csharp-type", options, [], "cpp20")
+    assert {
+        "cpp/include/codecoremorph_tasks.hpp",
+        "cpp/bridge/codecoremorph_tasks.h",
+        "cpp/bridge/codecoremorph_tasks.cpp",
+        "src/Shop/CodeCoreMorph.Tasks.cs",
+    } <= set(changed)
+    cmake = (root / "cpp/CMakeLists.txt").read_text(encoding="utf-8")
+    assert "bridge/codecoremorph_tasks.cpp" in csharpports.listed(cmake, bridge=True)
+    assert csharpports.is_runtime("cpp/include/codecoremorph_tasks.hpp")
+    assert "cpp/bridge/codecoremorph_tasks.h" not in csharpports.bridge_headers(root)
+    support = (root / "src/Shop/CodeCoreMorph.Tasks.cs").read_text(encoding="utf-8")
+    assert "internal static class CcmTasks" in support
+    later = {**options, "module": "cache", "types": "csharp:Shop.Cache"}
+    assert not [
+        c
+        for c in csharpports.scaffold(root, "cpp-csharp-type", later, [], "cpp20")
+        if "tasks" in c.lower()
+    ]
+    with pytest.raises(ConfigError, match="C\\+\\+20 coroutines"):
+        csharpports.scaffold(_shop(tmp_path / "17"), "cpp-csharp-type", options, [], "cpp17")
+
+
+def test_the_bridge_throws_a_csharp_exception_as_its_mirror() -> None:
+    """A C# exception a call into C# throws reaches the C++ as the mirror of its type, carrying
+    the C# object, which the façade throws again (D-96): the bridge records it, and a port
+    registers its own exception types."""
+    header = csharpports.runtime_text("codecoremorph_bridge.h")
+    assert "ccm_set_managed(" in header
+    assert "ccm_error_managed(" in header
+    bridge = csharpports.runtime_text("codecoremorph_bridge.hpp")
+    assert "#define CCM_REGISTER_EXCEPTION(DotnetType, Type)" in bridge
+    assert "std::rethrow_exception(take_managed())" in bridge
+    exceptions = csharpports.runtime_text("codecoremorph_exceptions.hpp")
+    # A mirror's base may be qualified, in a port's own namespace.
+    assert "using ccm_base_::ccm_base_;" in exceptions
+    assert '"System.IO.InvalidDataException"' in exceptions
+
+
+@pytest.mark.parametrize(
+    ("line", "column", "allowed"),
+    [
+        ("    const char* p = reinterpret_cast<const char*>(data.data());", 21, True),
+        ("    auto* q = reinterpret_cast<char *>(packed.data() + 4);", 15, True),
+        ("    auto* r = reinterpret_cast<const unsigned char*>(text.c_str());", 15, True),
+        ("    auto* s = reinterpret_cast<std::byte*>(buffer);", 15, True),
+        ("    auto* t = reinterpret_cast<const std::uint8_t*>(chars);", 15, True),
+        ("    auto* u = reinterpret_cast<Money*>(handle);", 15, False),
+        ("    auto v = reinterpret_cast<std::uintptr_t>(object);", 14, False),
+        ("    auto* w = reinterpret_cast<const char* const*>(argv);", 15, False),
+    ],
+)
+def test_a_cast_to_a_character_type_passes_outside_the_bridge(
+    line: str, column: int, allowed: bool
+) -> None:
+    """A C library's char buffers take bytes through a cast to a character type, which may
+    alias anything (D-95); every other cast between pointer types stays the bridge's."""
+    assert csharpports.character_cast(line, column) is allowed
+    assert csharpports.source_line(f"a\n{line}\n", 2) == line
+    assert csharpports.source_line("a\n", 5) == ""
+
+
 @pytest.mark.parametrize(
     "options",
     [

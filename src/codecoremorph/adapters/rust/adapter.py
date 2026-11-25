@@ -374,6 +374,9 @@ class RustAdapter(LanguageAdapter):
         packages needs nothing, and no network."""
         started = time.monotonic()
         log_path = self._note(ctx, "cargo-configure.log")
+        # The registry's packages first: cbindgen reads each crate's metadata offline, which
+        # needs them (a package counterpart's crate, D-95).
+        fetched, log_path = self._fetch(ctx, log_path)
         # A C port's sys modules (D-68) and a module port's bridge headers come first: the
         # crates use the former, and the C++ build includes the latter (D-58).
         _, diagnostics = self._sys_modules(ctx)
@@ -389,6 +392,18 @@ class RustAdapter(LanguageAdapter):
         # A crate being ported to C (D-75): CMake configures its C, bindgen writes the façades'
         # sys modules.
         diagnostics += self._c_configure(ctx)
+        diagnostics += fetched
+        return BuildResult(
+            success=not diagnostics,
+            diagnostics=diagnostics,
+            duration_s=time.monotonic() - started,
+            log_path=log_path,
+        )
+
+    def _fetch(self, ctx: AdapterContext, log_path: Path) -> tuple[list[Diagnostic], Path]:
+        """``cargo fetch --locked`` for each crate whose lock takes packages from a registry,
+        the network on for that alone; a crate without a lock is an error."""
+        diagnostics: list[Diagnostic] = []
         for crate in self.crates(ctx):
             lock = _text(ctx.worktree / crate / "Cargo.lock")
             if lock is None:
@@ -426,12 +441,7 @@ class RustAdapter(LanguageAdapter):
                         origin=DiagnosticOrigin.BUILD_SYSTEM,
                     )
                 )
-        return BuildResult(
-            success=not diagnostics,
-            diagnostics=diagnostics,
-            duration_s=time.monotonic() - started,
-            log_path=log_path,
-        )
+        return diagnostics, log_path
 
     def build(self, ctx: AdapterContext, targets: list[str] | None = None) -> BuildResult:
         """``cargo build --all-targets`` over every crate: libraries, programs and tests."""
@@ -1732,17 +1742,28 @@ class RustAdapter(LanguageAdapter):
         self, ctx: AdapterContext, workspace: str, changes: list[CodemodChange]
     ) -> list[Diagnostic]:
         """``cargo update --workspace --offline``: the lockfile, with every member, and nothing
-        else re-resolved."""
+        else re-resolved. A lock that takes packages from a registry (a package counterpart's
+        crate, pinned there by the scaffold, D-95) is updated with the network on for that
+        command alone, as configure fetches (``sandbox.network: fetch_only``)."""
         lock = ctx.worktree / workspace / "Cargo.lock"
         before = lock.read_bytes() if lock.is_file() else None
-        ok, output, _, _ = self._cargo(
-            ctx,
-            workspace,
-            ["update", "--workspace", "--offline"],
-            "cargo-update.log",
-            timeout_s=600,
-            target_dir=False,
-        )
+        registry = before is not None and bool(fetched_packages(before.decode("utf-8", "replace")))
+        args = ["update", "--workspace"] if registry else ["update", "--workspace", "--offline"]
+        if registry:
+            ctx.executor.set_network(True)
+        try:
+            ok, output, _, _ = self._cargo(
+                ctx,
+                workspace,
+                args,
+                "cargo-update.log",
+                timeout_s=600,
+                target_dir=False,
+                env={"CARGO_NET_OFFLINE": "false"} if registry else None,
+            )
+        finally:
+            if registry:
+                ctx.executor.set_network(False)
         if not ok:
             tail = "\n".join(output.strip().splitlines()[-10:])
             return [
@@ -1985,16 +2006,19 @@ class RustAdapter(LanguageAdapter):
             work = ctx.cache_dir / "bindgen"
             work.mkdir(parents=True, exist_ok=True)
             ctx.log_dir.mkdir(parents=True, exist_ok=True)
+            # A package's C library may name several headers (D-95).
+            named = csharpports.native_headers(_text(ctx.worktree / crate / "Cargo.toml") or "")
             for name in names:
+                headers = named.get(name, [])
                 wrapper = work / f"{_slug(crate)}-{name}.h"
-                wrapper.write_text(csharpports.native_wrapper(name), encoding="utf-8")
+                wrapper.write_text(csharpports.native_wrapper(name, headers), encoding="utf-8")
                 rel = f"{crate}/{csharpports.NATIVE_DIR}/{name}_sys.rs"
                 out = ctx.worktree / rel
                 out.parent.mkdir(parents=True, exist_ok=True)
                 before = out.read_bytes() if out.is_file() else None
                 result = ctx.executor.run(
                     csharpports.native_bindgen_argv(
-                        ctx.sandbox(wrapper), ctx.sandbox(out), name, year
+                        ctx.sandbox(wrapper), ctx.sandbox(out), name, year, headers
                     ),
                     cwd=ctx.sandbox(ctx.worktree / crate),
                     timeout_s=600,
