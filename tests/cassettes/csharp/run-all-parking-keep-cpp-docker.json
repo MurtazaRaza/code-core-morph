@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "dfcd0d3634c1e3acb2720d74dd40cbd6eb4b259f81392ad388b98bcc49a46575",
+      "key": "759f42a466180949efe63424f8496f15bf1363a69b17be0cb6b17fe97ef42ede",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Car.cs, src/Parking/Motorcycle.cs, src/Parking/Vehicle.c",
@@ -85,7 +85,7 @@
       }
     },
     {
-      "key": "4929f97e99c4cd765d83527dda8f900a9f050f97cb854a297b592e132512ace4",
+      "key": "1997d6852c814a9a4023febcd34ae1944200b6dec453cd42bce4cb0f6a181000",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/GarageFullException.cs. Each C# type keeps every public ",
@@ -141,7 +141,7 @@
       }
     },
     {
-      "key": "955b9c1937e46725c5f1b3931a162750265e3c63fd495743f7f1cbc2cdb38445",
+      "key": "2c63d15de3affeda7e0104aca881933239cc46c707dd4933c8778799d44cd111",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Limits.cs. Each C# type keeps every public and protected",
@@ -186,7 +186,7 @@
       }
     },
     {
-      "key": "42390f1dfebf25da595681b47a7b9f0b42b9e65fd232c8caf7ab741668dd3e5c",
+      "key": "bf5f71816ba020567cf292e98aaef3b696fb8902d56be2d82dc63db236d4d015",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Money.cs. Each C# type keeps every public and protected ",
@@ -255,7 +255,7 @@
       }
     },
     {
-      "key": "c450a2024968cf3e383194ba9dbec193d4031e37e31670128e23547d763099fe",
+      "key": "8331fa4b214b52e5c1b9be3f07a81f228b85e8b2864c138885ac09105d5be3e7",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/IRatePlan.cs. Each C# type keeps every public and protec",
@@ -318,7 +318,7 @@
       }
     },
     {
-      "key": "18b1dde9300fd840933f232a6f79648c294313209cf553e9402fe8e5ddbea96e",
+      "key": "384449753c1e8735bcba8500cc6d35e95e1794c0dd36b9efc1058a9752128266",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/FlatRate.cs. Each C# type keeps every public and protect",
@@ -387,7 +387,7 @@
       }
     },
     {
-      "key": "52d4ef386757fe7b1b74280651f7e62d824bec6ae9160a5a549440747bfb2251",
+      "key": "a5e45a298e10a81ac5e4984ded7f81aedafa5fcc82c7fd7687687586e979105f",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/HourlyRate.cs. Each C# type keeps every public and prote",
@@ -456,7 +456,7 @@
       }
     },
     {
-      "key": "6105217627c90d755cfe44fc0141ed198bf598693b774e6f6d163689fe6eb2fc",
+      "key": "1a54f60e00cb1d98ab998af092fe0c2ab7d0b5494bab83f8d9b67db8bf2cc86d",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0008\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Tally.cs. Each C# type keeps every public and protected ",
@@ -519,7 +519,7 @@
       }
     },
     {
-      "key": "9cb68f1f64362bda152f9556302bca790384f5a137f715ecd20f46d199334eea",
+      "key": "40d60ce7ba8523b6b17d4d25eb41cc0164dbd6d6f5cb976256127fbbc2bf1fe9",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0009\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Garage.cs. Each C# type keeps every public and protected",
@@ -590,7 +590,7 @@
       }
     },
     {
-      "key": "876c2c31bdb25763d8e8bab59d59ce9ab96d935ba071ccef98cda78eae1445c5",
+      "key": "3979b888e4655a4e521beefb445406a96315ec4991d9da389ebe4458ba41fae0",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0010\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Parking/Shift.cs. Each C# type keeps every public and protected ",
@@ -659,7 +659,7 @@
       }
     },
     {
-      "key": "f969148f6aece88c951e1e64a9ea4ac1dbd0d6ffc452b542b4aed37daadfdfb5",
+      "key": "e251ded742d4fe597f55772a42662ff06fc326fe371c6c9027a78b4c5a09e483",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0011\\n\\nRules: port_csharp_program_to_cpp\\n\\nThe C# file with `Main` becomes the program's façade: `Main` keeps its signatu",
@@ -704,7 +704,7 @@
       }
     },
     {
-      "key": "6e7cd3bc7dec51322f6aa78b2de27007778d46c2f94519a9578e813f038a59f9",
+      "key": "8cfdf4f2556c7aa12755df08a9c9b73e256672b0bd54e3979bc07f8aa311acf9",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0012\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Par",
@@ -754,7 +754,7 @@
       }
     },
     {
-      "key": "68808bd8d78cb7f53177750a526e4b618386dda1c608115a1e12c6d02746b2c3",
+      "key": "fa2ac309e4120cb7735d9b599334b73b55a3436511b73567425eee9d2c3af897",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0013\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Par",
@@ -799,7 +799,7 @@
       }
     },
     {
-      "key": "ebcb42f0e17f5a67ffacd131e39a82433bd8d0bfbe7681e11116f681973476c3",
+      "key": "7bb1e1c1a751b0dd44671c15fc27bf449a16473f94c0023871a5421b1b561da6",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0014\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Par",
@@ -844,7 +844,7 @@
       }
     },
     {
-      "key": "0f6dbd616f6d90a92e88fcb8aabbfbad3c535337196ee7943ce75256d6ae415c",
+      "key": "b95a5b1b3d0383ac9f88fe75c515b9efb29784c46d34f58124044c7cc229354a",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0015\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Par",
@@ -889,7 +889,7 @@
       }
     },
     {
-      "key": "00553f197bd208cb26503b735ac3cbaf775a800506823b60c726e075adc093fb",
+      "key": "2b87212d5018f852246acc0659f15ca192c8fdc929376b8d9c71608ec079d803",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"tool_result\",\"call_id\":\"toolu_U-0015_1\",\"name\":\"submit_edits\",\"content\":\"Applied 2 edit(s) to cpp/tests/tally_tests.cpp, cpp/test-map.toml. CodeCoreMor",
@@ -928,7 +928,7 @@
       }
     },
     {
-      "key": "d823b8e50bf4ae4c14514f29e1b71802ec47a73684b453dbf983019d8a484b79",
+      "key": "6549315de6d05fcdb4fa35be4ec479aed1d13fcb98c65afc9a74140a259eff59",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0016\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Par",

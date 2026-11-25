@@ -1,0 +1,340 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": "4808c2658ea734aeea6ea43fc014d91e531481bab60a7b68309067047ade66d5",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Relay/Store.cs. Each C# type keeps every public and protected me",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0001_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/i_store.h",
+                  "search": "/* The bridge of Relay.IStore: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_I_STORE_H\n#define RELAY_BRIDGE_I_STORE_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Relay.IStore (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_I_STORE_H\n#define RELAY_BRIDGE_I_STORE_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n/* IStore implemented in C#: fetch(context, key, cancellation, source) starts the C# store's\n * FetchAsync and has its task complete source, a native task's (ccm_source_done_string, D-96);\n * it returns CCM_MANAGED when FetchAsync throws at once. */\ntypedef ccm_status (*relay_fetch_fn)(void *context, const char *key, void *cancellation,\n                                     void *source);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/i_store.hpp",
+                  "search": "// The C++ of Relay.IStore, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_I_STORE_HPP\n#define RELAY_I_STORE_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Relay.IStore, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_I_STORE_HPP\n#define RELAY_I_STORE_HPP\n\n#include <optional>\n#include <string>\n\n#include \"codecoremorph_tasks.hpp\"\n\nnamespace relay {\n\n// Where a cache reads what it doesn't have yet. A C# implementation reaches the C++ through\n// the bridge; its fetch's value may be null, as a C# string may.\nclass IStore {\npublic:\n    IStore() = default;\n    IStore(const IStore&) = default;\n    IStore& operator=(const IStore&) = default;\n    IStore(IStore&&) = default;\n    IStore& operator=(IStore&&) = default;\n    virtual ~IStore() = default;\n\n    // By value: a coroutine's reference parameters dangle once it suspends.\n    virtual ccm::tasks::Task<std::optional<std::string>> fetch_async(\n        std::string key, ccm::tasks::CancellationToken cancellation) = 0;\n};\n\n}  // namespace relay\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n"
+                }
+              ],
+              "summary": "Ported IStore to C++: an interface whose fetch returns a task (D-96); a C# store reaches the C++ through the bridge, its task awaited as a native one.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "2a502d48bc372a57fd9e27308967bde0889bbaab10da8e15996ba221e3cb294b",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Relay/Cache.cs. Each C# type keeps every public and protected me",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0002_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/cache.cpp",
+                  "search": "// The bridge of Relay.Cache (CodeCoreMorph, D-78).\n#include \"cache.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"cache.hpp\"\n",
+                  "replace": "// The bridge of Relay.Cache (CodeCoreMorph, D-78).\n#include \"cache.h\"\n\n#include <memory>\n#include <optional>\n#include <string>\n#include <vector>\n\n#include \"cache.hpp\"\n#include \"codecoremorph_bridge.hpp\"\n#include \"codecoremorph_tasks.h\"\n\nCCM_HANDLE_CLASS(relay_Cache, relay::Cache)\n\nusing ccm::bridge::from_handle;\nusing ccm::bridge::guard;\nusing ccm::bridge::to_handle;\n\nnamespace {\n\n// A C# IStore: its fetch is a C# task the native code awaits (D-96).\nclass ManagedStore final : public relay::IStore {\npublic:\n    ManagedStore(ccm::bridge::ManagedRef managed, relay_fetch_fn fetch)\n        : managed_(std::move(managed)), fetch_(fetch) {}\n\n    ccm::tasks::Task<std::optional<std::string>> fetch_async(\n        std::string key, ccm::tasks::CancellationToken cancellation) override {\n        ccm::bridge::TokenOut token(cancellation);\n        return ccm::bridge::managed_task<std::optional<std::string>>([&](void* source) {\n            return fetch_(managed_.get(), key.c_str(), token.get(), source);\n        });\n    }\n\nprivate:\n    ccm::bridge::ManagedRef managed_;\n    relay_fetch_fn fetch_;\n};\n\n}  // namespace\n\nextern \"C\" {\n\nCCM_HANDLE_EXPORTS(relay_Cache)\n\nCCM_EXPORT ccm_status relay_Cache_new(void* store, relay_fetch_fn fetch, ccm_release_fn release,\n                                      relay_Cache** result) {\n    ccm::bridge::ManagedRef managed(store, release);  // owned from here, however the rest fails\n    return guard([&] {\n        std::shared_ptr<relay::IStore> proxy;\n        if (store != nullptr) proxy = std::make_shared<ManagedStore>(managed, fetch);\n        *result = to_handle<relay_Cache>(std::make_shared<relay::Cache>(proxy));\n    });\n}\n\nCCM_EXPORT ccm_status relay_Cache_count(const relay_Cache* self, int32_t* result) {\n    return guard([&] { *result = from_handle(self)->count(); });\n}\n\nCCM_EXPORT ccm_status relay_Cache_fetches(const relay_Cache* self, int32_t* result) {\n    return guard([&] { *result = from_handle(self)->fetches(); });\n}\n\nCCM_EXPORT ccm_status relay_Cache_get_async(relay_Cache* self, const char* key, void* cancellation,\n                                            void* task) {\n    return guard([&] {\n        auto cache = from_handle(self);\n        ccm::tasks::CancellationToken token = ccm::bridge::token(cancellation);\n        // The null check is the task's, as the async C#'s was.\n        ccm::bridge::start(task, [&] { return cache->get_async(ccm::bridge::str(key, \"key\"), token); });\n    });\n}\n\nCCM_EXPORT ccm_status relay_Cache_get_many_async(relay_Cache* self, const char** keys_data,\n                                                 int32_t keys_count, void* cancellation,\n                                                 void* task) {\n    return guard([&] {\n        auto cache = from_handle(self);\n        ccm::tasks::CancellationToken token = ccm::bridge::token(cancellation);\n        ccm::bridge::start(task, [&] {\n            std::vector<std::string> keys;\n            for (const char* key : ccm::bridge::array(keys_data, keys_count, \"keys\")) {\n                keys.push_back(ccm::bridge::str(key, \"key\"));\n            }\n            return cache->get_many_async(std::move(keys), token);\n        });\n    });\n}\n\nCCM_EXPORT ccm_status relay_Cache_clear(relay_Cache* self) {\n    return guard([&] { from_handle(self)->clear(); });\n}\n\n}  // extern \"C\"\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/cache.h",
+                  "search": "/* The bridge of Relay.Cache: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_CACHE_H\n#define RELAY_BRIDGE_CACHE_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Relay.Cache: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_CACHE_H\n#define RELAY_BRIDGE_CACHE_H\n\n#include \"codecoremorph_bridge.h\"\n#include \"i_store.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nCCM_HANDLE(relay_Cache);\n\n/* Cache(IStore): the C# store as its context (a GCHandle, null for null), fetch and release. */\nCCM_EXPORT ccm_status relay_Cache_new(void *store, relay_fetch_fn fetch, ccm_release_fn release,\n                                      relay_Cache **result);\nCCM_EXPORT ccm_status relay_Cache_count(const relay_Cache *self, int32_t *result);\nCCM_EXPORT ccm_status relay_Cache_fetches(const relay_Cache *self, int32_t *result);\n/* GetAsync: completes task, the façade's C# task, with a string (D-96). */\nCCM_EXPORT ccm_status relay_Cache_get_async(relay_Cache *self, const char *key, void *cancellation,\n                                            void *task);\n/* GetManyAsync: completes task with a string array. */\nCCM_EXPORT ccm_status relay_Cache_get_many_async(relay_Cache *self, const char **keys_data,\n                                                 int32_t keys_count, void *cancellation,\n                                                 void *task);\nCCM_EXPORT ccm_status relay_Cache_clear(relay_Cache *self);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/cache.cpp",
+                  "search": "// The C++ of Relay.Cache, ported from C# (CodeCoreMorph, D-78).\n#include \"cache.hpp\"\n",
+                  "replace": "// The C++ of Relay.Cache, ported from C# (CodeCoreMorph, D-78). Its async members are\n// coroutines over ccm::tasks (C++20); Task.WhenAll is ccm::tasks::when_all.\n#include \"cache.hpp\"\n\n#include <optional>\n#include <utility>\n\nnamespace relay {\n\nCache::Cache(std::shared_ptr<IStore> store) : store_(std::move(store)) {\n    if (!store_) throw ccm::ArgumentNullException(\"store\");\n}\n\nstd::int32_t Cache::count() const {\n    std::lock_guard<std::mutex> lock(gate_);\n    return static_cast<std::int32_t>(entries_.size());\n}\n\nstd::int32_t Cache::fetches() const {\n    std::lock_guard<std::mutex> lock(gate_);\n    return fetches_;\n}\n\nccm::tasks::Task<std::string> Cache::get_async(std::string key,\n                                               ccm::tasks::CancellationToken cancellation) {\n    auto self = shared_from_this();  // alive until the task is done\n    std::optional<std::string> hit;\n    {\n        std::lock_guard<std::mutex> lock(gate_);\n        auto found = entries_.find(key);\n        if (found != entries_.end()) hit = found->second;\n    }\n    if (hit) co_return *hit;\n    std::optional<std::string> value = co_await store_->fetch_async(key, cancellation);\n    if (!value) {\n        throw ccm::InvalidOperationException(\"The store has no value for '\" + key + \"'.\");\n    }\n    {\n        std::lock_guard<std::mutex> lock(gate_);\n        entries_[key] = *value;\n        ++fetches_;\n    }\n    co_return *value;\n}\n\nccm::tasks::Task<std::vector<std::string>> Cache::get_many_async(\n    std::vector<std::string> keys, ccm::tasks::CancellationToken cancellation) {\n    auto self = shared_from_this();\n    std::vector<ccm::tasks::Task<std::string>> pending;\n    pending.reserve(keys.size());\n    for (auto& key : keys) pending.push_back(get_async(key, cancellation));\n    co_return co_await ccm::tasks::when_all(std::move(pending));\n}\n\nvoid Cache::clear() {\n    std::lock_guard<std::mutex> lock(gate_);\n    entries_.clear();\n}\n\n}  // namespace relay\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/cache.hpp",
+                  "search": "// The C++ of Relay.Cache, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_CACHE_HPP\n#define RELAY_CACHE_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Relay.Cache, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_CACHE_HPP\n#define RELAY_CACHE_HPP\n\n#include <cstdint>\n#include <memory>\n#include <mutex>\n#include <string>\n#include <unordered_map>\n#include <vector>\n\n#include \"codecoremorph_tasks.hpp\"\n#include \"i_store.hpp\"\n\nnamespace relay {\n\n// Values by key, fetched from a store once and kept. Shared: an async member keeps the cache\n// alive until its task is done, as the C# object lives while its async method runs.\nclass Cache : public std::enable_shared_from_this<Cache> {\npublic:\n    explicit Cache(std::shared_ptr<IStore> store);\n\n    std::int32_t count() const;\n    // How many values the store has given.\n    std::int32_t fetches() const;\n\n    ccm::tasks::Task<std::string> get_async(std::string key,\n                                            ccm::tasks::CancellationToken cancellation = {});\n    // Each key's value, fetched at once, in the keys' order.\n    ccm::tasks::Task<std::vector<std::string>> get_many_async(\n        std::vector<std::string> keys, ccm::tasks::CancellationToken cancellation = {});\n    void clear();\n\nprivate:\n    std::shared_ptr<IStore> store_;\n    mutable std::mutex gate_;\n    std::unordered_map<std::string, std::string> entries_;\n    std::int32_t fetches_ = 0;\n};\n\n}  // namespace relay\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/Relay/Cache.cs",
+                  "search": "using System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace Relay\n{\n    /// <summary>Values by key, fetched from a store once and kept.</summary>\n    public sealed class Cache\n    {\n        private readonly IStore store;\n        private readonly Dictionary<string, string> entries =\n            new Dictionary<string, string>(StringComparer.Ordinal);\n        private readonly object gate = new object();\n        private int fetches;\n\n        public Cache(IStore store)\n        {\n            this.store = store ?? throw new ArgumentNullException(nameof(store));\n        }\n\n        public int Count\n        {\n            get\n            {\n                lock (gate)\n                {\n                    return entries.Count;\n                }\n            }\n        }\n\n        /// <summary>How many values the store has given.</summary>\n        public int Fetches\n        {\n            get\n            {\n                lock (gate)\n                {\n                    return fetches;\n                }\n            }\n        }\n\n        public async Task<string> GetAsync(string key, CancellationToken cancellation = default(CancellationToken))\n        {\n            if (key == null)\n            {\n                throw new ArgumentNullException(nameof(key));\n            }\n            lock (gate)\n            {\n                if (entries.TryGetValue(key, out string hit))\n                {\n                    return hit;\n                }\n            }\n            string value = await store.FetchAsync(key, cancellation).ConfigureAwait(false);\n            if (value == null)\n            {\n                throw new InvalidOperationException($\"The store has no value for '{key}'.\");\n            }\n            lock (gate)\n            {\n                entries[key] = value;\n                fetches++;\n            }\n            return value;\n        }\n\n        /// <summary>Each key's value, fetched at once, in the keys' order.</summary>\n        public async Task<string[]> GetManyAsync(string[] keys, CancellationToken cancellation = default(CancellationToken))\n        {\n            if (keys == null)\n            {\n                throw new ArgumentNullException(nameof(keys));\n            }\n            Task<string>[] pending = keys.Select(k => GetAsync(k, cancellation)).ToArray();\n            return await Task.WhenAll(pending).ConfigureAwait(false);\n        }\n\n        public void Clear()\n        {\n            lock (gate)\n            {\n                entries.Clear();\n            }\n        }\n    }\n}\n",
+                  "replace": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing CodeCoreMorph.Interop;\n\nnamespace Relay\n{\n    /// <summary>Values by key, fetched from a store once and kept.</summary>\n    public sealed class Cache\n    {\n        internal readonly relay_CacheHandle Handle;\n\n        private static readonly relay_fetch_fn Fetch = FetchFromStore;\n\n        public Cache(IStore store)\n        {\n            CcmInterop.Check(CcmNative.relay_Cache_new(\n                store == null ? IntPtr.Zero : CcmInterop.Pin(store), Fetch, CcmInterop.Release, out Handle));\n        }\n\n        public int Count\n        {\n            get\n            {\n                int result;\n                CcmInterop.Check(CcmNative.relay_Cache_count(Handle, out result));\n                return result;\n            }\n        }\n\n        /// <summary>How many values the store has given.</summary>\n        public int Fetches\n        {\n            get\n            {\n                int result;\n                CcmInterop.Check(CcmNative.relay_Cache_fetches(Handle, out result));\n                return result;\n            }\n        }\n\n        public Task<string> GetAsync(string key, CancellationToken cancellation = default(CancellationToken))\n        {\n            Task<string> task;\n            IntPtr token;\n            IntPtr context = CcmTasks.Start(cancellation, out task, out token);\n            CcmInterop.Check(CcmNative.relay_Cache_get_async(Handle, key, token, context));\n            return task;\n        }\n\n        /// <summary>Each key's value, fetched at once, in the keys' order.</summary>\n        public Task<string[]> GetManyAsync(string[] keys, CancellationToken cancellation = default(CancellationToken))\n        {\n            Task<string[]> task;\n            IntPtr token;\n            IntPtr context = CcmTasks.Start(cancellation, out task, out token);\n            CcmInterop.Check(CcmNative.relay_Cache_get_many_async(Handle, keys, CcmInterop.Count(keys), token, context));\n            return task;\n        }\n\n        public void Clear()\n        {\n            CcmInterop.Check(CcmNative.relay_Cache_clear(Handle));\n        }\n\n        private static int FetchFromStore(IntPtr context, IntPtr key, IntPtr cancellation, IntPtr source)\n        {\n            return CcmInterop.Callback(() => CcmTasks.Forward(\n                CcmInterop.Target<IStore>(context).FetchAsync(CcmInterop.Utf8(key), CcmTasks.FromNative(cancellation)),\n                source));\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.#ctor(Relay.IStore)\"\ncpp = \"relay::Cache::Cache\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Count\"\ncpp = \"relay::Cache::count\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Fetches\"\ncpp = \"relay::Cache::fetches\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_async\"\nnote = \"a coroutine over ccm::tasks (C++20); the cache shared, kept alive by the task as the C# object by its async method (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetManyAsync(System.String[],System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_many_async\"\nnote = \"Task.WhenAll is ccm::tasks::when_all, the results in the keys' order (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Clear\"\ncpp = \"relay::Cache::clear\"\n"
+                }
+              ],
+              "summary": "Ported Cache to C++: GetAsync and GetManyAsync are async over CodeCoreMorph's tasks runtime (D-96), WhenAll kept in the keys' order; the façade returns the C# task the native one completes.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "fbdee1566ace7b7b0047dbddfe869d32726a50c8546e2904c5b029d178e1af0e",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Relay/Store.cs. Each C# type keeps every public and protected me",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0003_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/transient_exception.cpp",
+                  "search": "// The bridge of Relay.TransientException (CodeCoreMorph, D-78).\n#include \"transient_exception.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"transient_exception.hpp\"\n",
+                  "replace": "// The bridge of Relay.TransientException (CodeCoreMorph, D-78): a C# TransientException\n// thrown in a call into C# is caught as relay::TransientException (D-96).\n#include \"transient_exception.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"transient_exception.hpp\"\n\nCCM_REGISTER_EXCEPTION(\"Relay.TransientException\", relay::TransientException);\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/transient_exception.hpp",
+                  "search": "// The C++ of Relay.TransientException, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_TRANSIENT_EXCEPTION_HPP\n#define RELAY_TRANSIENT_EXCEPTION_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Relay.TransientException, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_TRANSIENT_EXCEPTION_HPP\n#define RELAY_TRANSIENT_EXCEPTION_HPP\n\n#include \"codecoremorph_exceptions.hpp\"\n\nnamespace relay {\n\n// A failure a later attempt may not have.\nCCM_MIRROR_EXCEPTION(TransientException, ccm::Exception, \"Relay.TransientException\");\n\n}  // namespace relay\n\n#endif\n"
+                },
+                {
+                  "op": "create",
+                  "path": "src/Relay/CcmExceptions.cs",
+                  "content": "using System;\n\nnamespace CodeCoreMorph.Interop\n{\n    internal static partial class CcmInterop\n    {\n        static partial void CreateProjectException(CcmError error, ref Exception result)\n        {\n            switch (error.Type)\n            {\n                case \"Relay.TransientException\":\n                    result = new Relay.TransientException(error.Message);\n                    break;\n            }\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.#ctor(Relay.IStore)\"\ncpp = \"relay::Cache::Cache\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Count\"\ncpp = \"relay::Cache::count\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Fetches\"\ncpp = \"relay::Cache::fetches\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_async\"\nnote = \"a coroutine over ccm::tasks (C++20); the cache shared, kept alive by the task as the C# object by its async method (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetManyAsync(System.String[],System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_many_async\"\nnote = \"Task.WhenAll is ccm::tasks::when_all, the results in the keys' order (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Clear\"\ncpp = \"relay::Cache::clear\"\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.#ctor(Relay.IStore)\"\ncpp = \"relay::Cache::Cache\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Count\"\ncpp = \"relay::Cache::count\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Fetches\"\ncpp = \"relay::Cache::fetches\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_async\"\nnote = \"a coroutine over ccm::tasks (C++20); the cache shared, kept alive by the task as the C# object by its async method (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetManyAsync(System.String[],System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_many_async\"\nnote = \"Task.WhenAll is ccm::tasks::when_all, the results in the keys' order (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Clear\"\ncpp = \"relay::Cache::clear\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.TransientException.#ctor(System.String)\"\ncpp = \"relay::TransientException\"\nnote = \"a mirror of the C# exception (CCM_MIRROR_EXCEPTION, its constructor the base's); the bridge registers it, so a C# one thrown in a call into C# is caught as this type (D-96)\"\n"
+                }
+              ],
+              "summary": "Ported TransientException to C++: a mirror the bridge registers, so a C# TransientException thrown in a call into C# is caught by type (D-96).",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "c4fd545fb7305f593979a34679da93b61f30fc3f9d42f3e942bb367b4741073a",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Relay/Retry.cs. Each C# type keeps every public and protected me",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0004_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/retry.cpp",
+                  "search": "// The bridge of Relay.Retry (CodeCoreMorph, D-78).\n#include \"retry.h\"\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"retry.hpp\"\n",
+                  "replace": "// The bridge of Relay.Retry (CodeCoreMorph, D-78).\n#include \"retry.h\"\n\n#include <optional>\n#include <string>\n\n#include \"codecoremorph_bridge.hpp\"\n#include \"codecoremorph_tasks.h\"\n#include \"retry.hpp\"\n\nusing ccm::bridge::guard;\n\nextern \"C\" {\n\nCCM_EXPORT ccm_status relay_Retry_run_async(void* action, relay_action_fn act,\n                                            ccm_release_fn release, int32_t attempts,\n                                            int64_t pause_ticks, void* cancellation, void* task) {\n    ccm::bridge::ManagedRef managed(action, release);  // owned from here\n    return guard([&] {\n        relay::Retry::Action call;\n        if (action != nullptr) {\n            call = [managed, act](ccm::tasks::CancellationToken token) {\n                ccm::bridge::TokenOut out(token);\n                return ccm::bridge::managed_task<std::optional<std::string>>(\n                    [&](void* source) { return act(managed.get(), out.get(), source); });\n            };\n        }\n        ccm::tasks::CancellationToken token = ccm::bridge::token(cancellation);\n        ccm::bridge::start(task, [&] {\n            return relay::Retry::run_async(call, attempts, ccm::bridge::milliseconds(pause_ticks),\n                                           token);\n        });\n    });\n}\n\n}  // extern \"C\"\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/bridge/retry.h",
+                  "search": "/* The bridge of Relay.Retry: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_RETRY_H\n#define RELAY_BRIDGE_RETRY_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n",
+                  "replace": "/* The bridge of Relay.Retry: the exports its C# façade calls (CodeCoreMorph, D-78). */\n#ifndef RELAY_BRIDGE_RETRY_H\n#define RELAY_BRIDGE_RETRY_H\n\n#include \"codecoremorph_bridge.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n/* Func<CancellationToken, Task<string>> from C#: act(context, cancellation, source) calls it and\n * has its task complete source (ccm_source_done_string, D-96); CCM_MANAGED when it throws at\n * once. */\ntypedef ccm_status (*relay_action_fn)(void *context, void *cancellation, void *source);\n\n/* RunAsync: the action as its context (null for null), act and release; the pause in\n * TimeSpan's ticks; completes task with a string. */\nCCM_EXPORT ccm_status relay_Retry_run_async(void *action, relay_action_fn act,\n                                            ccm_release_fn release, int32_t attempts,\n                                            int64_t pause_ticks, void *cancellation, void *task);\n\n#ifdef __cplusplus\n}\n#endif\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/retry.cpp",
+                  "search": "// The C++ of Relay.Retry, ported from C# (CodeCoreMorph, D-78).\n#include \"retry.hpp\"\n",
+                  "replace": "// The C++ of Relay.Retry, ported from C# (CodeCoreMorph, D-78). C++ can't co_await in a catch\n// handler, so the handler notes the retry and the pause comes after it.\n#include \"retry.hpp\"\n\n#include <utility>\n\n#include \"transient_exception.hpp\"\n\nnamespace relay {\n\nccm::tasks::Task<std::optional<std::string>> Retry::run_async(\n    Action action, std::int32_t attempts, std::chrono::milliseconds pause,\n    ccm::tasks::CancellationToken cancellation) {\n    if (!action) throw ccm::ArgumentNullException(\"action\");\n    if (attempts < 1) {\n        throw ccm::ArgumentOutOfRangeException(\"attempts\", \"At least one attempt is needed.\");\n    }\n    for (std::int32_t attempt = 1;; ++attempt) {\n        bool again = false;\n        try {\n            co_return co_await action(cancellation);\n        } catch (const TransientException&) {\n            if (attempt >= attempts) throw;\n            again = true;\n        }\n        if (again) co_await ccm::tasks::delay(pause, cancellation);\n    }\n}\n\n}  // namespace relay\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/src/retry.hpp",
+                  "search": "// The C++ of Relay.Retry, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_RETRY_HPP\n#define RELAY_RETRY_HPP\n\n#endif\n",
+                  "replace": "// The C++ of Relay.Retry, ported from C# (CodeCoreMorph, D-78).\n#ifndef RELAY_RETRY_HPP\n#define RELAY_RETRY_HPP\n\n#include <chrono>\n#include <cstdint>\n#include <functional>\n#include <optional>\n#include <string>\n\n#include \"codecoremorph_tasks.hpp\"\n\nnamespace relay {\n\n// Runs an action again after a transient failure.\nclass Retry {\npublic:\n    // Func<CancellationToken, Task<string>>: its value may be null, as a C# string may.\n    using Action = std::function<ccm::tasks::Task<std::optional<std::string>>(\n        ccm::tasks::CancellationToken)>;\n\n    static ccm::tasks::Task<std::optional<std::string>> run_async(\n        Action action, std::int32_t attempts, std::chrono::milliseconds pause,\n        ccm::tasks::CancellationToken cancellation = {});\n};\n\n}  // namespace relay\n\n#endif\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "src/Relay/Retry.cs",
+                  "search": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nnamespace Relay\n{\n    /// <summary>Runs an action again after a transient failure.</summary>\n    public static class Retry\n    {\n        public static async Task<string> RunAsync(\n            Func<CancellationToken, Task<string>> action, int attempts, TimeSpan pause,\n            CancellationToken cancellation = default(CancellationToken))\n        {\n            if (action == null)\n            {\n                throw new ArgumentNullException(nameof(action));\n            }\n            if (attempts < 1)\n            {\n                throw new ArgumentOutOfRangeException(nameof(attempts), \"At least one attempt is needed.\");\n            }\n            for (int attempt = 1; ; attempt++)\n            {\n                try\n                {\n                    return await action(cancellation).ConfigureAwait(false);\n                }\n                catch (TransientException) when (attempt < attempts)\n                {\n                    await Task.Delay(pause, cancellation).ConfigureAwait(false);\n                }\n            }\n        }\n    }\n}\n",
+                  "replace": "using System;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing CodeCoreMorph.Interop;\n\nnamespace Relay\n{\n    /// <summary>Runs an action again after a transient failure.</summary>\n    public static class Retry\n    {\n        private static readonly relay_action_fn Act = RunAction;\n\n        public static Task<string> RunAsync(\n            Func<CancellationToken, Task<string>> action, int attempts, TimeSpan pause,\n            CancellationToken cancellation = default(CancellationToken))\n        {\n            Task<string> task;\n            IntPtr token;\n            IntPtr context = CcmTasks.Start(cancellation, out task, out token);\n            CcmInterop.Check(CcmNative.relay_Retry_run_async(\n                action == null ? IntPtr.Zero : CcmInterop.Pin(action), Act, CcmInterop.Release,\n                attempts, pause.Ticks, token, context));\n            return task;\n        }\n\n        private static int RunAction(IntPtr context, IntPtr cancellation, IntPtr source)\n        {\n            return CcmInterop.Callback(() => CcmTasks.Forward(\n                CcmInterop.Target<Func<CancellationToken, Task<string>>>(context)(CcmTasks.FromNative(cancellation)),\n                source));\n        }\n    }\n}\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/symbol-map.toml",
+                  "search": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.#ctor(Relay.IStore)\"\ncpp = \"relay::Cache::Cache\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Count\"\ncpp = \"relay::Cache::count\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Fetches\"\ncpp = \"relay::Cache::fetches\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_async\"\nnote = \"a coroutine over ccm::tasks (C++20); the cache shared, kept alive by the task as the C# object by its async method (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetManyAsync(System.String[],System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_many_async\"\nnote = \"Task.WhenAll is ccm::tasks::when_all, the results in the keys' order (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Clear\"\ncpp = \"relay::Cache::clear\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.TransientException.#ctor(System.String)\"\ncpp = \"relay::TransientException\"\nnote = \"a mirror of the C# exception (CCM_MIRROR_EXCEPTION, its constructor the base's); the bridge registers it, so a C# one thrown in a call into C# is caught as this type (D-96)\"\n",
+                  "replace": "# The C# symbols this port moved to C++, and the C++ that took them over (CodeCoreMorph, D-78).\n# One entry per public member of a ported type:\n#\n#   [[symbol]]\n#   csharp = \"csharp:Shop.Cart.Add(Shop.Item,System.Int32)\"\n#   cpp = \"shop::Cart::add\"        # or a list of names\n#   note = \"...\"                   # optional: what C++ couldn't keep, or why cpp is empty\n\n[[symbol]]\ncsharp = \"csharp:Relay.IStore.FetchAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::IStore::fetch_async\"\nnote = \"a coroutine's task (ccm::tasks::Task); the key and the token by value, since a coroutine's reference parameters dangle once it suspends; a C# store's task is awaited through the bridge (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.#ctor(Relay.IStore)\"\ncpp = \"relay::Cache::Cache\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Count\"\ncpp = \"relay::Cache::count\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Fetches\"\ncpp = \"relay::Cache::fetches\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetAsync(System.String,System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_async\"\nnote = \"a coroutine over ccm::tasks (C++20); the cache shared, kept alive by the task as the C# object by its async method (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.GetManyAsync(System.String[],System.Threading.CancellationToken)\"\ncpp = \"relay::Cache::get_many_async\"\nnote = \"Task.WhenAll is ccm::tasks::when_all, the results in the keys' order (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Cache.Clear\"\ncpp = \"relay::Cache::clear\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.TransientException.#ctor(System.String)\"\ncpp = \"relay::TransientException\"\nnote = \"a mirror of the C# exception (CCM_MIRROR_EXCEPTION, its constructor the base's); the bridge registers it, so a C# one thrown in a call into C# is caught as this type (D-96)\"\n\n[[symbol]]\ncsharp = \"csharp:Relay.Retry.RunAsync(System.Func{System.Threading.CancellationToken,System.Threading.Tasks.Task{System.String}},System.Int32,System.TimeSpan,System.Threading.CancellationToken)\"\ncpp = \"relay::Retry::run_async\"\nnote = \"a coroutine; the catch notes the retry and the pause is awaited after it, since C++ can't co_await in a handler; the action a std::function returning a task (D-96)\"\n"
+                }
+              ],
+              "summary": "Ported Retry to C++: RunAsync retries a transient failure after its pause, canceled by the caller's token; the C# action's task is awaited through the bridge.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "a408265e44feeb17711e9c8f40b970d7aa2d342b0e2b3b4b047057c31d9d2d1e",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Rel",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0005_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/tests/cache_tests.cpp",
+                  "search": "// The tests of a C# test file (the unit's note names it), translated from C# (CodeCoreMorph, D-78): a GoogleTest test\n// per C# test case, each mapped in cpp/test-map.toml.\n#include <gtest/gtest.h>\n",
+                  "replace": "// tests/Relay.Tests/CacheTests.cs and its Stores.cs, translated to GoogleTest (CodeCoreMorph,\n// D-78). A test waits for a task with get(); C#'s Task.Yield is a zero delay.\n#include <gtest/gtest.h>\n\n#include <atomic>\n#include <chrono>\n#include <map>\n#include <memory>\n#include <mutex>\n#include <optional>\n#include <string>\n#include <thread>\n#include <vector>\n\n#include \"cache.hpp\"\n#include \"codecoremorph_tasks.hpp\"\n\nnamespace {\n\nusing ccm::tasks::CancellationToken;\nusing ccm::tasks::Task;\nusing Value = std::optional<std::string>;\n\n// A store of fixed values that answers after a yield; a key it lacks fails the fetch.\nclass DictionaryStore : public relay::IStore {\npublic:\n    explicit DictionaryStore(std::map<std::string, Value> values) : values_(std::move(values)) {}\n\n    Task<Value> fetch_async(std::string key, CancellationToken /*cancellation*/) override {\n        ++calls;\n        co_await ccm::tasks::delay(std::chrono::milliseconds(0));\n        auto found = values_.find(key);\n        if (found != values_.end()) co_return found->second;\n        throw ccm::KeyNotFoundException(\"The store has nothing under '\" + key + \"'.\");\n    }\n\n    std::atomic<int> calls{0};\n\nprivate:\n    std::map<std::string, Value> values_;\n};\n\n// A store whose fetches wait until the test lets each one go.\nclass GatedStore : public relay::IStore {\npublic:\n    Task<Value> fetch_async(std::string key, CancellationToken /*cancellation*/) override {\n        auto gate = std::make_shared<ccm::tasks::TaskCompletionSource<Value>>();\n        std::lock_guard<std::mutex> lock(mutex_);\n        pending_[key] = gate;\n        return gate->task();\n    }\n\n    std::shared_ptr<ccm::tasks::TaskCompletionSource<Value>> pending(const std::string& key) {\n        std::lock_guard<std::mutex> lock(mutex_);\n        return pending_.at(key);\n    }\n\n    void wait_for(std::size_t count) {\n        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);\n        for (;;) {\n            {\n                std::lock_guard<std::mutex> lock(mutex_);\n                if (pending_.size() >= count) return;\n            }\n            ASSERT_LT(std::chrono::steady_clock::now(), deadline) << \"the fetches didn't come\";\n            std::this_thread::sleep_for(std::chrono::milliseconds(5));\n        }\n    }\n\nprivate:\n    std::mutex mutex_;\n    std::map<std::string, std::shared_ptr<ccm::tasks::TaskCompletionSource<Value>>> pending_;\n};\n\n// A store that never answers: only cancellation ends a fetch.\nclass SilentStore : public relay::IStore {\npublic:\n    Task<Value> fetch_async(std::string /*key*/, CancellationToken cancellation) override {\n        {\n            std::lock_guard<std::mutex> lock(mutex_);\n            seen_ = cancellation;\n        }\n        co_await ccm::tasks::delay(std::chrono::milliseconds(-1), cancellation);\n        co_return \"never\";\n    }\n\n    CancellationToken seen() {\n        std::lock_guard<std::mutex> lock(mutex_);\n        return seen_;\n    }\n\nprivate:\n    std::mutex mutex_;\n    CancellationToken seen_;\n};\n\nstd::shared_ptr<DictionaryStore> store() {\n    return std::make_shared<DictionaryStore>(\n        std::map<std::string, Value>{{\"a\", \"alpha\"}, {\"b\", \"beta\"}, {\"c\", \"gamma\"}});\n}\n\nTEST(CacheTests, AValueIsFetchedOnceThenKept) {\n    auto values = store();\n    auto cache = std::make_shared<relay::Cache>(values);\n    EXPECT_EQ(\"alpha\", cache->get_async(\"a\").get());\n    EXPECT_EQ(\"alpha\", cache->get_async(\"a\").get());\n    EXPECT_EQ(1, values->calls.load());\n    EXPECT_EQ(1, cache->fetches());\n    EXPECT_EQ(1, cache->count());\n}\n\nTEST(CacheTests, ManyKeysAreFetchedAtOnceInTheirOrder) {\n    auto gated = std::make_shared<GatedStore>();\n    auto cache = std::make_shared<relay::Cache>(gated);\n    auto many = cache->get_many_async({\"x\", \"y\", \"z\"});\n    gated->wait_for(3);\n    EXPECT_FALSE(many.is_completed());\n    gated->pending(\"z\")->try_set_result(Value(\"zed\"));\n    gated->pending(\"y\")->try_set_result(Value(\"why\"));\n    gated->pending(\"x\")->try_set_result(Value(\"ex\"));\n    EXPECT_EQ((std::vector<std::string>{\"ex\", \"why\", \"zed\"}), many.get());\n    EXPECT_EQ(3, cache->count());\n}\n\nTEST(CacheTests, AFailedFetchFaultsTheTaskWithTheStoresException) {\n    auto cache = std::make_shared<relay::Cache>(store());\n    try {\n        cache->get_async(\"nope\").get();\n        FAIL() << \"no exception\";\n    } catch (const ccm::KeyNotFoundException& e) {\n        EXPECT_STREQ(\"The store has nothing under 'nope'.\", e.what());\n    }\n    EXPECT_EQ(0, cache->count());\n}\n\nTEST(CacheTests, ANullValueIsRefused) {\n    auto cache = std::make_shared<relay::Cache>(\n        std::make_shared<DictionaryStore>(std::map<std::string, Value>{{\"n\", std::nullopt}}));\n    try {\n        cache->get_async(\"n\").get();\n        FAIL() << \"no exception\";\n    } catch (const ccm::InvalidOperationException& e) {\n        EXPECT_STREQ(\"The store has no value for 'n'.\", e.what());\n    }\n}\n\nTEST(CacheTests, OneFailureFaultsTheWholeBatch) {\n    auto cache = std::make_shared<relay::Cache>(store());\n    EXPECT_THROW(cache->get_many_async({\"a\", \"nope\", \"b\"}).get(), ccm::KeyNotFoundException);\n}\n\nTEST(CacheTests, CancelingAFetchCancelsTheTask) {\n    auto silent = std::make_shared<SilentStore>();\n    auto cache = std::make_shared<relay::Cache>(silent);\n    ccm::tasks::CancellationTokenSource source;\n    auto fetch = cache->get_async(\"a\", source.token());\n    EXPECT_FALSE(fetch.is_completed());\n    source.cancel();\n    EXPECT_THROW(fetch.get(), ccm::TaskCanceledException);\n    EXPECT_TRUE(fetch.is_canceled());\n    EXPECT_TRUE(silent->seen().can_be_canceled());\n    EXPECT_TRUE(silent->seen().is_cancellation_requested());\n    EXPECT_EQ(0, cache->count());\n}\n\n// NullKeysFaultTheTask: a C++ string can't be null; what is left is the null store.\nTEST(CacheTests, NullKeysFaultTheTask) {\n    try {\n        relay::Cache cache(nullptr);\n        FAIL() << \"no exception\";\n    } catch (const ccm::ArgumentNullException& e) {\n        EXPECT_EQ(\"store\", e.param_name());\n    }\n}\n\nTEST(CacheTests, ClearingForgetsTheValues) {\n    auto values = store();\n    auto cache = std::make_shared<relay::Cache>(values);\n    cache->get_many_async({\"a\", \"b\"}).get();\n    cache->clear();\n    EXPECT_EQ(0, cache->count());\n    EXPECT_EQ(\"alpha\", cache->get_async(\"a\").get());\n    EXPECT_EQ(3, values->calls.load());\n}\n\n}  // namespace\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/test-map.toml",
+                  "search": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n",
+                  "replace": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AValueIsFetchedOnceThenKept\"\ncpp = \"gtest:CacheTests.AValueIsFetchedOnceThenKept\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ManyKeysAreFetchedAtOnceInTheirOrder\"\ncpp = \"gtest:CacheTests.ManyKeysAreFetchedAtOnceInTheirOrder\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AFailedFetchFaultsTheTaskWithTheStoresException\"\ncpp = \"gtest:CacheTests.AFailedFetchFaultsTheTaskWithTheStoresException\"\nnote = \"the store is the test's own C++ double now, so the exception is the same object by its type and message, not by AreSame\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ANullValueIsRefused\"\ncpp = \"gtest:CacheTests.ANullValueIsRefused\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#OneFailureFaultsTheWholeBatch\"\ncpp = \"gtest:CacheTests.OneFailureFaultsTheWholeBatch\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#CancelingAFetchCancelsTheTask\"\ncpp = \"gtest:CacheTests.CancelingAFetchCancelsTheTask\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#NullKeysFaultTheTask\"\ncpp = \"gtest:CacheTests.NullKeysFaultTheTask\"\nnote = \"a C++ string can't be null: the null key checks were the bridge's, and went with it; what is left is the null store\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ClearingForgetsTheValues\"\ncpp = \"gtest:CacheTests.ClearingForgetsTheValues\"\n"
+                }
+              ],
+              "summary": "Translated CacheTests.cs and its Stores.cs to C++: the test stores implement the ported interface; each case mapped, two with notes.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    },
+    {
+      "key": "2a4ecd2d6c54d44b2b8eb014ceec93f78ec31b44410b749d56a7a3581fb56ba6",
+      "kind": "complete",
+      "model": "claude-opus-5-5",
+      "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Rel",
+      "result": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "content": [
+          {
+            "type": "tool_call",
+            "id": "toolu_U-0006_1",
+            "name": "submit_edits",
+            "arguments": {
+              "edits": [
+                {
+                  "op": "replace",
+                  "path": "cpp/tests/retry_tests.cpp",
+                  "search": "// The tests of a C# test file (the unit's note names it), translated from C# (CodeCoreMorph, D-78): a GoogleTest test\n// per C# test case, each mapped in cpp/test-map.toml.\n#include <gtest/gtest.h>\n",
+                  "replace": "// tests/Relay.Tests/RetryTests.cs, translated to GoogleTest (CodeCoreMorph, D-78). The C#\n// lambdas are coroutines over their state, which they take by value (a shared counter).\n#include <gtest/gtest.h>\n\n#include <atomic>\n#include <chrono>\n#include <memory>\n#include <optional>\n#include <string>\n\n#include \"codecoremorph_tasks.hpp\"\n#include \"retry.hpp\"\n#include \"transient_exception.hpp\"\n\nnamespace {\n\nusing ccm::tasks::CancellationToken;\nusing ccm::tasks::Task;\nusing Value = std::optional<std::string>;\nusing Calls = std::shared_ptr<std::atomic<int>>;\nusing std::chrono::milliseconds;\n\nCalls counter() { return std::make_shared<std::atomic<int>>(0); }\n\nTask<Value> busy_twice(Calls calls) {\n    co_await ccm::tasks::delay(milliseconds(0));\n    int n = ++*calls;\n    if (n < 3) throw relay::TransientException(\"busy\");\n    co_return \"done after \" + std::to_string(n);\n}\n\nTEST(RetryTests, ATransientFailureIsRetried) {\n    auto calls = counter();\n    Value result = relay::Retry::run_async([calls](CancellationToken) { return busy_twice(calls); },\n                                           5, milliseconds(10))\n                       .get();\n    EXPECT_EQ(Value(\"done after 3\"), result);\n    EXPECT_EQ(3, calls->load());\n}\n\nTEST(RetryTests, ItGivesUpAfterItsLastAttempt) {\n    auto calls = counter();\n    try {\n        relay::Retry::run_async(\n            [calls](CancellationToken) -> Task<Value> {\n                throw relay::TransientException(\"still busy \" + std::to_string(++*calls));\n            },\n            3, milliseconds(1))\n            .get();\n        FAIL() << \"no exception\";\n    } catch (const relay::TransientException& e) {\n        EXPECT_STREQ(\"still busy 3\", e.what());\n    }\n    EXPECT_EQ(3, calls->load());\n}\n\nTask<Value> broken(Calls calls) {\n    ++*calls;\n    co_await ccm::tasks::delay(milliseconds(0));\n    throw ccm::InvalidOperationException(\"broken\");\n}\n\nTEST(RetryTests, OtherFailuresAreNotRetried) {\n    auto calls = counter();\n    EXPECT_THROW(relay::Retry::run_async([calls](CancellationToken) { return broken(calls); }, 5,\n                                         milliseconds(1))\n                     .get(),\n                 ccm::InvalidOperationException);\n    EXPECT_EQ(1, calls->load());\n}\n\nTEST(RetryTests, CancelingDuringAPauseCancelsTheTask) {\n    auto calls = counter();\n    ccm::tasks::CancellationTokenSource source;\n    auto run = relay::Retry::run_async(\n        [calls](CancellationToken) {\n            ++*calls;\n            return Task<Value>::from_exception(\n                std::make_exception_ptr(relay::TransientException(\"busy\")));\n        },\n        5, std::chrono::seconds(30), source.token());\n    ccm::tasks::delay(milliseconds(50)).get();\n    source.cancel();\n    EXPECT_THROW(run.get(), ccm::TaskCanceledException);\n    EXPECT_EQ(1, calls->load());\n}\n\nTEST(RetryTests, TheActionGetsTheCallersCancellation) {\n    ccm::tasks::CancellationTokenSource source;\n    auto seen = std::make_shared<std::atomic<bool>>(false);\n    relay::Retry::run_async(\n        [seen](CancellationToken token) {\n            *seen = token.can_be_canceled() && !token.is_cancellation_requested();\n            return Task<Value>::from_result(Value(\"ok\"));\n        },\n        1, milliseconds(0), source.token())\n        .get();\n    EXPECT_TRUE(seen->load());\n}\n\nTEST(RetryTests, BadArgumentsFaultTheTask) {\n    try {\n        relay::Retry::run_async(nullptr, 1, milliseconds(0)).get();\n        FAIL() << \"no exception\";\n    } catch (const ccm::ArgumentNullException& e) {\n        EXPECT_EQ(\"action\", e.param_name());\n    }\n    try {\n        relay::Retry::run_async([](CancellationToken) { return Task<Value>::from_result(Value(\"x\")); },\n                                0, milliseconds(0))\n            .get();\n        FAIL() << \"no exception\";\n    } catch (const ccm::ArgumentOutOfRangeException& e) {\n        EXPECT_EQ(\"attempts\", e.param_name());\n    }\n}\n\n}  // namespace\n"
+                },
+                {
+                  "op": "replace",
+                  "path": "cpp/test-map.toml",
+                  "search": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AValueIsFetchedOnceThenKept\"\ncpp = \"gtest:CacheTests.AValueIsFetchedOnceThenKept\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ManyKeysAreFetchedAtOnceInTheirOrder\"\ncpp = \"gtest:CacheTests.ManyKeysAreFetchedAtOnceInTheirOrder\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AFailedFetchFaultsTheTaskWithTheStoresException\"\ncpp = \"gtest:CacheTests.AFailedFetchFaultsTheTaskWithTheStoresException\"\nnote = \"the store is the test's own C++ double now, so the exception is the same object by its type and message, not by AreSame\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ANullValueIsRefused\"\ncpp = \"gtest:CacheTests.ANullValueIsRefused\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#OneFailureFaultsTheWholeBatch\"\ncpp = \"gtest:CacheTests.OneFailureFaultsTheWholeBatch\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#CancelingAFetchCancelsTheTask\"\ncpp = \"gtest:CacheTests.CancelingAFetchCancelsTheTask\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#NullKeysFaultTheTask\"\ncpp = \"gtest:CacheTests.NullKeysFaultTheTask\"\nnote = \"a C++ string can't be null: the null key checks were the bridge's, and went with it; what is left is the null store\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ClearingForgetsTheValues\"\ncpp = \"gtest:CacheTests.ClearingForgetsTheValues\"\n",
+                  "replace": "# The C# tests this port translated to C++, and the GoogleTest tests that took them over\n# (CodeCoreMorph, D-78). One entry per C# test:\n#\n#   [[test]]\n#   csharp = \"dotnet:Shop.Tests.CartTests#AddTakesFromStock\"\n#   cpp = \"gtest:CartTests.AddTakesFromStock\"\n#   note = \"...\"                   # optional\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AValueIsFetchedOnceThenKept\"\ncpp = \"gtest:CacheTests.AValueIsFetchedOnceThenKept\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ManyKeysAreFetchedAtOnceInTheirOrder\"\ncpp = \"gtest:CacheTests.ManyKeysAreFetchedAtOnceInTheirOrder\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#AFailedFetchFaultsTheTaskWithTheStoresException\"\ncpp = \"gtest:CacheTests.AFailedFetchFaultsTheTaskWithTheStoresException\"\nnote = \"the store is the test's own C++ double now, so the exception is the same object by its type and message, not by AreSame\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ANullValueIsRefused\"\ncpp = \"gtest:CacheTests.ANullValueIsRefused\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#OneFailureFaultsTheWholeBatch\"\ncpp = \"gtest:CacheTests.OneFailureFaultsTheWholeBatch\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#CancelingAFetchCancelsTheTask\"\ncpp = \"gtest:CacheTests.CancelingAFetchCancelsTheTask\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#NullKeysFaultTheTask\"\ncpp = \"gtest:CacheTests.NullKeysFaultTheTask\"\nnote = \"a C++ string can't be null: the null key checks were the bridge's, and went with it; what is left is the null store\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.CacheTests#ClearingForgetsTheValues\"\ncpp = \"gtest:CacheTests.ClearingForgetsTheValues\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#ATransientFailureIsRetried\"\ncpp = \"gtest:RetryTests.ATransientFailureIsRetried\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#ItGivesUpAfterItsLastAttempt\"\ncpp = \"gtest:RetryTests.ItGivesUpAfterItsLastAttempt\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#OtherFailuresAreNotRetried\"\ncpp = \"gtest:RetryTests.OtherFailuresAreNotRetried\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#CancelingDuringAPauseCancelsTheTask\"\ncpp = \"gtest:RetryTests.CancelingDuringAPauseCancelsTheTask\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#TheActionGetsTheCallersCancellation\"\ncpp = \"gtest:RetryTests.TheActionGetsTheCallersCancellation\"\n\n[[test]]\ncsharp = \"dotnet:Relay.Tests.RetryTests#BadArgumentsFaultTheTask\"\ncpp = \"gtest:RetryTests.BadArgumentsFaultTheTask\"\n"
+                }
+              ],
+              "summary": "Translated RetryTests.cs to C++: each case mapped in the test map.",
+              "review_notes": []
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1000,
+          "output_tokens": 200,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "cost_usd": 0.008,
+        "latency_s": 0.0,
+        "fallback_used": false
+      }
+    }
+  ]
+}

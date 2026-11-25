@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "b1bafe861770e202c0eb6a27321ba3bbf51aa62da07e93b789c60a65c9a509e0",
+      "key": "844f6a21af61dc92532c28abbf41728cec415025c6855d1c4611b0647249d64d",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -59,7 +59,7 @@
       }
     },
     {
-      "key": "a69a76d61c230775aae83687c7966fbf8c2230554504df827d35bd4500520491",
+      "key": "fd7efdf0fc5bb229e4893b0c18390993ab33eabf6c2b8153a2122cc9f5a205b2",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -116,7 +116,7 @@
       }
     },
     {
-      "key": "9ed1685f975fdcdc66b73fdce3a5ab5d034e02ad10f817c6051ac312a255877e",
+      "key": "5f7174b1d05bd3778654226c8616d6039b428428cdc117252a309b6f7184a451",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -173,7 +173,7 @@
       }
     },
     {
-      "key": "c06f47490b650e657ca3f83f6debefd0712768d441929926f7e26ceb8bf84610",
+      "key": "a7654a1fc9b89f9a59dcf119a0d97b43f99c6a44cb413d575c6d790d55662d1c",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -230,7 +230,7 @@
       }
     },
     {
-      "key": "29945574d9c0ea56a62929fd8ea3f86bbc902aaa67488f6ee51a9f566b39afb2",
+      "key": "7d9417c8139c47f70ce6ab8230264622bf8754be78249a885f28048ccb35d0ca",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -299,7 +299,7 @@
       }
     },
     {
-      "key": "7c9307015c32a1fad0fcd4552edca0e450e1b169502a345b0f9cfc730c320ac6",
+      "key": "836b4536d4e3b0b75051c4129b2f10665e636d5d0374eb26937bd5ba101b8b27",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Entries.cs. Each C# type keeps every public and protecte",
@@ -356,7 +356,7 @@
       }
     },
     {
-      "key": "353523e78842dc8ff972ac1878c4ce6179dc37a4863aeba48eb0f274611c06db",
+      "key": "4020744d7f491af9223a4afbb492b2204820e3e1f0e625d90b74fbe7989d06d7",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Labels.cs. Each C# type keeps every public and protected",
@@ -424,7 +424,7 @@
       }
     },
     {
-      "key": "e3135e7b112df87a0723e2d175349f69f09ee24f5d21b7062c063730a494f605",
+      "key": "dc05909230d5572057665152e7987d6df72b7178b907fca2843f530c2d4d456b",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0008\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Journal.cs. Each C# type keeps every public and protecte",
@@ -481,7 +481,7 @@
       }
     },
     {
-      "key": "46734e1b6ea16e66d8d0edc01b7d1042054abba81043fa0047e723f725db3b55",
+      "key": "cfbd2b4c534efb24f0b6c6ed0bd7b5409334f7961241dbdebdeaa28e6fee42dc",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0009\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Tally.cs. Each C# type keeps every public and protected ",
@@ -538,7 +538,7 @@
       }
     },
     {
-      "key": "ce91cf8dfbfb7e50593c4a47dfbfd9e1a6f10587e5f57b4ca55966b659d3067d",
+      "key": "6e66c8bd5f1a582522b93436ba5a4868a70a580f39e8ac251e5232985484798b",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0010\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Ledger/Totals.cs. Each C# type keeps every public and protected",
@@ -595,7 +595,7 @@
       }
     },
     {
-      "key": "f0c1062feacc7b03d17d90cf242eba6ace7cb4df6666aa149eb37746efb2015d",
+      "key": "fccb394a6f992ac84be40bab70f36ae27f9886ca172ffa6d81ece4e4af7ac9a8",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0011\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Le",
@@ -640,7 +640,7 @@
       }
     },
     {
-      "key": "d8d8a5cf078a0a5dcd31c8629e50118fc828527f21a03ed479f517f4b68eb875",
+      "key": "de09eed00c2d57137f695bf06b31b7b2b81290c96a22501160325d3f86f25fce",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0012\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Le",
@@ -685,7 +685,7 @@
       }
     },
     {
-      "key": "b7a4ea065e4f07ea3600afa32298322f1f5a04cb27cd384f2d242a7ce86728e6",
+      "key": "616c1b209b25973caac24eb7d1dabb45992cf19ee8463469be94eabc68089d4e",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0013\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Le",
@@ -730,7 +730,7 @@
       }
     },
     {
-      "key": "c39e376b9c9c1cba17e19d36e082838c4d3709e249316cce87dc3170316d76bc",
+      "key": "d356bd92f978e46b53165927b287780c6d56069880ba908dfed19cffe8740f9c",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"tool_result\",\"call_id\":\"toolu_U-0013_1\",\"name\":\"submit_edits\",\"content\":\"Applied 2 edit(s) to rust/ledger_rs/tests/tally_tests.rs, rust/test-map.toml. ",
@@ -769,7 +769,7 @@
       }
     },
     {
-      "key": "f64e37f188081d14877f5e8c0ad88245b33303c6d28c4317f844c98935c24ca8",
+      "key": "efdf6629b91416448959155438b6c157cf863502029379cc7f945c247507fc6e",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0014\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Le",

@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "91d31fa26a7928e4aba44c85385ae80bca91f01644f3e6b9270e293a361951f7",
+      "key": "6ff4eaf781a0f3bcf4c2f30219edecbd07a148759cfbf774b17c246b43291ee3",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Clock.cs. Each C# type keeps every public and protected ",
@@ -71,7 +71,7 @@
       }
     },
     {
-      "key": "b1fda09a3cec6ddf817091ad300644159994fe1babfff65d938c9ee05adff07a",
+      "key": "411dcccd43e7e9c846753715c2049fc5839c509c35788f30221eef098c2a2a2b",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Host.cs. Each C# type keeps every public and protected m",
@@ -140,7 +140,7 @@
       }
     },
     {
-      "key": "22534b74c3d0b6801a046b57542a38c0db8188e361c68f40272490c44e69ae88",
+      "key": "9d30fa531590d89906d272edd27e89c9f5f889a293e229a61cfeca4a42e71914",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Hostkit/Terminal.cs. Each C# type keeps every public and protect",
@@ -209,7 +209,7 @@
       }
     },
     {
-      "key": "24993e643812b89afda8d3b0d246e1c9b6aecf3d4efa2bfe75059d51f9bc132c",
+      "key": "20c8249e5b78d4fe331f8bdd6ae3b4c5afdf80ec6c006fb1c71b0087e7bcbe8a",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Hos",

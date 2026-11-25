@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -141,7 +142,10 @@ def test_every_unit_of_a_csharp_port_to_cpp(
     ]
     assert units == sorted(u.unit_id for u in report.units if u.commit is not None)
     # Every unit kept the branch green, its I-4 comparing the translated tests' checks with the
-    # C# tests' (none weaker): only the tests C++ can't have lack a translation, with a note.
+    # C# tests' (none weaker): only the tests C++ can't have lack a translation, and a test
+    # checks less only where C++ can't have the rest (a null argument), each with a note.
+    mapped = tomllib.loads(git(root, "show", f"{result.branch}:cpp/test-map.toml"))
+    noted = {e["csharp"] for e in mapped.get("test", []) if e.get("note")}
     i4 = "I-4: Translated tests check less than their originals: "
     weaker = [
         item
@@ -149,7 +153,7 @@ def test_every_unit_of_a_csharp_port_to_cpp(
         for warning in u.warnings
         if warning.startswith(i4)
         for item in re.split(r"; (?=dotnet:)", warning.removeprefix(i4).rstrip("."))
-        if "has no translation" not in item
+        if "has no translation" not in item and item.split(" made ", 1)[0] not in noted
     ]
     assert weaker == []
     tracked = git(root, "ls-tree", "-r", "--name-only", result.branch).split()

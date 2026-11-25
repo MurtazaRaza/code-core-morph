@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "67902925327c240d35b60881d61d804096ea6671b5e4065da3b917101c0a6ad5",
+      "key": "a40b3d43b57db6bf582633cd3457655d379a3a8ddaf41241d2c3edb662a222f7",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Fees/FeeRule.cs, src/Fees/FlatFee.cs, src/Fees/PercentFee.cs. Ea",
@@ -85,7 +85,7 @@
       }
     },
     {
-      "key": "972211d0e574197a738674c67400f8a9b6cad8ac40ee1126dabc05f092905f8d",
+      "key": "e2ef5d3c40260a52e1560420263ad1d9b4a71d37eded7dc12138d4e4aee8297d",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_cpp\\n\\nThe façades: src/Fees/Schedule.cs. Each C# type keeps every public and protected ",
@@ -154,7 +154,7 @@
       }
     },
     {
-      "key": "b39c4263c946f88cbb0faa60f035d31267368edc692ec7e28b70e5be8ddab791",
+      "key": "df1edf7720213ece9776d8b3406bc0f020f962113052596fb7c34a626dcb4330",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Fee",
@@ -204,7 +204,7 @@
       }
     },
     {
-      "key": "82c8c547028ce8214514aeec5c54b1bdc05d1243093dc740ba50b8ab1fcf05de",
+      "key": "e36acdb94d5b6a9884ffad2ebe7c8b7beb56bac7d373fbf50421827b7be1b189",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_tests_to_cpp\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Fee",

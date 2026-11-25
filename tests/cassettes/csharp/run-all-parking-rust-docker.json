@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {
-      "key": "530a6f323093c07e3540fcc1616d1a1d0bd27a01b25971dfece0aa4d962cf3f6",
+      "key": "333a3a92dabd63ca49f952220bc1f5f870e48a2f619e94cc55c46da00dda34a0",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0001\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Car.cs, src/Parking/Motorcycle.cs, src/Parking/Vehicle.",
@@ -73,7 +73,7 @@
       }
     },
     {
-      "key": "185406e3dbe5c0c27b6a09e1255b9ff0286b02f273ca6a8c8290913ec74044b7",
+      "key": "76fc9c55999e6026e92bb10dd4a999bd809e90b90fffccfc70db81653caccc37",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0002\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/GarageFullException.cs. Each C# type keeps every public",
@@ -123,7 +123,7 @@
       }
     },
     {
-      "key": "83b7d59f60374b6066e849a2276594063a1d1ff47024dd14d020747de2258235",
+      "key": "e24c032bdfc0cdea71fcc1f8b0b878a50ca39b2dec7208b6704dc5d0d30e742f",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0003\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Limits.cs. Each C# type keeps every public and protecte",
@@ -168,7 +168,7 @@
       }
     },
     {
-      "key": "82dbacad74d4b05819613dcd283728297619ee611c271402ba1697a230a45ae8",
+      "key": "2790eba42cc46cdd15be0ece7bad895a5edf7095a480bb613351fc63e977c9e4",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0004\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Money.cs. Each C# type keeps every public and protected",
@@ -225,7 +225,7 @@
       }
     },
     {
-      "key": "dd2a4af97b809582013aa23ff163bfcd6b1cbd5d60717d372fd5bd6bb5363ea2",
+      "key": "613c8dcb596dccb8719b285c59405003416df27c2461e368a3cf5922875c6c79",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0005\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/IRatePlan.cs. Each C# type keeps every public and prote",
@@ -282,7 +282,7 @@
       }
     },
     {
-      "key": "b2ff3b383d184ee4f2ec1e1337976187c7dc13eb441a837ebf50ee4eaa335522",
+      "key": "7395c848fc0e9e8bd4d85f7230f1265d8db622a1fb64869485fd2777a895028c",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0006\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/FlatRate.cs. Each C# type keeps every public and protec",
@@ -339,7 +339,7 @@
       }
     },
     {
-      "key": "30c9c72c31711784368a24fff01d95cc77e86670b0a3e8806e0a545db3e645d3",
+      "key": "eb783fbe9a47e3d4290b6f2d1f07f99f736f83e875d96da56ee19b472443723f",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0007\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/HourlyRate.cs. Each C# type keeps every public and prot",
@@ -396,7 +396,7 @@
       }
     },
     {
-      "key": "4bc5ba1f7fe0316e7631edf63814aa732126d0116e5c2539f62ae31f89a9b294",
+      "key": "6a67aba726687fd0fde4d70583b8c8daa5dd0385c3591d540d209cab17c4541f",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0008\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Tally.cs. Each C# type keeps every public and protected",
@@ -453,7 +453,7 @@
       }
     },
     {
-      "key": "d892088045336bb7d8795ea9ac7a6cbfb8627dd6c34448372f250250c1293597",
+      "key": "d3db3103ce8d31c1120c0064c1b9c08df6b8bb3e619ca90125c36fa37b65def3",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0009\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Garage.cs. Each C# type keeps every public and protecte",
@@ -512,7 +512,7 @@
       }
     },
     {
-      "key": "f47cbb84eadceffbe154b7ab42bca4f6bb002ac5e6177974c5bf4cd016b2b0a4",
+      "key": "8882f7092eee18a3c003442de51b9a408ef68f237d3a3820fcdbe7cf72aa0698",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0010\\n\\nRules: port_csharp_type_to_rust\\n\\nThe façades: src/Parking/Shift.cs. Each C# type keeps every public and protected",
@@ -569,7 +569,7 @@
       }
     },
     {
-      "key": "bf2afa792dfa2c4a8f0bfd8e36b0da86bd3f38862eb08d661975d43338d05871",
+      "key": "6f2cfe2cab33f3de3f4c4559af4e3a8494dda3bac44f139c9cb9bfe5f8ad64dd",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0011\\n\\nRules: port_csharp_program_to_rust\\n\\nThe C# file with `Main` becomes the program's façade: `Main` keeps its signat",
@@ -614,7 +614,7 @@
       }
     },
     {
-      "key": "b441f1b0bcc3259cc5b70f88913c7baec3396d5f3d1310af4cd096aaf9e40f38",
+      "key": "b7ecde2caae8fcc0008f0291fb2e992fce68c5cc4a251393dfe044eda7898643",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0012\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Pa",
@@ -659,7 +659,7 @@
       }
     },
     {
-      "key": "76631ef18603190a54fd4618f7de49310eeedb0653bffc8d7e82b74f4363a921",
+      "key": "2a21aa658b7c31c01e1eb14a9e303e0f9ebe6cd23997b6aeef70391cbb96ac33",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0013\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Pa",
@@ -704,7 +704,7 @@
       }
     },
     {
-      "key": "cde6a871faa1521290115ad9d845b6368081701fbe8e0e795bc6804901631153",
+      "key": "c95d57ccc1cbf107d9da287ca92bd19c5e5fa540150317d3bda91a713def94f9",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0014\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Pa",
@@ -749,7 +749,7 @@
       }
     },
     {
-      "key": "268fc3d9a0e38cc7f1a0b3bca0e066b8315ead5537fec3d26c99207a3b25cd2c",
+      "key": "6431489471800460006ecef219a8226aef8aef3511fe186162ab6b912ed61050",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0015\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Pa",
@@ -794,7 +794,7 @@
       }
     },
     {
-      "key": "5d4af621b03a4abe26c92df4786e3501083405d74d3675a48aff9f6d5d720804",
+      "key": "4e72a0d3948fb614fb88885c16c55804f4143757421781fefacdb8378f9e2391",
       "kind": "complete",
       "model": "claude-opus-5-5",
       "last_message": "{\"type\":\"text\",\"text\":\"# Work unit U-0016\\n\\nRules: port_csharp_tests_to_rust\\n\\nThe C# test files are read-only and keep running until the retirement: tests/Pa",

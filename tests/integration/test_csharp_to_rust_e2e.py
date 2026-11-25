@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -124,7 +125,10 @@ def test_every_unit_of_a_csharp_port_to_rust(
     ]
     assert units == sorted(u.unit_id for u in report.units if u.commit is not None)
     # Every unit kept the branch green, its I-4 comparing the translated tests' checks with the
-    # C# tests' (none weaker): only the tests Rust can't have lack a translation, with a note.
+    # C# tests' (none weaker): only the tests Rust can't have lack a translation, and a test
+    # checks less only where Rust can't have the rest (a null argument), each with a note.
+    mapped = tomllib.loads(git(root, "show", f"{result.branch}:rust/test-map.toml"))
+    noted = {e["csharp"] for e in mapped.get("test", []) if e.get("note")}
     i4 = "I-4: Translated tests check less than their originals: "
     weaker = [
         item
@@ -132,7 +136,7 @@ def test_every_unit_of_a_csharp_port_to_rust(
         for warning in u.warnings
         if warning.startswith(i4)
         for item in re.split(r"; (?=dotnet:)", warning.removeprefix(i4).rstrip("."))
-        if "has no translation" not in item
+        if "has no translation" not in item and item.split(" made ", 1)[0] not in noted
     ]
     assert weaker == []
     tracked = git(root, "ls-tree", "-r", "--name-only", result.branch).split()
@@ -146,14 +150,22 @@ def test_every_unit_of_a_csharp_port_to_rust(
         assert any(f.startswith(f"rust/{library}/src/bridge/") for f in tracked)
         assert "cdylib" in git(root, "show", f"{result.branch}:rust/{library}/Cargo.toml")
     else:
-        # The branch is Rust: no C#, no MSBuild, no bridge, no cdylib, no unsafe code.
+        # The branch is Rust: no C#, no MSBuild, no bridge, no cdylib, and no unsafe code but in
+        # the native module of a crate that calls a C library itself (D-84 (9), D-95).
         assert not [f for f in tracked if f.endswith(csharp)]
         assert not [f for f in tracked if "/src/bridge/" in f or "/include/" in f]
         assert "cdylib" not in git(root, "show", f"{result.branch}:rust/{library}/Cargo.toml")
         lib = git(root, "show", f"{result.branch}:rust/{library}/src/lib.rs")
-        assert "#![forbid(unsafe_code)]" in lib
         assert report.port is not None
-        assert report.port.unsafe == []
+        native = f"rust/{library}/src/native/"
+        if any(f.startswith(native) for f in tracked):
+            assert "#![deny(unsafe_code)]" in lib
+            assert "#[allow(unsafe_code)]\nmod native;" in lib
+            assert report.port.unsafe
+            assert all(u.startswith(native) for u in report.port.unsafe), report.port.unsafe
+        else:
+            assert "#![forbid(unsafe_code)]" in lib
+            assert report.port.unsafe == []
     # The Cargo workspace, CodeCoreMorph's runtime and the maps of where each C# member and
     # test went.
     assert {
