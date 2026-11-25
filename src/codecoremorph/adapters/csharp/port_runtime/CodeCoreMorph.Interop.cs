@@ -56,6 +56,13 @@ namespace CodeCoreMorph.Interop
         public string Message;
         public string ParamName;
         public Dictionary<string, string> Fields = new Dictionary<string, string>();
+
+        /// <summary>An ArgumentOutOfRangeException's actual value, as a .NET value (D-97).</summary>
+        public object ActualValue;
+
+        /// <summary>An OperationCanceledException's token: the C# one the native token stands
+        /// for, a canceled one for a token native code made, or None (D-97).</summary>
+        public CancellationToken Token;
     }
 
     internal static partial class CcmInterop
@@ -72,11 +79,21 @@ namespace CodeCoreMorph.Interop
         [DllImport(CcmNative.Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         private static extern IntPtr ccm_strdup(byte[] text);
 
+        [DllImport(CcmNative.Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern void ccm_set_managed(byte[] types, byte[] message, IntPtr exception, CcmReleaseFn release);
+
+        [DllImport(CcmNative.Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        private static extern IntPtr ccm_error_managed();
+
+        [DllImport(CcmNative.Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        private static extern bool ccm_error_token(out IntPtr origin);
+
         /// <summary>The GCHandle release a native object calls when it lets go of a C# one.</summary>
         public static readonly CcmReleaseFn Release = ReleaseContext;
 
-        /// <summary>Throws what a native call's status says: the exception the C++ threw, or the
-        /// C# exception a call back into C# threw.</summary>
+        /// <summary>Throws what a native call's status says: the exception the native code threw,
+        /// or the C# exception a call back into C# (or a C# task) threw, the same object.</summary>
         public static void Check(int status)
         {
             if (status == 0)
@@ -87,6 +104,11 @@ namespace CodeCoreMorph.Interop
             {
                 ExceptionDispatchInfo thrown = pending;
                 pending = null;
+                Exception managed = Managed();
+                if (managed != null)
+                {
+                    ExceptionDispatchInfo.Capture(managed).Throw();
+                }
                 if (thrown != null)
                 {
                     thrown.Throw();
@@ -96,7 +118,28 @@ namespace CodeCoreMorph.Interop
             throw Create(ReadError());
         }
 
-        /// <summary>Runs a call from native code into C#; an exception becomes status 2.</summary>
+        /// <summary>The C# exception the calling thread's last native call failed with (status
+        /// 2), or null.</summary>
+        internal static Exception Managed()
+        {
+            IntPtr handle = ccm_error_managed();
+            return handle == IntPtr.Zero ? null : GCHandle.FromIntPtr(handle).Target as Exception;
+        }
+
+        /// <summary>The exception a failed native call, task or log entry's status says, read on
+        /// the thread that reported it: the native code's (status 1), or the C# one (status
+        /// 2).</summary>
+        internal static Exception Failure(int status)
+        {
+            if (status == 2)
+            {
+                return Managed() ?? new InvalidOperationException("a call into .NET failed, and its exception was lost");
+            }
+            return Create(ReadError());
+        }
+
+        /// <summary>Runs a call from native code into C#; an exception becomes status 2, recorded
+        /// for the native code by its .NET types (D-96).</summary>
         public static int Callback(Action body)
         {
             try
@@ -107,6 +150,7 @@ namespace CodeCoreMorph.Interop
             catch (Exception e)
             {
                 pending = ExceptionDispatchInfo.Capture(e);
+                RecordManaged(e);
                 return 2;
             }
         }
@@ -122,8 +166,26 @@ namespace CodeCoreMorph.Interop
             {
                 result = default(T);
                 pending = ExceptionDispatchInfo.Capture(e);
+                RecordManaged(e);
                 return 2;
             }
+        }
+
+        /// <summary>Tells the native code of a C# exception it is about to see (D-96): its types,
+        /// most derived first, its message and a handle of it, so the native code catches it by
+        /// type and gives the same object back.</summary>
+        internal static void RecordManaged(Exception e)
+        {
+            var types = new StringBuilder();
+            for (Type type = e.GetType(); type != null; type = type.BaseType)
+            {
+                if (types.Length > 0)
+                {
+                    types.Append('\n');
+                }
+                types.Append((type.FullName ?? type.Name).Replace('+', '.'));
+            }
+            ccm_set_managed(Utf8Z(types.ToString()), Utf8Z(e.Message), Pin(e), Release);
         }
 
         public static string Utf8(IntPtr text)
@@ -289,7 +351,81 @@ namespace CodeCoreMorph.Interop
                         line.Substring(eq + 1).Replace("\\n", "\n").Replace("\\\\", "\\");
                 }
             }
+            error.ActualValue = Value(Utf8(ccm_error_part(4)), Utf8(ccm_error_part(5)));
+            IntPtr origin;
+            if (ccm_error_token(out origin))
+            {
+                error.Token = origin != IntPtr.Zero
+                    ? (CancellationToken)GCHandle.FromIntPtr(origin).Target
+                    : new CancellationToken(true);
+            }
             return error;
+        }
+
+        /// <summary>A .NET value as native code passes it (D-97): its type's full name (null or
+        /// empty for null) and its invariant data, a TimeSpan as its ticks; an enum of a loaded
+        /// assembly by its number; a type the support doesn't know as its data, a string.</summary>
+        internal static object Value(string type, string data)
+        {
+            if (string.IsNullOrEmpty(type))
+            {
+                return null;
+            }
+            CultureInfo invariant = CultureInfo.InvariantCulture;
+            switch (type)
+            {
+                case "System.String":
+                    return data ?? "";
+                case "System.Boolean":
+                    return data == "True";
+                case "System.Char":
+                    return string.IsNullOrEmpty(data) ? '\0' : data[0];
+                case "System.SByte":
+                    return sbyte.Parse(data, invariant);
+                case "System.Byte":
+                    return byte.Parse(data, invariant);
+                case "System.Int16":
+                    return short.Parse(data, invariant);
+                case "System.UInt16":
+                    return ushort.Parse(data, invariant);
+                case "System.Int32":
+                    return int.Parse(data, invariant);
+                case "System.UInt32":
+                    return uint.Parse(data, invariant);
+                case "System.Int64":
+                    return long.Parse(data, invariant);
+                case "System.UInt64":
+                    return ulong.Parse(data, invariant);
+                case "System.Single":
+                    return float.Parse(data, NumberStyles.Float, invariant);
+                case "System.Double":
+                    return double.Parse(data, NumberStyles.Float, invariant);
+                case "System.Decimal":
+                    return decimal.Parse(data, NumberStyles.Float, invariant);
+                case "System.TimeSpan":
+                    return TimeSpan.FromTicks(long.Parse(data, invariant));
+                case "System.Guid":
+                    return new Guid(data);
+            }
+            Type found = LoadedType(type);
+            if (found != null && found.IsEnum)
+            {
+                return Enum.ToObject(found, long.Parse(data, invariant));
+            }
+            return data;
+        }
+
+        private static Type LoadedType(string name)
+        {
+            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type found = assembly.GetType(name, false);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+            return null;
         }
 
         private static Exception Create(CcmError e)
@@ -309,6 +445,11 @@ namespace CodeCoreMorph.Interop
                 case "System.ArgumentNullException":
                     return message == null ? new ArgumentNullException(param) : new ArgumentNullException(param, message);
                 case "System.ArgumentOutOfRangeException":
+                    if (e.ActualValue != null)
+                    {
+                        return new ArgumentOutOfRangeException(
+                            param, e.ActualValue, message ?? "Specified argument was out of the range of valid values.");
+                    }
                     return message == null ? new ArgumentOutOfRangeException(param) : new ArgumentOutOfRangeException(param, message);
                 case "System.InvalidOperationException":
                     return new InvalidOperationException(message);
@@ -334,12 +475,35 @@ namespace CodeCoreMorph.Interop
                     return new DivideByZeroException(message);
                 case "System.OutOfMemoryException":
                     return new OutOfMemoryException(message);
+                case "System.IO.InvalidDataException":
+                    return new System.IO.InvalidDataException(message);
+                case "System.OperationCanceledException":
+                    return new OperationCanceledException(message ?? "The operation was canceled.", e.Token);
+                case "System.Threading.Tasks.TaskCanceledException":
+                    return TaskCanceled(message ?? "A task was canceled.", e.Token);
                 case "System.Exception":
                     return new Exception(message);
                 default:
                     return new InvalidOperationException(
                         string.Format(CultureInfo.InvariantCulture, "the native code threw {0}: {1}", e.Type, e.Message));
             }
+        }
+
+        /// <summary>A TaskCanceledException with its message and token: .NET 5's constructor
+        /// where the runtime has it, else one of a task canceled with the token.</summary>
+        private static Exception TaskCanceled(string message, CancellationToken token)
+        {
+            System.Reflection.ConstructorInfo withToken = typeof(System.Threading.Tasks.TaskCanceledException).GetConstructor(
+                new[] { typeof(string), typeof(Exception), typeof(CancellationToken) });
+            if (withToken != null)
+            {
+                return (Exception)withToken.Invoke(new object[] { message, null, token });
+            }
+            if (token.IsCancellationRequested && message == "A task was canceled.")
+            {
+                return new System.Threading.Tasks.TaskCanceledException(System.Threading.Tasks.Task.FromCanceled(token));
+            }
+            return new System.Threading.Tasks.TaskCanceledException(message);
         }
 
         /// <summary>The project's own exceptions, written with the port (CcmExceptions.cs).</summary>

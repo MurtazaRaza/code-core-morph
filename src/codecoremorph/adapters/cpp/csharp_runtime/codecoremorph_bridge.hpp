@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <new>
 #include <optional>
@@ -21,15 +22,22 @@
 
 namespace ccm::bridge {
 
-// Thrown through C++ when a call into C# threw; the façade rethrows the C# exception itself.
+// Thrown through C++ when a call into C# threw an exception of a type the bridge has no mirror
+// of; the façade rethrows the C# exception itself.
 class ManagedException : public ccm::Exception {
 public:
     ManagedException() : ccm::Exception("a call into .NET threw") {}
+    using ccm::Exception::Exception;
     const char* dotnet_type() const noexcept override { return "CodeCoreMorph.Managed"; }
 };
 
-// The status of the exception being handled, its details kept for ccm_error_part.
+// The status of the exception being handled, its details kept for ccm_error_part (and a C#
+// exception's handle for ccm_error_managed, a cancellation's token for ccm_error_token).
 ccm_status current_exception_status() noexcept;
+
+// The same of an exception object (one a log entry passes, D-97): CCM_ERROR with its parts
+// recorded, or CCM_MANAGED with the C# exception's handle.
+ccm_status record_exception(const std::exception& error) noexcept;
 
 // Runs an export's body: no exception leaves it.
 template <class F>
@@ -42,10 +50,41 @@ ccm_status guard(F&& body) noexcept {
     }
 }
 
-// What a call into C# returned: CCM_MANAGED becomes a ManagedException.
-inline void check_managed(ccm_status status) {
-    if (status != CCM_OK) throw ManagedException();
+// --- C# exceptions in native code, by type (D-96) ----------------------------------------------
+
+// Makes the mirror of a .NET exception, given its message, carrying the C# object's handle.
+using ExceptionFactory = std::exception_ptr (*)(const std::string& message,
+                                                std::shared_ptr<void> managed);
+
+// A mirror whose constructor takes the message.
+template <class E>
+std::exception_ptr make_mirror(const std::string& message, std::shared_ptr<void> managed) {
+    E error(message);
+    error.set_managed(std::move(managed));
+    return std::make_exception_ptr(std::move(error));
 }
+
+// Names the mirror of a .NET exception type ("Zoo.ZooException"); the bridge knows
+// the shipped ones. Returns true, for a static's initializer (CCM_REGISTER_EXCEPTION).
+bool register_exception(const char* dotnet_type, ExceptionFactory factory);
+
+// The native exception the C# one the calling thread recorded (ccm_set_managed) stands for:
+// the mirror of the first of its types the bridge knows, else a ManagedException; both carry
+// its handle. Without a record, a ManagedException without one (the façade's pending one).
+std::exception_ptr take_managed();
+
+// What a call into C# returned: CCM_MANAGED becomes the C# exception's mirror.
+inline void check_managed(ccm_status status) {
+    if (status != CCM_OK) std::rethrow_exception(take_managed());
+}
+
+#define CCM_REGISTER_JOIN_(a, b) a##b
+#define CCM_REGISTER_NAME_(line) CCM_REGISTER_JOIN_(ccm_registered_exception_, line)
+// In a bridge file: the port's own exception Type stands for the C# DotnetType, so a C#
+// exception of that type, thrown in a call into C#, is caught as Type in the native code.
+#define CCM_REGISTER_EXCEPTION(DotnetType, Type)                                                \
+    [[maybe_unused]] static const bool CCM_REGISTER_NAME_(__LINE__) =                          \
+        ::ccm::bridge::register_exception(DotnetType, &::ccm::bridge::make_mirror<Type>)
 
 // --- handles: a handle is a heap-allocated std::shared_ptr to the object --------------------
 
@@ -173,6 +212,8 @@ public:
               if (release != nullptr && c != nullptr) release(c);
           }) {}
     void* get() const { return context_.get(); }
+    // The context as a shared owner of the C# object (an exception's mirror keeps one).
+    const std::shared_ptr<void>& shared() const { return context_; }
 
 private:
     std::shared_ptr<void> context_;

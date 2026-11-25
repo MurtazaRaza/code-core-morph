@@ -6,4 +6,4 @@ pub mod decimal;
 pub mod exceptions;
 
 pub use decimal::Decimal;
-pub use exceptions::{Exception, Result};
+pub use exceptions::{DotnetValue, Exception, Result};

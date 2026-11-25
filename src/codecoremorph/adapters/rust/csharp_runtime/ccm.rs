@@ -44,15 +44,35 @@ unsafe extern "C" {
 
 // ------------------------------------------------------------------ errors
 
+/// A C# exception the support recorded: its types, its message, its handle.
+type Recorded = (Vec<String>, String, Arc<ManagedRef>);
+
 thread_local! {
-    static ERROR: RefCell<[CString; 4]> = RefCell::new(Default::default());
+    // The .NET type, the message, the parameter, the fields, and an ArgumentOutOfRangeException's
+    // actual value's type and data (D-97).
+    static ERROR: RefCell<[CString; 6]> = RefCell::new(Default::default());
+    // An OperationCanceledException's token (D-97): whether it has one, and the C# token it
+    // stands for (None for one native code made).
+    static ERROR_TOKEN: RefCell<Option<Option<Arc<ManagedRef>>>> = const { RefCell::new(None) };
+    // The C# exception the thread's last export failed with (CCM_MANAGED), kept until its next.
+    static ERROR_MANAGED: RefCell<Option<Arc<ManagedRef>>> = const { RefCell::new(None) };
+    // The C# exception the support recorded before a call into C# returned CCM_MANAGED.
+    static RECORDED: RefCell<Option<Recorded>> = const { RefCell::new(None) };
 }
 
 fn c_string(text: &str) -> CString {
     CString::new(text.replace('\0', " ")).unwrap_or_default()
 }
 
-fn report(e: &Exception) -> ccm_status {
+/// Records `e` as the calling thread's error, for the façade (or a log entry's support, D-97):
+/// CCM_ERROR with its parts, or CCM_MANAGED with the C# exception's handle.
+pub fn record(e: &Exception) -> ccm_status {
+    if let Some(origin) = e.origin().and_then(|o| Arc::clone(o).downcast::<ManagedRef>().ok()) {
+        // A C# exception passing through: the façade throws that object again (D-96).
+        ERROR_MANAGED.with(|m| *m.borrow_mut() = Some(origin));
+        return CCM_MANAGED;
+    }
+    ERROR_MANAGED.with(|m| *m.borrow_mut() = None);
     if e.is_managed() {
         return CCM_MANAGED;
     }
@@ -63,14 +83,21 @@ fn report(e: &Exception) -> ccm_status {
         fields.push_str(&value.replace('\\', "\\\\").replace('\n', "\\n"));
         fields.push('\n');
     }
+    let actual = e.actual_value();
     ERROR.with(|error| {
         *error.borrow_mut() = [
             c_string(e.dotnet_type()),
             c_string(e.message()),
             c_string(e.param_name().unwrap_or("")),
             c_string(&fields),
+            c_string(actual.map_or("", |v| v.dotnet_type.as_str())),
+            c_string(actual.map_or("", |v| v.data.as_str())),
         ];
     });
+    let token = e.token_origin().map(|origin| {
+        origin.and_then(|o| Arc::clone(o).downcast::<ManagedRef>().ok())
+    });
+    ERROR_TOKEN.with(|t| *t.borrow_mut() = token);
     CCM_ERROR
 }
 
@@ -101,16 +128,34 @@ fn from_panic(payload: Box<dyn Any + Send>) -> Exception {
 pub fn guard(body: impl FnOnce() -> Result<(), Exception>) -> ccm_status {
     match catch_unwind(AssertUnwindSafe(body)) {
         Ok(Ok(())) => CCM_OK,
-        Ok(Err(e)) => report(&e),
-        Err(payload) => report(&from_panic(payload)),
+        Ok(Err(e)) => record(&e),
+        Err(payload) => record(&from_panic(payload)),
     }
 }
 
 /// The part of the calling thread's last error: 0 the .NET type, 1 the message, 2 the
-/// parameter name, 3 the fields. Valid until the thread's next export call.
+/// parameter name, 3 the fields, 4 and 5 an ArgumentOutOfRangeException's actual value's .NET
+/// type and data. Valid until the thread's next export call.
 #[unsafe(no_mangle)]
 pub extern "C" fn ccm_error_part(part: i32) -> *const c_char {
-    ERROR.with(|error| error.borrow()[part.clamp(0, 3) as usize].as_ptr())
+    ERROR.with(|error| error.borrow()[part.clamp(0, 5) as usize].as_ptr())
+}
+
+/// Whether the calling thread's last error is an OperationCanceledException with a token that
+/// can be canceled; `origin` gets the C# token's GCHandle, or null for a token native code made
+/// (D-97).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ccm_error_token(origin: *mut *mut c_void) -> bool {
+    ERROR_TOKEN.with(|t| match &*t.borrow() {
+        None => {
+            put(origin, std::ptr::null_mut());
+            false
+        }
+        Some(found) => {
+            put(origin, found.as_ref().map_or(std::ptr::null_mut(), |m| m.context()));
+            true
+        }
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -332,14 +377,42 @@ impl Drop for ManagedRef {
     }
 }
 
-/// What a call into C# returned: [`CCM_MANAGED`] (its exception) becomes
-/// [`Exception::managed`], which the export passes back so the façade rethrows it.
+/// What a call into C# returned: [`CCM_MANAGED`] becomes the C# exception it threw, by its
+/// .NET types (D-96), which ported code matches with `is_a` and the export passes back so the
+/// façade throws the same object again.
 pub fn check_managed(status: ccm_status) -> Result<(), Exception> {
     if status == CCM_OK {
         Ok(())
     } else {
-        Err(Exception::managed())
+        Err(take_managed())
     }
+}
+
+/// The C# exception the support recorded on this thread (`ccm_set_managed`), with its types
+/// and its origin; [`Exception::managed`] without a record.
+pub fn take_managed() -> Exception {
+    match RECORDED.with(|r| r.borrow_mut().take()) {
+        Some((types, message, origin)) => Exception::from_managed(types, message, origin),
+        None => Exception::managed(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ccm_set_managed(
+    types: *const c_char,
+    message: *const c_char,
+    exception: *mut c_void,
+    release: ccm_release_fn,
+) {
+    let managed = ManagedRef::new(exception, release);
+    let types = opt_str(types).unwrap_or_default().split('\n').map(str::to_string).collect();
+    let message = opt_str(message).unwrap_or_default();
+    RECORDED.with(|r| *r.borrow_mut() = Some((types, message, managed)));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ccm_error_managed() -> *mut c_void {
+    ERROR_MANAGED.with(|m| m.borrow().as_ref().map_or(std::ptr::null_mut(), |r| r.context()))
 }
 
 /// A callback C# passed: null is a C# delegate that was null, and calling it throws
