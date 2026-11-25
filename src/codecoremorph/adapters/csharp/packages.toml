@@ -1,0 +1,115 @@
+# What a .NET package's API is in a port from C# (SPEC §11.11, D-95): the mappings CodeCoreMorph
+# ships. Do not edit in a project; add a package here, with a probe of its counterpart.
+#
+# Each package: the versions its mapping was checked on (`versions`, a range of the restored
+# version), the API it covers (`covers`: a use of the package, as the C# index names it, is
+# covered when it is a covered name or a member of one; generic arguments are left out), what
+# of that API it doesn't (`except`), and per target the counterpart: a C library the new code
+# calls (`libraries`, by linker name, with its `headers`; C++ includes and links it, Rust calls
+# it through the crate's native module), registry crates pinned by version and checksum
+# (`crates`, Rust), or a counterpart CodeCoreMorph ships (`runtime`). `notes` (the package's and
+# the target's) are what the unit's message says of it. Each counterpart was checked against
+# the package on the same inputs (`checked`): the spike's probe, E:/codecoremorph-trials/
+# csharp-spike/packages/.
+
+[packages."K4os.Compression.LZ4"]
+versions = ">=1.1, <2"
+checked = "1.3.8 against liblz4 1.9.3: every block at L00_FAST, L09_HC and L12_MAX, byte for byte"
+covers = ["K4os.Compression.LZ4.LZ4Codec", "K4os.Compression.LZ4.LZ4Level"]
+except = ["K4os.Compression.LZ4.LZ4Codec.PartialDecode"]
+notes = [
+    "LZ4Codec.Encode at L00_FAST is liblz4's LZ4_compress_default, at L03_HC to L12_MAX LZ4_compress_HC at that level (lz4hc.h, LZ4HC_CLEVEL_MAX is 12); MaximumOutputSize is LZ4_compressBound; Decode is LZ4_decompress_safe: the same blocks as K4os's, byte for byte",
+    "An empty input: K4os encodes it as no block at all (0 bytes) and decodes an empty block as nothing, where liblz4 writes a one-byte block and refuses an empty one. Do as K4os: don't call liblz4 for nothing",
+    "Decode's result for a malformed block is a negative number, not always -1 (K4os's and liblz4's alike): test for less than 0",
+]
+
+[packages."K4os.Compression.LZ4".targets.cpp]
+counterpart = "liblz4"
+libraries = ["lz4"]
+headers = ["lz4.h", "lz4hc.h"]
+notes = [
+    "Include <lz4.h> and <lz4hc.h>; the scaffold links lz4 to the library. liblz4 takes char buffers: pass a byte vector's data with reinterpret_cast<const char *> (or char *), a cast to a character type, which the lint allows",
+]
+
+[packages."K4os.Compression.LZ4".targets.rust]
+counterpart = "liblz4"
+libraries = ["lz4"]
+headers = ["lz4.h", "lz4hc.h"]
+notes = [
+    "liblz4 is called through the crate's native module (D-84 (9)): bindgen writes src/native/lz4_sys.rs from lz4.h and lz4hc.h at each configure; write the safe functions the crate calls over it in src/native/mod.rs, each unsafe block with a // SAFETY: comment, slices' pointers cast with .cast::<c_char>()",
+]
+
+[packages."K4os.Hash.xxHash"]
+versions = ">=1.0, <2"
+checked = "1.0.8 against libxxhash 0.8.1 and xxhash-rust 0.8.21: XXH32 and XXH64, two seeds, every case"
+covers = ["K4os.Hash.xxHash.XXH32", "K4os.Hash.xxHash.XXH64"]
+except = ["K4os.Hash.xxHash.XXH32.AsHashAlgorithm", "K4os.Hash.xxHash.XXH64.AsHashAlgorithm"]
+notes = [
+    "XXH32.DigestOf and XXH64.DigestOf are the one-shot digests, seed 0 unless given; new XXH32(seed) or XXH64(seed) with Update and Digest digest the bytes given, in order, as one input; DigestBytes is the digest big-endian",
+]
+
+[packages."K4os.Hash.xxHash".targets.cpp]
+counterpart = "libxxhash"
+libraries = ["xxhash"]
+headers = ["xxhash.h"]
+notes = [
+    "Include <xxhash.h>; the scaffold links xxhash to the library. XXH32(data, size, seed) and XXH64(data, size, seed) are the one-shot digests; XXH32_createState, XXH32_reset, XXH32_update, XXH32_digest and XXH32_freeState (and XXH64's) the incremental ones, the state owned by a std::unique_ptr with XXH32_freeState as its deleter",
+]
+
+[packages."K4os.Hash.xxHash".targets.rust]
+counterpart = "the crate xxhash-rust 0.8.21"
+crates = [
+    { name = "xxhash-rust", version = "0.8.21", features = ["xxh32", "xxh64"], checksum = "40de123dbb523ebcc00d61ec01840ad192578afc378d859f3429caa38308fad5" },
+]
+notes = [
+    "The scaffold added xxhash-rust to the crate's dependencies, pinned in Cargo.lock: xxhash_rust::xxh32::xxh32(data, seed) and xxhash_rust::xxh64::xxh64(data, seed) are the one-shot digests, xxh32::Xxh32::new(seed) and xxh64::Xxh64::new(seed) with update and digest the incremental ones. Add no other dependency",
+]
+
+[packages."Microsoft.Extensions.Logging.Abstractions"]
+versions = ">=2.0, <11"
+checked = "8.0.2: the message templates of 20,025 seeded doubles and 1,003 pairs of longs, as .NET formats them"
+covers = [
+    "Microsoft.Extensions.Logging.ILogger",
+    "Microsoft.Extensions.Logging.ILoggerFactory",
+    "Microsoft.Extensions.Logging.LogLevel",
+    "Microsoft.Extensions.Logging.EventId",
+    "Microsoft.Extensions.Logging.LoggerExtensions.Log",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogTrace",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogDebug",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogInformation",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogWarning",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogError",
+    "Microsoft.Extensions.Logging.LoggerExtensions.LogCritical",
+    "Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger",
+    "Microsoft.Extensions.Logging.Abstractions.NullLogger",
+    "Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory",
+]
+except = [
+    "Microsoft.Extensions.Logging.ILogger.Log",
+    "Microsoft.Extensions.Logging.ILogger.BeginScope",
+    "Microsoft.Extensions.Logging.ILoggerFactory.AddProvider",
+]
+notes = [
+    "A logger is an object the code is given, as in C#: the counterpart is an interface the port ships (ILogger, ILoggerFactory, LogLevel, EventId, NullLogger), which the C# façade's logger implements through the bridge until the retirement, and the translated tests' loggers after it. ILogger<T> is ILogger; LoggerFactoryExtensions.CreateLogger<T>() is the factory's CreateLogger with T's full name, nested types joined with a dot",
+    "LogDebug(template, args) and its kin fill the template's holes as .NET does, the n-th hole taking the n-th argument whatever its name: keep the template as the C# wrote it, and pass the arguments in its order. They log whether or not the level is enabled (the logger decides), and IsEnabled is a call of its own, as in C#. A hole with a format ({Count:X4}) isn't supported: pass the value already formatted, as a string",
+    "A C# logger gets each entry's state too, as .NET's structured loggers do (D-97): the template and each hole's name and value, typed. Pass each argument as the C# had it (an int as an int, a TimeSpan as a TimeSpan, not its text), and log through the shipped glue, which passes a logged exception that came from C# as the same object: no logger glue of your own",
+    "Never hold a lock across a log call: the C# logger may call back into the object",
+]
+
+[packages."Microsoft.Extensions.Logging.Abstractions".targets.cpp]
+counterpart = "ccm::logging (codecoremorph_logging.hpp, which CodeCoreMorph ships)"
+runtime = "logging"
+notes = [
+    "ccm::logging (cpp/include/codecoremorph_logging.hpp, which the scaffold placed and the retirement keeps): a logger is a std::shared_ptr<ccm::logging::ILogger>, a null one ccm::logging::NullLogger::instance() where the C# took NullLogger.Instance for null; ILogger::is_enabled and log, ILoggerFactory::create_logger. LogDebug(...) is ccm::logging::log_debug(*logger, template, args...), with an EventId first where the C# passes one, and for LogError(exception, ...) the std::exception first",
+    "An argument is what ccm::dotnet_value takes (codecoremorph_exceptions.hpp): a number, a bool, a string, an optional, a std::chrono::duration (a TimeSpan); a type of the project's (an enum) defines ccm::DotnetValue dotnet_value(T) in its own namespace, {\"Ns.Type\", its number, its name}. A translated test's logger that checks the state overrides log_state(level, event, state, exception) (state.message_template, state.values); log(level, event, message, exception) is all a logger must override",
+    "The bridge: a C# ILogger or ILoggerFactory parameter crosses as a void * context, which the façade makes with CcmLogging.Pass(logger) (CodeCoreMorph.Logging.cs, beside the façades; zero for null). The export takes it into ccm::bridge::logger(context) or ccm::bridge::logger_factory(context) (codecoremorph_logging.h) as its first statement, before guard, so it is released however the export fails",
+]
+
+[packages."Microsoft.Extensions.Logging.Abstractions".targets.rust]
+counterpart = "codecoremorph_runtime::logging (which CodeCoreMorph ships)"
+runtime = "logging"
+notes = [
+    "codecoremorph_runtime::logging (the runtime crate's logging module, which the scaffold placed and the retirement keeps): a logger is an Arc<dyn Logger>, a factory an Arc<dyn LoggerFactory>, None for null taken as NullLogger::instance() where the C# took NullLogger.Instance; a C# logger may throw, so Logger::is_enabled, log and LoggerFactory::create_logger return Result. LogDebug(...) is logging::log_debug(&*logger, template, &[&a, &b]), log_debug_event with an EventId, and logging::log(&*logger, level, &event, Some(&exception), template, args) for LogError(exception, ...)",
+    "An argument implements logging::LogArg, its text (log_text) and its value (log_value, a DotnetValue): the runtime's for numbers, bool, strings, Option and Duration; the port's own TimeSpan implements both (DotnetValue::time_span(ticks)), and an enum (DotnetValue::with_text(\"Ns.Type\", its number, its name)). A translated test's logger that checks the state implements Logger::log_state (state.template, state.values); log is all a logger must implement",
+    "The bridge: a C# ILogger or ILoggerFactory parameter crosses as a *mut c_void context, which the façade makes with CcmLogging.Pass(logger) (CodeCoreMorph.Logging.cs, beside the façades; zero for null). The export takes it into super::ccm_logging::logger(context) or logger_factory(context) as its first statement, before ccm::guard, so it is released however the export fails",
+]

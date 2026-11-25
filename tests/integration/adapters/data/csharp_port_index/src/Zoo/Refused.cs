@@ -8,12 +8,20 @@ namespace Zoo
 {
     // One type for each thing the first version of a port refuses (D-78).
 
+    // Async code the tasks runtime doesn't take over (D-96): .NET's own I/O, and async void.
     public class Loader
     {
-        public async Task<int> LoadAsync()
+        public async Task<string> LoadAsync(string path)
         {
-            await Task.Delay(1);
-            return 1;
+            using (var reader = new StreamReader(path))
+            {
+                return await reader.ReadToEndAsync();
+            }
+        }
+
+        public async void Fire()
+        {
+            await Task.Yield();
         }
     }
 

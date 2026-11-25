@@ -149,7 +149,18 @@ class PortUnit(CoreModel):
     native_libraries: list[str] = Field(
         default_factory=list[str],
         description="A C# type unit's (D-82): the native libraries its types call through "
-        "P/Invoke, which the new code calls itself and links",
+        "P/Invoke, which the new code calls itself and links, and the C libraries that stand "
+        "for the .NET packages they use (D-95)",
+    )
+    packages: list[str] = Field(
+        default_factory=list[str],
+        description="A C# type or test unit's (D-95): the .NET packages its C# uses that the "
+        "target has a counterpart of, by name; the scaffold gives the new code each one's",
+    )
+    tasks: bool = Field(
+        default=False,
+        description="A C# type unit's (D-96): its C# has async code, which the tasks runtime "
+        "CodeCoreMorph ships takes over; the scaffold places it",
     )
 
     def codemod_options(self) -> dict[str, str]:
@@ -159,6 +170,10 @@ class PortUnit(CoreModel):
             options["types"] = ",".join(self.types)
         if self.native_libraries:
             options["native"] = ",".join(self.native_libraries)
+        if self.packages:
+            options["packages"] = ",".join(self.packages)
+        if self.tasks:
+            options["tasks"] = "true"
         if self.bin is not None:
             options["bin"] = self.bin
         if self.dependencies:

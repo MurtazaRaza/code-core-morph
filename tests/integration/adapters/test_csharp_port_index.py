@@ -64,9 +64,9 @@ PACK = (
 )
 
 
-def _cut(adapter: CSharpAdapter, ctx: AdapterContext, index: Path) -> Plan:
+def _cut(adapter: CSharpAdapter, ctx: AdapterContext, index: Path, standard: str = "cpp17") -> Plan:
     """The planner's units over the index, by the csharp_to_cpp pack's rules and the C#
-    adapter's queries (D-79)."""
+    adapter's queries (D-79), for a port to ``standard``."""
     project = ProjectModel.load(index, ctx.worktree, test_dirs=["tests"])
     registry = RuleRegistry.discover()
 
@@ -75,7 +75,7 @@ def _cut(adapter: CSharpAdapter, ctx: AdapterContext, index: Path) -> Plan:
 
     order = StandardOrder("csharp", ("csharp7.3", "csharp14"))
     scans = [
-        scan_rule(registry.get(r), project, order=order, source="csharp7.3", target="cpp17",
+        scan_rule(registry.get(r), project, order=order, source="csharp7.3", target=standard,
                   query=query)
         for r in PACK
     ]  # fmt: skip
@@ -87,7 +87,7 @@ def _cut(adapter: CSharpAdapter, ctx: AdapterContext, index: Path) -> Plan:
         settings=PlannerSettings(token_limit=500_000),
         language="csharp",
         source="csharp7.3",
-        target="cpp17",
+        target=standard,
         target_language="cpp",
         port_names=CppAdapter().port_names,
     )
@@ -207,9 +207,25 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
         "value + value: no caller in the solution passes it a value, so the types that reach it "
         "are unknown",
     }
+    # Async code the tasks runtime doesn't take over stays refused, by site (D-96).
+    assert {r.detail for r in types["csharp:Zoo.Loader"].refusals} == {
+        "System.IO.StreamReader.ReadToEndAsync returns a task of .NET's own, which the port has "
+        "no counterpart of",
+        "async void Fire: nothing awaits it, so its exceptions go to the synchronization context",
+    }
     assert not any(
-        types[f"csharp:Zoo.{n}"].refusals for n in ("Animal", "Keeper", "Pen`1", "Pointer")
+        types[f"csharp:Zoo.{n}"].refusals
+        for n in ("Animal", "Keeper", "Pen`1", "Pointer", "Waiter", "IServer")
     )
+    # What it takes over is a notice: async members, and a task or a token in a signature.
+    assert {(n.what, n.detail) for n in types["csharp:Zoo.Waiter"].notices} == {
+        (PortNoticeKind.ASYNC, "async FeedAllAsync"),
+        (PortNoticeKind.ASYNC, "LaterAsync (a task or a token in its signature)"),
+        (PortNoticeKind.ASYNC, "Nap (a task or a token in its signature)"),
+    }
+    assert {n.detail for n in types["csharp:Zoo.IServer"].notices} == {
+        "ServeAsync (a task or a token in its signature)"
+    }
     # What a port takes over instead (D-82): unsafe code, a platform check, native calls.
     assert {n.what for n in types["csharp:Zoo.Pointer"].notices} == {PortNoticeKind.UNSAFE}
     assert {n.detail for n in types["csharp:Zoo.Clock"].notices} == {
@@ -277,7 +293,12 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     assert "Zoo.Pen<T> is generic, used with <Zoo.Bird>, <Zoo.Dog>" in (ported["pen"].note or "")
     skipped = sorted((u.note or "").split(" ", 2)[1] for u in types_rule if u.port is None)
     assert skipped == sorted(["Zoo.Crate<T>", "Zoo.Pens.Of", "Zoo.Keeper", "Zoo.Loader",
-                              "Zoo.Dynamo", "Zoo.Mirror", "Zoo.Query", "Zoo.Record"])  # fmt: skip
+                              "Zoo.Dynamo", "Zoo.Mirror", "Zoo.Query", "Zoo.Record",
+                              "Zoo.IServer", "Zoo.Waiter"])  # fmt: skip
+    # C++17 refuses async code, which C++ ports to C++20's coroutines (D-96).
+    (waiting,) = [u for u in types_rule if (u.note or "").startswith("skipped: Zoo.Waiter")]
+    assert "has async code (async FeedAllAsync" in (waiting.note or "")
+    assert "set migration.target.standard to cpp20" in (waiting.note or "")
     assert {u.status for u in types_rule if u.port is None} == {UnitStatus.SKIPPED}
     # A unit per test file, after the types its tests use, its cases the exact ones; then the
     # retirement, after everything (the refused types stay C#, so it waits on them too).
@@ -298,6 +319,18 @@ def test_a_port_sources_records_and_its_test_cases(ctx: AdapterContext) -> None:
     )
     (retire,) = [u for u in plan.units if u.rules == ["retire_csharp_to_cpp"]]
     assert set(retire.needs) == {u.id for u in plan.units if u is not retire}
+
+    # For C++20 the async types are ported, their units placing the tasks runtime (D-96).
+    later = _cut(adapter, ctx, index.path, "cpp20")
+    lifted = {u.port.module: u for u in later.units if u.port is not None and u.port.types}
+    assert lifted["waiter"].port is not None
+    assert lifted["waiter"].port.tasks
+    assert lifted["i_server"].port is not None
+    assert lifted["i_server"].port.tasks
+    assert lifted["animal"].port is not None
+    assert not lifted["animal"].port.tasks
+    assert "async code (async FeedAllAsync" in (lifted["waiter"].note or "")
+    assert "ccm::tasks::Task (C++20" in (lifted["waiter"].note or "")
     assert "src/Zoo/Zoo.csproj" in retire.files
     assert adapter.build(ctx).success
     report = adapter.run_tests(ctx)

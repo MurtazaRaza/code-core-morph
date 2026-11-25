@@ -29,6 +29,7 @@ from codecoremorph.adapters.csharp.msbuild import (
     inherited_properties,
     project_info,
 )
+from codecoremorph.adapters.csharp.packages import counterpart
 from codecoremorph.adapters.csharp.trx import test_id
 from codecoremorph.adapters.portindex import MAX_USES as MAX_USES  # the index keeps these
 from codecoremorph.adapters.portindex import PortRecords
@@ -41,6 +42,7 @@ from codecoremorph.core.models import (
     IndexMeta,
     LineEnding,
     NativeLibraryProbe,
+    PackageEntry,
     SymbolIndex,
     TargetKind,
 )
@@ -345,15 +347,19 @@ def run_index(
         store.write(files=files, symbols=symbols, references=references, dependencies=dependencies)
         if port:
             records = port_records(rows, known)
+            packages = with_counterparts(records.packages, ctx.lang.port_target)
             store.set_port_source(
                 types=records.types,
                 generic_uses=records.uses,
                 test_methods=records.tests,
-                packages=records.packages,
+                packages=packages,
             )
             store.set_test_entries(records.entries())
             store.set_build_targets(project_targets(ctx.worktree, lay))
             libraries = sorted({i.library for t in records.types for i in t.native_imports})
+            # The C libraries that stand for packages are looked for too (D-95).
+            mapped = {lib for p in packages if p.counterpart for lib in p.counterpart.libraries}
+            libraries = sorted({*libraries, *mapped})
             store.set_native_probes(probe_native(ctx, libraries))
             meta.stats["types"] = len(records.types)
             meta.stats["test_methods"] = len(records.tests)
@@ -413,6 +419,17 @@ _NATIVE_PROBE = r"""for name in "$@"; do
   printf '%s\t%s\t%s\t%s\n' "$name" "$header" "$link" "$version"
 done
 """
+
+
+def with_counterparts(packages: Sequence[PackageEntry], target: str | None) -> list[PackageEntry]:
+    """The packages a port's source restored, each with its counterpart in the port's target
+    when CodeCoreMorph maps that version of it there (D-95)."""
+    if target is None:
+        return list(packages)
+    return [
+        p.model_copy(update={"counterpart": counterpart(p.name, p.version, target)})
+        for p in packages
+    ]
 
 
 def probe_native(ctx: AdapterContext, libraries: Sequence[str]) -> list[NativeLibraryProbe]:

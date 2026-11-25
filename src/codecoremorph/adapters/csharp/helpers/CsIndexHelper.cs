@@ -952,7 +952,11 @@ internal static class PortSource
                 string name = model.GetDeclaredSymbol(member)?.Name ?? "";
                 if (member.Modifiers.Any(SyntaxKind.AsyncKeyword))
                 {
-                    Refuse(model, file, node, "async", "async " + name);
+                    AsyncBody(model, file, node, model.GetDeclaredSymbol(member) as IMethodSymbol, "async " + name);
+                }
+                else if (member is not BaseTypeDeclarationSyntax && TaskSignature(model, member) is string holder)
+                {
+                    Notice(model, file, node, "async", holder + " (a task or a token in its signature)");
                 }
                 if (member.Modifiers.Any(SyntaxKind.UnsafeKeyword))
                 {
@@ -962,7 +966,7 @@ internal static class PortSource
             case LocalFunctionStatementSyntax local:
                 if (local.Modifiers.Any(SyntaxKind.AsyncKeyword))
                 {
-                    Refuse(model, file, node, "async", "async " + local.Identifier.ValueText);
+                    AsyncBody(model, file, node, model.GetDeclaredSymbol(local) as IMethodSymbol, "async " + local.Identifier.ValueText);
                 }
                 if (local.Modifiers.Any(SyntaxKind.UnsafeKeyword))
                 {
@@ -972,7 +976,7 @@ internal static class PortSource
             case AnonymousFunctionExpressionSyntax lambda:
                 if (lambda.AsyncKeyword.IsKind(SyntaxKind.AsyncKeyword))
                 {
-                    Refuse(model, file, node, "async", "an async lambda");
+                    AsyncBody(model, file, node, model.GetSymbolInfo(lambda).Symbol as IMethodSymbol, "an async lambda");
                 }
                 if (model.GetTypeInfo(lambda).ConvertedType is INamedTypeSymbol { Name: "Expression", Arity: 1 } tree
                     && tree.ContainingNamespace.ToDisplayString() == "System.Linq.Expressions")
@@ -992,7 +996,23 @@ internal static class PortSource
             case FunctionPointerTypeSyntax:
                 Notice(model, file, node, "unsafe", "a function pointer");
                 break;
+            case AwaitExpressionSyntax awaited:
+                Await(model, file, awaited);
+                break;
+            case CommonForEachStatementSyntax loop when loop.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword):
+                Refuse(model, file, node, "async", "await foreach, which the tasks runtime has no counterpart of");
+                break;
+            case UsingStatementSyntax block when block.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword):
+                Refuse(model, file, node, "async", "await using, which the tasks runtime has no counterpart of");
+                break;
+            case LocalDeclarationStatementSyntax declaration when declaration.AwaitKeyword.IsKind(SyntaxKind.AwaitKeyword):
+                Refuse(model, file, node, "async", "await using, which the tasks runtime has no counterpart of");
+                break;
+            case MemberAccessExpressionSyntax access when model.GetSymbolInfo(access).Symbol is IPropertySymbol or IFieldSymbol:
+                TaskApi(model, file, node, model.GetSymbolInfo(access).Symbol!);
+                break;
             case InvocationExpressionSyntax call when model.GetSymbolInfo(call).Symbol is IMethodSymbol method:
+                TaskApi(model, file, node, method);
                 var owner = method.ContainingType;
                 string space = owner?.ContainingNamespace?.ToDisplayString() ?? "";
                 bool reflective = space == "System.Reflection" || space.StartsWith("System.Reflection.", StringComparison.Ordinal)
@@ -1011,7 +1031,193 @@ internal static class PortSource
             case AttributeSyntax attribute when model.GetSymbolInfo(attribute).Symbol is IMethodSymbol { ContainingType: { } driving } && Serializer(driving):
                 Refuse(model, file, node, "serialization", "[" + driving.ToDisplayString(Indexer.Qualified) + "]");
                 break;
+            case BaseObjectCreationExpressionSyntax made when model.GetSymbolInfo(made).Symbol is IMethodSymbol constructor:
+                TaskApi(model, file, node, constructor);
+                break;
         }
+    }
+
+    // ------------------------------------------------------------------ async (D-96)
+
+    // The task API the runtimes take over (ccm::tasks, codecoremorph_runtime::tasks), by type
+    // ("*" for every member); the rest of System.Threading.Tasks, and a task from any other .NET
+    // API (a stream's ReadAsync), is refused by site.
+    private static readonly Dictionary<string, HashSet<string>> CoveredTaskApi = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+    {
+        ["System.Threading.Tasks.Task"] = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "WhenAll", "Delay", "FromResult", "FromException", "FromCanceled", "Yield", "CompletedTask",
+            "ConfigureAwait", "GetAwaiter", "IsCompleted", "IsFaulted", "IsCanceled", "Wait",
+        },
+        ["System.Threading.Tasks.Task`1"] = new HashSet<string>(StringComparer.Ordinal) { "Result", "ConfigureAwait", "GetAwaiter" },
+        ["System.Threading.Tasks.TaskCompletionSource`1"] = new HashSet<string>(StringComparer.Ordinal)
+        {
+            ".ctor", "Task", "SetResult", "SetException", "SetCanceled", "TrySetResult", "TrySetException", "TrySetCanceled",
+        },
+        ["System.Threading.Tasks.TaskCreationOptions"] = new HashSet<string>(StringComparer.Ordinal) { "*" },
+        ["System.Threading.Tasks.TaskCanceledException"] = new HashSet<string>(StringComparer.Ordinal) { "*" },
+        ["System.Runtime.CompilerServices.TaskAwaiter"] = new HashSet<string>(StringComparer.Ordinal) { "GetResult", "IsCompleted" },
+        ["System.Runtime.CompilerServices.TaskAwaiter`1"] = new HashSet<string>(StringComparer.Ordinal) { "GetResult", "IsCompleted" },
+        ["System.Threading.CancellationToken"] = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "None", "IsCancellationRequested", "CanBeCanceled", "ThrowIfCancellationRequested", "Register",
+        },
+        ["System.Threading.CancellationTokenSource"] = new HashSet<string>(StringComparer.Ordinal)
+        {
+            ".ctor", "Token", "Cancel", "IsCancellationRequested", "Dispose",
+        },
+        ["System.Threading.CancellationTokenRegistration"] = new HashSet<string>(StringComparer.Ordinal) { "Dispose" },
+        ["System.OperationCanceledException"] = new HashSet<string>(StringComparer.Ordinal) { "*" },
+    };
+
+    // What an await may await: a task, a configured one, a yield.
+    private static readonly HashSet<string> Awaitables = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "System.Threading.Tasks.Task", "System.Threading.Tasks.Task`1",
+        "System.Runtime.CompilerServices.ConfiguredTaskAwaitable",
+        "System.Runtime.CompilerServices.ConfiguredTaskAwaitable`1",
+        "System.Runtime.CompilerServices.YieldAwaitable",
+    };
+
+    private static string MetadataName(ITypeSymbol type) =>
+        type is INamedTypeSymbol named
+            ? (named.ContainingNamespace?.IsGlobalNamespace == false ? named.ContainingNamespace.ToDisplayString() + "." : "")
+              + (named.ContainingType != null ? MetadataName(named.ContainingType) + "." : "")
+              + named.MetadataName
+            : type.ToDisplayString();
+
+    private static bool IsTask(ITypeSymbol? type) =>
+        type is INamedTypeSymbol named
+        && MetadataName(named.OriginalDefinition) is "System.Threading.Tasks.Task" or "System.Threading.Tasks.Task`1";
+
+    // Whether a type is or holds what the tasks runtime stands for: a task, a token, a source
+    // (a Func<CancellationToken, Task<string>> holds two).
+    private static bool UsesTasks(ITypeSymbol? type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return UsesTasks(array.ElementType);
+            case INamedTypeSymbol named:
+                string space = named.ContainingNamespace?.ToDisplayString() ?? "";
+                if (space == "System.Threading.Tasks"
+                    || (space == "System.Threading" && named.Name.StartsWith("CancellationToken", StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+                return named.TypeArguments.Any(UsesTasks);
+            default:
+                return false;
+        }
+    }
+
+    // An async method, local function or lambda: one that returns Task or Task<T> the runtime
+    // takes over (a notice its unit's note names); async void, ValueTask and the others are
+    // refused.
+    private static void AsyncBody(SemanticModel model, string file, SyntaxNode node, IMethodSymbol? method, string detail)
+    {
+        if (method == null)
+        {
+            return;
+        }
+        if (method.ReturnsVoid)
+        {
+            Refuse(model, file, node, "async", detail.Replace("async ", "async void ") + ": nothing awaits it, so its exceptions go to the synchronization context");
+            return;
+        }
+        if (!IsTask(method.ReturnType))
+        {
+            Refuse(model, file, node, "async", detail + " returns " + method.ReturnType.ToDisplayString(TypeArgument) + ", which the tasks runtime has no counterpart of");
+            return;
+        }
+        Notice(model, file, node, "async", detail);
+    }
+
+    // An await of what the runtime awaits; await foreach and await using are refused.
+    private static void Await(SemanticModel model, string file, AwaitExpressionSyntax awaited)
+    {
+        ITypeSymbol? type = model.GetTypeInfo(awaited.Expression).Type;
+        if (type is INamedTypeSymbol named && Awaitables.Contains(MetadataName(named.OriginalDefinition)))
+        {
+            return;
+        }
+        Refuse(model, file, awaited, "async", "an await of " + (type?.ToDisplayString(TypeArgument) ?? awaited.Expression.ToString()) + ", which the tasks runtime has no counterpart of");
+    }
+
+    // A use of .NET's task API outside what the runtime covers, or a .NET method that returns a
+    // task (a stream's ReadAsync): refused by site. The project's own members and a delegate's
+    // Invoke are the port's (the C# behind a delegate is the caller's).
+    private static void TaskApi(SemanticModel model, string file, SyntaxNode node, ISymbol symbol)
+    {
+        if (InProject(symbol) || symbol is IMethodSymbol { MethodKind: MethodKind.DelegateInvoke })
+        {
+            return;
+        }
+        INamedTypeSymbol? owner = symbol.ContainingType;
+        if (owner == null)
+        {
+            return;
+        }
+        string type = MetadataName(owner.OriginalDefinition);
+        string name = symbol is IMethodSymbol { MethodKind: MethodKind.Constructor } ? ".ctor" : symbol.Name;
+        string shown = owner.ToDisplayString(Indexer.Qualified) + "." + symbol.Name;
+        // token.WaitHandle.WaitOne(timeout), a sleep the token cuts short: the token's wait. The
+        // wait handle for anything else (WaitHandle.WaitAny) isn't covered.
+        if (type == "System.Threading.CancellationToken" && name == "WaitHandle"
+            && node.Parent is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "WaitOne" } wait
+            && wait.Parent is InvocationExpressionSyntax)
+        {
+            return;
+        }
+        if (CoveredTaskApi.TryGetValue(type, out var covered))
+        {
+            if (!covered.Contains("*") && !covered.Contains(name))
+            {
+                Refuse(model, file, node, "async", shown + ", which the tasks runtime has no counterpart of");
+            }
+            return;
+        }
+        string space = owner.ContainingNamespace?.ToDisplayString() ?? "";
+        ITypeSymbol? result = symbol switch
+        {
+            IMethodSymbol method => method.ReturnType,
+            IPropertySymbol property => property.Type,
+            _ => null,
+        };
+        if (space == "System.Threading.Tasks" || space.StartsWith("System.Threading.Tasks.", StringComparison.Ordinal)
+            || (space == "System.Threading" && owner.Name == "SynchronizationContext"))
+        {
+            Refuse(model, file, node, "async", shown + ", which the tasks runtime has no counterpart of");
+        }
+        else if (result is INamedTypeSymbol { ContainingNamespace: { } returned } && returned.ToDisplayString() == "System.Threading.Tasks")
+        {
+            Refuse(model, file, node, "async", shown + " returns a task of .NET's own, which the port has no counterpart of");
+        }
+    }
+
+    // The member's name when its signature holds what the tasks runtime stands for (a task, a
+    // token, a source; a field or event of one), else null: its unit needs the runtime.
+    private static string? TaskSignature(SemanticModel model, MemberDeclarationSyntax member)
+    {
+        switch (member)
+        {
+            case BaseFieldDeclarationSyntax field:
+                return UsesTasks(model.GetTypeInfo(field.Declaration.Type).Type)
+                    ? string.Join(", ", field.Declaration.Variables.Select(v => v.Identifier.ValueText))
+                    : null;
+            case DelegateDeclarationSyntax:
+                return model.GetDeclaredSymbol(member) is INamedTypeSymbol { DelegateInvokeMethod: { } invoke } named
+                    && (UsesTasks(invoke.ReturnType) || invoke.Parameters.Any(p => UsesTasks(p.Type)))
+                    ? named.Name
+                    : null;
+        }
+        return model.GetDeclaredSymbol(member) switch
+        {
+            IMethodSymbol method when UsesTasks(method.ReturnType) || method.Parameters.Any(p => UsesTasks(p.Type)) => method.Name,
+            IPropertySymbol property when UsesTasks(property.Type) || property.Parameters.Any(p => UsesTasks(p.Type)) => property.Name,
+            IEventSymbol handler when UsesTasks(handler.Type) => handler.Name,
+            _ => null,
+        };
     }
 
     private static bool Serializer(INamedTypeSymbol type)

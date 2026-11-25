@@ -7,6 +7,7 @@ rows; ``codecoremorph.store.index`` reads and writes them.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import ClassVar
@@ -226,6 +227,10 @@ class PortNoticeKind(StrEnum):
     DEEP_COPY = "deep_copy"
     # Code that asks which platform it runs on, or loads native code itself.
     PLATFORM = "platform"
+    # Async code (D-96): an async member, lambda or local function returning Task or Task<T>,
+    # or a member whose signature holds a task or a cancellation token; the tasks runtime
+    # CodeCoreMorph ships takes it over.
+    ASYNC = "async"
 
 
 class PortNotice(CoreModel):
@@ -293,6 +298,69 @@ class PackageUse(CoreModel):
     member: str | None = None
 
 
+class PackageCounterpart(CoreModel):
+    """What a package's API is in a port's target (D-95), from the mappings CodeCoreMorph ships:
+    a C library the new code calls, a crate pinned by checksum, or a counterpart CodeCoreMorph
+    ships itself (a runtime). A use of the package outside ``covers`` keeps its type from the
+    port."""
+
+    target: str = Field(min_length=1, description='The port\'s target: "cpp", "rust"')
+    counterpart: str = Field(
+        min_length=1, description='What stands for it, as the plan names it: "liblz4"'
+    )
+    checked: str = Field(
+        default="", description="What the mapping was checked against, as the plan says it"
+    )
+    covers: list[str] = Field(
+        default_factory=list[str],
+        description="The API it covers, as the index names a use (a type, or a type and a "
+        'member), generic arguments left out: "K4os.Compression.LZ4.LZ4Codec"',
+    )
+    excepted: list[str] = Field(
+        default_factory=list[str],
+        description="What of the covered API it doesn't cover: "
+        '"Microsoft.Extensions.Logging.ILogger.BeginScope"',
+    )
+    libraries: list[str] = Field(
+        default_factory=list[str],
+        description="C libraries the new code links (C++) or calls through its native module "
+        '(Rust), by their linker names: "lz4"',
+    )
+    headers: list[str] = Field(
+        default_factory=list[str], description='Their C headers: "lz4.h", "lz4hc.h"'
+    )
+    crates: list[str] = Field(
+        default_factory=list[str],
+        description='Registry crates the new code depends on, each "name version": pinned in '
+        "Cargo.lock by the checksum CodeCoreMorph ships, fetched at configure",
+    )
+    runtime: str | None = Field(
+        default=None,
+        description='A counterpart CodeCoreMorph ships with the port ("logging"): its target '
+        "side, the bridge's glue and the façades' support",
+    )
+    notes: list[str] = Field(
+        default_factory=list[str],
+        description="What the unit's message says of it: how the API maps, and where the "
+        "counterpart behaves otherwise than the package",
+    )
+
+    def covers_use(self, symbol: str) -> bool:
+        """Whether a use of the package, as the index names it, is in the API it covers: a
+        covered name or a member of one, generic arguments left out, and no exception's."""
+        name = symbol
+        while True:
+            stripped = re.sub(r"<[^<>]*>", "", name)
+            if stripped == name:
+                break
+            name = stripped
+
+        def within(names: list[str]) -> bool:
+            return any(name == n or name.startswith(f"{n}.") for n in names)
+
+        return within(self.covers) and not within(self.excepted)
+
+
 class PackageEntry(CoreModel):
     """A package a project of a port's source restored (D-82), from ``project.assets.json``."""
 
@@ -305,6 +373,11 @@ class PackageEntry(CoreModel):
     native: list[str] = Field(
         default_factory=list[str],
         description='Its native files by runtime: "linux-x64:libsodium.so"',
+    )
+    counterpart: PackageCounterpart | None = Field(
+        default=None,
+        description="Its counterpart in the port's target, when CodeCoreMorph maps this version "
+        "of it (D-95); without one, a type that uses it stays C#",
     )
 
 
