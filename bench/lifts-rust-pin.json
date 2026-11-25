@@ -1,0 +1,32 @@
+{
+  "project": "easy-retry",
+  "url": "https://github.com/alicommit-malp/Easy-Retry.git",
+  "tag": "v2.2.0",
+  "commit": "069bfc9d541e84ad58b735b7a028927eee42a340",
+  "license": "MIT",
+  "milestone": "m13",
+  "migration": {
+    "source": {
+      "language": "csharp",
+      "standard": "csharp12",
+      "build_system": "dotnet"
+    },
+    "target": {
+      "language": "rust",
+      "standard": "rust2021",
+      "rules": [
+        "port_csharp_type_to_rust",
+        "port_csharp_program_to_rust",
+        "port_csharp_tests_to_rust",
+        "retire_csharp_to_rust"
+      ]
+    }
+  },
+  "build": {},
+  "exclude": [],
+  "test_dirs": [
+    "test"
+  ],
+  "public_api": [],
+  "build_note": "The M13 port benchmark to Rust 2021 (Phase 19, chosen 2026-11-24): EasyRetry 2.2.0 (alicommit-malp/Easy-Retry, MIT), a netstandard2.0 and 2.1 library in C# latest with nullable annotations (6 files, 657 lines) that retries a Func<Task<T>>, a Func<Task> or an Action by a RetryOptions policy (backoff with jitter, a total duration, exception types not to retry, hooks), logging through an ILogger<EasyRetry>; 123 NUnit 4 tests on net8.0 (16 files). The first versions refused it twice: its async code (D-96) and its use of Microsoft.Extensions.Logging.Abstractions 8.0.3 (D-95); its sync path sleeps on CancellationToken.WaitHandle.WaitOne, which D-96 covers. Nothing native, so the run's image is the port image itself. The repository's own CLAUDE.md is left in place, as a real project has it."
+}

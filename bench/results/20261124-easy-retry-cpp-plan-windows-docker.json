@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-24T22:45:16+00:00",
+  "project": "easy-retry v2.2.0 (069bfc9d541e)",
+  "migration": "csharp12 -> cpp20",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 66.594,
+    "index_s": 5.765,
+    "graph_s": 0.016,
+    "plan_s": 0.406
+  },
+  "baseline": {
+    "passing": 148,
+    "failing": [],
+    "flaky": [],
+    "build_s": 14.75,
+    "test_s": 4.648
+  },
+  "graph": {
+    "files": 22,
+    "edges": 58,
+    "clusters": 22,
+    "cyclic_clusters": 0,
+    "largest_cluster": 1
+  },
+  "rules": [
+    {
+      "id": "port_csharp_type_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 6,
+      "files": 6,
+      "skipped_files": 0,
+      "units": 6
+    },
+    {
+      "id": "port_csharp_program_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "port_csharp_tests_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 123,
+      "files": 15,
+      "skipped_files": 0,
+      "units": 15
+    },
+    {
+      "id": "retire_csharp_to_cpp",
+      "kind": "port",
+      "automatic": false,
+      "sites": 22,
+      "files": 22,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 22
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 1057782,
+    "cost_usd": 4.79
+  },
+  "duration_estimate_s": 2928.8,
+  "warnings": [
+    "port_csharp_program_to_cpp: the detector found no sites, so the rule has no units"
+  ]
+}

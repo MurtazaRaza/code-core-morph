@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-25T00:19:33+00:00",
+  "project": "easy-retry v2.2.0 (069bfc9d541e)",
+  "migration": "csharp12 -> rust2021",
+  "sandbox": "docker",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "timings": {
+    "baseline_s": 57.64,
+    "index_s": 5.328,
+    "graph_s": 0.0,
+    "plan_s": 0.453
+  },
+  "baseline": {
+    "passing": 148,
+    "failing": [],
+    "flaky": [],
+    "build_s": 14.843,
+    "test_s": 3.851
+  },
+  "graph": {
+    "files": 22,
+    "edges": 58,
+    "clusters": 22,
+    "cyclic_clusters": 0,
+    "largest_cluster": 1
+  },
+  "rules": [
+    {
+      "id": "port_csharp_type_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 6,
+      "files": 6,
+      "skipped_files": 0,
+      "units": 6
+    },
+    {
+      "id": "port_csharp_program_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 0,
+      "files": 0,
+      "skipped_files": 0,
+      "units": 0
+    },
+    {
+      "id": "port_csharp_tests_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 123,
+      "files": 15,
+      "skipped_files": 0,
+      "units": 15
+    },
+    {
+      "id": "retire_csharp_to_rust",
+      "kind": "port",
+      "automatic": false,
+      "sites": 22,
+      "files": 22,
+      "skipped_files": 0,
+      "units": 1
+    }
+  ],
+  "units": {
+    "pending": 22
+  },
+  "estimate": {
+    "model": "anthropic/claude-opus-5-5",
+    "context_window": 1000000,
+    "unit_token_limit": 500000,
+    "tokens": 1101018,
+    "cost_usd": 4.85
+  },
+  "duration_estimate_s": 2899.4,
+  "warnings": [
+    "port_csharp_program_to_rust: the detector found no sites, so the rule has no units"
+  ]
+}

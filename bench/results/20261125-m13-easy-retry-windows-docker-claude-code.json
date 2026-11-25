@@ -1,0 +1,907 @@
+{
+  "date": "2026-11-25T01:47:01+00:00",
+  "project": "easy-retry v2.2.0 (069bfc9d541e)",
+  "migration": "csharp12 -> rust2021",
+  "agent": "claude-code/claude-opus-5-5",
+  "sandbox": "docker",
+  "prompts": "v1",
+  "machine": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cpus": 20,
+    "python": "3.12.9"
+  },
+  "base_commit": "069bfc9d541e84ad58b735b7a028927eee42a340",
+  "seconds": 5239.9,
+  "runs_started": 1,
+  "run_id": "20261125-002013-df9a",
+  "ended_by_harness": false,
+  "paused_at_usage_limit": false,
+  "user_tree_clean": true,
+  "run": {
+    "status": "completed",
+    "reason": null,
+    "unit_counts": {
+      "committed": 22
+    },
+    "success_rate": 1.0,
+    "agent_units": 21,
+    "attempts_per_agent_unit": 1.0,
+    "final": {
+      "ran": true,
+      "passed": true,
+      "commit": "e2e179f043e4c4635282c3a12057975aa6a2e58c",
+      "clean": true,
+      "build_errors": [],
+      "tests_run": 147,
+      "regressions": [],
+      "reason": null,
+      "duration_s": 6.8
+    },
+    "port": {
+      "symbols": 36,
+      "tests_mapped": 146,
+      "tests_without_counterpart": [
+        "dotnet:EasyRetryTest.AttemptAwareOverloadTests#NullArguments_ThrowArgumentNullException: a null IEasyRetry or a null delegate: the Rust functions take a reference and a closure, which can't be null; the bridge keeps the C#'s ArgumentNullException checks (easyRetry first, then func or action) for the fa\u00e7ade",
+        "dotnet:EasyRetryTest.RetryOptionsValidationTests#NullDelegates_ThrowArgumentNullException: a null delegate: the Rust takes closures, which can't be null; the bridge keeps the C#'s ArgumentNullException (func, action) for the fa\u00e7ade"
+      ],
+      "deviations": [
+        "csharp:EasyRetry.RetryBackoff.Constant: the C# enum stays a C# enum; it crosses the bridge as its int value (0)",
+        "csharp:EasyRetry.RetryBackoff.Linear: the C# enum stays a C# enum; it crosses the bridge as its int value (1)",
+        "csharp:EasyRetry.RetryBackoff.Exponential: the C# enum stays a C# enum; it crosses the bridge as its int value (2)",
+        "csharp:EasyRetry.RetryDataKeys.Attempts: a C# const stays a const in the fa\u00e7ade; the Rust has the same value",
+        "csharp:EasyRetry.RetryDataKeys.Exceptions: a C# const stays a const in the fa\u00e7ade; the Rust has the same value",
+        "csharp:EasyRetry.RetryOptions.Backoff: the fa\u00e7ade passes the enum's int value, which a C# enum may hold without naming a member; backoff() reads such a value as Constant, as the C# GetDelay did",
+        "csharp:EasyRetry.RetryOptions.CancellationToken: a native token whose origin is the C# token (the getter gives the C# token back); the C# token's registration cancels the native source",
+        "csharp:EasyRetry.RetryOptions.Constant(System.Int32,System.TimeSpan): a TimeSpan crosses as its ticks (easy_retry_rs::retry_options::TimeSpan); the fa\u00e7ade gives the new options a new C# List<Type>",
+        "csharp:EasyRetry.RetryOptions.DelayOverride: Func<Exception?, int, TimeSpan?> is the trait easy_retry_rs::retry_options::DelayOverride; a C# delegate is a proxy in the bridge, and the getter gives the same delegate back",
+        "csharp:EasyRetry.RetryOptions.DoNotRetryOnTheseExceptionTypes: List<Type> is the trait easy_retry_rs::retry_options::ExceptionTypes, of the types' .NET full names (FullName, '+' as '.'); a C# list is a proxy in the bridge, read when the options are validated, and the getter gives the same list back. Options made in Rust hold an ExceptionTypeList, which a C# getter sees as null",
+        "csharp:EasyRetry.RetryOptions.Exponential(System.Int32,System.TimeSpan,System.Nullable{System.TimeSpan},System.Boolean): the C# default arguments (no cap, jitter) stay in the fa\u00e7ade's signature; a TimeSpan? crosses as a flag and its ticks",
+        "csharp:EasyRetry.RetryOptions.OnRetry: Action<Exception?, int, TimeSpan> is the trait easy_retry_rs::retry_options::OnRetry; a C# delegate is a proxy in the bridge, and the getter gives the same delegate back",
+        "csharp:EasyRetry.RetryOptions.RetryOnResult: Func<object?, bool> is the trait easy_retry_rs::retry_options::RetryOnResult over &dyn Any; a C# delegate is a proxy in the bridge that passes a C# result's object (an Arc<ManagedRef>), and the getter gives the same delegate back",
+        "csharp:EasyRetry.RetryOptions.ShouldRetry: Func<Exception, int, bool> is the trait easy_retry_rs::retry_options::ShouldRetry; a C# delegate is a proxy in the bridge, and the getter gives the same delegate back",
+        "csharp:EasyRetry.IEasyRetry.Retry(System.Action,EasyRetry.RetryOptions): the C# interface stays; a C# implementation reaches the Rust through the bridge's proxy (easy_retry_IEasyRetry_from_managed), the action as a Rust closure (SyncAttempt)",
+        "csharp:EasyRetry.IEasyRetry.Retry(System.Func{System.Threading.Tasks.Task},EasyRetry.RetryOptions): returns Err for what the C# threw before it returned its task, else the task (TaskAttempt is the operation)",
+        "csharp:EasyRetry.IEasyRetry.Retry``1(System.Func{System.Threading.Tasks.Task{``0}},EasyRetry.RetryOptions): a generic method can't be a trait object's: T is erased as AnyResult (Arc<dyn Any + Send + Sync>), a C# result being its object's GCHandle; the proxy calls a C# implementation's Retry<object>",
+        "csharp:EasyRetry.EasyRetry.#ctor(Microsoft.Extensions.Logging.ILogger{EasyRetry.EasyRetry}): ILogger<EasyRetry> is codecoremorph_runtime::logging::Logger (D-95); the bridge wraps the C# logger so that a logged C# exception reaches it as the same object",
+        "csharp:EasyRetry.EasyRetry.Retry(System.Action,EasyRetry.RetryOptions): the exception that propagates is the C# object an attempt threw; its Data gets the retry details through easy_retry_rs::easy_retry::ExceptionData, which only a C# exception has",
+        "csharp:EasyRetry.EasyRetry.Retry(System.Func{System.Threading.Tasks.Task},EasyRetry.RetryOptions): the fa\u00e7ade's task rethrows the outcome's exception from an async method, so a cancellation is the original OperationCanceledException, as awaiting the C# task gave it",
+        "csharp:EasyRetry.EasyRetry.Retry``1(System.Func{System.Threading.Tasks.Task{``0}},EasyRetry.RetryOptions): T is erased as AnyResult: a C# result crosses as its object's GCHandle, and the fa\u00e7ade casts it back to T",
+        "csharp:EasyRetry.EasyRetry.GetDelay(System.Int32,EasyRetry.RetryOptions): internal in C#, reached by the tests; jitter comes from a SplitMix64 source seeded from the clock instead of System.Random",
+        "csharp:EasyRetry.EasyRetry.ResolveDelay(System.Exception,System.Int32,EasyRetry.RetryOptions): internal in C#, reached by the tests; the fa\u00e7ade passes the C# exception as the managed exception the native side takes (CcmInterop.RecordManaged)",
+        "csharp:EasyRetry.EasyRetryExtensions.Retry(EasyRetry.IEasyRetry,System.Action{System.Int32,System.Threading.CancellationToken},EasyRetry.RetryOptions): an extension method is a function of the interface's trait object; C#'s null IEasyRetry is an ArgumentNullException the bridge throws, the operation gets the policy's token as the C# token it came from",
+        "csharp:EasyRetry.EasyRetryExtensions.Retry``1(EasyRetry.IEasyRetry,System.Func{System.Int32,System.Threading.CancellationToken,System.Threading.Tasks.Task{``0}},EasyRetry.RetryOptions): T is erased as AnyResult, as for IEasyRetry::retry_with_result",
+        "dotnet:EasyRetryTest.AttemptAwareOverloadTests#AllOverloads_ReceiveTokenFromOptions: the C# compares tokens by equality; the Rust checks that the token shares the source's state (CancellationToken::same)",
+        "dotnet:EasyRetryTest.AttemptAwareOverloadTests#ZeroArgLambdas_StillBindToInterfaceMethods: C#'s overload binding has no Rust counterpart; the Rust calls the interface's three members with operations that take no arguments",
+        "dotnet:EasyRetryTest.DefaultInstanceTests#Default_IsNotNull_AndIsIEasyRetry: Rust has no null: the test checks that the shared instance is held and that the IEasyRetry trait object is the same object",
+        "dotnet:EasyRetryTest.DelayOverrideTests#ResolveDelay_PassesExceptionAndAttemptToOverride: Assert.AreSame on the exception: a Rust exception is a value, so the override's is checked equal (type and message)",
+        "dotnet:EasyRetryTest.MaxTotalDurationTests#Async_BudgetExhausted_LogsErrorGiveUp: Assert.AreSame on the logged exception: the Rust checks it equal (type and message)",
+        "dotnet:EasyRetryTest.MaxTotalDurationTests#Async_BudgetExhausted_StopsEarly_RethrowsOriginal: Exception.Data is what the retry stores through ExceptionData, which the test records",
+        "dotnet:EasyRetryTest.MaxTotalDurationTests#Sync_BudgetExhausted_StopsEarly_RethrowsOriginal: Exception.Data is what the retry stores through ExceptionData, which the test records",
+        "dotnet:EasyRetryTest.OnRetryHookTests#Async_HookReceivesTheExceptionOfTheFailedAttempt: Assert.AreSame on the exceptions: the Rust checks them equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetryAsyncTests#FuncT_AlwaysFailsAsync_OriginalExceptionPropagates: ReferenceEquals on the exception: the Rust checks it equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetryAsyncTests#FuncT_AlwaysFails_InvokedAttemptsTimes_OriginalExceptionPropagates: ReferenceEquals on the exception: the Rust checks it equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetryAsyncTests#Func_AlwaysFails_InvokedAttemptsTimes_OriginalExceptionPropagates: ReferenceEquals on the exception: the Rust checks it equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetryCancellationTests#CancelledDuringDelay_ThrowsOcePromptly_Async: cts.CancelAfter(20) is a thread that cancels the source after 20 ms",
+        "dotnet:EasyRetryTest.RetryCancellationTests#CancelledDuringDelay_ThrowsOcePromptly_Sync: cts.CancelAfter(20) is a thread that cancels the source after 20 ms",
+        "dotnet:EasyRetryTest.RetryExceptionDataTests#AlwaysFails_Async_DataContainsAttemptCountAndAllExceptionsInOrder: Exception.Data is what the retry stores through ExceptionData, which the test records; Assert.AreSame on the exception is equality (type and message)",
+        "dotnet:EasyRetryTest.RetryExceptionDataTests#AlwaysFails_Sync_DataContainsAttemptCountAndAllExceptionsInOrder: Exception.Data is what the retry stores through ExceptionData, which the test records",
+        "dotnet:EasyRetryTest.RetryLoggingTests#LoggingEnabled_AlwaysFails_OneWarningThenOneError: Assert.AreSame on the logged exception: the Rust checks it equal (type and message)",
+        "dotnet:EasyRetryTest.RetryLoggingTests#LoggingEnabled_Sync_AlwaysFails_OneWarningThenOneError: Assert.AreSame on the logged exception: the Rust checks it equal (type and message)",
+        "dotnet:EasyRetryTest.RetryOnResultTests#ShouldRetryPredicateAndDoNotRetryList_DoNotApplyToResultFailures: DoNotRetryOnTheseExceptionTypes.Add(typeof(Exception)) is an ExceptionTypeList holding System.Exception",
+        "dotnet:EasyRetryTest.RetryOptionsPresetTests#Exponential_Defaults_JitterOnNoCap: Rust has no default arguments: the test passes the C#'s defaults (no cap, jitter)",
+        "dotnet:EasyRetryTest.RetryOptionsPresetTests#Presets_DoNotValidate: Assert.DoesNotThrow: a Rust preset returns its options, so the test checks that it kept the invalid values",
+        "dotnet:EasyRetryTest.RetryOptionsPresetTests#Presets_ReturnNewInstanceEachCall: Is.Not.SameAs: the Rust presets return values; the test checks that changing one leaves the other",
+        "dotnet:EasyRetryTest.RetryPolicyTests#DoNotRetryList_MatchesDerivedTypes_Async: a FileNotFoundException is an exception of its .NET type with its base types (Exception::from_managed), as one from C# reaches the port",
+        "dotnet:EasyRetryTest.RetryPolicyTests#DoNotRetryList_MatchesDerivedTypes_Sync: a FileNotFoundException is an exception of its .NET type with its base types (Exception::from_managed), as one from C# reaches the port",
+        "dotnet:EasyRetryTest.RetryPolicyTests#ShouldRetry_ReceivesExceptionAndOneBasedAttempt_Async: Assert.AreSame on the exceptions: the Rust checks them equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetrySyncTests#Action_AlwaysFails_InvokedAttemptsTimes_OriginalExceptionPropagates: ReferenceEquals on the exception: the Rust checks it equal (type and message), each attempt's message its own",
+        "dotnet:EasyRetryTest.RetryExceptionDataTests#StoppedEarlyByPredicate_DataReflectsSingleAttempt: Exception.Data is what the retry stores through ExceptionData, which the test records; Assert.AreSame on the exception is equality (type and message)"
+      ],
+      "unsafe": [],
+      "shared_cells": [
+        "rust/easy_retry_rs/src/retry_options.rs:132: Mutex",
+        "rust/easy_retry_rs/src/retry_options.rs:237: Mutex"
+      ],
+      "source_left": []
+    },
+    "rules": [
+      {
+        "id": "port_csharp_type_to_rust",
+        "units": 6,
+        "committed": 6,
+        "planned_sites": 6,
+        "converted_sites": 6
+      },
+      {
+        "id": "port_csharp_program_to_rust",
+        "units": 0,
+        "committed": 0,
+        "planned_sites": 0,
+        "converted_sites": 0
+      },
+      {
+        "id": "port_csharp_tests_to_rust",
+        "units": 15,
+        "committed": 15,
+        "planned_sites": 123,
+        "converted_sites": 123
+      },
+      {
+        "id": "retire_csharp_to_rust",
+        "units": 1,
+        "committed": 1,
+        "planned_sites": 22,
+        "converted_sites": 22
+      }
+    ],
+    "review_items": 25,
+    "duration_s": 5167.6,
+    "units": [
+      {
+        "id": "U-0001",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 143.6,
+        "changed_files": 18,
+        "reason": null
+      },
+      {
+        "id": "U-0002",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 62.7,
+        "changed_files": 5,
+        "reason": null
+      },
+      {
+        "id": "U-0003",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 1350.5,
+        "changed_files": 13,
+        "reason": null
+      },
+      {
+        "id": "U-0004",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 417.1,
+        "changed_files": 8,
+        "reason": null
+      },
+      {
+        "id": "U-0005",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 1175.0,
+        "changed_files": 16,
+        "reason": null
+      },
+      {
+        "id": "U-0006",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 224.5,
+        "changed_files": 9,
+        "reason": null
+      },
+      {
+        "id": "U-0007",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 163.8,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0008",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 77.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0009",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 129.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0010",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 139.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0011",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 116.4,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0012",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 95.1,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0013",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 108.3,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0014",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 91.5,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0015",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 87.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0016",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 85.9,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0017",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 104.2,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0018",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 83.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0019",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 139.0,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0020",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 117.6,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0021",
+        "status": "committed",
+        "attempts": 1,
+        "agent_skipped": false,
+        "duration_s": 79.7,
+        "changed_files": 2,
+        "reason": null
+      },
+      {
+        "id": "U-0022",
+        "status": "committed",
+        "attempts": 0,
+        "agent_skipped": true,
+        "duration_s": 19.6,
+        "changed_files": 45,
+        "reason": null
+      }
+    ],
+    "report": "E:\\codecoremorph-home\\bench\\easy-retry\\.codecoremorph\\runs\\20261125-002013-df9a\\report.md"
+  },
+  "work": {
+    "planned": {
+      "project_files": 22,
+      "project_lines": 2442,
+      "units": 22,
+      "rule_sites": {
+        "port_csharp_type_to_rust": 6,
+        "port_csharp_tests_to_rust": 123,
+        "retire_csharp_to_rust": 22
+      },
+      "sites": 151,
+      "files": 25,
+      "lines": 2442,
+      "expected_agent_attempts": 19.8,
+      "verify_s": 19.0,
+      "estimated_s": 2911.8,
+      "planner_llm_s_per_attempt": 100.0
+    },
+    "done": {
+      "units": {
+        "committed": 22
+      },
+      "agent_units": 21,
+      "agent_attempts": 21,
+      "changed_files": 58,
+      "lines_added": 6669,
+      "lines_deleted": 2555
+    },
+    "time": {
+      "run_s": 5167.6,
+      "phases_s": {
+        "baselining": 47.8,
+        "indexing": 5.4,
+        "planning": 0.4,
+        "awaiting_plan_approval": 25.9,
+        "migrating": 5081.1,
+        "verifying": 6.9
+      },
+      "migrating_s": 5081.1,
+      "agent_s": 4020.7,
+      "unit_gates_s": 0.0,
+      "tools_s": 1060.4,
+      "unit_s": {
+        "mean": 230.8,
+        "median": 115.5,
+        "max": 1353.8
+      }
+    },
+    "compared": {
+      "migrating_over_estimate": 1.75,
+      "agent_attempts_over_expected": 1.06,
+      "agent_s_per_attempt": 191.5,
+      "migrating_s_per_unit": 231.0,
+      "migrating_s_per_site": 33.6,
+      "migrating_s_per_changed_line": 0.55,
+      "run_min_per_1k_project_lines": 35.27
+    },
+    "units": [
+      {
+        "id": "U-0001",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 23,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 149.0,
+        "agent_s": 96.8,
+        "gate_s": 0.0,
+        "tools_s": 52.2,
+        "lines_changed": 2371
+      },
+      {
+        "id": "U-0002",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 20,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 65.4,
+        "agent_s": 23.7,
+        "gate_s": 0.0,
+        "tools_s": 41.7,
+        "lines_changed": 25
+      },
+      {
+        "id": "U-0003",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 151,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 135.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 1353.8,
+        "agent_s": 1278.0,
+        "gate_s": 0.0,
+        "tools_s": 75.8,
+        "lines_changed": 3089
+      },
+      {
+        "id": "U-0004",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 35,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 419.8,
+        "agent_s": 367.1,
+        "gate_s": 0.0,
+        "tools_s": 52.7,
+        "lines_changed": 805
+      },
+      {
+        "id": "U-0005",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 360,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 202.7,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 1177.9,
+        "agent_s": 1117.1,
+        "gate_s": 0.0,
+        "tools_s": 60.8,
+        "lines_changed": 2284
+      },
+      {
+        "id": "U-0006",
+        "rules": [
+          "port_csharp_type_to_rust"
+        ],
+        "files": 2,
+        "lines": 68,
+        "sites": 1,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 227.5,
+        "agent_s": 172.6,
+        "gate_s": 0.0,
+        "tools_s": 54.9,
+        "lines_changed": 449
+      },
+      {
+        "id": "U-0007",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 167.0,
+        "agent_s": 126.1,
+        "gate_s": 0.0,
+        "tools_s": 40.8,
+        "lines_changed": 271
+      },
+      {
+        "id": "U-0008",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 80.3,
+        "agent_s": 38.9,
+        "gate_s": 0.0,
+        "tools_s": 41.3,
+        "lines_changed": 82
+      },
+      {
+        "id": "U-0009",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 13,
+        "expected_attempts": 0.9,
+        "estimated_s": 131.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 132.6,
+        "agent_s": 90.4,
+        "gate_s": 0.0,
+        "tools_s": 42.2,
+        "lines_changed": 275
+      },
+      {
+        "id": "U-0010",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 129.8,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 142.9,
+        "agent_s": 100.0,
+        "gate_s": 0.0,
+        "tools_s": 42.9,
+        "lines_changed": 344
+      },
+      {
+        "id": "U-0011",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 132.0,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 119.5,
+        "agent_s": 75.2,
+        "gate_s": 0.0,
+        "tools_s": 44.2,
+        "lines_changed": 300
+      },
+      {
+        "id": "U-0012",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 98.2,
+        "agent_s": 52.5,
+        "gate_s": 0.0,
+        "tools_s": 45.7,
+        "lines_changed": 215
+      },
+      {
+        "id": "U-0013",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 20,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 111.4,
+        "agent_s": 65.2,
+        "gate_s": 0.0,
+        "tools_s": 46.3,
+        "lines_changed": 241
+      },
+      {
+        "id": "U-0014",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 7,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 94.4,
+        "agent_s": 48.6,
+        "gate_s": 0.0,
+        "tools_s": 45.8,
+        "lines_changed": 219
+      },
+      {
+        "id": "U-0015",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 90.5,
+        "agent_s": 43.8,
+        "gate_s": 0.0,
+        "tools_s": 46.7,
+        "lines_changed": 157
+      },
+      {
+        "id": "U-0016",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 5,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 89.0,
+        "agent_s": 40.1,
+        "gate_s": 0.0,
+        "tools_s": 48.9,
+        "lines_changed": 159
+      },
+      {
+        "id": "U-0017",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 10,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 107.4,
+        "agent_s": 57.9,
+        "gate_s": 0.0,
+        "tools_s": 49.5,
+        "lines_changed": 285
+      },
+      {
+        "id": "U-0018",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 86.4,
+        "agent_s": 37.2,
+        "gate_s": 0.0,
+        "tools_s": 49.2,
+        "lines_changed": 110
+      },
+      {
+        "id": "U-0019",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 6,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 142.2,
+        "agent_s": 91.9,
+        "gate_s": 0.0,
+        "tools_s": 50.3,
+        "lines_changed": 415
+      },
+      {
+        "id": "U-0020",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 9,
+        "expected_attempts": 0.9,
+        "estimated_s": 131.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 120.7,
+        "agent_s": 67.9,
+        "gate_s": 0.0,
+        "tools_s": 52.9,
+        "lines_changed": 285
+      },
+      {
+        "id": "U-0021",
+        "rules": [
+          "port_csharp_tests_to_rust"
+        ],
+        "files": 0,
+        "lines": 0,
+        "sites": 4,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 1,
+        "agent_waits": 1,
+        "actual_s": 82.9,
+        "agent_s": 29.7,
+        "gate_s": 0.0,
+        "tools_s": 53.3,
+        "lines_changed": 124
+      },
+      {
+        "id": "U-0022",
+        "rules": [
+          "retire_csharp_to_rust"
+        ],
+        "files": 25,
+        "lines": 2442,
+        "sites": 22,
+        "expected_attempts": 0.9,
+        "estimated_s": 128.1,
+        "status": "committed",
+        "attempts": 0,
+        "agent_waits": 0,
+        "actual_s": 19.7,
+        "agent_s": 0.0,
+        "gate_s": 0.0,
+        "tools_s": 19.7,
+        "lines_changed": 7785
+      }
+    ]
+  },
+  "claude": {
+    "exit_code": 0,
+    "is_error": false,
+    "subtype": "success",
+    "num_turns": 157,
+    "duration_ms": 5237786,
+    "total_cost_usd_equivalent": 26.278934999999993,
+    "usage": {
+      "input_tokens": 254,
+      "cache_creation_input_tokens": 760112,
+      "cache_read_input_tokens": 52433967,
+      "output_tokens": 485504,
+      "output_tokens_details": {
+        "thinking_tokens": 275979
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 760112,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 3240,
+          "cache_read_input_tokens": 775154,
+          "cache_creation_input_tokens": 13549,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 13549
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "result": "The whole port is done. All 22 units are committed on `codecoremorph/20261125-002013-df9a` (head `e2e179f043e4`), and the final clean build with every test passed. Every unit passed on its first attempt; the retirement needed none because its codemod did everything. The run took 86 minutes, and CodeCoreMorph made no model calls.\n\nThe baseline was 148 passing C# tests. The final verification ran 147 tests, and the test map pairs 146 C# tests with Rust tests. 36 symbols are mapped, the result has no unsafe code, and it keeps two `Mutex`es, both in `retry_options.rs`.\n\n| Unit | What | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `RetryBackoff` \u2192 a Rust enum with the same values | 1 | `a363ec89eb3c` |\n| U-0002 | `RetryDataKeys` \u2192 two constants | 1 | `443d68787523` |\n| U-0003 | `RetryOptions` \u2192 a Rust struct with a .NET-style `TimeSpan`; the four delegates and the exception-type list become traits | 1 | `220276bee9db` |\n| U-0004 | `IEasyRetry` \u2192 a trait; the generic `T` becomes a type-erased value | 1 | `96b271608b95` |\n| U-0005 | `EasyRetry`: both retry loops, backoff, jitter, validation, logging, give-up | 1 | `2240153e9eb8` |\n| U-0006 | `EasyRetryExtensions` \u2192 three functions over the trait | 1 | `ea3bd65dbae8` |\n| U-0007\u2013U-0021 | the 15 C# test files \u2192 Rust tests in `rust/easy_retry_rs/tests/` | 1 each | `0cf807131acf` \u2026 `bdfd88dffe40` |\n| U-0022 | retirement: removed the C# side, 45 files | 0 (codemod) | `e2e179f043e4` |\n\n**What the verification did not cover:**\n- **Two C# tests have no Rust counterpart:** `AttemptAwareOverloadTests.NullArguments_ThrowArgumentNullException` and `RetryOptionsValidationTests.NullDelegates_ThrowArgumentNullException`. In Rust, references and closures can't be null. Each raised a warning that the translation checks less than the original.\n- **Retirement warning:** it reports four parameterized C# test methods as \"gone\". That is expected, since the retirement deletes the C# tests and every one of their cases is mapped to its own Rust test.\n- **\"Same object\" checks:** C# tests that asserted the same exception object now check equality of type and message, because a Rust exception is a value.\n- Nothing was skipped or excluded. The \"program\" rule had no units because this is a library.\n\n**Behaviour that differs from the C#:**\n- Validation errors keep their parameter names and messages but no longer carry `ActualValue`.\n- The list of exception types not to retry is matched by type name, so an interface type in that list would no longer match.\n- Jitter comes from a small built-in random generator seeded from the clock, not `System.Random`, because no crate could be added. The \u00b120% range is the same.\n- `Exception.Data` has no Rust equivalent. The retry details go through a process-wide hook, `easy_retry::set_exception_data`.\n\n**Workarounds in the intermediate commits:** I needed three during the port. The retirement deleted the bridge, so none of them remain in the final result:\n- Logged exceptions had to reach the C# logger as the same object. I passed their handle through a pseudo exception type, which `CcmExceptions.cs` resolved.\n- The supplied task support turned every cancellation into a new `TaskCanceledException`, but the tests require the original `OperationCanceledException`. I completed the async methods through my own outcome handle instead.\n- I added `#[allow(dead_code)]` to the supplied logging glue, whose logger-factory half this library never uses.\n\nWithout `keep_source_api`, the retirement removed the C# library, its projects and the solution, so this branch no longer builds the `EasyRetry` NuGet package. I haven't checked whether `.github/workflows/ci.yml` or the README's release steps still describe the dotnet build; they probably need updating before you merge.\n\nTo review, run `git diff 069bfc9 codecoremorph/20261125-002013-df9a`, or `git log` on the branch, where each unit is one commit. I haven't merged anything. The full report is at `E:\\codecoremorph-home\\bench\\easy-retry\\.codecoremorph\\runs\\20261125-002013-df9a\\report.md`."
+  },
+  "claude_sessions": [
+    {
+      "exit_code": 0,
+      "is_error": false,
+      "subtype": "success",
+      "num_turns": 157,
+      "duration_ms": 5237786,
+      "total_cost_usd_equivalent": 26.278934999999993,
+      "usage": {
+        "input_tokens": 254,
+        "cache_creation_input_tokens": 760112,
+        "cache_read_input_tokens": 52433967,
+        "output_tokens": 485504,
+        "output_tokens_details": {
+          "thinking_tokens": 275979
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 760112,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 3240,
+            "cache_read_input_tokens": 775154,
+            "cache_creation_input_tokens": 13549,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 13549
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "result": "The whole port is done. All 22 units are committed on `codecoremorph/20261125-002013-df9a` (head `e2e179f043e4`), and the final clean build with every test passed. Every unit passed on its first attempt; the retirement needed none because its codemod did everything. The run took 86 minutes, and CodeCoreMorph made no model calls.\n\nThe baseline was 148 passing C# tests. The final verification ran 147 tests, and the test map pairs 146 C# tests with Rust tests. 36 symbols are mapped, the result has no unsafe code, and it keeps two `Mutex`es, both in `retry_options.rs`.\n\n| Unit | What | Attempts | Commit |\n|---|---|---|---|\n| U-0001 | `RetryBackoff` \u2192 a Rust enum with the same values | 1 | `a363ec89eb3c` |\n| U-0002 | `RetryDataKeys` \u2192 two constants | 1 | `443d68787523` |\n| U-0003 | `RetryOptions` \u2192 a Rust struct with a .NET-style `TimeSpan`; the four delegates and the exception-type list become traits | 1 | `220276bee9db` |\n| U-0004 | `IEasyRetry` \u2192 a trait; the generic `T` becomes a type-erased value | 1 | `96b271608b95` |\n| U-0005 | `EasyRetry`: both retry loops, backoff, jitter, validation, logging, give-up | 1 | `2240153e9eb8` |\n| U-0006 | `EasyRetryExtensions` \u2192 three functions over the trait | 1 | `ea3bd65dbae8` |\n| U-0007\u2013U-0021 | the 15 C# test files \u2192 Rust tests in `rust/easy_retry_rs/tests/` | 1 each | `0cf807131acf` \u2026 `bdfd88dffe40` |\n| U-0022 | retirement: removed the C# side, 45 files | 0 (codemod) | `e2e179f043e4` |\n\n**What the verification did not cover:**\n- **Two C# tests have no Rust counterpart:** `AttemptAwareOverloadTests.NullArguments_ThrowArgumentNullException` and `RetryOptionsValidationTests.NullDelegates_ThrowArgumentNullException`. In Rust, references and closures can't be null. Each raised a warning that the translation checks less than the original.\n- **Retirement warning:** it reports four parameterized C# test methods as \"gone\". That is expected, since the retirement deletes the C# tests and every one of their cases is mapped to its own Rust test.\n- **\"Same object\" checks:** C# tests that asserted the same exception object now check equality of type and message, because a Rust exception is a value.\n- Nothing was skipped or excluded. The \"program\" rule had no units because this is a library.\n\n**Behaviour that differs from the C#:**\n- Validation errors keep their parameter names and messages but no longer carry `ActualValue`.\n- The list of exception types not to retry is matched by type name, so an interface type in that list would no longer match.\n- Jitter comes from a small built-in random generator seeded from the clock, not `System.Random`, because no crate could be added. The \u00b120% range is the same.\n- `Exception.Data` has no Rust equivalent. The retry details go through a process-wide hook, `easy_retry::set_exception_data`.\n\n**Workarounds in the intermediate commits:** I needed three during the port. The retirement deleted the bridge, so none of them remain in the final result:\n- Logged exceptions had to reach the C# logger as the same object. I passed their handle through a pseudo exception type, which `CcmExceptions.cs` resolved.\n- The supplied task support turned every cancellation into a new `TaskCanceledException`, but the tests require the original `OperationCanceledException`. I completed the async methods through my own outcome handle instead.\n- I added `#[allow(dead_code)]` to the supplied logging glue, whose logger-factory half this library never uses.\n\nWithout `keep_source_api`, the retirement removed the C# library, its projects and the solution, so this branch no longer builds the `EasyRetry` NuGet package. I haven't checked whether `.github/workflows/ci.yml` or the README's release steps still describe the dotnet build; they probably need updating before you merge.\n\nTo review, run `git diff 069bfc9 codecoremorph/20261125-002013-df9a`, or `git log` on the branch, where each unit is one commit. I haven't merged anything. The full report is at `E:\\codecoremorph-home\\bench\\easy-retry\\.codecoremorph\\runs\\20261125-002013-df9a\\report.md`."
+    }
+  ]
+}
