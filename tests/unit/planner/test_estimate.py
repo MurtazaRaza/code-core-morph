@@ -21,6 +21,7 @@ from codecoremorph.core.models import (
 )
 from codecoremorph.planner.estimate import (
     FALLBACK_CONTEXT_WINDOW,
+    GLUE_SECONDS_PER_MEMBER,
     PORT_TARGET_VERIFY_S,
     Estimator,
     agent_probability,
@@ -74,6 +75,21 @@ def test_unit_estimate_arithmetic() -> None:
     free = Estimator(prices=None, guidance_chars={}).unit(100, [_rule(codemods=True, llm=False)])
     assert free.cost_usd is None
     assert free.expected_attempts == 0.3
+
+
+def test_a_ports_members_whose_bridge_the_agent_writes_add_their_own_time() -> None:
+    """D-97: a C# type's delegates, events, tasks and tokens took M13's agent minutes each."""
+    estimator = Estimator(prices=None, guidance_chars={})
+    port = _rule(codemods=True, llm=True).model_copy(update={"kind": RuleKind.PORT})
+    plain = estimator.unit(1_000, [port], lines=100).agent_s
+    assert plain is not None
+    assert plain == pytest.approx(max(20.0, 0.12 * 100) * 3.0)
+    assert estimator.unit(1_000, [port], lines=100, glue=2).agent_s == pytest.approx(
+        plain + 2 * GLUE_SECONDS_PER_MEMBER
+    )
+    # Only a port's: another rule has no bridge.
+    other = _rule(codemods=False, llm=True)
+    assert estimator.unit(1_000, [other], lines=100, glue=2).agent_s == pytest.approx(20.0)
 
 
 def test_duration_counts_pending_units_only() -> None:

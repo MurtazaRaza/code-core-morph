@@ -24,7 +24,7 @@ from codecoremorph.core.models import (
     UnitStatus,
     WorkUnit,
 )
-from codecoremorph.planner.estimate import Estimator
+from codecoremorph.planner.estimate import GLUE_SECONDS_PER_MEMBER, Estimator
 from codecoremorph.planner.planner import PlannerSettings, build_plan
 from codecoremorph.planner.project import ProjectModel
 from codecoremorph.planner.sites import scan_rule
@@ -268,6 +268,36 @@ def test_types_leaves_first_with_their_hierarchies_and_nested_types(
     assert "with its nested types Zoo.Ticket.Kind, Zoo.Ticket.Stub" in note(ticket)
     assert "Zoo.Ticket.Stub is a value type" in note(ticket)  # its public field crosses
     assert "2 files keep using it through the façade" in note(pen)
+
+
+def test_members_whose_bridge_the_agent_writes_add_to_the_estimate(
+    fake_project: FakeProject,
+) -> None:
+    """D-97: a delegate, an event, a task or a cancellation token in an exported member's
+    signature each add their own time to the unit's estimate; the rest of a type, its lines."""
+    lib = _zoo(fake_project)
+    run, wait = "RunAsync(System.Int32)", "Wait(System.Threading.CancellationToken)"
+    lib.type(
+        "Zoo.Feeding", "src/Zoo/Feeding.cs", members=[run, wait, "Count"],
+        signatures={
+            run: "public System.Threading.Tasks.Task<int> Zoo.Feeding.RunAsync(int meals)",
+            wait: "public void Zoo.Feeding.Wait(System.Threading.CancellationToken token)",
+            "Count": "public int Zoo.Feeding.Count { get; }",
+        },
+    )  # fmt: skip
+    units = _by_type(_plan(lib.load()))
+
+    def agent_s(name: str) -> float:
+        estimate = units[name].estimate
+        assert estimate is not None
+        assert estimate.agent_s is not None
+        return estimate.agent_s
+
+    plain = agent_s("Zoo.Ticket")  # by its lines alone
+    assert agent_s("Zoo.Animal") == plain
+    assert agent_s("Zoo.Pen`1") == plain + GLUE_SECONDS_PER_MEMBER  # Fold takes a delegate
+    assert agent_s("Zoo.Keeper") == plain + GLUE_SECONDS_PER_MEMBER  # the event Fed
+    assert agent_s("Zoo.Feeding") == plain + 2 * GLUE_SECONDS_PER_MEMBER  # a task, a token
 
 
 def test_a_reference_cycle_is_one_unit(fake_project: FakeProject) -> None:

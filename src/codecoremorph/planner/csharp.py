@@ -83,6 +83,8 @@ _JAVA_CALLBACKS = re.compile(
     r"|\bjava\.util\.concurrent\.Callable\b"
 )
 _DELEGATES = re.compile(r"\bSystem\.(?:Func|Action|Predicate|Comparison|Converter|EventHandler)\b")
+# A task or a cancellation token in a member's signature: the bridge carries it both ways (D-96).
+_TASKS = re.compile(r"\bSystem\.Threading\.(?:Tasks\.(?:Task|ValueTask)|CancellationToken)\b")
 _SHOWN = 3  # sites, uses and implementations a note names before "and N more"
 
 # An operating system's own libraries, by name without extension: the port builds and tests on
@@ -165,6 +167,9 @@ class TypeUnit:
     packages: list[str] = field(default_factory=list[str])
     libraries: list[str] = field(default_factory=list[str])
     tasks: bool = False  # its C# has async code, which the tasks runtime takes over (D-96)
+    # Its exported members whose crossing of the bridge the agent writes: a delegate, an event,
+    # a task or a cancellation token in the signature (D-97's estimate).
+    glue: list[str] = field(default_factory=list[str])
 
     def native(self, imports: Mapping[str, NativeImport]) -> list[str]:
         """The native libraries its types call that the new code links, by the name the
@@ -634,6 +639,7 @@ class _Cut:
                 unit.packages = sorted(mapped)
                 unit.libraries = sorted({lib for c, _ in mapped.values() for lib in c.libraries})
                 unit.tasks = bool(self.async_code(unit))
+                unit.glue = self.glue(unit, definitions)
                 unit.details = self.details(unit, cluster, head, definitions, len(callers))
             units.append(unit)
         native_files = {f for t in self.native.values() for f in t.files}
@@ -1445,18 +1451,46 @@ class _Cut:
             )
         return out
 
-    def callbacks(self, unit: TypeUnit, definitions: dict[str, Symbol]) -> list[str]:
-        """What reaches C# from the unit's code: delegates, events, and the C# implementations
-        of its interfaces."""
-        # A Java member that takes one of the project's interfaces may be given a lambda or a
-        # Java implementation: either is a call back into Java.
+    def _own_callables(self) -> re.Pattern[str] | None:
+        """The project's own delegate types (a Java project's interfaces), by name."""
         callable_kind = SymbolKind.INTERFACE if self.source.language == "java" else None
         delegates = [
             re.escape(t.name.rsplit(".", 1)[-1] if callable_kind else t.name)
             for t in self.types.values()
             if t.kind is (callable_kind or SymbolKind.DELEGATE)
         ]
-        own = re.compile(rf"\b(?:{'|'.join(delegates)})\b") if delegates else None
+        return re.compile(rf"\b(?:{'|'.join(delegates)})\b") if delegates else None
+
+    def glue(self, unit: TypeUnit, definitions: dict[str, Symbol]) -> list[str]:
+        """The unit's exported members whose crossing of the bridge the agent writes (D-97): a
+        delegate or an event (a call back into C#), a task or a cancellation token (D-96). Each
+        took M13's agent minutes, where the rest of a type takes it seconds; a Java port's
+        callbacks didn't (M14), so a Java unit has none."""
+        if self.source.language == "java":
+            return []
+        own = self._own_callables()
+        out: list[str] = []
+        for member in unit.exports:
+            symbol = definitions.get(member)
+            if symbol is None:
+                continue
+            signature = symbol.signature or ""
+            if (
+                symbol.kind is SymbolKind.EVENT
+                or _DELEGATES.search(signature)
+                or _TASKS.search(signature)
+                or (own is not None and own.search(signature))
+            ):
+                out.append(member)
+        return out
+
+    def callbacks(self, unit: TypeUnit, definitions: dict[str, Symbol]) -> list[str]:
+        """What reaches C# from the unit's code: delegates, events, and the C# implementations
+        of its interfaces."""
+        # A Java member that takes one of the project's interfaces may be given a lambda or a
+        # Java implementation: either is a call back into Java.
+        callable_kind = SymbolKind.INTERFACE if self.source.language == "java" else None
+        own = self._own_callables()
         taking: list[str] = []
         events: list[str] = []
         for member in unit.exports:

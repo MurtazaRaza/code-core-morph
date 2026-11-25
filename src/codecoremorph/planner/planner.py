@@ -138,6 +138,7 @@ class _Draft:
     blocking: bool = True  # whether a port's retirement needs it (a skip-list unit doesn't)
     counted: list[str] | None = None  # the files its estimate counts, when not all of them
     kept_api: list[str] = field(default_factory=list[str])  # a retirement's kept headers, projects
+    glue: int = 0  # a C# type unit's members whose bridge the agent writes (D-97's estimate)
 
 
 def skip_matches(condition: SkipCondition, entry: FileEntry) -> bool:
@@ -1582,6 +1583,7 @@ class _Former:
                         white_box_tests=testing,
                         white_box_uses=internals,
                     ),
+                    glue=len(unit.glue),
                 )
             draft.needs = [drafts[i] for i in unit.needs]
             drafts.append(draft)
@@ -1912,7 +1914,7 @@ def build_plan(
             counted = draft.files if draft.counted is None else draft.counted
             chars = sum(project.chars(f) for f in counted)
             lines = sum(project.lines(f) for f in counted)
-            estimate = estimator.unit(chars, [rules_by_id[draft.rule]], lines)
+            estimate = estimator.unit(chars, [rules_by_id[draft.rule]], lines, glue=draft.glue)
         units.append(
             WorkUnit(
                 id=unit_id(seq),

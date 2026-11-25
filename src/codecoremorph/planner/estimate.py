@@ -12,6 +12,9 @@ of actual cost, measured after M1, when these constants get re-set from data.
   was 0.12 s per line (intercept near zero), from 12 lines in 25 s to 4,693 in 663 s. A port
   writes the module again in another language and its façade, so it expects twice the output
   and, until a measured port run re-sets it, three times the time.
+- A C# type's members whose crossing of the bridge the agent writes (a delegate, an event, a
+  task or a cancellation token in the signature) add their own time, whatever their lines: in
+  M13 three types with 14 of them took two thirds of the agent's time (D-97).
 """
 
 from __future__ import annotations
@@ -37,6 +40,10 @@ AGENT_SECONDS_PER_LINE = 0.12  # the M1 benchmark's fit, per attempt
 MIN_AGENT_SECONDS = 20.0  # the smallest M1 units still took about this long
 PORT_OUTPUT_SHARE = 2.0  # a port writes the module again, and its façade
 PORT_TIME_FACTOR = 3.0  # provisional (D-58); C# type units matched it within 3% (M11)
+# Per attempt, for each member of a C# type whose bridge the agent writes: fit to M13's two runs
+# (EasyRetry's six types, 14 such members, D-97), whose replanned estimates came to 0.99 and
+# 0.96 of their migrating time (from 1.81 and 1.75); M11's and M12's types have none.
+GLUE_SECONDS_PER_MEMBER = 180.0
 # A port's verification also configures, builds, lints and tests the target, which the source
 # baseline doesn't time: 23 to 25 s more per verification in the M8-M10 benchmarks, 5 to 10 s
 # in M11's once a unit's lint was its own files, its C# build and tests being most of it (D-83).
@@ -68,9 +75,12 @@ class Estimator:
         guidance = sum(self.guidance_chars.get(r, 0) for r in rules)
         return estimate_tokens(file_chars + guidance) + PROMPT_OVERHEAD_TOKENS
 
-    def unit(self, file_chars: int, rules: list[Rule], lines: int | None = None) -> UnitEstimate:
+    def unit(
+        self, file_chars: int, rules: list[Rule], lines: int | None = None, glue: int = 0
+    ) -> UnitEstimate:
         """``lines``: the unit's files' lines, for the model time; without them, the M1
-        average."""
+        average. ``glue``: a port's members whose bridge the agent writes, which add their own
+        time (D-97)."""
         context = self.context_tokens(file_chars, [r.id for r in rules])
         attempts = round(max(agent_probability(r) for r in rules) * ATTEMPTS_WHEN_THE_AGENT_RUNS, 2)
         port = any(r.kind is RuleKind.PORT for r in rules)
@@ -81,6 +91,8 @@ class Estimator:
             if lines is None
             else max(MIN_AGENT_SECONDS, AGENT_SECONDS_PER_LINE * lines)
         ) * (PORT_TIME_FACTOR if port else 1.0)
+        if port:
+            agent_s += glue * GLUE_SECONDS_PER_MEMBER
         later_calls = CALLS_PER_ATTEMPT - 1
         added = later_calls * TOKENS_ADDED_PER_CALL
         per_attempt_tokens = context * CALLS_PER_ATTEMPT + added + output
