@@ -14,7 +14,8 @@ detector:
 codemods:
   - tool: rust-csharp-retire      # deletes the C# and its build, and the bridges
 extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
-              '**/CcmExceptions.cs']
+              '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']
 llm:
   guidance: guidance/retire_csharp_to_rust.md
 postconditions:

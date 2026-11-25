@@ -15,7 +15,8 @@ detector:
 codemods:
   - tool: rust-csharp-type        # the workspace, the runtime, the crate, the unit's module and bridge
 extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
-              '**/CcmExceptions.cs']             # the Rust and the façades' support
+              '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']             # the Rust and the façades' support
 llm:
   guidance: guidance/port_csharp_type_to_rust.md
 postconditions:

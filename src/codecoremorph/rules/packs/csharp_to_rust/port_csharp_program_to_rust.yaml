@@ -13,7 +13,8 @@ detector:
 codemods:
   - tool: rust-csharp-program     # the program's function, its export and its Cargo program
 extra_scope: ['rust/**', '**/CodeCoreMorph.Interop.cs', '**/CodeCoreMorph.Native.g.cs',
-              '**/CcmExceptions.cs']
+              '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']
 llm:
   guidance: guidance/port_csharp_program_to_rust.md
 postconditions:

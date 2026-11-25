@@ -16,7 +16,8 @@ detector:
 codemods:
   - tool: cpp-csharp-type         # the CMake build, the runtime, the unit's C++ and bridge files
 extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
-              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']   # the C++ and the support
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']   # the C++ and the support
 llm:
   guidance: guidance/port_csharp_type_to_cpp.md
 postconditions:

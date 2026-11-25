@@ -18,7 +18,10 @@ that: return the exception the C# threw.
 
 - `rust/Cargo.toml` (the workspace), and `rust/codecoremorph_runtime/`: CodeCoreMorph's crate of
   .NET's `decimal` (`Decimal`, bit for bit, `checked_*` returning the exception .NET throws) and
-  exceptions (`Exception`, `Result<T>`). CodeCoreMorph ships it: don't edit it.
+  exceptions (`Exception`, `Result<T>`), and, with the first unit that has async code, its
+  `tasks` module (.NET's tasks: `spawn`, `Task<T>`, `when_all`, `delay`, tokens) with the
+  bridge's `src/bridge/ccm_tasks.rs` (async exports, C# tasks and tokens across the bridge).
+  CodeCoreMorph ships them: don't edit them.
 - `rust/<name>_rs/`, the library's crate: `Cargo.toml` (a `cdylib`, which the façades load, and
   an `rlib`; **add no dependency**: the port builds offline), `cbindgen.toml` and
   `src/lib.rs` (`#![deny(unsafe_code)]`, the unit's `pub mod <unit>;` added, and `mod bridge;`
@@ -105,8 +108,8 @@ that: return the exception the C# threw.
 
   The Rust calls it with `ccm::check_managed(unsafe { f(context, ...) })?` (`let f =
   ccm::callback(fold)?;` first: a null delegate is `NullReferenceException`), which turns a C#
-  exception into `Exception::managed()`: pass it on with `?`, and the façade rethrows the C#
-  exception itself. A handle the Rust passes to C# is a new one the C# owns
+  exception into an `Exception` of its .NET type (below): pass it on with `?`, and the façade
+  throws the C# exception itself again. A handle the Rust passes to C# is a new one the C# owns
   (`ccm::to_handle(x.clone())`); a string C# returns is read and freed with `ccm::take_str`.
   An interface implemented in C# (a test double) reaches the Rust through a proxy: a struct in
   the bridge holding an `Arc<ManagedRef>` (`ManagedRef::new(context, release)`, which frees the
@@ -150,6 +153,19 @@ that: return the exception the C# threw.
 
   Refused, and not yours to work around: a ported constructor that calls a virtual member a C#
   class overrides (C# runs the override before the derived constructor; Rust has no object yet).
+- **Async exports** (D-96). An async member's export takes the façade's task context and the
+  token last (`..., cancellation: *mut c_void, task: *mut c_void`), and its body is
+  `ccm::guard(|| { let object = Arc::clone(ccm::from_handle(handle)?); let token =
+  ccm_tasks::token(cancellation); ccm_tasks::start(task, || Ok(object.get_async(
+  ccm::str_in(key, "key")?, token))); Ok(()) })`: `start` completes the C# task with the
+  task's outcome, once, from the thread that finishes it, and turns what the closure returns
+  as an error (an argument check) into a faulted task, as C# does. A result is `()`, a
+  `String` or `Option<String>` (a null one), a `Vec<String>`, an integer or a floating-point
+  number. A delegate or an interface member implemented in C# that returns a task takes
+  `cancellation: *mut c_void, source: *mut c_void` last and returns its status: the Rust side
+  is `ccm_tasks::managed_task(|source| unsafe { f(context, ..., token.get(), source) })` with
+  `let token = TokenOut::new(cancellation);`, which gives a `Task<T>` the C# task completes;
+  a `TimeSpan` crosses as its ticks (`i64`, `ccm_tasks::milliseconds(ticks)`).
 - **A public dynamic parameter or result** (D-88; the note names the types that reach it).
   A parameter gets an export per kind of value the solution passes it, named after the kind
   (`zoo_Labels_line_Animal(item: *const zoo_Animal, result: *mut *mut c_char)`,
@@ -162,7 +178,12 @@ that: return the exception the C# threw.
   parameter name: `Err(Exception::argument_null("name"))`,
   `Exception::argument_out_of_range("index", "...")`, `Exception::invalid_operation("an empty
   pen")`, `Exception::key_not_found(...)`, `Exception::null_reference()`; an empty message is
-  .NET's own. The façade throws the .NET exception again. A project's own exception type stays
+  .NET's own. An `ArgumentOutOfRangeException` the C# gave its actual value is
+  `Exception::argument_out_of_range_value("count", count, "...")`, the value anything that
+  converts into a `DotnetValue` (a number, a bool, a string, an `Option`, a `Duration`; the
+  port's own `TimeSpan` with `impl From<TimeSpan> for DotnetValue`,
+  `DotnetValue::time_span(ticks)`): the façade's exception reports it as its `ActualValue`
+  (D-97). The façade throws the .NET exception again. A project's own exception type stays
   a C# class (the tests catch it): the Rust returns `Exception::custom("Zoo.ZooException",
   message, [("field", value)])`, with its C# constructor's arguments by name, and
   `CcmExceptions.cs` constructs it from them:
@@ -186,7 +207,8 @@ that: return the exception the C# threw.
   ```
 
   Put a function that builds it beside the type (`pub fn zoo_error(message: &str) ->
-  Exception`), which the Rust keeps after the retirement.
+  Exception`), which the Rust keeps after the retirement, and a constant of its .NET type
+  (`pub const ZOO_ERROR: &str = "Zoo.ZooException";`) for `is_a`.
 
 ## The façade
 
@@ -204,9 +226,11 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the R
   returns `zoo_AnimalHandle.Null` for null. Other façades use these two.
 - **Strings out** are read with `CcmInterop.TakeString(ptr)`, which frees them; decimals with
   `CcmDecimal.From(x)` and `.ToDecimal()`.
-- **A delegate** passed to Rust is a `CcmNative` delegate built around the C# one, with the C#
-  call inside `CcmInterop.Callback(...)`; keep it alive for the call (a local the call uses
-  last). A context the Rust keeps is `CcmInterop.Pin(obj)` with `CcmInterop.Release`.
+- **A delegate** passed to Rust is a delegate of the type's name built around the C# one, with
+  the C# call inside `CcmInterop.Callback(...)`; keep it alive for the call (a local the call
+  uses last). `CodeCoreMorph.Native.g.cs` declares it beside `CcmNative`, in
+  `CodeCoreMorph.Interop`: `zoo_Pen_fold_fn`, not `CcmNative.zoo_Pen_fold_fn`. A context the
+  Rust keeps is `CcmInterop.Pin(obj)` with `CcmInterop.Release`.
 - **An interface** stays a C# interface, unchanged. Beside it, an internal static class gives
   the handle of any implementation: a ported class's own, or a proxy over a C# one.
 - A hierarchy's façades stay a hierarchy: the base holds the handle, and a derived class passes
@@ -246,6 +270,14 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the R
   Ticket, the types the solution passes it; not for " + ((object)item).GetType().FullName); }`.
   A dynamic result reads the kind and returns the boxed value of that kind
   (`case 0: return whole; case 1: return amount.ToDecimal();`).
+- **An async member** (D-96) keeps its signature but not `async` (the modifier isn't the
+  API): `Task<string> task; IntPtr token; IntPtr context = CcmTasks.Start(cancellation, out
+  task, out token); CcmInterop.Check(CcmNative.zoo_Pen_feed_async(Handle, ..., token,
+  context)); return task;` (`using System.Threading.Tasks;`). A callback that returns a C#
+  task gives it to the native source: `return CcmInterop.Callback(() => CcmTasks.Forward(
+  target.FetchAsync(CcmInterop.Utf8(key), CcmTasks.FromNative(cancellation)), source));`
+  (`CcmTasks.FromNative` gives the C# token a native one stands for: the caller's own when it
+  came from C#).
 - Static members call exports that use the Rust's static state; static fields the C# exposes
   become what they were (a `const` stays a `const`).
 
@@ -307,6 +339,11 @@ drop the guard, then call. The report counts each unit's shared cells (`Mutex`, 
 - `decimal` is `codecoremorph_runtime::Decimal`: `checked_add` and its kin return the exception
   .NET throws (use them with `?`), `round`, `truncate`, `parse` and `Display` are .NET's
   (`ToString` in the invariant culture). Format numbers as the C# did in the invariant culture.
+- A `TimeSpan` that can be negative is the port's own type of signed 100 ns ticks (`Duration`
+  can't): give it `impl LogArg` (`log_text` its `ToString`,
+  `codecoremorph_runtime::exceptions::time_span_text(ticks)`; `log_value`
+  `DotnetValue::time_span(ticks)`) and `impl From<TimeSpan> for DotnetValue`, so a
+  log entry and an exception's actual value keep it a `TimeSpan` (D-97).
 - **Integers.** The tests build in debug, where Rust's overflow panics: unchecked C# wraps, so
   arithmetic that may overflow is `wrapping_add` and its kin. Where the C# was `checked` (or
   the note says the project checks overflow, `CheckForOverflowUnderflow`: every integer `+`,
@@ -377,6 +414,41 @@ The unit's note names each of these where the C# has them (D-82).
 - **Platform checks** (`RuntimeInformation.IsOSPlatform`, `NativeLibrary.Load`, a
   `SetDllImportResolver`) go: keep what the C# did for the platform the port builds on (Linux),
   and say in the symbol map what went.
+- **Async code** (D-96; the note names its sites). An `async Task<T>` member returns
+  `codecoremorph_runtime::tasks::Task<T>` (`Task<()>` for a `Task`), its body in
+  `tasks::spawn(async move { ... })`: `.await?` what the C# awaited, `Ok(...)` its result,
+  `Err(...)` what it threw (the task faults; `Exception::operation_canceled()` cancels it).
+  `spawn` runs the body on the caller's thread until its first `.await` of something not done
+  yet, as the C# method does, so an argument check faults the task before the call returns:
+  keep the checks in the body. `Task.WhenAll` is `tasks::when_all` (a `Vec` of tasks, the
+  results in their order), `Task.Delay(t, token)` is `tasks::delay(Some(t), &token)`
+  (`Timeout.Infinite` is `None`), `Task.FromResult` is `Task::from_result` and
+  `Task.FromException` `Task::from_error`, `Task.Yield()` is
+  `tasks::delay(Some(Duration::ZERO), &CancellationToken::none()).await?`,
+  `TaskCompletionSource<T>` is `tasks::TaskCompletionSource<T>`, `CancellationToken` (by value
+  or `&`, `CancellationToken::none()` for `default`) and `CancellationTokenSource` are
+  `tasks`'s; `ConfigureAwait(false)` goes. A sleep the token cuts short in synchronous code,
+  `token.WaitHandle.WaitOne(t)`, is `token.wait(Some(t))`, which returns whether the token was
+  canceled. A cancellation carries its token, as .NET's does, and the façade's exception
+  carries the caller's C# token (D-97): `token.throw_if_cancellation_requested()` and `delay`
+  give it; one you return yourself takes it, `Exception::task_canceled_by(&token)` where the
+  C# awaited a `Task.Delay` the token had canceled already, and
+  `Exception::operation_canceled_by(&token)` (`.with_cancellation_token(&token)` for a
+  project's own; `e.cancellation_token()` reads it). What Rust needs that C# didn't:
+  - The body is `'static`: an async member of a type takes `self: &Arc<Self>` and moves
+    `Arc::clone(self)` into the body, as the C# object lives while its async method runs (the
+    constructor returns `Arc<Self>`); it takes owned values (`String`, a `Vec`), not borrows.
+  - Never hold a `MutexGuard` across `.await`: take what you need in a statement of its own
+    and await after it.
+  - A `catch (T)` is `Err(e) if e.is_a("Ns.T")`: `is_a` takes the type and the types derived
+    from it, as a C# catch does (`is` takes the type alone), and a `when` filter is the rest of
+    the guard.
+- **Exceptions from C#, by type** (D-96). A C# exception that a call into C# throws (a
+  delegate, an interface implemented in C#, a C# task the Rust awaits) comes out of
+  `ccm::check_managed` (or the awaited task) as an `Exception` of its .NET type with its base
+  types, carrying the C# object: `e.is_a("Relay.TransientException")` holds for it and for a
+  type derived from it. When the Rust lets it go (returns it, or a task it faults reaches a
+  façade), the façade throws the same C# object, so `Assert.AreSame` holds.
 
 ## The symbol map
 

@@ -18,7 +18,9 @@ checks quiet, and outside `cpp/bridge` no `new` or `delete` whose pointer no sma
 (`std::make_shared`, `std::make_unique`; `std::shared_ptr<T>(new T(...))` for a private
 constructor) and no cast between pointer types (`reinterpret_cast`, or a C-style cast that is
 one). The bridge's handles and contexts are its own casts. Keep `CODECOREMORPH_SANITIZE` in
-the top-level `CMakeLists.txt`.
+the top-level `CMakeLists.txt`. clang-analyzer reports a leak (`NewDeleteLeaks`) where a
+`?:` picks between `std::move(p)` and `std::make_shared<T>()` with a throw after it: assign
+first, then `if (!p) p = std::make_shared<T>();`.
 
 ## What the codemod made
 
@@ -29,7 +31,9 @@ the top-level `CMakeLists.txt`.
 - `cpp/include/codecoremorph_decimal.hpp` (`ccm::Decimal`, .NET's `decimal` bit for bit) and
   `cpp/include/codecoremorph_exceptions.hpp` (`ccm::Exception` and the mirrors of .NET's
   exceptions), and `cpp/bridge/codecoremorph_bridge.{h,hpp,cpp}` (the bridge's types and
-  helpers). CodeCoreMorph ships them: don't edit them.
+  helpers). With the first unit that has async code, `cpp/include/codecoremorph_tasks.hpp`
+  (`ccm::tasks`, .NET's tasks for C++20) and `cpp/bridge/codecoremorph_tasks.{h,cpp}` (async
+  exports, C# tasks and tokens across the bridge). CodeCoreMorph ships them: don't edit them.
 - `cpp/src/<unit>.hpp` and `cpp/src/<unit>.cpp`: empty. **The port goes here**, in a namespace
   from the C# one in snake case (`Zoo` is `zoo`, `Shop.Billing` is `shop::billing`).
 - `cpp/bridge/<unit>.h` and `cpp/bridge/<unit>.cpp`: empty. **The exports go here**: the C
@@ -71,7 +75,9 @@ the top-level `CMakeLists.txt`.
   `ArgumentNullException` as the C# check did; where the C# allows null, test the count).
   Out, `bridge::out_array(result_data, result_count, bytes)` copies a vector, and the façade
   reads it with `CcmInterop.TakeBytes(data, count)` (`TakeInts` for `int32_t`), which frees
-  it: one call per array, not one per element.
+  it: one call per array, not one per element. A `string[]` in (`const char **names_data`) is
+  the same: `bridge::array(names_data, names_count, "names")` gives its `const char *`s, each
+  read with `bridge::str` (no pointer arithmetic, which clang-tidy refuses).
 - **Decimals:** `bridge::dec(ccm_decimal)` gives a `ccm::Decimal`, and back.
 - **A class** is a handle: `CCM_HANDLE(zoo_Animal);` in the header's `extern "C"` block,
   `CCM_HANDLE_CLASS(zoo_Animal, zoo::Animal)` after it (C++ only, with a forward declaration
@@ -92,8 +98,9 @@ the top-level `CMakeLists.txt`.
 - **Calls into C#.** A delegate parameter becomes a function pointer typedef taking a
   `void *context` first and returning a status
   (`typedef ccm_status (*zoo_Pen_fold_fn)(void *context, int32_t seed, zoo_Animal *item, int32_t *result);`);
-  the C++ calls it through `bridge::check_managed(fn(context, ...))`, which turns a C#
-  exception into `bridge::ManagedException`, and the façade rethrows the C# exception itself.
+  the C++ calls it through `bridge::check_managed(fn(context, ...))`, which throws a C#
+  exception as the mirror of its type (below), and the façade throws the C# exception itself
+  again.
   An interface implemented in C# (a test double) reaches the C++ through a proxy: an export
   `<name>_<I>_from_managed(void *context, ccm_release_fn release, <fn per member>...,
   <name>_<I> **result)` makes a C++ class implementing the interface over a
@@ -136,6 +143,20 @@ the top-level `CMakeLists.txt`.
 
   Refused, and not yours to work around: a ported constructor that calls a virtual member a C#
   class overrides (C# runs the override before the derived constructor; C++ can't).
+- **Async exports** (D-96). An async member's export takes the façade's task context and the
+  token last (`..., void *cancellation, void *task`), and its body is
+  `return bridge::guard([&] { auto token = bridge::token(cancellation); bridge::start(task, [&] {
+  return object->get_async(bridge::str(key, "key"), token); }); });` (`#include
+  "codecoremorph_tasks.h"`): `start` completes the C# task with the native task's outcome,
+  once, from the thread that finishes it, and turns what the lambda throws (an argument check)
+  into a faulted task, as C# does. A result is `void`, a string (`std::string` or
+  `std::optional<std::string>`, a null one), a string array (`std::vector<std::string>`), an
+  integer or a floating-point number. A delegate or an interface member implemented in C#
+  that returns a task takes `void *cancellation, void *source` last and returns its status:
+  the C++ side is `bridge::managed_task<T>([&](void *source) { return fn(context, ...,
+  token.get(), source); })` with `bridge::TokenOut token(cancellation);`, which gives a
+  `ccm::tasks::Task<T>` the C# task completes; a `TimeSpan` crosses as its ticks
+  (`int64_t`, `bridge::milliseconds(ticks)`).
 - **A public dynamic parameter or result** (D-88; the note names the types that reach it).
   A parameter gets an export per kind of value the solution passes it, named after the kind
   (`zoo_Labels_line_Animal(const zoo_Animal *item, char **result)`,
@@ -147,10 +168,15 @@ the top-level `CMakeLists.txt`.
 - **Exceptions.** The C++ throws the mirror of what the C# threw, where it threw it, with the
   same message and parameter name: `ccm::ArgumentNullException("name")`,
   `ccm::InvalidOperationException("an empty pen")`, `ccm::KeyNotFoundException(...)`. The
-  façade throws the .NET exception again. A project's own exception type stays a C# class (the
-  tests catch it): its C++ class derives from `ccm::Exception` (or the mirror of its .NET base),
+  façade throws the .NET exception again. An `ArgumentOutOfRangeException` the C# gave its
+  actual value is `ccm::ArgumentOutOfRangeException("count", count, "...")`, the value as
+  `ccm::dotnet_value` takes it (a number, a bool, a string, a `std::chrono::duration` for a
+  `TimeSpan`): the façade's exception reports it as its `ActualValue` (D-97). A project's own
+  exception type stays a C# class (the tests catch it): its C++ class derives from `ccm::Exception` (or the mirror of its .NET base),
   overrides `dotnet_type()` (`"Zoo.ZooException"`) and `fields()` (its C# constructor's
-  arguments, by name), and `CcmExceptions.cs` constructs it from them:
+  arguments, by name), or is `CCM_MIRROR_EXCEPTION(ZooException, ccm::Exception,
+  "Zoo.ZooException");` when it takes its message alone, and `CcmExceptions.cs` constructs it
+  from them:
 
   ```csharp
   namespace CodeCoreMorph.Interop
@@ -170,6 +196,10 @@ the top-level `CMakeLists.txt`.
   }
   ```
 
+  Where C# that a call reaches (a delegate, a C# implementation, a C# task) may throw it and
+  the C++ catches it by type, the unit's bridge `.cpp` registers it:
+  `CCM_REGISTER_EXCEPTION("Zoo.ZooException", zoo::ZooException);`.
+
 ## The façade
 
 The façade calls `CcmNative.<export>` from `CodeCoreMorph.Native.g.cs` (`using
@@ -186,9 +216,11 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
   returns `zoo_AnimalHandle.Null` for null. Other façades use these two.
 - **Strings out** are read with `CcmInterop.TakeString(ptr)`, which frees them; decimals with
   `CcmDecimal.From(x)` and `.ToDecimal()`.
-- **A delegate** passed to C++ is a `CcmNative` delegate built around the C# one, with the C#
-  call inside `CcmInterop.Callback(...)`; keep it alive for the call (a local the call uses
-  last). A context the C++ keeps is `CcmInterop.Pin(obj)` with `CcmInterop.Release`.
+- **A delegate** passed to C++ is a delegate of the typedef's name built around the C# one,
+  with the C# call inside `CcmInterop.Callback(...)`; keep it alive for the call (a local the
+  call uses last). `CodeCoreMorph.Native.g.cs` declares it beside `CcmNative`, in
+  `CodeCoreMorph.Interop`: `zoo_Pen_fold_fn`, not `CcmNative.zoo_Pen_fold_fn`. A context the
+  C++ keeps is `CcmInterop.Pin(obj)` with `CcmInterop.Release`.
 - **An interface** stays a C# interface, unchanged. Beside it, an internal static class gives
   the handle of any implementation: a ported class's own, or a proxy over a C# one.
 - A hierarchy's façades stay a hierarchy: the base holds the handle, and a derived class passes
@@ -228,6 +260,14 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
   Ticket, the types the solution passes it; not for " + ((object)item).GetType().FullName); }`.
   A dynamic result reads the kind and returns the boxed value of that kind
   (`case 0: return whole; case 1: return amount.ToDecimal();`).
+- **An async member** (D-96) keeps its signature but not `async` (the modifier isn't the
+  API): `Task<string> task; IntPtr token; IntPtr context = CcmTasks.Start(cancellation, out
+  task, out token); CcmInterop.Check(CcmNative.zoo_Pen_feed_async(Handle, ..., token,
+  context)); return task;` (`using System.Threading.Tasks;`). A callback that returns a C#
+  task gives it to the native source: `return CcmInterop.Callback(() => CcmTasks.Forward(
+  target.FetchAsync(CcmInterop.Utf8(key), CcmTasks.FromNative(cancellation)), source));`
+  (`CcmTasks.FromNative` gives the C# token a native one stands for: the caller's own when it
+  came from C#).
 - Static members call exports that use the C++ static state; static fields the C# exposes
   become what they were (a `const` stays a `const`).
 
@@ -251,8 +291,10 @@ pointer. Each call goes through `CcmInterop.Check(...)`, which throws what the C
 - `string` is UTF-8 `std::string`. C#'s `Length` and indices count UTF-16 units: the same for
   ASCII; otherwise note it in the symbol map.
 - `decimal` is `ccm::Decimal`, with its arithmetic, rounding, `to_string` and `parse`.
-  `DateTime` and `TimeSpan` are `<chrono>`. Format numbers as the C# did in the invariant
-  culture.
+  `DateTime` and `TimeSpan` are `<chrono>`: a `TimeSpan` is a duration of 100 ns ticks
+  (`std::chrono::duration<std::int64_t, std::ratio<1, 10000000>>`), which the runtime logs
+  and reports as a `TimeSpan` (`ccm::dotnet_value`). Format numbers as the C# did in the
+  invariant culture.
 - The checks C# makes: unchecked integer overflow wraps in C# and is undefined for signed C++
   integers, so do arithmetic that may overflow in unsigned types and convert back, and throw
   `ccm::OverflowException` where the C# was `checked`. Integer division by zero, a bad index
@@ -323,6 +365,45 @@ The unit's note names each of these where the C# has them (D-82).
   `SetDllImportResolver`) go: the C++ is built for its platform and links its libraries. Keep
   what the C# did for the platform the port builds on (Linux), and say in the symbol map what
   went.
+- **Async code** (D-96; the note names its sites). An `async Task<T>` member is a coroutine
+  returning `ccm::tasks::Task<T>` (`codecoremorph_tasks.hpp`, C++20, which the first unit with
+  async code placed): `co_await` what the C# awaited, `co_return` its result, `throw` what it
+  threw (the task faults; `ccm::OperationCanceledException` cancels it). A `Task` is
+  `Task<void>`. The task starts on the caller's thread and runs until its first suspension,
+  as the C# method does, so an argument check faults the task before the call returns: keep
+  the checks in the coroutine. `Task.WhenAll` is `ccm::tasks::when_all` (a vector of tasks,
+  the results in their order), `Task.Delay(t, token)` is `ccm::tasks::delay(ms, token)`
+  (whole milliseconds; `Timeout.Infinite`, -1, never ends), `Task.FromResult` is
+  `Task<T>::from_result` and `Task.FromException` `Task<T>::from_exception`,
+  `Task.Yield()` is `co_await ccm::tasks::delay(std::chrono::milliseconds(0))`,
+  `TaskCompletionSource<T>` is `ccm::tasks::TaskCompletionSource<T>`, `CancellationToken`
+  (by value, `{}` for `default`) and `CancellationTokenSource` are `ccm::tasks`'s;
+  `ConfigureAwait(false)` goes (nothing captures a context). A cancellation carries its token,
+  as .NET's does, and the façade's exception carries the caller's C# token (D-97):
+  `token.throw_if_cancellation_requested()` and `delay` give it; a cancellation you throw
+  yourself takes it, `throw ccm::TaskCanceledException("A task was canceled.", token);` where
+  the C# awaited a `Task.Delay` the token had canceled already, and
+  `ccm::OperationCanceledException(message, token)`. A sleep the token cuts short in
+  synchronous code, `token.WaitHandle.WaitOne(t)`, is `token.wait_for(ms)`, which returns
+  whether the token was canceled. What C++ needs that C# didn't:
+  - A coroutine's reference parameters dangle once it suspends: take `std::string`, a vector,
+    a token **by value** in an async member's signature, never `const T&`.
+  - No `co_await` in a `catch` handler: note what you caught (a flag, the
+    `std::exception_ptr`), leave the handler, and await after it (a retry's pause).
+  - An async member of a class keeps the object alive: the class derives from
+    `std::enable_shared_from_this`, and the coroutine's first line is
+    `auto self = shared_from_this();`, as the C# object lives while its async method runs.
+  - Never hold a lock across `co_await`: take what you need under the lock, in a block, and
+    await outside it.
+- **Exceptions from C#, by type** (D-96). A C# exception that a call into C# throws (a
+  delegate, an interface implemented in C#, a C# task the C++ awaits) comes out of
+  `bridge::check_managed` (or the awaited task) as the mirror of its type, carrying the C#
+  object: `catch (const ccm::KeyNotFoundException&)` catches a C# `KeyNotFoundException`, and
+  a project's own exception type is caught as its C++ class once its bridge file registers it
+  (`CCM_REGISTER_EXCEPTION("Relay.TransientException", relay::TransientException);` in the
+  bridge `.cpp` of the unit that ports it; its C++ class takes the message alone). When the
+  C++ lets it go (rethrows it, or a task it faults reaches a façade), the façade throws the
+  same C# object, so `Assert.AreSame` holds.
 
 ## The symbol map
 

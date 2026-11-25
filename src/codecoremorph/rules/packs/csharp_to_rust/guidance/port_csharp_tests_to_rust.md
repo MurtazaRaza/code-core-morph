@@ -46,6 +46,14 @@ them.
   is an `int` (`let TallyTotal::Int(whole) = tally.total() else { panic!(...) };`), and the
   conversion the note names where it isn't. A dynamic argument is the variant of the value's
   type.
+- An async test (D-96; `async Task`) is a plain `#[test] fn` that waits: what it awaits is
+  `.wait()` on the `Task` (a `Result`), `task.is_completed()`, `is_canceled()` and
+  `is_faulted()` are the C#'s properties, and `Assert.ThrowsAsync<T>(() => ...)` is
+  `let e = ....wait().unwrap_err(); assert!(e.is("Ns.T"));`. A test double whose C# member is
+  async returns `tasks::spawn(async move { ... })` (`tasks::delay(Some(Duration::ZERO),
+  &CancellationToken::none()).await?` for `Task.Yield()`); `TaskCompletionSource` and
+  `CancellationTokenSource` are `tasks`'s, and `Assert.AreSame` on a C# exception the Rust now
+  returns itself is the message and the type.
 - Keep every check: I-4 compares how many assertions each C# test and its Rust tests make
   together, and a translation that checks less is refused.
 

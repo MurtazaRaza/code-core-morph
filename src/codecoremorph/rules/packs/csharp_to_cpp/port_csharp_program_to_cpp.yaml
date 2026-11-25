@@ -13,7 +13,8 @@ detector:
 codemods:
   - tool: cpp-csharp-program      # the program's C++, its export and its CMake program
 extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
-              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']
 llm:
   guidance: guidance/port_csharp_program_to_cpp.md
 postconditions:

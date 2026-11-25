@@ -13,7 +13,8 @@ detector:
 codemods:
   - tool: cpp-csharp-retire       # deletes the C# and its build, and the bridge
 extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
-              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']
 llm:
   guidance: guidance/retire_csharp_to_cpp.md
 postconditions:

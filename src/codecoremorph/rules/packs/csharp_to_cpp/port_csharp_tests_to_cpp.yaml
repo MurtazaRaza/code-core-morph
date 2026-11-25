@@ -13,7 +13,8 @@ detector:
 codemods:
   - tool: cpp-csharp-tests        # the GoogleTest file and its CMake test program
 extra_scope: ['cpp/**', 'CMakeLists.txt', '**/CodeCoreMorph.Interop.cs',
-              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs']
+              '**/CodeCoreMorph.Native.g.cs', '**/CcmExceptions.cs',
+              '**/CodeCoreMorph.Logging.cs', '**/CodeCoreMorph.Tasks.cs']
 llm:
   guidance: guidance/port_csharp_tests_to_cpp.md
 postconditions:

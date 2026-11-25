@@ -41,6 +41,14 @@ files are read-only in this unit, the test doubles and helpers it uses with them
   `ASSERT_TRUE(std::holds_alternative<int32_t>(total))`, a cast (`(int)tally.Total`) is
   `std::get<int32_t>` where the note says it is an `int`, and the conversion the note names
   where it isn't. A dynamic argument is the alternative of the value's type.
+- An async test (D-96; `async Task`) is a plain `TEST` that waits: what it awaits is
+  `.get()` on the `ccm::tasks::Task` (which throws the task's exception), `task.is_completed()`,
+  `is_canceled()` and `is_faulted()` are the C#'s properties, and
+  `Assert.ThrowsAsync<T>(() => ...)` is `ASSERT_THROW(....get(), ccm::T)` (caught to check its
+  message). A test double whose C# member is async is a coroutine (`co_await
+  ccm::tasks::delay(std::chrono::milliseconds(0))` for `Task.Yield()`), taking its parameters
+  by value; `TaskCompletionSource` and `CancellationTokenSource` are `ccm::tasks`'s, and
+  `Assert.AreSame` on a C# exception the C++ now throws itself is the message and the type.
 - Keep every check: I-4 compares how many assertions each C# test and its GoogleTest tests make
   together, and a translation that checks less is refused.
 
