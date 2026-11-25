@@ -29,6 +29,8 @@ from codecoremorph.core.models import (
     MacroKind,
     MacroSite,
     Message,
+    PackageCounterpart,
+    PackageEntry,
     PortUnit,
     PortUnits,
     RuleKind,
@@ -208,6 +210,7 @@ def unit_message(
             note += macro_sites_note(sites, port_units)
     elif csharp_target is not None:
         note += csharp_port_note(unit, port_units, csharp_target)
+        note += package_note(index_path, unit.port, port_units, csharp_target)
     elif java_target is not None:
         note += java_port_note(unit, port_units, java_target)
     elif port_units is PortUnits.RETIREMENT:
@@ -556,6 +559,48 @@ def rust_macro_sites(
             and s.expansion is not None
             and (s.test_only or s.file in test_files) == tests
         ]
+
+
+def package_counterparts(
+    index_path: Path | None, packages: Sequence[str], target: str
+) -> list[tuple[PackageEntry, PackageCounterpart]]:
+    """The restored packages named in ``packages`` with their counterparts in ``target``, as the
+    index of the port's source recorded them (D-95), once per package."""
+    if not packages or index_path is None or not index_path.is_file():
+        return []
+    wanted = set(packages)
+    found: dict[str, tuple[PackageEntry, PackageCounterpart]] = {}
+    with IndexStore.open(index_path) as store:
+        for entry in store.packages():
+            counterpart = entry.counterpart
+            if entry.name in wanted and counterpart is not None and counterpart.target == target:
+                found.setdefault(entry.name, (entry, counterpart))
+    return [found[name] for name in sorted(found)]
+
+
+def package_note(
+    index_path: Path | None, port: PortUnit | None, port_units: PortUnits | None, target: str
+) -> str:
+    """A port from C#'s unit whose C# uses .NET packages the target maps (D-95): what stands for
+    each in the new code and how its API maps, from the mappings CodeCoreMorph ships. The
+    plan's note doesn't reach the agent, so the message carries them."""
+    if port is None or not port.packages:
+        return ""
+    found = package_counterparts(index_path, port.packages, target)
+    if not found:
+        return ""
+    name = _TARGET_NAMES.get(target, target)
+    who = "these tests" if port_units is PortUnits.TESTS else "these types"
+    blocks = [
+        f"The C# of {who} uses .NET packages that have counterparts in the {name} (D-95). The "
+        "scaffold gave the new code what each needs: use them as follows, and add no other "
+        "dependency."
+    ]
+    for entry, counterpart in found:
+        version = f" {entry.version}" if entry.version else ""
+        lines = "\n".join(f"- {n}" for n in counterpart.notes)
+        blocks.append(f"{entry.name}{version} is {counterpart.counterpart}:\n{lines}")
+    return "\n\n".join(blocks) + "\n\n"
 
 
 def rust_macro_tests(index_path: Path | None) -> list[str]:

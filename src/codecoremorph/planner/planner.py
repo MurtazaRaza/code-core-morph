@@ -61,6 +61,7 @@ from codecoremorph.planner.csharp import (
     cut_tests,
     cut_types,
     dynamic_notes,
+    mapped_packages_in,
     project_name,
 )
 from codecoremorph.planner.csharp import display as csharp_display
@@ -159,8 +160,10 @@ class _Former:
         mapped_tests: Collection[str] = (),
         new_code: Collection[str] = (),
         language: str = "cpp",
+        target_standard: str | None = None,
     ):
         self.project = project
+        self.target_standard = target_standard  # the target's (cpp20; D-96)
         self.settings = settings
         self.estimator = estimator
         self.names = names
@@ -1518,7 +1521,9 @@ class _Former:
     ) -> list[_Draft]:
         target = _LANGUAGE_NAMES.get(language, language)
         source_name = SOURCES[source].name
-        result = cut_types(self.project, files, self.is_new_code, language, source)
+        result = cut_types(
+            self.project, files, self.is_new_code, language, source, self.target_standard
+        )
         self.dependencies = result.dependencies
         if result.refused is not None or result.project is None:
             if not result.files:
@@ -1571,6 +1576,8 @@ class _Former:
                         exports=unit.exports,
                         types=[t.id for t in unit.types],
                         native_libraries=unit.native(result.imports),
+                        packages=unit.packages,
+                        tasks=unit.tasks,
                         white_box=testing,
                         white_box_tests=testing,
                         white_box_uses=internals,
@@ -1669,6 +1676,13 @@ class _Former:
             dynamic = dynamic_notes(self.project.types, {unit.file, *unit.helpers})
             if dynamic:
                 note += "; " + "; ".join(dynamic)
+            # The packages its C# uses whose counterparts its translation uses (D-95).
+            packages = mapped_packages_in(self.project, {unit.file, *unit.helpers}, language)
+            if packages:
+                note += (
+                    f"; it uses {', '.join(packages)}, whose {target} counterparts the "
+                    "translation uses (D-95)"
+                )
             drafts.append(
                 _Draft(
                     rule=scan.rule_id,
@@ -1682,6 +1696,7 @@ class _Former:
                         module=module,
                         tests=unit.cases,
                         data_driven=unit.data_driven_ids,
+                        packages=packages,
                     ),
                     needs=self._type_needs(unit.uses),
                 )
@@ -1850,6 +1865,7 @@ def build_plan(
         mapped_tests=mapped_tests,
         new_code=sorted({g for r in port_rules for g in r.extra_scope}),
         language=language,
+        target_standard=target,
     )
     drafts: list[_Draft] = []
     plan_rules: list[PlanRule] = []

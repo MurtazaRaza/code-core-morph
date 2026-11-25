@@ -40,10 +40,12 @@ from codecoremorph.core.models import (
     GenericUse,
     NativeCall,
     NativeImport,
+    PackageCounterpart,
     PackageEntry,
     PackageUse,
     PortDependency,
     PortDependencyKind,
+    PortNotice,
     PortNoticeKind,
     Symbol,
     SymbolKind,
@@ -158,12 +160,18 @@ class TypeUnit:
     needs: list[int] = field(default_factory=list[int])  # the units it uses, by position
     refused: str | None = None  # why the first version refuses it
     native_calls: list[str] = field(default_factory=list[str])  # P/Invoke members it calls
+    # The .NET packages its types use that the target has a counterpart of, and the C libraries
+    # those counterparts are (D-95).
+    packages: list[str] = field(default_factory=list[str])
+    libraries: list[str] = field(default_factory=list[str])
+    tasks: bool = False  # its C# has async code, which the tasks runtime takes over (D-96)
 
     def native(self, imports: Mapping[str, NativeImport]) -> list[str]:
         """The native libraries its types call that the new code links, by the name the
         P/Invokes give: not the C library, which every program links, nor another operating
         system's own, whose calls are in the branches for it that the port drops (a call the
-        port's platform reaches refuses the unit, D-94)."""
+        port's platform reaches refuses the unit, D-94); and the C libraries that stand for
+        the packages it uses (D-95)."""
         return sorted(
             {
                 imports[m].library
@@ -172,6 +180,7 @@ class TypeUnit:
                 and not c_runtime(imports[m].library)
                 and platform_of(imports[m].library) is None
             }
+            | set(self.libraries)
         )
 
 
@@ -266,6 +275,29 @@ def _listed(items: Iterable[str], shown: int = _SHOWN) -> str:
 
 def _plural(n: int, one: str, many: str | None = None) -> str:
     return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def mapped_packages_in(project: ProjectModel, files: Collection[str], target: str) -> list[str]:
+    """The packages the C# types declared in ``files`` (a test file and its helpers) use that
+    the target has a counterpart of (D-95): their translation uses the counterparts, as the
+    library's new code does."""
+    found: set[str] = set()
+    for entry in project.types:
+        if not any(f in files for f in entry.files):
+            continue
+        for use in entry.package_uses:
+            if framework_package(use.package):
+                continue
+            for restored in project.packages:
+                counterpart = restored.counterpart
+                if (
+                    restored.name == use.package
+                    and counterpart is not None
+                    and counterpart.target == target
+                    and (entry.project is None or restored.project == entry.project)
+                ):
+                    found.add(use.package)
+    return sorted(found)
 
 
 _DYNAMIC_SHOWN = 12  # dynamic sites a note names before "and N more" (D-88)
@@ -375,10 +407,20 @@ def cut_types(
     skip: Callable[[str], bool],
     target: str = "cpp",
     source: str = "csharp",
+    standard: str | None = None,
 ) -> TypeCut:
     """The type units of the library types declared in ``files`` (``skip`` leaves out a port's
-    new code), for a port from ``source`` to ``target`` (language IDs)."""
-    return _Cut(project, files, skip, target, source).cut()
+    new code), for a port from ``source`` to ``target`` (language IDs) at the target's
+    ``standard`` (``cpp20``; C++ ports async code to C++20's coroutines, D-96)."""
+    return _Cut(project, files, skip, target, source, standard).cut()
+
+
+def _cxx_number(standard: str | None) -> int | None:
+    """``cpp17`` gives 17; None for another language's standard."""
+    if standard is None:
+        return None
+    match = re.fullmatch(r"(?:cpp|c\+\+)(\d+)", standard.strip().lower())
+    return int(match.group(1)) if match else None
 
 
 class _Cut:
@@ -389,9 +431,12 @@ class _Cut:
         skip: Callable[[str], bool],
         target: str = "cpp",
         source: str = "csharp",
+        standard: str | None = None,
     ) -> None:
         self.project = project
         self.source = SOURCES[source]
+        self.target = target
+        self.standard = standard
         self.target_name, self.guide = _TARGETS.get(target, (target, "the porting guide"))
         self.types = {t.id: t for t in project.types}
         # What each symbol calls (the index's references by enclosing symbol), read when a
@@ -585,6 +630,10 @@ class _Cut:
             )
             unit.refused = self.refusal(unit, refused_generics) or self.inherited(units, unit)
             if unit.refused is None:
+                mapped = self.mapped_packages(unit)
+                unit.packages = sorted(mapped)
+                unit.libraries = sorted({lib for c, _ in mapped.values() for lib in c.libraries})
+                unit.tasks = bool(self.async_code(unit))
                 unit.details = self.details(unit, cluster, head, definitions, len(callers))
             units.append(unit)
         native_files = {f for t in self.native.values() for f in t.files}
@@ -614,11 +663,33 @@ class _Cut:
         reasons += [unused[m] for t in unit.types for m in t.members if m in unused]
         for entry in unit.types:
             for package, uses in self.package_uses(entry).items():
-                sites = _listed(f"{u.symbol} ({u.file}:{u.line})" for u in uses)
-                reasons.append(
-                    f"{entry.name} uses the package {self.package_label(entry, package)} "
-                    f"({sites}): the new code has no counterpart of a .NET package"
-                )
+                found = self.counterpart_of(entry, package)
+                if found is None:
+                    sites = _listed(f"{u.symbol} ({u.file}:{u.line})" for u in uses)
+                    reasons.append(
+                        f"{entry.name} uses the package {self.package_label(entry, package)} "
+                        f"({sites}): the new code has no counterpart of a .NET package"
+                    )
+                    continue
+                # A counterpart covers part of the package's API (D-95).
+                outside = [u for u in uses if not found.covers_use(u.symbol)]
+                if outside:
+                    sites = _listed(f"{u.symbol} ({u.file}:{u.line})" for u in outside)
+                    reasons.append(
+                        f"{entry.name} uses what {found.counterpart}, the {self.target_name} "
+                        f"counterpart of {self.package_label(entry, package)}, doesn't cover: "
+                        f"{sites} (D-95)"
+                    )
+        # C++ ports async code to C++20's coroutines (D-96).
+        number = _cxx_number(self.standard)
+        sites = self.async_code(unit)
+        if self.target == "cpp" and number is not None and number < 20 and sites:
+            shown = _listed(f"{n.detail} ({n.file}:{n.line})" for n in sites)
+            reasons.append(
+                f"{display(unit.lead)} has async code ({shown}), which a port to C++ ports to "
+                f"C++20's coroutines, and the target is {self.standard}: set "
+                "migration.target.standard to cpp20 or cpp23 (D-96)"
+            )
         platform_calls, _ = self.platform_calls(unit)
         for platform, calls in sorted(platform_calls.items()):
             shown = _listed(f"{c.library}!{c.entry_point} ({c.file}:{c.line})" for c in calls)
@@ -871,6 +942,7 @@ class _Cut:
             )
         out += dynamic_notes(unit.types)
         out += self.takeovers(unit)
+        out += self.package_takeovers(unit)
         if callers:
             out.append(
                 f"{_plural(callers, 'file keeps', 'files keep')} using it through the façade"
@@ -886,6 +958,53 @@ class _Cut:
             if not framework_package(use.package):
                 found.setdefault(use.package, []).append(use)
         return found
+
+    def counterpart_of(self, entry: TypeEntry, package: str) -> PackageCounterpart | None:
+        """The counterpart in the port's target of a package ``entry``'s project restored, when
+        CodeCoreMorph maps that version of it there (D-95)."""
+        for restored in self.project.packages:
+            if restored.name != package or restored.counterpart is None:
+                continue
+            if entry.project is not None and restored.project != entry.project:
+                continue
+            if restored.counterpart.target == self.target:
+                return restored.counterpart
+        return None
+
+    def mapped_packages(
+        self, unit: TypeUnit
+    ) -> dict[str, tuple[PackageCounterpart, list[PackageUse]]]:
+        """The packages a unit's types use that the target has a counterpart of, with the uses
+        (D-95); a unit with a use the counterpart doesn't cover is refused instead."""
+        found: dict[str, tuple[PackageCounterpart, list[PackageUse]]] = {}
+        for entry in unit.types:
+            for package, uses in self.package_uses(entry).items():
+                counterpart = self.counterpart_of(entry, package)
+                if counterpart is None:
+                    continue
+                known = found.setdefault(package, (counterpart, []))
+                known[1].extend(uses)
+        return found
+
+    def package_takeovers(self, unit: TypeUnit) -> list[str]:
+        """What a unit's note says of the packages whose counterparts its new code uses."""
+        out: list[str] = []
+        for package, (counterpart, uses) in sorted(self.mapped_packages(unit).items()):
+            symbols = _listed(sorted({u.symbol for u in uses}), 4)
+            label = self.package_label(unit.lead, package)
+            how = ""
+            if counterpart.libraries:
+                linked = _listed(counterpart.libraries)
+                how = f", which the scaffold links ({linked})"
+            elif counterpart.crates:
+                how = f", pinned in Cargo.lock ({_listed(counterpart.crates)})"
+            elif counterpart.runtime:
+                how = ", which the scaffold places with the port"
+            out.append(
+                f"uses the package {label} ({symbols}): the {self.target_name} uses "
+                f"{counterpart.counterpart} instead{how} (D-95)"
+            )
+        return out
 
     def package_version(self, project: str | None, package: str) -> str | None:
         for entry in self.project.packages:
@@ -925,6 +1044,11 @@ class _Cut:
                 branches.setdefault(platform, []).extend(own)
         return reached, branches
 
+    @staticmethod
+    def async_code(unit: TypeUnit) -> list[PortNotice]:
+        """The unit's async code, which the tasks runtime takes over (D-96)."""
+        return [n for t in unit.types for n in t.notices if n.what is PortNoticeKind.ASYNC]
+
     def takeovers(self, unit: TypeUnit) -> list[str]:
         """What the unit's note says of what the port takes over that the C# runtime did: deep
         copies through a serializer, unsafe code, platform checks, native calls, and checked
@@ -945,6 +1069,22 @@ class _Cut:
                 f"unsafe code: {sites}: plain pointers in the new code, where nothing moves "
                 "objects, so `fixed` pins nothing; bytes read through a cast pointer are copied "
                 "instead, and a pinned string's UTF-16 units aren't a UTF-8 string's bytes"
+            )
+        if sites := self.async_code(unit):
+            shown = _listed(f"{n.detail} ({n.file}:{n.line})" for n in sites)
+            if self.target == "cpp":
+                how = (
+                    "coroutines returning ccm::tasks::Task (C++20, codecoremorph_tasks.hpp, which "
+                    "the scaffold places)"
+                )
+                caught = "caught by type"
+            else:
+                how = "tasks of codecoremorph_runtime::tasks (spawn, when_all, delay, tokens)"
+                caught = "matched by type with is_a"
+            out.append(
+                f"async code ({shown}): {how}, each async export completing its façade's C# task; "
+                f"a C# implementation's or delegate's task is awaited through the bridge, and its "
+                f"exceptions {caught} (D-96)"
             )
         platform = [n for _, n in notices if n.what is PortNoticeKind.PLATFORM]
         if platform:
@@ -1139,12 +1279,25 @@ class _Cut:
                 )
             )
         packages: dict[str, dict[str, list[PackageUse]]] = {}
+        users_of: dict[str, list[TypeEntry]] = {}
         for entry in self.ported.values():
             for package, uses in self.package_uses(entry).items():
                 packages.setdefault(package, {})[entry.name] = uses
+                users_of.setdefault(package, []).append(entry)
+        refused_types = {t.name for u in units if u.refused is not None for t in u.types}
         for package, by_type in sorted(packages.items()):
             version = self.package_version(None, package)
             symbols = sorted({u.symbol for uses in by_type.values() for u in uses})
+            counterpart = next(
+                (c for e in users_of[package] if (c := self.counterpart_of(e, package))), None
+            )
+            if counterpart is not None:
+                out.append(
+                    self.package_dependency(
+                        package, version, counterpart, by_type, symbols, refused_types
+                    )
+                )
+                continue
             out.append(
                 PortDependency(
                     kind=PortDependencyKind.PACKAGE,
@@ -1160,6 +1313,88 @@ class _Cut:
                 )
             )
         return out
+
+    def package_dependency(
+        self,
+        package: str,
+        version: str | None,
+        counterpart: PackageCounterpart,
+        by_type: Mapping[str, Sequence[PackageUse]],
+        symbols: Sequence[str],
+        refused_types: Collection[str],
+    ) -> PortDependency:
+        """A package the target has a counterpart of (D-95): what stands for it, how it
+        reaches the build, and what has to happen first."""
+        users = sorted(by_type)
+        label = f"{package}{' ' + version if version else ''}"
+        summary = (
+            f"{label} (a .NET package): used by {_listed(users)} ({_listed(symbols)}); the "
+            f"{self.target_name} uses {counterpart.counterpart} instead (D-95)"
+        )
+        if counterpart.checked:
+            summary += f", checked {counterpart.checked}"
+        actions: list[str] = []
+        if counterpart.libraries:
+            summary += (
+                f". The new code includes {_listed(counterpart.headers)} and links "
+                f"{_listed(counterpart.libraries)}, so the build needs their development files"
+            )
+            for library in counterpart.libraries:
+                state, action = self.library_probe(library)
+                summary += state
+                if action is not None:
+                    actions.append(action)
+        elif counterpart.crates:
+            summary += (
+                f". The crates {_listed(counterpart.crates)} come from crates.io, pinned in "
+                "Cargo.lock by the checksums CodeCoreMorph ships, and are fetched at configure "
+                "with the network on for that alone"
+            )
+        elif counterpart.runtime:
+            summary += ". CodeCoreMorph ships it with the port, and the retirement keeps it"
+        if counterpart.runtime:
+            summary += (
+                ". Until the retirement the C# not ported yet keeps its own objects of the "
+                "package, and the ported code calls back into those the C# passes it"
+            )
+        else:
+            summary += (
+                ". Until the retirement the C# not ported yet goes on calling the package "
+                "itself, a second implementation the counterpart gives the same results as"
+            )
+        blocked = [u for u in users if u in refused_types]
+        if blocked:
+            summary += f"; {_listed(blocked)} stay C# for reasons of their own"
+        return PortDependency(
+            kind=PortDependencyKind.PACKAGE,
+            name=package,
+            version=version,
+            ported=len(blocked) < len(users) and not actions,
+            summary=summary,
+            used_by=users,
+            action="; ".join(actions) or None,
+        )
+
+    def library_probe(self, library: str) -> tuple[str, str | None]:
+        """What the toolchain image has of a C library that stands for a package (D-95): what
+        the dependency's summary says, and what has to happen first when it lacks some."""
+        probe = next((p for p in self.project.native_probes if p.library == library), None)
+        if probe is None:
+            return f" ({library} not looked for: only a Docker run's image is)", None
+        if probe.header is None or probe.link is None:
+            missing = " and ".join(
+                what
+                for what, there in (("its header", probe.header), ("the library", probe.link))
+                if there is None
+            )
+            return (
+                f"; the toolchain image lacks {missing} of {library}",
+                f"the units that use {library} need its development files in the toolchain "
+                f"image, which lacks {missing}: build an image from codecoremorph-csharp-port "
+                f"with them and set sandbox.image to it (see {self.guide}, Packages)",
+            )
+        version = f", version {probe.version}" if probe.version else ""
+        return f"; the toolchain image has {library} ({probe.header}, {probe.link}{version})", None
 
     def declaring_name(self, member: str, names: Mapping[str, str]) -> str:
         """The outermost type that declares a native function, by name."""

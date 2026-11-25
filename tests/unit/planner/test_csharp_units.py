@@ -115,13 +115,13 @@ class Library:
         return ProjectModel.load(self.p.index_path, self.p.worktree, test_dirs=["tests"])
 
 
-def _plan(project: ProjectModel) -> Plan:
+def _plan(project: ProjectModel, standard: str = "cpp17") -> Plan:
     def query(name: str, files: list[str]) -> list[RuleSite]:
         assert name == "csharp_types"  # the C# adapter's, over the index
         return port_type_sites(project.index_path, files)
 
     order = StandardOrder("csharp", ("csharp7.3", "csharp8", "csharp14"))
-    scan = scan_rule(PORT, project, order=order, source="csharp7.3", target="cpp17", query=query)
+    scan = scan_rule(PORT, project, order=order, source="csharp7.3", target=standard, query=query)
     return build_plan(
         project,
         [scan],
@@ -130,7 +130,7 @@ def _plan(project: ProjectModel) -> Plan:
         settings=PlannerSettings(token_limit=500_000),
         language="csharp",
         source="csharp7.3",
-        target="cpp17",
+        target=standard,
         target_language="cpp",
         port_names=CppAdapter().port_names,
     )
